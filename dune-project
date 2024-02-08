@@ -15,6 +15,8 @@
 
 (documentation https://url/to/documentation)
 
+(using coq 0.8)
+
 (package
  (name vvequiv)
  (synopsis "A short synopsis")

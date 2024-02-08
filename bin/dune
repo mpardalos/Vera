@@ -1,3 +1,9 @@
+(coq.extraction
+ (prelude Extraction)
+ (extracted_modules VVEquiv)
+ (theories vvequiv)
+)
+
 (executable
  (public_name vvequiv)
  (name main)
