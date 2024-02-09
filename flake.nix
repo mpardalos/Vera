@@ -21,6 +21,7 @@
               coq.ocamlPackages.findlib
               coq.ocamlPackages.ocaml-lsp
               coq.ocamlPackages.dune_3
+              coq.ocamlPackages.utop
               coq.ocamlPackages.ocamlformat
               coq.ocamlPackages.yojson
 
