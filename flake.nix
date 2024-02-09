@@ -24,6 +24,7 @@
               coq.ocamlPackages.yojson
 
               pkgs.sv-lang
+              pkgs.verible
             ];
         };
       }
