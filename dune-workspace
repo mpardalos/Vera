@@ -1,0 +1,5 @@
+(lang dune 3.2)
+(context default)
+
+; Make unused variables a warning
+(env (dev (flags :standard -warn-error -27-32)))
