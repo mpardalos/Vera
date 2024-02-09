@@ -21,6 +21,7 @@
               coq.ocamlPackages.findlib
               coq.ocamlPackages.ocaml-lsp
               coq.ocamlPackages.dune_3
+              coq.ocamlPackages.yojson
 
               pkgs.sv-lang
             ];
