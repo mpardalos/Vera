@@ -12,6 +12,7 @@ Module Verilog.
   | BinaryOp : op -> expression -> expression -> expression
   | Conversion : vtype -> expression -> expression
   | IntegerLiteral : Z -> expression
+  | NamedExpression : string -> expression
   .
 
   Record variable :=
@@ -27,11 +28,16 @@ Module Verilog.
       ; portDirection : direction
       }.
 
+  Inductive module_item : Set :=
+  | ContinuousAssign : expression -> expression -> module_item
+  .
+
   (** Verilog modules *)
   Record vmodule : Set :=
     MkMod
       { modName : string
       ; modPorts : list port
       ; modVariables : list variable
+      ; modBody : list module_item
       }.
 End Verilog.
