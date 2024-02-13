@@ -1,12 +1,13 @@
 open Format
 
+let eval_transf a n = fst (StateMonad.runState a n)
+
 let () =
-  printf "Verilog\n";
-  printf "=======\n";
   List.iter
     (fun v ->
       printf "%a\n" VerilogPP.vmodule v;
       printf "--------\n";
-      printf "%a\n" NetlistPP.circuit (VerilogToNetlist.transfer_module v);
+      printf "%a\n" NetlistPP.circuit
+        (eval_transf (VerilogToNetlist.transfer_module v) 0);
       printf "\n==========================================================\n\n")
-    Verilog.examples;
+    Verilog.examples

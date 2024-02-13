@@ -13,7 +13,12 @@
   ; Hexadecimal
   ; Nat
   ; Number
-  )
+  Functor
+  List0
+  Applicative
+  Traversable
+  Monad
+  StateMonad)
  (theories vvequiv ExtLib))
 
 (executable
