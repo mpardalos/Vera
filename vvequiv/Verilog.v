@@ -78,5 +78,28 @@ Example examples : list Verilog.vmodule := [
              (NamedExpression "in")
              (IntegerLiteral 32 1))
       ];
+    |} ;
+    (***********************************************)
+    {|
+      modName := "test3";
+      modPorts := [
+        MkPort In "in1" ;
+        MkPort In "in2" ;
+        MkPort Out "out"
+      ];
+      modVariables := [
+        MkVariable (Logic 31 0) "in1" ;
+        MkVariable (Logic 31 0) "in2" ;
+        MkVariable (Logic 31 0) "out"
+      ];
+      modBody := [
+        ContinuousAssign
+          (NamedExpression "out")
+          (BinaryOp Plus
+             (NamedExpression "in1")
+             (BinaryOp Plus
+                (NamedExpression "in2")
+                (IntegerLiteral 32 1)))
+      ];
     |}
   ].
