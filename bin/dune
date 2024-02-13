@@ -1,6 +1,6 @@
 (coq.extraction
  (prelude Extraction)
- (extracted_modules VVEquiv)
+ (extracted_modules Verilog Netlist)
  (theories vvequiv))
 
 (executable

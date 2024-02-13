@@ -1,4 +1,3 @@
-open VVEquiv
 open Format
 
 let direction fmt d =
