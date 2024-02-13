@@ -41,3 +41,5 @@ Module Verilog.
       ; modBody : list module_item
       }.
 End Verilog.
+
+Example examples : list Verilog.vmodule := nil.

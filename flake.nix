@@ -23,7 +23,6 @@
               coq.ocamlPackages.dune_3
               coq.ocamlPackages.utop
               coq.ocamlPackages.ocamlformat
-              coq.ocamlPackages.yojson
 
               pkgs.sv-lang
               pkgs.verible

@@ -6,4 +6,4 @@
 (executable
  (public_name vvequiv)
  (name main)
- (libraries unix yojson))
+ (libraries unix))
