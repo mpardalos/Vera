@@ -18,7 +18,9 @@
   Applicative
   Traversable
   Monad
-  StateMonad)
+  StateMonad
+  BinIntDef
+  )
  (theories vvequiv ExtLib))
 
 (executable

@@ -1,6 +1,7 @@
 Require Verilog.
 Require Netlist.
 Require Import ZArith.
+Require Import BinIntDef.
 
 Require Import List.
 Import ListNotations.
@@ -14,7 +15,7 @@ Import MonadNotation.
 
 Definition transf := state Z.
 
-Definition fresh := mkState (fun n => (n, n+1)).
+Definition fresh : transf Z := mkState (fun n => (n, Z.succ n)).
 
 Definition transfer_type (type : Verilog.vtype) : transf Netlist.nltype :=
   match type with
@@ -26,8 +27,9 @@ Open Scope monad_scope.
 
 Definition transfer_variables (vars : list Verilog.variable) : transf (list Netlist.variable) :=
   mapT (fun v =>
+          name <- fresh ;;
           type <- (transfer_type (Verilog.varType v)) ;;
-          ret (Netlist.Var type 0)
+          ret (Netlist.Var type name)
     ) vars
 .
 
