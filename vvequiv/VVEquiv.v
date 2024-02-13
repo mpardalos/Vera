@@ -41,4 +41,44 @@ Module Verilog.
       }.
 End Verilog.
 
-Example examples : list Verilog.vmodule := nil.
+Require Import List.
+Import ListNotations.
+Import Verilog.
+
+Example examples : list Verilog.vmodule := [
+    {|
+      modName := "test1";
+      modPorts := [
+        MkPort In "in" ;
+        MkPort Out "out"
+      ];
+      modVariables := [
+        MkVariable (Logic 31 0) "in" ;
+        MkVariable (Logic 31 0) "out"
+      ];
+      modBody := [
+        ContinuousAssign
+          (NamedExpression "out")
+          (NamedExpression "in")
+      ];
+    |} ;
+    (***********************************************)
+    {|
+      modName := "test2";
+      modPorts := [
+        MkPort In "in" ;
+        MkPort Out "out"
+      ];
+      modVariables := [
+        MkVariable (Logic 31 0) "in" ;
+        MkVariable (Logic 31 0) "out"
+      ];
+      modBody := [
+        ContinuousAssign
+          (NamedExpression "out")
+          (BinaryOp Plus
+             (NamedExpression "in")
+             (IntegerLiteral 1))
+      ];
+    |}
+  ].
