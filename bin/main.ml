@@ -15,10 +15,10 @@ module VerilogPP = struct
     | Verilog.Logic (high, low) -> fprintf fmt "logic[%d:%d]" high low
 
   let port (fmt : formatter) (p : Verilog.port) =
-    fprintf fmt "%a <%d>" direction p.portDirection p.portId
+    fprintf fmt "%a %s" direction p.portDirection (lst_to_string p.portName)
 
   let variable (fmt : formatter) (p : Verilog.variable) =
-    fprintf fmt "%a %s<%d>" vtype p.varType (lst_to_string p.varName) p.varId
+    fprintf fmt "%a %s" vtype p.varType (lst_to_string p.varName)
 
   let operator fmt = function
     | Verilog.Plus -> fprintf fmt "+"

@@ -17,15 +17,14 @@ Module Verilog.
 
   Record variable :=
     MkVariable
-      { varName : string
-      ; varType : vtype
-      ; varId : Z
+      { varType : vtype
+      ; varName : string
       }.
 
   Record port :=
     MkPort
-      { portId : Z
-      ; portDirection : direction
+      { portDirection : direction
+      ; portName : string
       }.
 
   Inductive module_item : Set :=
