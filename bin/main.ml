@@ -4,12 +4,9 @@ let () =
   printf "Verilog\n";
   printf "=======\n";
   List.iter
-    (fun v -> printf "%a\n---\n" VerilogPP.vmodule v)
+    (fun v ->
+      printf "%a\n" VerilogPP.vmodule v;
+      printf "--------\n";
+      printf "%a\n" NetlistPP.circuit (VerilogToNetlist.transfer_module v);
+      printf "\n==========================================================\n\n")
     Verilog.examples;
-
-  printf "\n";
-  printf "Netlists\n";
-  printf "========\n";
-  List.iter
-    (fun c -> printf "%a\n---\n" NetlistPP.circuit c)
-    Netlist.examples

@@ -1,6 +1,19 @@
 (coq.extraction
  (prelude Extraction)
- (extracted_modules Verilog Netlist)
+ (extracted_modules
+  Verilog
+  Netlist
+  VerilogToNetlist
+  ; BinNat
+  BinInt
+  BinPos
+  ; BinPosDef
+  ; Datatypes
+  ; Decimal
+  ; Hexadecimal
+  ; Nat
+  ; Number
+  )
  (theories vvequiv))
 
 (executable

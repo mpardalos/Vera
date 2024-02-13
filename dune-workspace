@@ -2,4 +2,4 @@
 (context default)
 
 ; Make unused variables a warning
-(env (dev (flags :standard -warn-error -27-32)))
+(env (dev (flags :standard -warn-error -27-32-33-39)))
