@@ -14,7 +14,7 @@
   ; Nat
   ; Number
   )
- (theories vvequiv))
+ (theories vvequiv ExtLib))
 
 (executable
  (public_name vvequiv)

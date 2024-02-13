@@ -17,6 +17,8 @@
           packages =
             [
               coq
+              coqPackages.coq-ext-lib
+
               coq.ocaml
               coq.ocamlPackages.findlib
               coq.ocamlPackages.ocaml-lsp
