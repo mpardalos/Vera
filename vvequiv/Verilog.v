@@ -5,7 +5,7 @@ Require Import BinNums.
 Require Import List.
 Import ListNotations.
 
-Inductive vtype := Logic : Z -> Z -> vtype.
+Inductive vtype := Logic : N -> N -> vtype.
 
 Inductive direction := In | Out.
 

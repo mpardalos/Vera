@@ -5,21 +5,21 @@ Require Import BinNums.
 Require Import List.
 Import ListNotations.
 
-Inductive nltype := Logic : Z -> nltype.
+Inductive nltype := Logic : positive -> nltype.
 
 (* Inductive register :=. *)
 
 Record constant :=
   Constant
     { constWidth : positive
-    ; constValue : positive
+    ; constValue : N
     }.
 
 (** These are not registers, just names used to connect the netlist graph *)
 Record variable :=
   Var
     { varType : nltype
-    ; varName : Z
+    ; varName : N
     }.
 
 Inductive input :=
