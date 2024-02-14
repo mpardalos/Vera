@@ -12,6 +12,7 @@ Import ListNotations.
 
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.MonadState.
+From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.Functor.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Data.Monads.StateMonad.
@@ -40,7 +41,7 @@ Definition fresh : transf N :=
   ret (nextName s)
 .
 
-Definition map_name (name : string) : transf N :=
+Definition transfer_name (name : string) : transf N :=
   st <- get ;;
   match StrMap.find name (nameMap st) with
   | Some n => ret n
@@ -72,11 +73,30 @@ Definition transfer_variables (vars : list Verilog.variable) : transf (list Netl
     ) vars
 .
 
-Definition transfer_module_item (item : Verilog.module_item) : transf (list Netlist.cell) :=
-  match item with
-  | Verilog.ContinuousAssign to from => ret []
+Definition unsupported_expression_error : string := "Unsupported expression".
+
+Definition transfer_expression_to (var : Netlist.variable) (expr : Verilog.expression) : transf (list Netlist.cell) :=
+  match expr return transf (list Netlist.cell) with
+  | Verilog.IntegerLiteral w v =>
+      ret [
+          Netlist.Id
+            (Netlist.OutVar var)
+            (Netlist.InConstant {| Netlist.constWidth := w; Netlist.constValue := v |}) ]
+  | _ => raise unsupported_expression_error
   end
 .
+
+Definition invalid_assign_err : string := "Invalid target for assign expression".
+
+Program Definition transfer_module_item (item : Verilog.module_item) : transf (list Netlist.cell) :=
+  match item with
+  | Verilog.ContinuousAssign (Verilog.NamedExpression name) from =>
+      n <- transfer_name name ;;
+      transfer_expression_to (Netlist.Var _ n) from
+  | Verilog.ContinuousAssign to from => raise invalid_assign_err
+  end
+.
+Next Obligation. Admitted.
 
 Definition transfer_body (items : list Verilog.module_item) : transf (list Netlist.cell) :=
   fmap (fun l => concat l) (mapT transfer_module_item items)

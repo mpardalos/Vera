@@ -16,7 +16,7 @@ Module Verilog.
   Inductive expression :=
   | BinaryOp : op -> expression -> expression -> expression
   | Conversion : vtype -> expression -> expression
-  | IntegerLiteral : Z -> Z -> expression
+  | IntegerLiteral : positive -> N -> expression
   | NamedExpression : string -> expression
   .
 
