@@ -1,4 +1,5 @@
 open Format
+open VVEquiv
 
 let nltype fmt (t : Netlist.nltype) =
   (* nltype gets extracted to just int *)

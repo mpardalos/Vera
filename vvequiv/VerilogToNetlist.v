@@ -1,5 +1,6 @@
-Require Verilog.
-Require Netlist.
+Require Import Verilog.
+Require Import Netlist.
+
 Require Import ZArith.
 Require Import BinIntDef.
 Require Import String.
@@ -89,3 +90,6 @@ Definition transfer_module (vmodule : Verilog.vmodule) : transf Netlist.circuit 
     Netlist.circuitCells := cells
   |}
 .
+
+Definition verilog_to_netlist (vmodule : Verilog.vmodule) : sum string Netlist.circuit :=
+  evalStateT (transfer_module vmodule) {| nextName := 0; nameMap := StrMap.empty N |}.

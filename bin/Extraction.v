@@ -11,6 +11,4 @@ Extraction Language OCaml.
 
 Extract Inlined Constant List.flat_map => "List.concat_map".
 
-Separate Extraction VerilogToNetlist.transfer_module.
-Extraction Library Verilog.
-Extraction Library Netlist.
+Extraction "VVEquiv.ml" Verilog.Verilog Netlist.Netlist VerilogToNetlist.verilog_to_netlist.

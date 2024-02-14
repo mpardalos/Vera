@@ -1,4 +1,5 @@
 open Format
+open VVEquiv
 
 let direction fmt d =
   match d with

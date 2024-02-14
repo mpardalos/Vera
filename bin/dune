@@ -1,29 +1,6 @@
 (coq.extraction
  (prelude Extraction)
- (extracted_modules
-  Verilog
-  Netlist
-  VerilogToNetlist
-  BinNat
-  ; BinInt
-  BinPos
-  BinPosDef
-  Datatypes
-  ; Decimal
-  ; Hexadecimal
-  ; Nat
-  ; Number
-  Functor
-  List0
-  Applicative
-  Traversable
-  Monad
-  StateMonad
-  MonadState
-  EitherMonad
-  FMapList
-  ; BinIntDef
-  )
+ (extracted_modules VVEquiv)
  (theories vvequiv ExtLib))
 
 (executable
