@@ -4,11 +4,11 @@
   Verilog
   Netlist
   VerilogToNetlist
-  ; BinNat
-  BinInt
+  BinNat
+  ; BinInt
   BinPos
-  ; BinPosDef
-  ; Datatypes
+  BinPosDef
+  Datatypes
   ; Decimal
   ; Hexadecimal
   ; Nat
@@ -19,7 +19,10 @@
   Traversable
   Monad
   StateMonad
-  BinIntDef
+  MonadState
+  EitherMonad
+  FMapList
+  ; BinIntDef
   )
  (theories vvequiv ExtLib))
 
