@@ -26,15 +26,15 @@ let rec expression fmt e =
   | Verilog.IntegerLiteral (sz, n) -> fprintf fmt "%d'd%d" sz n
   | Verilog.Conversion (t, e) ->
       fprintf fmt "( %a )@ as@ ( %a )" expression e vtype t
-  | Verilog.BinaryOp (op, l, r) ->
+  | Verilog.BinaryOp (t, op, l, r) ->
       fprintf fmt "( %a )@ %a@ ( %a )" expression l operator op expression r
-  | Verilog.NamedExpression name -> fprintf fmt "%s" (Util.lst_to_string name));
+  | Verilog.NamedExpression (t, name) -> fprintf fmt "%a %s" vtype t (Util.lst_to_string name));
   Format.fprintf fmt "@]"
 
 let mod_item (fmt : formatter) (i : Verilog.module_item) =
   match i with
   | Verilog.ContinuousAssign (l, r) ->
-      fprintf fmt "assign %a = %a" expression l expression r
+      fprintf fmt "assign (%a) = (@[ %a @])" expression l expression r
 
 let vmodule (fmt : formatter) (m : Verilog.vmodule) =
   fprintf fmt "Verilog.module %s {@." (Util.lst_to_string m.modName);

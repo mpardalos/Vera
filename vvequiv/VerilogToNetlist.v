@@ -27,33 +27,47 @@ Module StrMap := FMapList.Make(String_as_OT).
 Record transf_state :=
   TransfState
     { nextName : N;
-      nameMap : StrMap.t N
+      nameMap : StrMap.t N;
+      vars : list Netlist.variable
     }.
 
 Definition transf : Type -> Type := stateT transf_state (sum string).
 
 Instance Monad_transf : Monad transf := Monad_stateT transf_state (Monad_either string).
 
-Definition fresh : transf N :=
+Definition fresh_name : transf N :=
   s <- get ;;
-  let s' := {| nextName := N.succ (nextName s) ; nameMap := nameMap s |} in
+  let s' := {| nextName := N.succ (nextName s) ; nameMap := nameMap s; vars := vars s |} in
   put s' ;;
   ret (nextName s)
 .
 
 Definition transfer_name (name : string) : transf N :=
-  st <- get ;;
-  match StrMap.find name (nameMap st) with
+  st0 <- get ;;
+  match StrMap.find name (nameMap st0) with
   | Some n => ret n
   | None =>
-      n <- fresh ;;
+      n <- fresh_name ;;
+      st1 <- get ;;
       put {|
-          nextName := (nextName st) ;
-          nameMap := StrMap.add name n (nameMap st)
+          nextName := nextName st1 ;
+          nameMap := StrMap.add name n (nameMap st1) ;
+          vars := vars st1
         |} ;;
       ret n
   end.
 
+Definition put_var (v : Netlist.variable) : transf () :=
+  st <- get ;;
+  put {| nextName := nextName st; nameMap := nameMap st; vars := vars st ++ [ v ] |}
+.
+
+Definition fresh (t : Netlist.nltype) : transf (Netlist.variable) :=
+    name <- fresh_name ;;
+    let var := {| Netlist.varType := t; Netlist.varName := name |} in
+    put_var var ;;
+    ret var
+.
 
 Definition transfer_type (type : Verilog.vtype) : transf Netlist.nltype :=
   (* Probably wrong but good enough for now*)
@@ -67,44 +81,68 @@ Definition transfer_type (type : Verilog.vtype) : transf Netlist.nltype :=
 
 Definition transfer_variables (vars : list Verilog.variable) : transf (list Netlist.variable) :=
   mapT (fun v =>
-          name <- fresh ;;
-          type <- (transfer_type (Verilog.varType v)) ;;
+          name <- transfer_name (Verilog.varName v) ;;
+          type <- transfer_type (Verilog.varType v) ;;
           ret (Netlist.Var type name)
     ) vars
 .
 
 Definition unsupported_expression_error : string := "Unsupported expression".
 
-Definition transfer_expression_to (var : Netlist.variable) (expr : Verilog.expression) : transf (list Netlist.cell) :=
-  match expr return transf (list Netlist.cell) with
+Definition transfer_bin_op (op : Verilog.op) : (Netlist.output -> Netlist.input -> Netlist.input -> Netlist.cell) :=
+  match op with
+  | Verilog.Plus => Netlist.Add
+  | Verilog.Minus => Netlist.Subtract
+  end
+.
+
+Fixpoint transfer_expression (expr : Verilog.expression) : transf (list Netlist.cell * Netlist.input) :=
+  match expr return transf (list Netlist.cell * Netlist.input) with
   | Verilog.IntegerLiteral w v =>
-      ret [
-          Netlist.Id
-            (Netlist.OutVar var)
-            (Netlist.InConstant {| Netlist.constWidth := w; Netlist.constValue := v |}) ]
+      ret ([], Netlist.InConstant {| Netlist.constWidth := w; Netlist.constValue := v |})
+  | Verilog.NamedExpression type name =>
+      t <- transfer_type type ;;
+      n <- transfer_name name ;;
+      ret ([], Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
+  | Verilog.BinaryOp t op e1 e2 =>
+      pair1 <- transfer_expression e1 ;;
+      let (cells1, v1) := pair1 in
+      pair2 <- transfer_expression e2 ;;
+      let (cells2, v2) := pair2 in
+      t__result <- transfer_type t ;;
+      v__result <- fresh t__result ;;
+      let cells__op := [transfer_bin_op op (Netlist.OutVar v__result) v1 v2] in
+      let cells := cells1 ++ cells2 ++ cells__op in
+      ret (cells, Netlist.InVar v__result)
   | _ => raise unsupported_expression_error
   end
 .
 
 Definition invalid_assign_err : string := "Invalid target for assign expression".
 
-Program Definition transfer_module_item (item : Verilog.module_item) : transf (list Netlist.cell) :=
+
+Definition transfer_module_item (item : Verilog.module_item) : transf (list Netlist.cell) :=
   match item with
-  | Verilog.ContinuousAssign (Verilog.NamedExpression name) from =>
+  | Verilog.ContinuousAssign (Verilog.NamedExpression type name) from =>
+      t <- transfer_type type ;;
       n <- transfer_name name ;;
-      transfer_expression_to (Netlist.Var _ n) from
+      let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in
+      pair <- transfer_expression from ;;
+      let (cells, result) := pair in
+      ret (cells ++ [ Netlist.Id outVar result ])
   | Verilog.ContinuousAssign to from => raise invalid_assign_err
   end
 .
-Next Obligation. Admitted.
 
 Definition transfer_body (items : list Verilog.module_item) : transf (list Netlist.cell) :=
   fmap (fun l => concat l) (mapT transfer_module_item items)
 .
 
 Definition transfer_module (vmodule : Verilog.vmodule) : transf Netlist.circuit :=
-  vars <- transfer_variables (Verilog.modVariables vmodule) ;;
+  sourceVars <- transfer_variables (Verilog.modVariables vmodule) ;;
   cells <- transfer_body (Verilog.modBody vmodule) ;;
+  st <- get ;;
+  let vars := sourceVars ++ vars st in
   ret {| Netlist.circuitName := Verilog.modName vmodule;
     Netlist.circuitVariables := vars;
     Netlist.circuitCells := cells
@@ -112,4 +150,4 @@ Definition transfer_module (vmodule : Verilog.vmodule) : transf Netlist.circuit 
 .
 
 Definition verilog_to_netlist (vmodule : Verilog.vmodule) : sum string Netlist.circuit :=
-  evalStateT (transfer_module vmodule) {| nextName := 0; nameMap := StrMap.empty N |}.
+  evalStateT (transfer_module vmodule) {| nextName := 0; nameMap := StrMap.empty N; vars := [] |}.

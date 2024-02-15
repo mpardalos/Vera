@@ -14,10 +14,10 @@ Module Verilog.
   Inductive op := Plus | Minus.
 
   Inductive expression :=
-  | BinaryOp : op -> expression -> expression -> expression
+  | BinaryOp : vtype -> op -> expression -> expression -> expression
   | Conversion : vtype -> expression -> expression
   | IntegerLiteral : positive -> N -> expression
-  | NamedExpression : string -> expression
+  | NamedExpression : vtype -> string -> expression
   .
 
   Record variable :=
@@ -45,7 +45,9 @@ Module Verilog.
       ; modBody : list module_item
       }.
 
-  Example examples : list Verilog.vmodule := [
+  Example examples : list Verilog.vmodule :=
+    let l32 := Logic 31 0 in
+    [
       {|
         modName := "test1";
         modPorts := [
@@ -53,13 +55,13 @@ Module Verilog.
           MkPort Out "out"
         ];
         modVariables := [
-          MkVariable (Logic 31 0) "in" ;
-          MkVariable (Logic 31 0) "out"
+          MkVariable l32 "in" ;
+          MkVariable l32 "out"
         ];
         modBody := [
           ContinuousAssign
-            (NamedExpression "out")
-            (NamedExpression "in")
+            (NamedExpression l32 "out")
+            (NamedExpression l32 "in")
         ];
       |} ;
       (***********************************************)
@@ -70,14 +72,14 @@ Module Verilog.
           MkPort Out "out"
         ];
         modVariables := [
-          MkVariable (Logic 31 0) "in" ;
-          MkVariable (Logic 31 0) "out"
+          MkVariable l32 "in" ;
+          MkVariable l32 "out"
         ];
         modBody := [
           ContinuousAssign
-            (NamedExpression "out")
-            (BinaryOp Plus
-               (NamedExpression "in")
+            (NamedExpression l32 "out")
+            (BinaryOp l32 Plus
+               (NamedExpression l32 "in")
                (IntegerLiteral 32 1))
         ];
       |} ;
@@ -90,17 +92,17 @@ Module Verilog.
           MkPort Out "out"
         ];
         modVariables := [
-          MkVariable (Logic 31 0) "in1" ;
-          MkVariable (Logic 31 0) "in2" ;
-          MkVariable (Logic 31 0) "out"
+          MkVariable l32 "in1" ;
+          MkVariable l32 "in2" ;
+          MkVariable l32 "out"
         ];
         modBody := [
           ContinuousAssign
-            (NamedExpression "out")
-            (BinaryOp Plus
-               (NamedExpression "in1")
-               (BinaryOp Plus
-                  (NamedExpression "in2")
+            (NamedExpression l32 "out")
+            (BinaryOp l32 Plus
+               (NamedExpression l32 "in1")
+               (BinaryOp l32 Plus
+                  (NamedExpression l32 "in2")
                   (IntegerLiteral 32 1)))
         ];
       |}
