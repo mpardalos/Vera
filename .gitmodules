@@ -1,0 +1,6 @@
+[submodule "lib/cohpred-srht"]
+	path = lib/cohpred-srht
+	url = https://git.sr.ht/~ymherklotz/cohpred
+[submodule "lib/smtcoq"]
+	path = lib/smtcoq
+	url = https://gitlab.inria.fr/pred-tv/smtcoq

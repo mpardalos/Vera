@@ -1,4 +1,4 @@
-(lang dune 3.13)
+(lang dune 3.7)
 
 (name vvequiv)
 
@@ -15,7 +15,7 @@
 
 (documentation https://url/to/documentation)
 
-(using coq 0.8)
+(using coq 0.7)
 
 (package
  (name vvequiv)
