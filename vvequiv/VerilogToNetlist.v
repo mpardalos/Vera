@@ -1,5 +1,7 @@
+Require Import Names.
 Require Import Verilog.
 Require Import Netlist.
+Require Import Bitvector.
 
 Require Import ZArith.
 Require Import BinIntDef.
@@ -26,8 +28,8 @@ Module StrMap := FMapList.Make(String_as_OT).
 
 Record transf_state :=
   TransfState
-    { nextName : N;
-      nameMap : StrMap.t N;
+    { nextName : name;
+      nameMap : StrMap.t name;
       vars : list Netlist.variable
     }.
 
@@ -35,23 +37,23 @@ Definition transf : Type -> Type := stateT transf_state (sum string).
 
 Instance Monad_transf : Monad transf := Monad_stateT transf_state (Monad_either string).
 
-Definition fresh_name : transf N :=
+Definition fresh_name : transf name :=
   s <- get ;;
-  let s' := {| nextName := N.succ (nextName s) ; nameMap := nameMap s; vars := vars s |} in
+  let s' := {| nextName := Pos.succ (nextName s) ; nameMap := nameMap s; vars := vars s |} in
   put s' ;;
   ret (nextName s)
 .
 
-Definition transfer_name (name : string) : transf N :=
+Definition transfer_name (vname : string) : transf name :=
   st0 <- get ;;
-  match StrMap.find name (nameMap st0) with
+  match StrMap.find vname (nameMap st0) with
   | Some n => ret n
   | None =>
       n <- fresh_name ;;
       st1 <- get ;;
       put {|
           nextName := nextName st1 ;
-          nameMap := StrMap.add name n (nameMap st1) ;
+          nameMap := StrMap.add vname n (nameMap st1) ;
           vars := vars st1
         |} ;;
       ret n
@@ -96,10 +98,15 @@ Definition transfer_bin_op (op : Verilog.op) : (Netlist.output -> Netlist.input 
   end
 .
 
+Definition invalid_bitvector_error : string := "Invalid bitvector (value might be too long for the number of bits)".
+
 Fixpoint transfer_expression (expr : Verilog.expression) : transf (list Netlist.cell * Netlist.input) :=
   match expr return transf (list Netlist.cell * Netlist.input) with
   | Verilog.IntegerLiteral w v =>
-      ret ([], Netlist.InConstant {| Netlist.constWidth := w; Netlist.constValue := v |})
+      match Bitvector.mkBV_check v w with
+      | None => raise invalid_bitvector_error
+      | Some bv => ret ([], Netlist.InConstant bv)
+      end
   | Verilog.NamedExpression type name =>
       t <- transfer_type type ;;
       n <- transfer_name name ;;
@@ -150,4 +157,4 @@ Definition transfer_module (vmodule : Verilog.vmodule) : transf Netlist.circuit 
 .
 
 Definition verilog_to_netlist (vmodule : Verilog.vmodule) : sum string Netlist.circuit :=
-  evalStateT (transfer_module vmodule) {| nextName := 0; nameMap := StrMap.empty N; vars := [] |}.
+  evalStateT (transfer_module vmodule) {| nextName := 1%positive; nameMap := StrMap.empty name; vars := [] |}.

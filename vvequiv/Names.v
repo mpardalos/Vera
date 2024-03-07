@@ -1,8 +1,17 @@
 Require Import BinNat.
 Require Import FMapPositive.
+Require Import List.
 
-(* TODO: Use this alias everywhere *)
+Definition name := positive.
 
-Definition name := N.
+Module NameMap.
+  Include PositiveMap.
+  Import ListNotations.
 
-Module NameMap := PositiveMap.
+  Fixpoint from_list {A} (l : list (positive * A)) : t A :=
+    match l with
+    | nil => empty A
+    | (k,v)::xs => add k v (from_list xs)
+    end
+  .
+End NameMap.

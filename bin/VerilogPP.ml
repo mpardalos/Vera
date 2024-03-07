@@ -26,7 +26,7 @@ let rec expression fmt e =
   | Verilog.IntegerLiteral (sz, n) -> fprintf fmt "%d'd%d" sz n
   | Verilog.Conversion (t, e) ->
       fprintf fmt "( %a )@ as@ ( %a )" expression e vtype t
-  | Verilog.BinaryOp (t, op, l, r) ->
+  | Verilog.BinaryOp (_, op, l, r) ->
       fprintf fmt "( %a )@ %a@ ( %a )" expression l operator op expression r
   | Verilog.NamedExpression (t, name) -> fprintf fmt "%a %s" vtype t (Util.lst_to_string name));
   Format.fprintf fmt "@]"

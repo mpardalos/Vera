@@ -8,11 +8,11 @@ let nltype fmt (t : Netlist.nltype) =
 let variable fmt (v : Netlist.variable) =
   fprintf fmt "%a <%d>" nltype v.varType v.varName
 
-let constant fmt (c : Netlist.constant) =
-  fprintf fmt "%d'd%d" c.constWidth c.constValue
+let bitvector fmt (bv : Bitvector.bv) =
+  fprintf fmt "%d'd%d" bv.width bv.value
 
 let input fmt (i : Netlist.input) =
-  match i with InVar v -> variable fmt v | InConstant c -> constant fmt c
+  match i with InVar v -> variable fmt v | InConstant c -> bitvector fmt c
 
 let output fmt (o : Netlist.output) = variable fmt o
 
