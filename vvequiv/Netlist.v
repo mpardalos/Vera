@@ -20,7 +20,7 @@ Module Netlist.
       ; varName : name
       }.
 
-  Arguments Var _ _%N.
+  Arguments Var _ _%positive.
 
   Inductive input :=
   | InVar : variable -> input
@@ -53,17 +53,17 @@ Module Netlist.
       }.
 
   Example examples : list circuit :=
-    let v0 := Var (Logic 32) 1%positive in
-    let v1 := Var (Logic 32) 2%positive in
-    let v2 := Var (Logic 32) 3%positive in
+    let v1 := Var (Logic 32) 1 in
+    let v2 := Var (Logic 32) 2 in
+    let v3 := Var (Logic 32) 3 in
     [ {| circuitName := "test1";
-        circuitVariables := [v0; v1];
-        circuitCells := [Id (OutVar v0) (InVar v1)]
+        circuitVariables := [v1; v2];
+        circuitCells := [Id (OutVar v1) (InVar v2)]
       |}
       ;
       {| circuitName := "test2";
-        circuitVariables := [v0; v1; v2];
-        circuitCells := [Add (OutVar v0) (InVar v1) (InVar v2)]
+        circuitVariables := [v1; v2; v3];
+        circuitCells := [Add (OutVar v1) (InVar v2) (InVar v3)]
       |}
     ].
 End Netlist.
