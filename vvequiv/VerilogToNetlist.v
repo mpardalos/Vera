@@ -65,10 +65,10 @@ Definition put_var (v : Netlist.variable) : transf () :=
 .
 
 Definition fresh (t : Netlist.nltype) : transf (Netlist.variable) :=
-    name <- fresh_name ;;
-    let var := {| Netlist.varType := t; Netlist.varName := name |} in
-    put_var var ;;
-    ret var
+  name <- fresh_name ;;
+  let var := {| Netlist.varType := t; Netlist.varName := name |} in
+  put_var var ;;
+  ret var
 .
 
 Definition transfer_type (type : Verilog.vtype) : transf Netlist.nltype :=
@@ -151,9 +151,9 @@ Definition transfer_module (vmodule : Verilog.vmodule) : transf Netlist.circuit 
   st <- get ;;
   let vars := sourceVars ++ vars st in
   ret {| Netlist.circuitName := Verilog.modName vmodule;
-    Netlist.circuitVariables := vars;
-    Netlist.circuitCells := cells
-  |}
+        Netlist.circuitVariables := vars;
+        Netlist.circuitCells := cells
+      |}
 .
 
 Definition verilog_to_netlist (vmodule : Verilog.vmodule) : sum string Netlist.circuit :=
