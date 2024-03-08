@@ -2,6 +2,7 @@ Require Import Names.
 Require Import Verilog.
 Require Import Netlist.
 Require Import Bitvector.
+Require Import Common.
 
 Require Import ZArith.
 Require Import BinIntDef.
@@ -89,6 +90,14 @@ Definition transfer_variables (vars : list Verilog.variable) : transf (list Netl
     ) vars
 .
 
+
+Definition transfer_ports (ports : list Verilog.port) : transf (list (name * port_direction)) :=
+  mapT (fun p =>
+          name <- transfer_name (Verilog.portName p) ;;
+          ret (name, Verilog.portDirection p)
+    ) ports
+.
+
 Definition unsupported_expression_error : string := "Unsupported expression".
 
 Definition transfer_bin_op (op : Verilog.op) : (Netlist.output -> Netlist.input -> Netlist.input -> Netlist.cell) :=
@@ -147,10 +156,12 @@ Definition transfer_body (items : list Verilog.module_item) : transf (list Netli
 
 Definition transfer_module (vmodule : Verilog.vmodule) : transf Netlist.circuit :=
   sourceVars <- transfer_variables (Verilog.modVariables vmodule) ;;
+  ports <- transfer_ports (Verilog.modPorts vmodule) ;;
   cells <- transfer_body (Verilog.modBody vmodule) ;;
   st <- get ;;
   let vars := sourceVars ++ vars st in
   ret {| Netlist.circuitName := Verilog.modName vmodule;
+        Netlist.circuitPorts := ports;
         Netlist.circuitVariables := vars;
         Netlist.circuitCells := cells
       |}

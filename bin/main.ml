@@ -16,8 +16,8 @@ let () =
         let* circuit = VVEquiv.verilog_to_netlist v in
         printf "%a\n" NetlistPP.circuit circuit;
         printf "--------\n";
-        let queries = VVEquiv.netlist_to_smt circuit in
-        List.iter (printf "%a\n" SMTPP.Core.formula) queries;
+        let smt_netlist = VVEquiv.netlist_to_smt circuit in
+        printf "%a\n" SMTPP.Core.smt_netlist smt_netlist;
         printf
           "\n==========================================================\n\n";
         ret ()

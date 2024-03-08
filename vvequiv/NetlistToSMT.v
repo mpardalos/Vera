@@ -4,6 +4,7 @@ Require Import SMT.
 Require Import String.
 Require Import BinNums.
 Require Import BinPos.
+Require Import Common.
 
 Require Import List.
 Import ListNotations.
@@ -67,9 +68,8 @@ Definition netlist_declarations (nl : Netlist.circuit) : list Core.formula :=
     (Netlist.circuitVariables nl)
 .
 
-
 (** Map each variable in the netlist to a bitvector formula *)
-Definition netlist_to_smt (nl : Netlist.circuit) : list Core.formula :=
+Definition netlist_to_smt (nl : Netlist.circuit) : Core.smt_netlist :=
   let formulas := netlist_to_formulas nl in
   let declarations := netlist_declarations nl in
   let assertions := List.map
@@ -77,5 +77,8 @@ Definition netlist_to_smt (nl : Netlist.circuit) : list Core.formula :=
                          let (n, formula) := it in
                          Core.CEqual (QFBV.BVVar n) formula)
                       (NameMap.elements formulas) in
-  declarations ++ assertions
+  {| Core.smtnlName := Netlist.circuitName nl
+  ; Core.smtnlPorts := Netlist.circuitPorts nl
+  ; Core.smtnlFormulas := declarations ++ assertions
+  |}
 .

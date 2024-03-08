@@ -20,4 +20,19 @@ module Core = struct
         fprintf fmt "(assert (= %a %a))" QFBV.formula l QFBV.formula r
     | Core.CDistinct (l, r) ->
         fprintf fmt "(assert (distinct %a %a))" QFBV.formula l QFBV.formula r
+
+  let formula_helper ports fmt f =
+    match f with
+    | Core.CDeclare (n, _) -> (
+        match List.find_opt (fun p -> fst p == n) ports with
+        | Some (_, PortIn) -> fprintf fmt "%a ; In" formula f
+        | Some (_, PortOut) -> fprintf fmt "%a ; Out" formula f
+        | None -> formula fmt f)
+    | _ -> formula fmt f
+
+  let smt_netlist fmt (m : Core.smt_netlist) =
+    fprintf fmt ";; SMTNetlist '%s'\n" (Util.lst_to_string m.smtnlName);
+    List.iter (fun f ->
+      fprintf fmt "%a\n" (formula_helper m.smtnlPorts) f
+    ) m.smtnlFormulas
 end

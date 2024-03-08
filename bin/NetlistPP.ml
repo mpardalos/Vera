@@ -8,6 +8,11 @@ let nltype fmt (t : Netlist.nltype) =
 let variable fmt (v : Netlist.variable) =
   fprintf fmt "%a <%d>" nltype v.varType v.varName
 
+let port fmt (v : int * port_direction) =
+  match v with
+  | (n, PortOut) -> fprintf fmt "Out <%d>" n
+  | (n, PortIn) -> fprintf fmt "In <%d>" n
+
 let bitvector fmt (bv : Bitvector.bv) =
   fprintf fmt "%d'd%d" bv.width bv.value
 
@@ -27,6 +32,10 @@ let cell fmt (c : Netlist.cell) =
 let circuit fmt (c : Netlist.circuit) =
   fprintf fmt "Netlist.circuit %s {@." (Util.lst_to_string c.circuitName);
   fprintf fmt "    @[<v>";
+  fprintf fmt "ports = [@,    @[<v>%a@]@,];"
+    (pp_print_list port ~pp_sep:Util.colon_sep)
+    c.circuitPorts;
+  fprintf fmt "@,";
   fprintf fmt "variables = [@,    @[<v>%a@]@,];"
     (pp_print_list variable ~pp_sep:Util.colon_sep)
     c.circuitVariables;

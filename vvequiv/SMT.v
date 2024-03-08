@@ -1,8 +1,10 @@
 Require Import ZArith.
 Require Import BinNums.
+Require Import String.
 
 Require Import Names.
 Require Import Bitvector.
+Require Import Common (port_direction).
 Import Bitvector.
 
 Module QFBV.
@@ -27,5 +29,12 @@ Module Core.
   | CEqual : QFBV.formula -> QFBV.formula -> formula
   | CDistinct : QFBV.formula -> QFBV.formula -> formula
   .
+
+  Record smt_netlist :=
+    SMTNetlist
+      { smtnlName : string
+      ; smtnlPorts : list (name * port_direction)
+      ; smtnlFormulas : list Core.formula
+      }.
 
 End Core.

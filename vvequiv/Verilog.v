@@ -1,3 +1,5 @@
+Require Import Common.
+
 Require Import String.
 Require Import ZArith.
 Require Import BinNums.
@@ -8,8 +10,6 @@ Import ListNotations.
 (* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
 Module Verilog.
   Inductive vtype := Logic : N -> N -> vtype.
-
-  Inductive direction := In | Out.
 
   Inductive op := Plus | Minus.
 
@@ -28,7 +28,7 @@ Module Verilog.
 
   Record port :=
     MkPort
-      { portDirection : direction
+      { portDirection : port_direction
       ; portName : string
       }.
 
@@ -51,8 +51,8 @@ Module Verilog.
       {|
         modName := "test1";
         modPorts := [
-          MkPort In "in" ;
-          MkPort Out "out"
+          MkPort PortIn "in" ;
+          MkPort PortOut "out"
         ];
         modVariables := [
           MkVariable l32 "in" ;
@@ -68,8 +68,8 @@ Module Verilog.
       {|
         modName := "test2";
         modPorts := [
-          MkPort In "in" ;
-          MkPort Out "out"
+          MkPort PortIn "in" ;
+          MkPort PortOut "out"
         ];
         modVariables := [
           MkVariable l32 "in" ;
@@ -87,9 +87,9 @@ Module Verilog.
       {|
         modName := "test3";
         modPorts := [
-          MkPort In "in1" ;
-          MkPort In "in2" ;
-          MkPort Out "out"
+          MkPort PortIn "in1" ;
+          MkPort PortIn "in2" ;
+          MkPort PortOut "out"
         ];
         modVariables := [
           MkVariable l32 "in1" ;

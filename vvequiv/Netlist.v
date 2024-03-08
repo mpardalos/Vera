@@ -1,6 +1,7 @@
 Require Import Names.
 Require Import Bitvector.
 Import Bitvector (bv).
+Require Import Common.
 
 Require Import String.
 Require Import ZArith.
@@ -48,6 +49,7 @@ Module Netlist.
   Record circuit :=
     Circuit
       { circuitName : string
+      ; circuitPorts : list (name * port_direction)
       ; circuitVariables : list variable
       ; circuitCells : list cell
       }.
@@ -57,11 +59,13 @@ Module Netlist.
     let v2 := Var (Logic 32) 2 in
     let v3 := Var (Logic 32) 3 in
     [ {| circuitName := "test1";
+        circuitPorts := [];
         circuitVariables := [v1; v2];
         circuitCells := [Id (OutVar v1) (InVar v2)]
       |}
       ;
       {| circuitName := "test2";
+        circuitPorts := [];
         circuitVariables := [v1; v2; v3];
         circuitCells := [Add (OutVar v1) (InVar v2) (InVar v3)]
       |}

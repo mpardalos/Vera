@@ -3,8 +3,8 @@ open VVEquiv
 
 let direction fmt d =
   match d with
-  | Verilog.In -> fprintf fmt "In"
-  | Verilog.Out -> fprintf fmt "Out"
+  | PortIn -> fprintf fmt "In"
+  | PortOut -> fprintf fmt "Out"
 
 let vtype fmt t =
   match t with
