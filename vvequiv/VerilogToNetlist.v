@@ -166,5 +166,10 @@ Definition transfer_module (vmodule : Verilog.vmodule) : transf Netlist.circuit 
       |}
 .
 
-Definition verilog_to_netlist (vmodule : Verilog.vmodule) : sum string Netlist.circuit :=
-  evalStateT (transfer_module vmodule) {| nextName := 1%positive; nameMap := StrMap.empty name; vars := [] |}.
+Definition verilog_to_netlist (start_name: positive) (vmodule : Verilog.vmodule) : sum string (Netlist.circuit * positive) :=
+  let result := runStateT (transfer_module vmodule) {| nextName := start_name; nameMap := StrMap.empty name; vars := [] |} in
+  match result with
+  | inl err => inl err
+  | inr (result, final_state) => inr (result, nextName final_state)
+  end
+.

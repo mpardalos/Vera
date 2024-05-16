@@ -19,7 +19,7 @@ let () =
       let result =
         printf "%a\n" VerilogPP.vmodule v;
         printf "--------\n";
-        let* circuit = VVEquiv.verilog_to_netlist v in
+        let* (circuit, _) = VVEquiv.verilog_to_netlist 1 v in
         printf "%a\n" NetlistPP.circuit circuit;
         printf "--------\n";
         let smt_netlist = VVEquiv.netlist_to_smt circuit in
