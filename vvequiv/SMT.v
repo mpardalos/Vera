@@ -7,34 +7,34 @@ Require Import Bitvector.
 Require Import Common (port_direction).
 Import Bitvector.
 
-Module QFBV.
-
-  Inductive formula :=
-  | BVAdd : formula -> formula -> formula
-  | BVNeg : formula -> formula
-  | BVLit : bv -> formula
-  | BVVar : name -> formula
+Module SMT.
+  Inductive qfbv {N} :=
+  | BVAdd : qfbv -> qfbv -> qfbv
+  | BVNeg : qfbv -> qfbv
+  | BVLit : bv -> qfbv
+  | BVVar : N -> qfbv
   .
 
-End QFBV.
+  Arguments qfbv : clear implicits.
 
-Module Core.
-
-  Inductive SMTSort :=
-  | SBitVector : positive -> SMTSort
+  Inductive sort :=
+  | SBitVector : positive -> sort
   .
 
-  Inductive formula :=
-  | CDeclare : name -> SMTSort -> formula
-  | CEqual : QFBV.formula -> QFBV.formula -> formula
-  | CDistinct : QFBV.formula -> QFBV.formula -> formula
+  Inductive formula {N} :=
+  | CDeclare : N -> sort -> formula
+  | CEqual : qfbv N -> qfbv N -> formula
+  | CDistinct : qfbv N -> qfbv N -> formula
   .
 
-  Record smt_netlist :=
+  Arguments formula : clear implicits.
+
+  Record smt_netlist {N : Type} : Type :=
     SMTNetlist
       { smtnlName : string
-      ; smtnlPorts : list (name * port_direction)
-      ; smtnlFormulas : list Core.formula
+      ; smtnlPorts : list (N * port_direction)
+      ; smtnlFormulas : list (formula N)
       }.
 
-End Core.
+  Arguments smt_netlist : clear implicits.
+End SMT.

@@ -1,5 +1,11 @@
 open Format
 
+module IntSMT = SMTPP.SMT (struct
+  type t = int
+
+  let format fmt n = fprintf fmt "v%d" n
+end)
+
 let ( >>= ) (x : ('err, 'a) VVEquiv.sum) (f : 'a -> ('err, 'b) VVEquiv.sum) =
   match x with VVEquiv.Inl e -> VVEquiv.Inl e | VVEquiv.Inr x -> f x
 
@@ -17,7 +23,10 @@ let () =
         printf "%a\n" NetlistPP.circuit circuit;
         printf "--------\n";
         let smt_netlist = VVEquiv.netlist_to_smt circuit in
-        printf "%a\n" SMTPP.Core.smt_netlist smt_netlist;
+        printf "%a\n" IntSMT.smt_netlist smt_netlist;
+        printf "--------\n";
+        let* query = VVEquiv.equivalence_query v v in
+        List.iter (printf "%a\n" IntSMT.smt) query;
         printf
           "\n==========================================================\n\n";
         ret ()
