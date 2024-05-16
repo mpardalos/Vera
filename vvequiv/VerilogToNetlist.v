@@ -1,4 +1,3 @@
-Require Import Names.
 Require Import Verilog.
 Require Import Netlist.
 Require Import Bitvector.

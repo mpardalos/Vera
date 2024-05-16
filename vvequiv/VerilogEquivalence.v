@@ -2,7 +2,7 @@ Require Import Verilog.
 Require Import VerilogToNetlist.
 Require Import NetlistToSMT.
 Require Import SMT.
-Require Import Names.
+Require Import Common.
 
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Data.Monads.EitherMonad.

@@ -2,7 +2,6 @@ Require Import ZArith.
 Require Import BinNums.
 Require Import String.
 
-Require Import Names.
 Require Import Bitvector.
 Require Import Common (port_direction).
 Import Bitvector.

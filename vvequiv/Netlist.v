@@ -1,4 +1,3 @@
-Require Import Names.
 Require Import Bitvector.
 Import Bitvector (bv).
 Require Import Common.

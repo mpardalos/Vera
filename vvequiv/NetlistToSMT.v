@@ -1,4 +1,3 @@
-Require Import Names.
 Require Import Netlist.
 Require Import SMT.
 Require Import String.
