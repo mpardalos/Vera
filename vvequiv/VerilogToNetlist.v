@@ -145,7 +145,7 @@ Definition transfer_module_item (item : Verilog.module_item) : transf (list Netl
       pair <- transfer_expression from ;;
       let (cells, result) := pair in
       ret (cells ++ [ Netlist.Id outVar result ])
-  | Verilog.ContinuousAssign to from => raise invalid_assign_err
+  | Verilog.ContinuousAssign _to _from => raise invalid_assign_err
   end
 .
 
