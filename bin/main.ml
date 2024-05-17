@@ -15,17 +15,22 @@ let ret x = VVEquiv.Inr x
 
 let () =
   List.iter
-    (fun v ->
+    (fun (v1, v2) ->
       let result =
-        printf "%a\n" VerilogPP.vmodule v;
-        printf "--------\n";
-        let* (circuit, _) = VVEquiv.verilog_to_netlist 1 v in
-        printf "%a\n" NetlistPP.circuit circuit;
-        printf "--------\n";
-        let smt_netlist = VVEquiv.netlist_to_smt circuit in
-        printf "%a\n" IntSMT.smt_netlist smt_netlist;
-        printf "--------\n";
-        let* query = VVEquiv.equivalence_query v v in
+        printf "\n-- Verilog a --\n";
+        printf "%a\n" VerilogPP.vmodule v1;
+        printf "\n-- Verilog b --\n";
+        printf "%a\n" VerilogPP.vmodule v2;
+        printf "\n---------------------------\n";
+        let* (nl1, st) = VVEquiv.verilog_to_netlist 1 v1 in
+        let* (nl2, _) = VVEquiv.verilog_to_netlist st v2 in
+        printf "\n-- Netlist a --\n";
+        printf "%a\n" NetlistPP.circuit nl1;
+        printf "\n-- Netlist b --\n";
+        printf "%a\n" NetlistPP.circuit nl2;
+        printf "\n---------------------------\n";
+        let* query = VVEquiv.equivalence_query v1 v2 in
+        printf "\n-- SMT Query --\n";
         List.iter (printf "%a\n" IntSMT.smt) query;
         printf
           "\n==========================================================\n\n";

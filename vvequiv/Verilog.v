@@ -45,66 +45,125 @@ Module Verilog.
       ; modBody : list module_item
       }.
 
-  Example examples : list Verilog.vmodule :=
+  Example examples : list (Verilog.vmodule * Verilog.vmodule) :=
     let l32 := Logic 31 0 in
     [
-      {|
-        modName := "test1";
-        modPorts := [
-          MkPort PortIn "in" ;
-          MkPort PortOut "out"
-        ];
-        modVariables := [
-          MkVariable l32 "in" ;
-          MkVariable l32 "out"
-        ];
-        modBody := [
-          ContinuousAssign
-            (NamedExpression l32 "out")
-            (NamedExpression l32 "in")
-        ];
-      |} ;
+      ({|
+          modName := "test1a";
+          modPorts := [
+            MkPort PortIn "in" ;
+            MkPort PortOut "out"
+          ];
+          modVariables := [
+            MkVariable l32 "in" ;
+            MkVariable l32 "out"
+          ];
+          modBody := [
+            ContinuousAssign
+              (NamedExpression l32 "out")
+              (BinaryOp l32 Plus (NamedExpression l32 "in") (IntegerLiteral 32 0))
+          ];
+        |},
+        {|
+          modName := "test1b";
+          modPorts := [
+            MkPort PortIn "in" ;
+            MkPort PortOut "out"
+          ];
+          modVariables := [
+            MkVariable l32 "in" ;
+            MkVariable l32 "out"
+          ];
+          modBody := [
+            ContinuousAssign
+              (NamedExpression l32 "out")
+              (NamedExpression l32 "in")
+          ];
+        |}
+      ) ;
       (***********************************************)
-      {|
-        modName := "test2";
-        modPorts := [
-          MkPort PortIn "in" ;
-          MkPort PortOut "out"
-        ];
-        modVariables := [
-          MkVariable l32 "in" ;
-          MkVariable l32 "out"
-        ];
-        modBody := [
-          ContinuousAssign
-            (NamedExpression l32 "out")
-            (BinaryOp l32 Plus
-               (NamedExpression l32 "in")
-               (IntegerLiteral 32 1))
-        ];
-      |} ;
+      ({|
+          modName := "test2a";
+          modPorts := [
+            MkPort PortIn "in" ;
+            MkPort PortOut "out"
+          ];
+          modVariables := [
+            MkVariable l32 "in" ;
+            MkVariable l32 "out"
+          ];
+          modBody := [
+            ContinuousAssign
+              (NamedExpression l32 "out")
+              (BinaryOp l32 Plus
+                 (NamedExpression l32 "in")
+                 (IntegerLiteral 32 1))
+          ];
+        |},
+        {|
+          modName := "test2b";
+          modPorts := [
+            MkPort PortIn "in" ;
+            MkPort PortOut "out"
+          ];
+          modVariables := [
+            MkVariable l32 "in" ;
+            MkVariable l32 "out"
+          ];
+          modBody := [
+            ContinuousAssign
+              (NamedExpression l32 "out")
+              (BinaryOp l32 Plus
+                 (IntegerLiteral 32 1)
+                 (NamedExpression l32 "in"))
+          ];
+        |}
+      ) ;
       (***********************************************)
-      {|
-        modName := "test3";
-        modPorts := [
-          MkPort PortIn "in1" ;
-          MkPort PortIn "in2" ;
-          MkPort PortOut "out"
-        ];
-        modVariables := [
-          MkVariable l32 "in1" ;
-          MkVariable l32 "in2" ;
-          MkVariable l32 "out"
-        ];
-        modBody := [
-          ContinuousAssign
-            (NamedExpression l32 "out")
-            (BinaryOp l32 Plus
-               (NamedExpression l32 "in1")
-               (BinaryOp l32 Plus
-                  (NamedExpression l32 "in2")
-                  (IntegerLiteral 32 1)))
-        ];
-      |}
+      ({|
+          modName := "test3a";
+          modPorts := [
+            MkPort PortIn "in1" ;
+            MkPort PortIn "in2" ;
+            MkPort PortOut "out"
+          ];
+          modVariables := [
+            MkVariable l32 "in1" ;
+            MkVariable l32 "in2" ;
+            MkVariable l32 "out"
+          ];
+          modBody := [
+            ContinuousAssign
+              (NamedExpression l32 "out")
+              (BinaryOp l32 Plus
+                 (NamedExpression l32 "in1")
+                 (BinaryOp l32 Plus
+                    (NamedExpression l32 "in2")
+                    (IntegerLiteral 32 1)))
+          ];
+        |},
+        {|
+          modName := "test3b";
+          modPorts := [
+            MkPort PortIn "in1" ;
+            MkPort PortIn "in2" ;
+            MkPort PortOut "out"
+          ];
+          modVariables := [
+            MkVariable l32 "in1" ;
+            MkVariable l32 "in2" ;
+            MkVariable l32 "out"
+          ];
+          modBody := [
+            ContinuousAssign
+              (NamedExpression l32 "out")
+              (BinaryOp l32 Plus
+                 (NamedExpression l32 "in1")
+                 (BinaryOp l32 Plus
+                    (NamedExpression l32 "in2")
+                    (IntegerLiteral 32 1)))
+          ];
+        |}
+      )
     ].
 End Verilog.
