@@ -25,9 +25,11 @@
               coq.ocamlPackages.dune_3
               coq.ocamlPackages.utop
               coq.ocamlPackages.ocamlformat
+              coq.ocamlPackages.z3
 
               pkgs.sv-lang
               pkgs.verible
+              pkgs.z3
             ];
         };
       }
