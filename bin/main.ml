@@ -54,6 +54,20 @@ let smt_to_z3 (z3_ctx : Z3.context) (formulas : int VVEquiv.SMT.formula list) :
   let var_ctx = Hashtbl.create 20 in
   List.filter_map (smt_formula_to_z3 var_ctx z3_ctx) formulas
 
+let z3_model_fmt fmt (model : Z3.Model.model) =
+  List.iter
+    (fun decl ->
+      let name = Z3.FuncDecl.get_name decl in
+      let sort = Z3.FuncDecl.get_range decl in
+      if Z3.Sort.get_sort_kind sort = Z3enums.BV_SORT then
+        let size = Z3.BitVector.get_size sort in
+        let value =
+          Z3.Model.eval model (Z3.FuncDecl.apply decl []) true |> Option.get
+        in
+        fprintf fmt "%s = %d'%s\n" (Z3.Symbol.to_string name) size
+          (Z3.Expr.to_string value))
+    (Z3.Model.get_const_decls model)
+
 let () =
   List.iter
     (fun (v1, v2) ->
@@ -75,7 +89,9 @@ let () =
         let z3_ctx = Z3.mk_context [] in
         let z3_exprs = smt_to_z3 z3_ctx query in
         (* List.iter (printf "%a\n" IntSMT.smt) query; *)
-        List.iter (fun e -> printf "%s\n" (Z3.AST.to_string (Z3.Expr.ast_of_expr e))) z3_exprs;
+        List.iter
+          (fun e -> printf "%s\n" (Z3.AST.to_string (Z3.Expr.ast_of_expr e)))
+          z3_exprs;
         printf "\n---------------------------\n";
         printf "\n-- SMT Result --\n";
         let z3_solver = Z3.Solver.mk_solver z3_ctx None in
@@ -86,8 +102,7 @@ let () =
             printf "Non-equivalent (SAT)\n";
             match Z3.Solver.get_model z3_solver with
             | None -> printf "No counterexample provided.\n"
-            | Some model ->
-                printf "Model:\n---\n%s\n---\n" (Z3.Model.to_string model))
+            | Some model -> printf "Model:\n---\n%a\n---\n" z3_model_fmt model)
         | Z3.Solver.UNKNOWN -> printf "Unknown\n");
         printf
           "\n==========================================================\n\n";

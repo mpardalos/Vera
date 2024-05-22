@@ -158,7 +158,7 @@ Module Verilog.
             ContinuousAssign
               (NamedExpression l32 "out")
               (BinaryOp l32 Plus
-                 (NamedExpression l32 "in1")
+                 (NamedExpression l32 "in2")
                  (BinaryOp l32 Plus
                     (NamedExpression l32 "in2")
                     (IntegerLiteral 32 1)))
