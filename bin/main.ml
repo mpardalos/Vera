@@ -72,12 +72,13 @@ let () =
         printf "\n---------------------------\n";
         let* query = VVEquiv.equivalence_query v1 v2 in
         printf "\n-- SMT Query --\n";
-        List.iter (printf "%a\n" IntSMT.smt) query;
+        let z3_ctx = Z3.mk_context [] in
+        let z3_exprs = smt_to_z3 z3_ctx query in
+        (* List.iter (printf "%a\n" IntSMT.smt) query; *)
+        List.iter (fun e -> printf "%s\n" (Z3.AST.to_string (Z3.Expr.ast_of_expr e))) z3_exprs;
         printf "\n---------------------------\n";
         printf "\n-- SMT Result --\n";
-        let z3_ctx = Z3.mk_context [] in
         let z3_solver = Z3.Solver.mk_solver z3_ctx None in
-        let z3_exprs = smt_to_z3 z3_ctx query in
         Z3.Solver.add z3_solver z3_exprs;
         (match Z3.Solver.check z3_solver [] with
         | Z3.Solver.UNSATISFIABLE -> printf "Equivalent (UNSAT)\n"
