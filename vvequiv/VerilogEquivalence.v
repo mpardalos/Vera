@@ -39,7 +39,7 @@ Definition mk_equivalence_formulas (smtnl1 smtnl2 : SMT.smt_netlist name) : sum 
             inr (inputs_same ++ outputs_different)
 .
 
-Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string (list (SMT.formula name)) :=
+Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule Verilog.Typed) : sum string (list (SMT.formula name)) :=
   netlist_result1 <- verilog_to_netlist 1%positive verilog1  ;;
   let netlist1 := fst netlist_result1 in
   let next_name := snd netlist_result1 in

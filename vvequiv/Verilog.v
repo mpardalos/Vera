@@ -9,22 +9,44 @@ Import ListNotations.
 
 (* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
 Module Verilog.
+  Variant is_typed := Typed | Untyped.
+
   Inductive vtype := Logic : N -> N -> vtype.
 
   Inductive op := Plus | Minus.
 
-  Inductive expression :=
-  | BinaryOp : vtype -> op -> expression -> expression -> expression
-  | Conversion : vtype -> expression -> expression
-  | IntegerLiteral : positive -> N -> expression
-  | NamedExpression : vtype -> string -> expression
+  Definition if_typed (t : is_typed) (x: Type) :=
+    match t with
+    | Typed => x
+    | Untyped => unit
+    end
   .
 
-  Record variable :=
+  Definition if_typed_opt (t : is_typed) (x: Type) :=
+    match t with
+    | Typed => x
+    | Untyped => option x
+    end
+  .
+
+
+  Inductive expression (t: is_typed) :=
+  | BinaryOp : if_typed t vtype -> op -> expression t -> expression t -> expression t
+  | Conversion : if_typed t vtype -> expression t -> expression t
+  | IntegerLiteral : positive -> N -> expression t
+  | NamedExpression : if_typed t vtype -> string -> expression t
+  .
+
+  Record variable (t: is_typed) :=
     MkVariable
-      { varType : vtype
+      { varType : if_typed_opt t vtype
       ; varName : string
       }.
+
+  Check varType.
+
+  Arguments varType [_] _.
+  Arguments varName [_] _.
 
   Record port :=
     MkPort
@@ -32,20 +54,66 @@ Module Verilog.
       ; portName : string
       }.
 
-  Inductive module_item : Set :=
-  | ContinuousAssign : expression -> expression -> module_item
+
+  Inductive module_item (t: is_typed) : Type :=
+  | ContinuousAssign : expression t -> expression t -> module_item t
   .
 
   (** Verilog modules *)
-  Record vmodule : Set :=
+  Record vmodule (t : is_typed) : Type :=
     MkMod
       { modName : string
       ; modPorts : list port
-      ; modVariables : list variable
-      ; modBody : list module_item
+      ; modVariables : list (variable t)
+      ; modBody : list (module_item t)
       }.
 
-  Example examples : list (Verilog.vmodule * Verilog.vmodule) :=
+  Arguments modName [_] _.
+  Arguments modPorts [_] _.
+  Arguments modVariables [_] _.
+  Arguments modBody [_] _.
+
+  Example untyped_examples : list (Verilog.vmodule Untyped * Verilog.vmodule Untyped) :=
+    let l32 := Logic 31 0 in
+    [
+      (MkMod Untyped
+          "test1a"
+          [
+            MkPort PortIn "in" ;
+            MkPort PortOut "out"
+          ]
+          [
+            MkVariable Untyped (Some l32) "in" ;
+            MkVariable Untyped (Some l32) "out"
+          ]
+          [
+            ContinuousAssign Untyped
+              (NamedExpression Untyped tt "out")
+              (BinaryOp Untyped tt Plus (NamedExpression Untyped tt "in") (IntegerLiteral Untyped 32 0))
+          ]
+        ,
+        {|
+          modName := "test1b";
+          modPorts := [
+            MkPort PortIn "in" ;
+            MkPort PortOut "out"
+          ];
+          modVariables := [
+            MkVariable Untyped (Some l32) "in" ;
+            MkVariable Untyped (Some l32) "out"
+          ];
+          modBody := [
+            ContinuousAssign
+              Untyped
+              (NamedExpression Untyped tt "out")
+              (NamedExpression Untyped tt "in")
+          ];
+        |}
+      )
+    ]
+  .
+
+  Example examples : list (Verilog.vmodule Typed * Verilog.vmodule Typed) :=
     let l32 := Logic 31 0 in
     [
       ({|
@@ -55,13 +123,14 @@ Module Verilog.
             MkPort PortOut "out"
           ];
           modVariables := [
-            MkVariable l32 "in" ;
-            MkVariable l32 "out"
+            MkVariable Typed l32 "in" ;
+            MkVariable Typed l32 "out"
           ];
           modBody := [
             ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus (NamedExpression l32 "in") (IntegerLiteral 32 0))
+              Typed
+              (NamedExpression Typed l32 "out")
+              (BinaryOp Typed l32 Plus (NamedExpression Typed l32 "in") (IntegerLiteral Typed 32 0))
           ];
         |},
         {|
@@ -71,13 +140,14 @@ Module Verilog.
             MkPort PortOut "out"
           ];
           modVariables := [
-            MkVariable l32 "in" ;
-            MkVariable l32 "out"
+            MkVariable Typed l32 "in" ;
+            MkVariable Typed l32 "out"
           ];
           modBody := [
             ContinuousAssign
-              (NamedExpression l32 "out")
-              (NamedExpression l32 "in")
+              Typed
+              (NamedExpression Typed l32 "out")
+              (NamedExpression Typed l32 "in")
           ];
         |}
       ) ;
@@ -89,15 +159,16 @@ Module Verilog.
             MkPort PortOut "out"
           ];
           modVariables := [
-            MkVariable l32 "in" ;
-            MkVariable l32 "out"
+            MkVariable Typed l32 "in" ;
+            MkVariable Typed l32 "out"
           ];
           modBody := [
             ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus
-                 (NamedExpression l32 "in")
-                 (IntegerLiteral 32 1))
+              Typed
+              (NamedExpression Typed l32 "out")
+              (BinaryOp Typed l32 Plus
+                 (NamedExpression Typed l32 "in")
+                 (IntegerLiteral Typed 32 1))
           ];
         |},
         {|
@@ -107,15 +178,16 @@ Module Verilog.
             MkPort PortOut "out"
           ];
           modVariables := [
-            MkVariable l32 "in" ;
-            MkVariable l32 "out"
+            MkVariable Typed l32 "in" ;
+            MkVariable Typed l32 "out"
           ];
           modBody := [
             ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus
-                 (IntegerLiteral 32 1)
-                 (NamedExpression l32 "in"))
+              Typed
+              (NamedExpression Typed l32 "out")
+              (BinaryOp Typed l32 Plus
+                 (IntegerLiteral Typed 32 1)
+                 (NamedExpression Typed l32 "in"))
           ];
         |}
       ) ;
@@ -128,18 +200,19 @@ Module Verilog.
             MkPort PortOut "out"
           ];
           modVariables := [
-            MkVariable l32 "in1" ;
-            MkVariable l32 "in2" ;
-            MkVariable l32 "out"
+            MkVariable Typed l32 "in1" ;
+            MkVariable Typed l32 "in2" ;
+            MkVariable Typed l32 "out"
           ];
           modBody := [
             ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus
-                 (NamedExpression l32 "in1")
-                 (BinaryOp l32 Plus
-                    (NamedExpression l32 "in2")
-                    (IntegerLiteral 32 1)))
+              Typed
+              (NamedExpression Typed l32 "out")
+              (BinaryOp Typed l32 Plus
+                 (NamedExpression Typed l32 "in1")
+                 (BinaryOp Typed l32 Plus
+                    (NamedExpression Typed l32 "in2")
+                    (IntegerLiteral Typed 32 1)))
           ];
         |},
         {|
@@ -150,18 +223,19 @@ Module Verilog.
             MkPort PortOut "out"
           ];
           modVariables := [
-            MkVariable l32 "in1" ;
-            MkVariable l32 "in2" ;
-            MkVariable l32 "out"
+            MkVariable Typed l32 "in1" ;
+            MkVariable Typed l32 "in2" ;
+            MkVariable Typed l32 "out"
           ];
           modBody := [
             ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus
-                 (NamedExpression l32 "in2")
-                 (BinaryOp l32 Plus
-                    (NamedExpression l32 "in2")
-                    (IntegerLiteral 32 1)))
+              Typed
+              (NamedExpression Typed l32 "out")
+              (BinaryOp Typed l32 Plus
+                 (NamedExpression Typed l32 "in2")
+                 (BinaryOp Typed l32 Plus
+                    (NamedExpression Typed l32 "in2")
+                    (IntegerLiteral Typed 32 1)))
           ];
         |}
       )

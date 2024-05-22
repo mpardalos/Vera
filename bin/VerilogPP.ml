@@ -14,7 +14,7 @@ let port (fmt : formatter) (p : Verilog.port) =
   fprintf fmt "%a %s" direction p.portDirection (Util.lst_to_string p.portName)
 
 let variable (fmt : formatter) (p : Verilog.variable) =
-  fprintf fmt "%a %s" vtype p.varType (Util.lst_to_string p.varName)
+  fprintf fmt "%a %s" vtype (Obj.magic p.varType) (Util.lst_to_string p.varName)
 
 let operator fmt = function
   | Verilog.Plus -> fprintf fmt "+"
@@ -25,10 +25,10 @@ let rec expression fmt e =
   (match e with
   | Verilog.IntegerLiteral (sz, n) -> fprintf fmt "%d'd%d" sz n
   | Verilog.Conversion (t, e) ->
-      fprintf fmt "( %a )@ as@ ( %a )" expression e vtype t
+      fprintf fmt "( %a )@ as@ ( %a )" expression e vtype (Obj.magic t)
   | Verilog.BinaryOp (_, op, l, r) ->
       fprintf fmt "( %a )@ %a@ ( %a )" expression l operator op expression r
-  | Verilog.NamedExpression (t, name) -> fprintf fmt "%a %s" vtype t (Util.lst_to_string name));
+  | Verilog.NamedExpression (t, name) -> fprintf fmt "%a %s" vtype (Obj.magic t) (Util.lst_to_string name));
   Format.fprintf fmt "@]"
 
 let mod_item (fmt : formatter) (i : Verilog.module_item) =
