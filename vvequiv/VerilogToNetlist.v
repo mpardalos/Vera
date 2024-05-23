@@ -71,55 +71,55 @@ Definition fresh (t : Netlist.nltype) : transf (Netlist.variable) :=
   ret var
 .
 
-Definition transfer_type (type : Verilog.vtype) : transf Netlist.nltype :=
+Definition transfer_type (type : TypedVerilog.vtype) : transf Netlist.nltype :=
   (* Probably wrong but good enough for now*)
   match type with
-  | Verilog.Logic N0 N0 => ret (Netlist.Logic 1)
-  | Verilog.Logic (Npos n) N0 => ret (Netlist.Logic (n + 1))
-  | Verilog.Logic N0 (Npos n) => ret (Netlist.Logic (n + 1))
-  | Verilog.Logic (Npos n1) (Npos n2) => ret (Netlist.Logic (n1 - n2 + 1))
+  | TypedVerilog.Logic N0 N0 => ret (Netlist.Logic 1)
+  | TypedVerilog.Logic (Npos n) N0 => ret (Netlist.Logic (n + 1))
+  | TypedVerilog.Logic N0 (Npos n) => ret (Netlist.Logic (n + 1))
+  | TypedVerilog.Logic (Npos n1) (Npos n2) => ret (Netlist.Logic (n1 - n2 + 1))
   end
 .
 
-Definition transfer_variables (vars : list Verilog.variable) : transf (list Netlist.variable) :=
+Definition transfer_variables (vars : list TypedVerilog.variable) : transf (list Netlist.variable) :=
   mapT (fun v =>
-          name <- transfer_name (Verilog.varName v) ;;
-          type <- transfer_type (Verilog.varType v) ;;
+          name <- transfer_name (TypedVerilog.varName v) ;;
+          type <- transfer_type (TypedVerilog.varType v) ;;
           ret (Netlist.Var type name)
     ) vars
 .
 
 
-Definition transfer_ports (ports : list Verilog.port) : transf (list (name * port_direction)) :=
+Definition transfer_ports (ports : list TypedVerilog.port) : transf (list (name * port_direction)) :=
   mapT (fun p =>
-          name <- transfer_name (Verilog.portName p) ;;
-          ret (name, Verilog.portDirection p)
+          name <- transfer_name (TypedVerilog.portName p) ;;
+          ret (name, TypedVerilog.portDirection p)
     ) ports
 .
 
 Definition unsupported_expression_error : string := "Unsupported expression".
 
-Definition transfer_bin_op (op : Verilog.op) : (Netlist.output -> Netlist.input -> Netlist.input -> Netlist.cell) :=
+Definition transfer_bin_op (op : TypedVerilog.op) : (Netlist.output -> Netlist.input -> Netlist.input -> Netlist.cell) :=
   match op with
-  | Verilog.Plus => Netlist.Add
-  | Verilog.Minus => Netlist.Subtract
+  | TypedVerilog.Plus => Netlist.Add
+  | TypedVerilog.Minus => Netlist.Subtract
   end
 .
 
 Definition invalid_bitvector_error : string := "Invalid bitvector (value might be too long for the number of bits)".
 
-Fixpoint transfer_expression (expr : Verilog.expression) : transf (list Netlist.cell * Netlist.input) :=
+Fixpoint transfer_expression (expr : TypedVerilog.expression) : transf (list Netlist.cell * Netlist.input) :=
   match expr return transf (list Netlist.cell * Netlist.input) with
-  | Verilog.IntegerLiteral w v =>
+  | TypedVerilog.IntegerLiteral w v =>
       match Bitvector.mkBV_check v w with
       | None => raise invalid_bitvector_error
       | Some bv => ret ([], Netlist.InConstant bv)
       end
-  | Verilog.NamedExpression type name =>
+  | TypedVerilog.NamedExpression type name =>
       t <- transfer_type type ;;
       n <- transfer_name name ;;
       ret ([], Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
-  | Verilog.BinaryOp t op e1 e2 =>
+  | TypedVerilog.BinaryOp t op e1 e2 =>
       pair1 <- transfer_expression e1 ;;
       let (cells1, v1) := pair1 in
       pair2 <- transfer_expression e2 ;;
@@ -136,37 +136,37 @@ Fixpoint transfer_expression (expr : Verilog.expression) : transf (list Netlist.
 Definition invalid_assign_err : string := "Invalid target for assign expression".
 
 
-Definition transfer_module_item (item : Verilog.module_item) : transf (list Netlist.cell) :=
+Definition transfer_module_item (item : TypedVerilog.module_item) : transf (list Netlist.cell) :=
   match item with
-  | Verilog.ContinuousAssign (Verilog.NamedExpression type name) from =>
+  | TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression type name) from =>
       t <- transfer_type type ;;
       n <- transfer_name name ;;
       let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in
       pair <- transfer_expression from ;;
       let (cells, result) := pair in
       ret (cells ++ [ Netlist.Id outVar result ])
-  | Verilog.ContinuousAssign _to _from => raise invalid_assign_err
+  | TypedVerilog.ContinuousAssign _to _from => raise invalid_assign_err
   end
 .
 
-Definition transfer_body (items : list Verilog.module_item) : transf (list Netlist.cell) :=
+Definition transfer_body (items : list TypedVerilog.module_item) : transf (list Netlist.cell) :=
   fmap (fun l => concat l) (mapT transfer_module_item items)
 .
 
-Definition transfer_module (vmodule : Verilog.vmodule) : transf Netlist.circuit :=
-  sourceVars <- transfer_variables (Verilog.modVariables vmodule) ;;
-  ports <- transfer_ports (Verilog.modPorts vmodule) ;;
-  cells <- transfer_body (Verilog.modBody vmodule) ;;
+Definition transfer_module (vmodule : TypedVerilog.vmodule) : transf Netlist.circuit :=
+  sourceVars <- transfer_variables (TypedVerilog.modVariables vmodule) ;;
+  ports <- transfer_ports (TypedVerilog.modPorts vmodule) ;;
+  cells <- transfer_body (TypedVerilog.modBody vmodule) ;;
   st <- get ;;
   let vars := sourceVars ++ vars st in
-  ret {| Netlist.circuitName := Verilog.modName vmodule;
+  ret {| Netlist.circuitName := TypedVerilog.modName vmodule;
         Netlist.circuitPorts := ports;
         Netlist.circuitVariables := vars;
         Netlist.circuitCells := cells
       |}
 .
 
-Definition verilog_to_netlist (start_name: positive) (vmodule : Verilog.vmodule) : sum string (Netlist.circuit * positive) :=
+Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmodule) : sum string (Netlist.circuit * positive) :=
   let result := runStateT (transfer_module vmodule) {| nextName := start_name; nameMap := StrMap.empty name; vars := [] |} in
   match result with
   | inl err => inl err

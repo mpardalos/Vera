@@ -20,6 +20,7 @@ Extraction "VVEquiv.ml"
   Bitvector.Bitvector
   VerilogEquivalence.equivalence_query
   Verilog.Verilog
+  Verilog.TypedVerilog
   VerilogToNetlist.verilog_to_netlist
   Netlist.Netlist
   NetlistToSMT.netlist_to_smt

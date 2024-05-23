@@ -8,36 +8,36 @@ let direction fmt d =
 
 let vtype fmt t =
   match t with
-  | Verilog.Logic (high, low) -> fprintf fmt "logic[%d:%d]" high low
+  | TypedVerilog.Logic (high, low) -> fprintf fmt "logic[%d:%d]" high low
 
-let port (fmt : formatter) (p : Verilog.port) =
+let port (fmt : formatter) (p : TypedVerilog.port) =
   fprintf fmt "%a %s" direction p.portDirection (Util.lst_to_string p.portName)
 
-let variable (fmt : formatter) (p : Verilog.variable) =
+let variable (fmt : formatter) (p : TypedVerilog.variable) =
   fprintf fmt "%a %s" vtype p.varType (Util.lst_to_string p.varName)
 
 let operator fmt = function
-  | Verilog.Plus -> fprintf fmt "+"
-  | Verilog.Minus -> fprintf fmt "-"
+  | TypedVerilog.Plus -> fprintf fmt "+"
+  | TypedVerilog.Minus -> fprintf fmt "-"
 
 let rec expression fmt e =
   Format.fprintf fmt "@[";
   (match e with
-  | Verilog.IntegerLiteral (sz, n) -> fprintf fmt "%d'd%d" sz n
-  | Verilog.Conversion (t, e) ->
+  | TypedVerilog.IntegerLiteral (sz, n) -> fprintf fmt "%d'd%d" sz n
+  | TypedVerilog.Conversion (t, e) ->
       fprintf fmt "( %a )@ as@ ( %a )" expression e vtype t
-  | Verilog.BinaryOp (_, op, l, r) ->
+  | TypedVerilog.BinaryOp (_, op, l, r) ->
       fprintf fmt "( %a )@ %a@ ( %a )" expression l operator op expression r
-  | Verilog.NamedExpression (t, name) -> fprintf fmt "%a %s" vtype t (Util.lst_to_string name));
+  | TypedVerilog.NamedExpression (t, name) -> fprintf fmt "%a %s" vtype t (Util.lst_to_string name));
   Format.fprintf fmt "@]"
 
-let mod_item (fmt : formatter) (i : Verilog.module_item) =
+let mod_item (fmt : formatter) (i : TypedVerilog.module_item) =
   match i with
-  | Verilog.ContinuousAssign (l, r) ->
+  | TypedVerilog.ContinuousAssign (l, r) ->
       fprintf fmt "assign (%a) = (@[ %a @])" expression l expression r
 
-let vmodule (fmt : formatter) (m : Verilog.vmodule) =
-  fprintf fmt "Verilog.module %s {@." (Util.lst_to_string m.modName);
+let vmodule (fmt : formatter) (m : TypedVerilog.vmodule) =
+  fprintf fmt "TypedVerilog.module %s {@." (Util.lst_to_string m.modName);
   fprintf fmt "    @[<v>";
   fprintf fmt "ports = [@,    @[<v>%a@]@,];"
     (pp_print_list port ~pp_sep:Util.colon_sep)

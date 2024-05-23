@@ -111,4 +111,4 @@ let () =
       match result with
       | VVEquiv.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
       | _ -> ())
-    VVEquiv.Verilog.examples
+    VVEquiv.TypedVerilog.examples
