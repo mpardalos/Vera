@@ -18,6 +18,7 @@
             [
               coq
               coqPackages.coq-ext-lib
+              coqPackages.equations
 
               coq.ocaml
               coq.ocamlPackages.findlib
