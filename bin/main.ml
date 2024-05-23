@@ -73,9 +73,9 @@ let () =
     (fun (v1, v2) ->
       let result =
         printf "\n-- Verilog a --\n";
-        printf "%a\n" VerilogPP.vmodule v1;
+        printf "%a\n" TypedVerilogPP.vmodule v1;
         printf "\n-- Verilog b --\n";
-        printf "%a\n" VerilogPP.vmodule v2;
+        printf "%a\n" TypedVerilogPP.vmodule v2;
         printf "\n---------------------------\n";
         let* nl1, st = VVEquiv.verilog_to_netlist 1 v1 in
         let* nl2, _ = VVEquiv.verilog_to_netlist st v2 in
