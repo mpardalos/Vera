@@ -10,12 +10,15 @@ end
 (* let name fmt n = fprintf fmt "v%d" n *)
 
 module SMT (Name : Formattable) = struct
-
   let rec qfbv fmt = function
     | VVEquiv.SMT.BVAdd (l, r) -> fprintf fmt "(bvadd %a %a)" qfbv l qfbv r
     | VVEquiv.SMT.BVNeg f -> fprintf fmt "(bvneg %a)" qfbv f
     | VVEquiv.SMT.BVLit v -> fprintf fmt "(_ bv%d %d)" v.value v.width
     | VVEquiv.SMT.BVVar n -> Name.format fmt n
+    | VVEquiv.SMT.BVZeroExtend (num, f) ->
+        fprintf fmt "((_ zero_extend %d) %a)" num qfbv f
+    | VVEquiv.SMT.BVExtract (hi, lo, f) ->
+        fprintf fmt "((_ extract %d %d) %a)" hi lo qfbv f
 
   let sort fmt bv_sz = fprintf fmt "(_ BitVec %d)" bv_sz
 
@@ -26,7 +29,6 @@ module SMT (Name : Formattable) = struct
         fprintf fmt "(assert (= %a %a))" qfbv l qfbv r
     | VVEquiv.SMT.CDistinct (l, r) ->
         fprintf fmt "(assert (distinct %a %a))" qfbv l qfbv r
-
 
   let smt_netlist fmt (m : Name.t SMT.smt_netlist) =
     let formula_helper ports _ f =
@@ -43,4 +45,3 @@ module SMT (Name : Formattable) = struct
       (fun f -> fprintf fmt "%a\n" (formula_helper m.smtnlPorts) f)
       m.smtnlFormulas
 end
-

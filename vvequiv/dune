@@ -1,4 +1,4 @@
 (coq.theory
  (name vvequiv)
- (theories ExtLib)
+ (theories Equations ExtLib)
 )

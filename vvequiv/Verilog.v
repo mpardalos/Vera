@@ -6,10 +6,26 @@ Require Import BinNums.
 
 Require Import List.
 Import ListNotations.
+From Coq Require Arith Lia Program.
+From Equations Require Import Equations.
 
 (* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
 Module Verilog.
   Inductive vtype := Logic : N -> N -> vtype.
+
+  Equations Derive NoConfusionHom EqDec for vtype.
+  Next Obligation.
+    destruct x as [hi1 lo1].
+    destruct y as [hi2 lo2].
+    destruct (N.eq_dec hi1 hi2); destruct (N.eq_dec lo1 lo2); subst.
+    - left. reflexivity.
+    - right. intros contra. inversion contra.
+      auto.
+    - right. intros contra. inversion contra.
+      auto.
+    - right. intros contra. inversion contra.
+      auto.
+  Defined.
 
   Inductive op := Plus | Minus.
 
@@ -46,6 +62,7 @@ Module Verilog.
 
   Example examples : list (vmodule * vmodule) :=
     let l32 := Logic 31 0 in
+    let l16 := Logic 15 0 in
     [
       ({|
           modName := "test1a";
@@ -129,13 +146,17 @@ Module Verilog.
           modVariables := [
             MkVariable l32 "in1" ;
             MkVariable l32 "in2" ;
+            MkVariable l16 "v" ;
             MkVariable l32 "out"
           ];
           modBody := [
             ContinuousAssign
+              (NamedExpression "v")
+              (NamedExpression "in1");
+            ContinuousAssign
               (NamedExpression "out")
               (BinaryOp Plus
-                 (NamedExpression "in1")
+                 (NamedExpression "v")
                  (BinaryOp Plus
                     (NamedExpression "in2")
                     (IntegerLiteral 32 1)))
@@ -172,7 +193,7 @@ Module TypedVerilog.
 
   Inductive expression :=
   | BinaryOp : vtype -> op -> expression -> expression -> expression
-  | Conversion : vtype -> expression -> expression
+  | Conversion : vtype -> vtype -> expression -> expression
   | IntegerLiteral : positive -> N -> expression
   | NamedExpression : vtype -> string -> expression
   .
@@ -189,126 +210,4 @@ Module TypedVerilog.
       ; modVariables : list variable
       ; modBody : list module_item
       }.
-
-  Example examples : list (vmodule * vmodule) :=
-    let l32 := Logic 31 0 in
-    [
-      ({|
-          modName := "test1a";
-          modPorts := [
-            MkPort PortIn "in" ;
-            MkPort PortOut "out"
-          ];
-          modVariables := [
-            MkVariable l32 "in" ;
-            MkVariable l32 "out"
-          ];
-          modBody := [
-            ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus (NamedExpression l32 "in") (IntegerLiteral 32 0))
-          ];
-        |},
-        {|
-          modName := "test1b";
-          modPorts := [
-            MkPort PortIn "in" ;
-            MkPort PortOut "out"
-          ];
-          modVariables := [
-            MkVariable l32 "in" ;
-            MkVariable l32 "out"
-          ];
-          modBody := [
-            ContinuousAssign
-              (NamedExpression l32 "out")
-              (NamedExpression l32 "in")
-          ];
-        |}
-      ) ;
-      (***********************************************)
-      ({|
-          modName := "test2a";
-          modPorts := [
-            MkPort PortIn "in" ;
-            MkPort PortOut "out"
-          ];
-          modVariables := [
-            MkVariable l32 "in" ;
-            MkVariable l32 "out"
-          ];
-          modBody := [
-            ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus
-                 (NamedExpression l32 "in")
-                 (IntegerLiteral 32 1))
-          ];
-        |},
-        {|
-          modName := "test2b";
-          modPorts := [
-            MkPort PortIn "in" ;
-            MkPort PortOut "out"
-          ];
-          modVariables := [
-            MkVariable l32 "in" ;
-            MkVariable l32 "out"
-          ];
-          modBody := [
-            ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus
-                 (IntegerLiteral 32 1)
-                 (NamedExpression l32 "in"))
-          ];
-        |}
-      ) ;
-      (***********************************************)
-      ({|
-          modName := "test3a";
-          modPorts := [
-            MkPort PortIn "in1" ;
-            MkPort PortIn "in2" ;
-            MkPort PortOut "out"
-          ];
-          modVariables := [
-            MkVariable l32 "in1" ;
-            MkVariable l32 "in2" ;
-            MkVariable l32 "out"
-          ];
-          modBody := [
-            ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus
-                 (NamedExpression l32 "in1")
-                 (BinaryOp l32 Plus
-                    (NamedExpression l32 "in2")
-                    (IntegerLiteral 32 1)))
-          ];
-        |},
-        {|
-          modName := "test3b";
-          modPorts := [
-            MkPort PortIn "in1" ;
-            MkPort PortIn "in2" ;
-            MkPort PortOut "out"
-          ];
-          modVariables := [
-            MkVariable l32 "in1" ;
-            MkVariable l32 "in2" ;
-            MkVariable l32 "out"
-          ];
-          modBody := [
-            ContinuousAssign
-              (NamedExpression l32 "out")
-              (BinaryOp l32 Plus
-                 (NamedExpression l32 "in2")
-                 (BinaryOp l32 Plus
-                    (NamedExpression l32 "in2")
-                    (IntegerLiteral 32 1)))
-          ];
-        |}
-      )
-    ].
 End TypedVerilog.

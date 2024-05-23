@@ -4,9 +4,15 @@ Require Import String.
 Require Import BinNums.
 Require Import BinPos.
 Require Import Common.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.PArith.BinPos.
+
 
 Require Import List.
 Import ListNotations.
+From Equations Require Import Equations.
+
+Local Open Scope positive.
 
 Definition input_formula (input : Netlist.input) : SMT.qfbv name :=
   match input with
@@ -27,20 +33,26 @@ Definition nltype_sort (t : Netlist.nltype) : SMT.sort :=
   end
 .
 
-Definition cell_formula (cell : Netlist.cell) : name * SMT.qfbv name :=
-  match cell with
-  | Netlist.Add out l r =>
-      let l_formula := input_formula l in
-      let r_formula := input_formula r in
-      (output_name out, SMT.BVAdd l_formula r_formula)
-  | Netlist.Subtract out l r =>
-      let l_formula := input_formula l in
-      let r_formula := input_formula r in
-      (output_name out, SMT.BVAdd l_formula (SMT.BVNeg r_formula))
-  | Netlist.Id out in_ =>
-      let formula := input_formula in_ in
-      (output_name out, formula)
-  end
+Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
+  cell_formula (Netlist.Add out l r) :=
+    let l_formula := input_formula l in
+    let r_formula := input_formula r in
+    (output_name out, SMT.BVAdd l_formula r_formula);
+  cell_formula (Netlist.Subtract out l r) :=
+    let l_formula := input_formula l in
+    let r_formula := input_formula r in
+    (output_name out, SMT.BVAdd l_formula (SMT.BVNeg r_formula));
+  cell_formula (Netlist.Id out in_) :=
+    let formula := input_formula in_ in
+    (output_name out, formula);
+  cell_formula (Netlist.Convert (Netlist.Logic from) (Netlist.Logic to) out in_) :=
+    let in_formula := input_formula in_ in
+    let formula :=
+      if to <? from
+      then SMT.BVExtract (Npos to - 1) 0 in_formula
+      else SMT.BVZeroExtend (to - from) in_formula
+    in
+    (output_name out, formula)
 .
 
 Fixpoint netlist_to_formulas_acc

@@ -35,6 +35,7 @@ Module Netlist.
   | Add : output -> input -> input -> cell
   | Subtract : output -> input -> input -> cell
   | Id : output -> input -> cell
+  | Convert : nltype -> nltype -> output -> input -> cell
   .
 
   Definition cell_output (c : cell) : output :=
@@ -42,6 +43,7 @@ Module Netlist.
     | Add o _ _ => o
     | Subtract o _ _ => o
     | Id o _ => o
+    | Convert _ _ o _ => o
     end
   .
 

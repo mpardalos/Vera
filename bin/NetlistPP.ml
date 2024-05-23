@@ -10,11 +10,10 @@ let variable fmt (v : Netlist.variable) =
 
 let port fmt (v : int * port_direction) =
   match v with
-  | (n, PortOut) -> fprintf fmt "Out <%d>" n
-  | (n, PortIn) -> fprintf fmt "In <%d>" n
+  | n, PortOut -> fprintf fmt "Out <%d>" n
+  | n, PortIn -> fprintf fmt "In <%d>" n
 
-let bitvector fmt (bv : Bitvector.bv) =
-  fprintf fmt "%d'd%d" bv.width bv.value
+let bitvector fmt (bv : Bitvector.bv) = fprintf fmt "%d'd%d" bv.width bv.value
 
 let input fmt (i : Netlist.input) =
   match i with InVar v -> variable fmt v | InConstant c -> bitvector fmt c
@@ -28,6 +27,9 @@ let cell fmt (c : Netlist.cell) =
   | Subtract (out, in1, in2) ->
       fprintf fmt "%a <- Subtract(%a, %a)" output out input in1 input in2
   | Id (out, in1) -> fprintf fmt "%a <- Id(%a)" output out input in1
+  | Convert (t_from, t_to, out, in1) ->
+      fprintf fmt "%a <- Convert(%a, %a, %a)" output out nltype t_from nltype
+        t_to input in1
 
 let circuit fmt (c : Netlist.circuit) =
   fprintf fmt "Netlist.circuit %s {@." (Util.lst_to_string c.circuitName);

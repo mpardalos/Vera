@@ -10,7 +10,7 @@ let rec expression fmt e =
   Format.fprintf fmt "@[";
   (match e with
   | TypedVerilog.IntegerLiteral (sz, n) -> fprintf fmt "%d'd%d" sz n
-  | TypedVerilog.Conversion (t, e) ->
+  | TypedVerilog.Conversion (_, t, e) ->
       fprintf fmt "( %a )@ as@ ( %a )" expression e VerilogPP.vtype t
   | TypedVerilog.BinaryOp (_, op, l, r) ->
       fprintf fmt "( %a )@ %a@ ( %a )" expression l VerilogPP.operator op expression r

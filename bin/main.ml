@@ -27,6 +27,11 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
   | VVEquiv.SMT.BVLit v ->
       Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" v.value) v.width
   | VVEquiv.SMT.BVVar n -> Hashtbl.find var_ctx n
+  | VVEquiv.SMT.BVZeroExtend (num, f) ->
+      Z3.BitVector.mk_zero_ext z3_ctx num (qfbv_formula_to_z3 var_ctx z3_ctx f)
+  | VVEquiv.SMT.BVExtract (hi, lo, f) ->
+      Z3.BitVector.mk_extract z3_ctx hi lo (qfbv_formula_to_z3 var_ctx z3_ctx f)
+(* Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" v.value) v.width *)
 
 let smt_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
     (formula : int VVEquiv.SMT.formula) : Z3.Expr.expr option =
@@ -73,12 +78,19 @@ let () =
     (fun (v1, v2) ->
       let result =
         printf "\n-- Verilog a --\n";
-        printf "%a\n" TypedVerilogPP.vmodule v1;
+        printf "%a\n" VerilogPP.vmodule v1;
         printf "\n-- Verilog b --\n";
-        printf "%a\n" TypedVerilogPP.vmodule v2;
+        printf "%a\n" VerilogPP.vmodule v2;
         printf "\n---------------------------\n";
-        let* nl1, st = VVEquiv.verilog_to_netlist 1 v1 in
-        let* nl2, _ = VVEquiv.verilog_to_netlist st v2 in
+        printf "\n-- TypedVerilog a --\n";
+        let* typed_v1 = VVEquiv.tc_vmodule v1 in
+        printf "%a\n" TypedVerilogPP.vmodule typed_v1;
+        printf "\n-- TypedVerilog b --\n";
+        let* typed_v2 = VVEquiv.tc_vmodule v2 in
+        printf "%a\n" TypedVerilogPP.vmodule typed_v2;
+        printf "\n---------------------------\n";
+        let* nl1, st = VVEquiv.verilog_to_netlist 1 typed_v1 in
+        let* nl2, _ = VVEquiv.verilog_to_netlist st typed_v2 in
         printf "\n-- Netlist a --\n";
         printf "%a\n" NetlistPP.circuit nl1;
         printf "\n-- Netlist b --\n";
@@ -86,12 +98,12 @@ let () =
         printf "\n---------------------------\n";
         let* query = VVEquiv.equivalence_query v1 v2 in
         printf "\n-- SMT Query --\n";
+        List.iter (printf "%a\n" IntSMT.smt) query;
         let z3_ctx = Z3.mk_context [] in
         let z3_exprs = smt_to_z3 z3_ctx query in
-        (* List.iter (printf "%a\n" IntSMT.smt) query; *)
-        List.iter
-          (fun e -> printf "%s\n" (Z3.AST.to_string (Z3.Expr.ast_of_expr e)))
-          z3_exprs;
+        (* List.iter *)
+        (*   (fun e -> printf "%s\n" (Z3.AST.to_string (Z3.Expr.ast_of_expr e))) *)
+        (*   z3_exprs; *)
         printf "\n---------------------------\n";
         printf "\n-- SMT Result --\n";
         let z3_solver = Z3.Solver.mk_solver z3_ctx None in
@@ -111,4 +123,4 @@ let () =
       match result with
       | VVEquiv.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
       | _ -> ())
-    VVEquiv.TypedVerilog.examples
+    VVEquiv.Verilog.examples

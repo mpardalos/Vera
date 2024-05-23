@@ -4,6 +4,7 @@ Require Import VerilogToNetlist.
 Require Import NetlistToSMT.
 Require Import SMT.
 Require Import Common.
+Require VerilogTypecheck.
 
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Data.Monads.EitherMonad.
@@ -39,11 +40,13 @@ Definition mk_equivalence_formulas (smtnl1 smtnl2 : SMT.smt_netlist name) : sum 
             inr (inputs_same ++ outputs_different)
 .
 
-Definition equivalence_query (verilog1 verilog2 : TypedVerilog.vmodule) : sum string (list (SMT.formula name)) :=
-  netlist_result1 <- verilog_to_netlist 1%positive verilog1  ;;
+Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string (list (SMT.formula name)) :=
+  typed_verilog1 <- VerilogTypecheck.tc_vmodule verilog1 ;;
+  typed_verilog2 <- VerilogTypecheck.tc_vmodule verilog2 ;;
+  netlist_result1 <- verilog_to_netlist 1%positive typed_verilog1  ;;
   let netlist1 := fst netlist_result1 in
   let next_name := snd netlist_result1 in
-  netlist_result2 <- verilog_to_netlist next_name verilog2 ;;
+  netlist_result2 <- verilog_to_netlist next_name typed_verilog2 ;;
   let netlist2 := fst netlist_result2 in
   let smt_netlist1 := netlist_to_smt netlist1 in
   let smt_netlist2 := netlist_to_smt netlist2 in

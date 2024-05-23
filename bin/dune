@@ -1,7 +1,7 @@
 (coq.extraction
  (prelude Extraction)
  (extracted_modules VVEquiv)
- (theories vvequiv ExtLib))
+ (theories vvequiv ExtLib Equations))
 
 (executable
  (public_name vvequiv)

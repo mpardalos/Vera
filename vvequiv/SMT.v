@@ -7,11 +7,13 @@ Require Import Common (port_direction).
 Import Bitvector.
 
 Module SMT.
-  Inductive qfbv {N} :=
+  Inductive qfbv {T} :=
   | BVAdd : qfbv -> qfbv -> qfbv
   | BVNeg : qfbv -> qfbv
   | BVLit : bv -> qfbv
-  | BVVar : N -> qfbv
+  | BVVar : T -> qfbv
+  | BVZeroExtend : positive -> qfbv -> qfbv
+  | BVExtract : N -> N -> qfbv -> qfbv
   .
 
   Arguments qfbv : clear implicits.

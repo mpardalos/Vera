@@ -126,12 +126,19 @@ Fixpoint transfer_expression (expr : TypedVerilog.expression) : transf (list Net
       let cells__op := [transfer_bin_op op (Netlist.OutVar v__result) v1 v2] in
       let cells := cells1 ++ cells2 ++ cells__op in
       ret (cells, Netlist.InVar v__result)
-  | _ => raise unsupported_expression_error
+  | TypedVerilog.Conversion v_t__from v_t__to e =>
+      pair <- transfer_expression e ;;
+      let (cells__expr, v__expr) := pair in
+      nl_t__from <- transfer_type v_t__from ;;
+      nl_t__to <- transfer_type v_t__to ;;
+      v__result <- fresh nl_t__to ;;
+      let cells__conv := [Netlist.Convert nl_t__from nl_t__to (Netlist.OutVar v__result) v__expr] in
+      let cells := (cells__expr ++ cells__conv) in
+      ret (cells, Netlist.InVar v__result)
   end
 .
 
 Definition invalid_assign_err : string := "Invalid target for assign expression".
-
 
 Definition transfer_module_item (item : TypedVerilog.module_item) : transf (list Netlist.cell) :=
   match item with
