@@ -7,7 +7,6 @@ Require Import ZArith.
 Require Import BinIntDef.
 Require Import String.
 Require Import FSets.
-Require Import FMaps.
 
 Require Import List.
 Import ListNotations.
@@ -23,8 +22,6 @@ From ExtLib Require Import Data.List.
 Import MonadNotation.
 Open Scope monad_scope.
 Require Import Program.
-
-Module StrMap := FMapList.Make(String_as_OT).
 
 Record transf_state :=
   TransfState
@@ -71,38 +68,38 @@ Definition fresh (t : Netlist.nltype) : transf (Netlist.variable) :=
   ret var
 .
 
-Definition transfer_type (type : TypedVerilog.vtype) : transf Netlist.nltype :=
+Definition transfer_type (type : Verilog.vtype) : transf Netlist.nltype :=
   (* Probably wrong but good enough for now*)
   match type with
-  | TypedVerilog.Logic N0 N0 => ret (Netlist.Logic 1)
-  | TypedVerilog.Logic (Npos n) N0 => ret (Netlist.Logic (n + 1))
-  | TypedVerilog.Logic N0 (Npos n) => ret (Netlist.Logic (n + 1))
-  | TypedVerilog.Logic (Npos n1) (Npos n2) => ret (Netlist.Logic (n1 - n2 + 1))
+  | Verilog.Logic N0 N0 => ret (Netlist.Logic 1)
+  | Verilog.Logic (Npos n) N0 => ret (Netlist.Logic (n + 1))
+  | Verilog.Logic N0 (Npos n) => ret (Netlist.Logic (n + 1))
+  | Verilog.Logic (Npos n1) (Npos n2) => ret (Netlist.Logic (n1 - n2 + 1))
   end
 .
 
-Definition transfer_variables (vars : list TypedVerilog.variable) : transf (list Netlist.variable) :=
+Definition transfer_variables (vars : list Verilog.variable) : transf (list Netlist.variable) :=
   mapT (fun v =>
-          name <- transfer_name (TypedVerilog.varName v) ;;
-          type <- transfer_type (TypedVerilog.varType v) ;;
+          name <- transfer_name (Verilog.varName v) ;;
+          type <- transfer_type (Verilog.varType v) ;;
           ret (Netlist.Var type name)
     ) vars
 .
 
 
-Definition transfer_ports (ports : list TypedVerilog.port) : transf (list (name * port_direction)) :=
+Definition transfer_ports (ports : list Verilog.port) : transf (list (name * port_direction)) :=
   mapT (fun p =>
-          name <- transfer_name (TypedVerilog.portName p) ;;
-          ret (name, TypedVerilog.portDirection p)
+          name <- transfer_name (Verilog.portName p) ;;
+          ret (name, Verilog.portDirection p)
     ) ports
 .
 
 Definition unsupported_expression_error : string := "Unsupported expression".
 
-Definition transfer_bin_op (op : TypedVerilog.op) : (Netlist.output -> Netlist.input -> Netlist.input -> Netlist.cell) :=
+Definition transfer_bin_op (op : Verilog.op) : (Netlist.output -> Netlist.input -> Netlist.input -> Netlist.cell) :=
   match op with
-  | TypedVerilog.Plus => Netlist.Add
-  | TypedVerilog.Minus => Netlist.Subtract
+  | Verilog.Plus => Netlist.Add
+  | Verilog.Minus => Netlist.Subtract
   end
 .
 

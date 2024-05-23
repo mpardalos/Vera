@@ -1,6 +1,7 @@
 Require Import BinNat.
 Require Import FMapPositive.
 Require Import List.
+Require Import FMaps.
 
 Variant port_direction := PortIn | PortOut.
 
@@ -31,3 +32,5 @@ Module NameMap.
     end
   .
 End NameMap.
+
+Module StrMap := FMapList.Make(String_as_OT).

@@ -168,9 +168,7 @@ Module Verilog.
 End Verilog.
 
 Module TypedVerilog.
-  Inductive vtype := Logic : N -> N -> vtype.
-
-  Inductive op := Plus | Minus.
+  Export Verilog(vtype(..), op(..), variable(..), port(..)).
 
   Inductive expression :=
   | BinaryOp : vtype -> op -> expression -> expression -> expression
@@ -178,18 +176,6 @@ Module TypedVerilog.
   | IntegerLiteral : positive -> N -> expression
   | NamedExpression : vtype -> string -> expression
   .
-
-  Record variable :=
-    MkVariable
-      { varType : vtype
-      ; varName : string
-      }.
-
-  Record port :=
-    MkPort
-      { portDirection : port_direction
-      ; portName : string
-      }.
 
   Inductive module_item : Set :=
   | ContinuousAssign : expression -> expression -> module_item
