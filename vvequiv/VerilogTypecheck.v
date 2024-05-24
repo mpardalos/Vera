@@ -57,7 +57,7 @@ Equations tc_expr : TCContext -> TCBindings -> Verilog.expression -> TC TypedVer
         if eq_dec t ctx then
           ret (TypedVerilog.NamedExpression t n)
         else
-          ret (TypedVerilog.Conversion t ctx (TypedVerilog.NamedExpression ctx n))
+          ret (TypedVerilog.Conversion t ctx (TypedVerilog.NamedExpression t n))
     end
 .
 
