@@ -16,6 +16,7 @@
 (documentation https://url/to/documentation)
 
 (using coq 0.8)
+(using menhir 3.0)
 
 (package
  (name vvequiv)

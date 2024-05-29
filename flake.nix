@@ -27,6 +27,7 @@
               coq.ocamlPackages.utop
               coq.ocamlPackages.ocamlformat
               coq.ocamlPackages.z3
+              coq.ocamlPackages.menhir
 
               pkgs.sv-lang
               pkgs.verible

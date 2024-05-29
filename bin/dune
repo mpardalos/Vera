@@ -4,6 +4,7 @@
  (theories vvequiv ExtLib Equations))
 
 (ocamllex Lexer)
+; (menhir (modules parser))
 
 (executable
  (public_name vvequiv)
