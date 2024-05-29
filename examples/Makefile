@@ -6,4 +6,4 @@ SV_ := $(patsubst %.c,%.o,$(wildcard *.c))
 all: $(AST_FILES)
 
 %.ast.json: %.sv
-	slang --ast-json $@ $<
+	slang --parse-only --ast-json $@ $<
