@@ -30,6 +30,7 @@
 
               pkgs.sv-lang
               pkgs.verible
+              pkgs.surelog
               pkgs.z3
             ];
         };
