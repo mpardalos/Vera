@@ -78,7 +78,7 @@ let z3_model_fmt fmt (model : Z3.Model.model) =
           (Z3.Expr.to_string value))
     (Z3.Model.get_const_decls model)
 
-let () =
+let coq_verilog_examples () =
   List.iter
     (fun (v1, v2) ->
       let result =
@@ -129,3 +129,19 @@ let () =
       | VVEquiv.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
       | _ -> ())
     VVEquiv.Verilog.examples
+
+let dump_lex () =
+  let filename = Sys.argv.(1) in
+  let channel = open_in filename in
+  let lexbuf = Lexing.from_channel channel in
+  let rec print_tokens () : unit =
+    let token = Lexer.read lexbuf in
+    printf "%a " Lexer.token_fmt token;
+    match token with
+    | Lexer.EOF -> ()
+    | _ -> print_tokens ()
+  in
+  print_tokens ();
+  close_in channel
+
+let () = dump_lex ()

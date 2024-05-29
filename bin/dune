@@ -3,6 +3,8 @@
  (extracted_modules VVEquiv)
  (theories vvequiv ExtLib Equations))
 
+(ocamllex Lexer)
+
 (executable
  (public_name vvequiv)
  (name main)
