@@ -2,6 +2,7 @@ Require Import BinNat.
 Require Import FMapPositive.
 Require Import List.
 Require Import FMaps.
+From Equations Require Import Equations.
 
 Variant port_direction := PortIn | PortOut.
 
@@ -34,3 +35,11 @@ Module NameMap.
 End NameMap.
 
 Module StrMap := FMapList.Make(String_as_OT).
+
+Equations opt_or : forall {A}, option A -> option A -> option A :=
+  opt_or (Some x) _ := Some x;
+  opt_or None o := o.
+
+Equations opt_or_else : forall {A}, option A -> A -> A :=
+  opt_or_else (Some x) _ := x;
+  opt_or_else None o := o.

@@ -47,28 +47,19 @@ Module Netlist.
     end
   .
 
+  Inductive register_declaration :=
+    MkRegister
+      (reg_type : nltype)
+      (reg_name : name)
+      (init : bv)
+      (driver : name).
+
   Record circuit :=
     Circuit
       { circuitName : string
       ; circuitPorts : list (name * port_direction)
       ; circuitVariables : list variable
+      ; circuitRegisters : list register_declaration
       ; circuitCells : list cell
       }.
-
-  Example examples : list circuit :=
-    let v1 := Var (Logic 32) 1 in
-    let v2 := Var (Logic 32) 2 in
-    let v3 := Var (Logic 32) 3 in
-    [ {| circuitName := "test1";
-        circuitPorts := [];
-        circuitVariables := [v1; v2];
-        circuitCells := [Id (OutVar v1) (InVar v2)]
-      |}
-      ;
-      {| circuitName := "test2";
-        circuitPorts := [];
-        circuitVariables := [v1; v2; v3];
-        circuitCells := [Add (OutVar v1) (InVar v2) (InVar v3)]
-      |}
-    ].
 End Netlist.
