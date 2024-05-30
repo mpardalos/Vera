@@ -29,15 +29,29 @@ Module Bitvector.
 
   (** Add the bitvectors, adding a bit to the width to accomodate overflow *)
   Equations bv_add_extend (bv1 bv2 : bv) (width_match : (width bv1 = width bv2)) : bv :=
-    bv_add_extend (BV v1 w1 wf1) (BV v2 w2 wf2) width_match := BV (v1 + v2) (w1 + 1) _.
+    bv_add_extend (BV v1 w wf1) (BV v2 ?(w) wf2) eq_refl := BV (v1 + v2) (w + 1) _.
   Next Obligation.
-    assert ((v1 + v2) < 2 * (2 ^ Npos w2)) by lia.
-    replace (2 * (2 ^ Npos w2))  with (2 ^ (1 + Npos w2)) in *.
+    enough (2 * N.pos (2 ^ w) = N.pos (2 ^ (w + 1))) by lia.
+    replace (2 * N.pos (2 ^ w)) with (2 * 2 ^ (Npos w)) by lia.
+    replace (N.pos (2 ^ (w + 1))) with (2 ^ (Npos w + 1)) by lia.
+    rewrite <- N.pow_succ_r by lia.
+    lia.
+   Qed.
 
-    enough (N.pos (2 ^ w2) + N.pos (2 ^ w2) < N.pos (2 ^ (w2 + 1))) by lia.
-    replace (N.pos (2 ^ w2) + N.pos (2 ^ w2)) with (2 * N.pos (2^w2)) by lia.
-    replace (2 * N.pos (2^w2)) with (N.pos (2 ^ (w2 + 1))).
+  Lemma bv_add_extend_width :
+    forall (bv1 bv2: bv) (width_match : width bv1 = width bv2),
+      width (bv_add_extend bv1 bv2 width_match) = (width bv1 + 1)%positive.
+  Proof.
+    intros.
+    funelim (bv_add_extend bv1 bv2 width_match).
+    simp bv_add_extend.
+    reflexivity.
+  Qed.
 
-
-
+  (** Add the bitvectors, truncating the carry bit of the result *)
+  Equations bv_add_truncate (bv1 bv2 : bv) (width_match : (width bv1 = width bv2)) : bv :=
+    | (BV v1 w wf1), (BV v2 ?(w) wf2), eq_refl => BV ((v1 + v2) mod (2 ^ Npos w)) w _.
+  Next Obligation.
+    apply N.mod_lt. lia.
+  Qed.
 End Bitvector.

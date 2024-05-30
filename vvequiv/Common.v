@@ -24,6 +24,7 @@ Definition name := positive.
 
 Module NameMap.
   Include PositiveMap.
+  Include FMapFacts.
   Import ListNotations.
 
   Fixpoint from_list {A} (l : list (positive * A)) : t A :=
@@ -33,6 +34,8 @@ Module NameMap.
     end
   .
 End NameMap.
+
+Module NameMapFacts := FMapFacts.Facts(NameMap).
 
 Module StrMap := FMapList.Make(String_as_OT).
 

@@ -1,10 +1,12 @@
 Require Import Bitvector.
-Import Bitvector (bv).
+Import Bitvector (bv(..)).
 Require Import Common.
 
 Require Import String.
 Require Import ZArith.
 Require Import BinNums.
+
+From Equations Require Import Equations.
 
 Require Import List.
 Import ListNotations.
@@ -27,24 +29,42 @@ Module Netlist.
   | InConstant : bv -> input
   .
 
+  Equations input_width : input -> positive :=
+    input_width (InVar (Var (Logic w) _)) := w;
+    input_width (InConstant (BV _ w _)) := w.
+
   Inductive output :=
   | OutVar : variable -> output
   .
 
+  Equations output_width : output -> positive :=
+    output_width (OutVar (Var (Logic w) _)) := w.
+
   Inductive cell :=
-  | Add : output -> input -> input -> cell
-  | Subtract : output -> input -> input -> cell
-  | Id : output -> input -> cell
-  | Convert : nltype -> nltype -> output -> input -> cell
+  | Add
+      (out : output)
+      (in1 in2 : input)
+      (inputs_match : input_width in1 = input_width in2)
+      (output_match : input_width in1 = output_width out)
+  | Subtract
+      (out : output)
+      (in1 in2 : input)
+      (inputs_match : input_width in1 = input_width in2)
+      (output_match : input_width in1 = output_width out)
+  | Id
+      (out : output)
+      (in1 : input)
+      (output_match : input_width in1 = output_width out)
+  | Convert
+      (out : output)
+      (in1 : input)
   .
 
-  Definition cell_output (c : cell) : output :=
-    match c with
-    | Add o _ _ => o
-    | Subtract o _ _ => o
-    | Id o _ => o
-    | Convert _ _ o _ => o
-    end
+  Equations cell_output : cell -> output :=
+  | Add o _ _ _ _ => o
+  | Subtract o _ _ _ _ => o
+  | Id o _ _ => o
+  | Convert o _ => o
   .
 
   Inductive register_declaration :=
