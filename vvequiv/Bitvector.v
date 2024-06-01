@@ -54,4 +54,15 @@ Module Bitvector.
   Next Obligation.
     apply N.mod_lt. lia.
   Qed.
+
+  Lemma bv_add_truncate_width :
+    forall (bv1 bv2: bv) (width_match : width bv1 = width bv2),
+      width (bv_add_truncate bv1 bv2 width_match) = (width bv1)%positive.
+  Proof.
+    intros.
+    funelim (bv_add_truncate bv1 bv2 width_match).
+    simp bv_add_truncate.
+    simpl.
+    reflexivity.
+  Qed.
 End Bitvector.

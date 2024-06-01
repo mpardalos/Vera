@@ -25,13 +25,13 @@ Equations input_port_in_map : NameMap.t bv -> (name * port_direction) -> Prop :=
 Record ExternalState (c : circuit) :=
   MkExternalState
     { external_state_map :> NameMap.t bv
-    ; external_state_wf : Forall (input_port_in_map external_state_map) (circuitPorts c)
+    ; external_state_match_circuit : Forall (input_port_in_map external_state_map) (circuitPorts c)
     }.
 
 Arguments MkExternalState [_] _ _.
 
 Equations register_in_map : NameMap.t bv -> register_declaration -> Prop :=
-| map, MkRegister _ n _ _ => NameMap.In n map.
+| map, MkRegister (Logic w) n _ _ => exists bv, NameMap.MapsTo n bv map /\ width bv = w.
 
 Record RegisterState (c : circuit) :=
   MkRegisterState
@@ -42,7 +42,7 @@ Record RegisterState (c : circuit) :=
 Arguments MkRegisterState [_] _ _.
 
 Equations variable_in_map : NameMap.t bv -> variable -> Prop :=
-| map, Var _ n => NameMap.In n map.
+| map, Var (Logic w) n => exists bv, NameMap.MapsTo n bv map /\ width bv = w.
 
 Record VariableState (c : circuit) :=
   MkVariableState
@@ -98,54 +98,112 @@ Equations cell_in_circuit : circuit -> cell -> Prop :=
     /\ input_in_circuit c in1
 .
 
+Set Equations With UIP.
+
 Equations input_run {c} (st : CircuitState c) (i : input) (input_wf : input_in_circuit c i) : bv :=
   input_run st (InConstant const) _ := const;
-  input_run st (InVar v) input_wf := _. (* TODO: Do this pattern match in gallina instead of tactics *)
+  input_run st (InVar v) input_wf
+    with NameMap.find v.(varName) st.(registers), NameMap.find v.(varName) st.(variables) => {
+    | Some x, _ => x
+    | _, Some x => x
+    | None, None => _
+    }.
 Next Obligation.
-  destruct (NameMap.find v.(varName) st.(registers)) as [x | ] eqn:Eregisters. { exact x. }
-  destruct (NameMap.find v.(varName) st.(variables)) as [x | ] eqn:Evariables. { exact x. }
-  exfalso.
-  rewrite <- NameMapFacts.not_find_in_iff in *.
-  destruct input_wf.
-  - apply Evariables. clear Evariables. clear Eregisters.
-    destruct st as [exts regs vars]. simpl in *.
-    destruct vars as [var_map vars_wf].
-    simpl.
-    rewrite Forall_forall in vars_wf.
-    apply vars_wf in H. clear vars_wf.
-    funelim (variable_in_map var_map v).
-    simp variable_in_map in *.
-  - apply Eregisters. clear Evariables. clear Eregisters.
-    rewrite Exists_exists in H.
-    destruct H as [r [H1 H2]].
-    destruct st as [exts regs vars]. simpl in *.
-    destruct regs as [reg_map regs_wf].
-    simpl in *.
-    rewrite Forall_forall in regs_wf.
-    apply regs_wf in H1.
-    funelim (register_in_map reg_map r).
-    funelim (var_reg_match v (MkRegister reg_type n init driver)).
-    simp register_in_map in *.
-    simp var_reg_match in *.
-    simpl in *.
-    inversion H2; subst.
-    assumption.
-Qed.
+Admitted.
+(*   exfalso. *)
+(*   rewrite <- NameMapFacts.not_find_in_iff in *. *)
+(*   destruct input_wf. *)
+(*   - apply Evariables. clear Evariables. clear Eregisters. *)
+(*     destruct st as [exts regs vars]. simpl in *. *)
+(*     destruct vars as [var_map vars_wf]. *)
+(*     simpl. *)
+(*     rewrite Forall_forall in vars_wf. *)
+(*     apply vars_wf in H. clear vars_wf. *)
+(*     funelim (variable_in_map var_map v). *)
+(*     simp variable_in_map in H. *)
+(*     destruct H as [bv [Hmap _]]. *)
+(*     eexists. eauto. *)
+(*   - apply Eregisters. clear Evariables. clear Eregisters. *)
+(*     rewrite Exists_exists in H. *)
+(*     destruct H as [r [H1 H2]]. *)
+(*     destruct st as [exts regs vars]. simpl in *. *)
+(*     destruct regs as [reg_map regs_wf]. *)
+(*     simpl in *. *)
+(*     rewrite Forall_forall in regs_wf. *)
+(*     apply regs_wf in H1. *)
+(*     funelim (register_in_map reg_map r). *)
+(*     funelim (var_reg_match v (MkRegister (Logic w) n init driver)). *)
+(*     simp register_in_map in *. *)
+(*     simp var_reg_match in *. *)
+(*     simpl in *. *)
+(*     inversion H2; subst. *)
+(*     destruct H1 as [bv [Hmap _]]. *)
+(*     eexists. eassumption. *)
+(* Defined. *)
 
 Lemma input_run_width : forall {c} (st : CircuitState c) i input_wf,
     width (input_run st i input_wf) = input_width i.
 Proof.
+  intros.
+  funelim (input_width i).
+  - simp input_run.
+    simpl.
+    unfold input_run_clause_2_clause_1.
+    destruct (NameMap.find varName0 (registers st)) eqn:Ereg.
+    + admit.
+    + destruct (NameMap.find varName0 (variables st)) eqn:Evars.
+      * admit.
+      * inversion input_wf.
+        rewrite <- NameMapFacts.not_find_in_iff in Evars.
+  - simp input_run. reflexivity.
 Admitted.
 
-Lemma variable_in_map_extend : forall (k : NameMap.key) (var : variable) (x: bv) (m : NameMap.t bv),
-    variable_in_map m var -> variable_in_map (NameMap.add k x m) var.
+Lemma variable_in_map_extend_other : forall (k : NameMap.key) (t : nltype) (n : name) (x: bv) (m : NameMap.t bv),
+    n <> k -> variable_in_map m (Var t n) -> variable_in_map (NameMap.add k x m) (Var t n).
 Proof.
-  intros.
-  funelim (variable_in_map m var).
+  intros * Hdiff Hin.
+  funelim (variable_in_map m (Var t n)).
+  inversion H; subst; clear H.
   simp variable_in_map in *.
-  apply NameMapFacts.add_in_iff.
-  auto.
+  destruct Hin as [bv [Hmap Hwidth]].
+  exists bv.
+  intuition eauto using NameMap.add_2.
 Qed.
+
+Lemma variable_in_map_extend_same : forall (n k : name) (w : positive) (x: bv) (m : NameMap.t bv),
+    width x = w ->
+    variable_in_map m (Var (Logic w) n) ->
+    variable_in_map (NameMap.add k x m) (Var (Logic w) n).
+Proof.
+  intros * Heq Hin. subst.
+  funelim (variable_in_map m (Var (Logic (width x)) n)).
+  inversion H; subst; clear H.
+  simp variable_in_map in *.
+  destruct Hin as [xprev [Hmap Hwidth]].
+  destruct (Pos.eq_dec n0 k).
+  - subst.
+    exists x.
+    intuition.
+    apply NameMapFacts.add_mapsto_iff.
+    intuition eauto.
+  - exists xprev.
+    intuition.
+    apply NameMapFacts.add_mapsto_iff.
+    intuition eauto.
+Qed.
+
+Lemma variable_in_map_extend : forall (n k : name) (w : positive) (x: bv) (m : NameMap.t bv),
+    (n <> k \/ width x = w) ->
+    variable_in_map m (Var (Logic w) n) ->
+    variable_in_map (NameMap.add k x m) (Var (Logic w) n).
+Proof.
+  intros * H1 H2.
+  destruct H1.
+  - auto using variable_in_map_extend_other.
+  - auto using variable_in_map_extend_same.
+Qed.
+
+Ltac simpl_list_props := repeat (try rewrite Forall_forall in *; try rewrite Exists_exists in *).
 
 Equations cell_run {c} (st : CircuitState c) (cl : cell) (cell_wf : cell_in_circuit c cl) : CircuitState c :=
   cell_run st (Add (OutVar (Var _ out)) in1 in2 inputs_match output_match) cell_wf :=
@@ -177,10 +235,17 @@ Next Obligation.
   destruct vars as [vars_map vars_wf].
   simpl in *.
   pose proof vars_wf as vars_wf_forall.
-  rewrite Forall_forall.
-  rewrite Forall_forall in vars_wf_forall.
-  auto using variable_in_map_extend.
-Qed.
+  simpl_list_props.
+  intros [[xwidth] xname] Hin.
+  destruct (Pos.eq_dec xname out).
+  - subst.
+    apply variable_in_map_extend_same.
+    + rewrite bv_add_truncate_width.
+      rewrite input_run_width.
+      admit. (* Need that circuitVariables is a map from names to types (equal names -> equal types) *)
+    + auto.
+  - auto using variable_in_map_extend_other.
+Admitted.
 
 Equations circuit_run
   (fext : ExternalState)
