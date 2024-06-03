@@ -15,6 +15,9 @@ Import ListNotations.
 Module Netlist.
   Inductive nltype := Logic : positive -> nltype.
 
+  Equations type_width : nltype -> positive :=
+    type_width (Logic w) := w.
+
   (** These are not registers, just names used to connect the netlist graph *)
   Record variable :=
     Var
@@ -70,16 +73,15 @@ Module Netlist.
   Inductive register_declaration :=
     MkRegister
       (reg_type : nltype)
-      (reg_name : name)
       (init : bv)
       (driver : name).
 
   Record circuit :=
     Circuit
       { circuitName : string
-      ; circuitPorts : list (name * port_direction)
-      ; circuitVariables : list variable
-      ; circuitRegisters : list register_declaration
+      ; circuitPorts : NameMap.t port_direction
+      ; circuitVariables : NameMap.t nltype
+      ; circuitRegisters : NameMap.t register_declaration
       ; circuitCells : list cell
       }.
 End Netlist.
