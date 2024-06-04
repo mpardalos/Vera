@@ -74,6 +74,16 @@ Arguments variables [_] _.
 Ltac inv_circuit_state st :=
   destruct st as [[exts exts_wf] [regs regs_wf] [vars vars_wf]].
 
+Lemma circuit_to_state_variables : forall c (st: CircuitState c) n t,
+    NameMap.MapsTo n t (circuitVariables c) ->
+    exists v, (NameMap.MapsTo n v (variables st) /\ width v = type_width t).
+Proof.
+  intros * H.
+  inv_circuit_state st.
+  simpl in *.
+  edestruct vars_wf as [v [Hvars _]]; eauto.
+Qed.
+
 Set Primitive Projections.
 
 Equations varWidth : variable -> positive :=
@@ -93,16 +103,15 @@ Qed.
 
 Equations input_run {c} (st : CircuitState c) (i : input) (input_wf : input_in_circuit c i) : bv :=
   input_run st (InConstant const) _ := const;
-  input_run st (InVar (Var t n)) wf := proj1_sig (get_var st n _).
+  input_run st (InVar (Var t n)) i_wf := proj1_sig (get_var st n _).
 Next Obligation.
   intros.
-  inv_circuit_state st.
-  simpl in *.
-  clear regs_wf. clear regs. clear exts_wf. clear exts.
-  inversion wf0; clear wf0.
-  edestruct vars_wf as [v [Hmap _]]; eauto.
   unfold NameMap.In.
-  eauto.
+  edestruct circuit_to_state_variables.
+  - inversion i_wf.
+    rewrite NameMapFacts.find_mapsto_iff.
+    eauto.
+  - intuition eauto.
 Qed.
 
 Lemma input_run_width : forall {c} (st : CircuitState c) i input_wf,
@@ -113,10 +122,9 @@ Proof.
   - simp input_run.
     generalize (get_var st varName0 (input_run_obligations_obligation_1 c st (Logic w) varName0 input_wf)); intros [x Hx].
     simpl in *.
-    inv_circuit_state st.
     inversion input_wf as [input_wf']; clear input_wf.
     rewrite <- NameMapFacts.find_mapsto_iff in input_wf'.
-    edestruct vars_wf as [x' [Hvars Hwidth]]; eauto.
+    edestruct circuit_to_state_variables as [x' [Hin Hwidth]]; eauto.
     replace x with x'.
     + simp type_width in *.
     + eauto using NameMapFacts.MapsTo_fun.
@@ -169,16 +177,6 @@ Proof.
 Qed.
 
 (* Ltac simpl_list_props := repeat (try rewrite Forall_forall in *; try rewrite Exists_exists in .*)
-
-Lemma circuit_to_state_variables : forall c (st: CircuitState c) n t,
-    NameMap.MapsTo n t (circuitVariables c) ->
-    exists v, (NameMap.MapsTo n v (variables st) /\ width v = type_width t).
-Proof.
-  intros * H.
-  inv_circuit_state st.
-  simpl in *.
-  edestruct vars_wf as [v [Hvars _]]; eauto.
-Qed.
 
 Equations cell_run {c} (st : CircuitState c) (cl : cell) (cell_wf : cell_in_circuit c cl) : CircuitState c :=
   cell_run st (Add (OutVar (Var _ out)) in1 in2 inputs_match output_match) cell_wf :=
