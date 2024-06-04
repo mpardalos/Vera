@@ -114,7 +114,7 @@ Module Netlist.
 
   Record circuit_wf (c : circuit) :=
     MkCircuitWf
-      { circuit_registers_wf : Forall (cell_in_circuit c) (circuitCells c)
+      { circuit_cells_wf : Forall (cell_in_circuit c) (circuitCells c)
       }.
 
 End Netlist.

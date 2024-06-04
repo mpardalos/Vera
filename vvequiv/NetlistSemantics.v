@@ -1,9 +1,10 @@
 From Coq Require Import BinNums.
 From Coq Require Import BinNat.
 From Coq Require Import BinPos.
-From Coq Require Import List.
 From Coq Require FMaps.
 From Coq Require FMapFacts.
+From Coq Require Import List.
+Import ListNotations.
 
 From vvequiv Require Import Netlist.
 From vvequiv Require Import Common.
@@ -70,45 +71,55 @@ Arguments external [_] _.
 Arguments registers [_] _.
 Arguments variables [_] _.
 
+Ltac inv_circuit_state st :=
+  destruct st as [[exts exts_wf] [regs regs_wf] [vars vars_wf]].
+
 Set Primitive Projections.
 
 Equations varWidth : variable -> positive :=
   varWidth (Var (Logic w) _) := w.
 
+
+Equations get_var {c} (st : CircuitState c) (n : name) (name_present : NameMap.In n (variables st)) : { v : bv | NameMap.MapsTo n v (variables st) } :=
+  get_var st n prf :=
+    (match NameMap.find n (variables st) as r return (NameMap.find n (variables st) = r -> { v : bv | NameMap.MapsTo n v (variables st) }) with
+     | Some x => fun _ => (@exist _ _ x _)
+     | None => fun eq => _
+     end) eq_refl.
+Next Obligation.
+  rewrite <- NameMapFacts.not_find_in_iff in *.
+  contradiction.
+Qed.
+
 Equations input_run {c} (st : CircuitState c) (i : input) (input_wf : input_in_circuit c i) : bv :=
   input_run st (InConstant const) _ := const;
-  input_run st (InVar (Var t n)) wf with NameMap.find n (variables st) => {
-    | Some x := x;
-    | None with (_ : False) => { | ! }
-    }
-.
+  input_run st (InVar (Var t n)) wf := proj1_sig (get_var st n _).
 Next Obligation.
-  (* Lookup always succeeds *)
-Admitted.
-
-(* Lemma input_width : forall c n t1 t2, input_in_circuit c (Var t1 n) -> NameMap.MapsTo n t2 (circuitVariables c) -> t1 = t2. *)
+  intros.
+  inv_circuit_state st.
+  simpl in *.
+  clear regs_wf. clear regs. clear exts_wf. clear exts.
+  inversion wf0; clear wf0.
+  edestruct vars_wf as [v [Hmap _]]; eauto.
+  unfold NameMap.In.
+  eauto.
+Qed.
 
 Lemma input_run_width : forall {c} (st : CircuitState c) i input_wf,
     width (input_run st i input_wf) = input_width i.
 Proof.
   intros.
-  destruct st as [exts regs [vars vars_wf]].
   funelim (input_width i).
   - simp input_run.
-    unfold input_run_clause_2.
-    simpl.
-    assert (exists b, NameMap.find varName0 vars = Some b) as [b Hb]. {
-      simp input_in_circuit in input_wf.
-      edestruct vars_wf as [b' [Hvars Hwidth]]; eauto.
-    }
-    destruct (NameMap.find varName0 vars) eqn:E. 2: solve [discriminate].
-    inversion Hb; subst; clear Hb.
-    simp input_in_circuit in input_wf.
-    edestruct vars_wf as [b' [Hvars Hwidth]]; eauto.
-    replace b with b'.
+    generalize (get_var st varName0 (input_run_obligations_obligation_1 c st (Logic w) varName0 input_wf)); intros [x Hx].
+    simpl in *.
+    inv_circuit_state st.
+    inversion input_wf as [input_wf']; clear input_wf.
+    rewrite <- NameMapFacts.find_mapsto_iff in input_wf'.
+    edestruct vars_wf as [x' [Hvars Hwidth]]; eauto.
+    replace x with x'.
     + simp type_width in *.
-    + rewrite <- NameMapFacts.find_mapsto_iff in E.
-      eauto using NameMapFacts.MapsTo_fun.
+    + eauto using NameMapFacts.MapsTo_fun.
   - simp input_run. reflexivity.
 Qed.
 
@@ -158,9 +169,6 @@ Proof.
 Qed.
 
 (* Ltac simpl_list_props := repeat (try rewrite Forall_forall in *; try rewrite Exists_exists in .*)
-
-Ltac inv_circuit_state st :=
-  destruct st as [[exts exts_wf] [regs regs_wf] [vars vars_wf]].
 
 Lemma circuit_to_state_variables : forall c (st: CircuitState c) n t,
     NameMap.MapsTo n t (circuitVariables c) ->
@@ -221,11 +229,25 @@ Next Obligation.
     intuition eauto.
 Qed.
 
+Equations list_with_in' {A} (full_list : list A) (l : list A) (prev : {l1 : list A | full_list = l1 ++ l}) : list {x : A | In x full_list} :=
+  list_with_in' full_list nil (@exist _ _) := nil;
+  list_with_in' full_list (hd :: tl) (@exist prev prf) := (@exist _ _ hd _) :: (list_with_in' full_list tl _) .
+Next Obligation. eauto with datatypes. Qed.
+Next Obligation. exists (prev ++ [hd]). eauto with datatypes. Qed.
+
+Equations list_with_in {A} (full_list : list A) : (list { x : A | In x full_list }) :=
+  list_with_in full_list := list_with_in' full_list full_list (@exist _ _ nil _).
+
 Equations circuit_run
-  (c : circuit)
-  (fext : ExternalState c)
+  (c : { c: circuit | circuit_wf c })
+  (fext : ExternalState (proj1_sig c))
   (fbits : RandomSource)
-  (st: CircuitState c)
-  : CircuitState c :=
-  circuit_run (Circuit _ _ vars regs cells) fext fbits st :=
-    List.fold_left _ cells st.
+  (st: CircuitState (proj1_sig c))
+  : CircuitState (proj1_sig c) :=
+  circuit_run (@exist (Circuit _ _ vars regs cells) c_wf) fext fbits st_init :=
+    List.fold_left (fun st cell => cell_run st (proj1_sig cell) _) (list_with_in cells) st_init.
+Next Obligation.
+  destruct c_wf.
+  rewrite Forall_forall in *.
+  eauto.
+Qed.
