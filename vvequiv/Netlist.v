@@ -76,6 +76,7 @@ Module Netlist.
       (init : bv)
       (driver : name).
 
+
   Record circuit :=
     Circuit
       { circuitName : string
@@ -84,4 +85,36 @@ Module Netlist.
       ; circuitRegisters : NameMap.t register_declaration
       ; circuitCells : list cell
       }.
+
+  Equations input_in_circuit : circuit -> input -> Prop :=
+  | _, InConstant _ => True
+  | c, InVar (Var t n) => NameMap.MapsTo n t (circuitVariables c).
+
+
+  Equations output_in_circuit : circuit -> output -> Prop :=
+  | c, OutVar (Var t n) => NameMap.MapsTo n t (circuitVariables c).
+
+
+  Equations cell_in_circuit : circuit -> cell -> Prop :=
+  | c, Add out in1 in2 _ _ =>
+      output_in_circuit c out
+      /\ input_in_circuit c in1
+      /\ input_in_circuit c in2
+  | c, Subtract out in1 in2 _ _ =>
+      output_in_circuit c out
+      /\ input_in_circuit c in1
+      /\ input_in_circuit c in2
+  | c, Id out in1 _ =>
+      output_in_circuit c out
+      /\ input_in_circuit c in1
+  | c, Convert out in1 =>
+      output_in_circuit c out
+      /\ input_in_circuit c in1
+  .
+
+  Record circuit_wf (c : circuit) :=
+    MkCircuitWf
+      { circuit_registers_wf : Forall (cell_in_circuit c) (circuitCells c)
+      }.
+
 End Netlist.

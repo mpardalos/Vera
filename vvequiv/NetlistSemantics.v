@@ -75,33 +75,6 @@ Set Primitive Projections.
 Equations varWidth : variable -> positive :=
   varWidth (Var (Logic w) _) := w.
 
-Equations input_in_circuit : circuit -> input -> Prop :=
-| _, InConstant _ => True
-| c, InVar (Var t n) => NameMap.MapsTo n t (circuitVariables c).
-
-
-Equations output_in_circuit : circuit -> output -> Prop :=
-| c, OutVar (Var t n) => NameMap.MapsTo n t (circuitVariables c).
-
-
-Equations cell_in_circuit : circuit -> cell -> Prop :=
-| c, Add out in1 in2 _ _ =>
-    output_in_circuit c out
-    /\ input_in_circuit c in1
-    /\ input_in_circuit c in2
-| c, Subtract out in1 in2 _ _ =>
-    output_in_circuit c out
-    /\ input_in_circuit c in1
-    /\ input_in_circuit c in2
-| c, Id out in1 _ =>
-    output_in_circuit c out
-    /\ input_in_circuit c in1
-| c, Convert out in1 =>
-    output_in_circuit c out
-    /\ input_in_circuit c in1
-.
-
-
 Equations input_run {c} (st : CircuitState c) (i : input) (input_wf : input_in_circuit c i) : bv :=
   input_run st (InConstant const) _ := const;
   input_run st (InVar (Var t n)) wf with NameMap.find n (variables st) => {
@@ -112,7 +85,6 @@ Equations input_run {c} (st : CircuitState c) (i : input) (input_wf : input_in_c
 Next Obligation.
   (* Lookup always succeeds *)
 Admitted.
-
 
 (* Lemma input_width : forall c n t1 t2, input_in_circuit c (Var t1 n) -> NameMap.MapsTo n t2 (circuitVariables c) -> t1 = t2. *)
 
@@ -200,16 +172,6 @@ Proof.
   edestruct vars_wf as [v [Hvars _]]; eauto.
 Qed.
 
-(* Lemma state_to_circuit_variables : forall c (st: CircuitState c) n v, *)
-(*     NameMap.MapsTo n v (variables st) -> *)
-(*     NameMap.MapsTo n (Logic (width v)) (circuitVariables c). *)
-(* Proof. *)
-(*   intros * H. *)
-(*   inv_circuit_state st. *)
-(*   destruct (vars_wf n (Logic (width v))) as [_ vars_wf_to]. *)
-(*   eauto. *)
-(* Qed. *)
-
 Equations cell_run {c} (st : CircuitState c) (cl : cell) (cell_wf : cell_in_circuit c cl) : CircuitState c :=
   cell_run st (Add (OutVar (Var _ out)) in1 in2 inputs_match output_match) cell_wf :=
     let val1 := input_run st in1 _ in
@@ -260,9 +222,10 @@ Next Obligation.
 Qed.
 
 Equations circuit_run
-  (fext : ExternalState)
-  (fbits : RandomSource)
-  (st: CircuitState)
   (c : circuit)
-  : CircuitState :=
-  circuit_run fext fbits st (Circuit _ _ vars regs cells) := st.
+  (fext : ExternalState c)
+  (fbits : RandomSource)
+  (st: CircuitState c)
+  : CircuitState c :=
+  circuit_run (Circuit _ _ vars regs cells) fext fbits st :=
+    List.fold_left _ cells st.
