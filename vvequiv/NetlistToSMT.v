@@ -34,18 +34,20 @@ Definition nltype_sort (t : Netlist.nltype) : SMT.sort :=
 .
 
 Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
-  cell_formula (Netlist.Add out l r) :=
+  cell_formula (Netlist.Add out l r _ _) :=
     let l_formula := input_formula l in
     let r_formula := input_formula r in
     (output_name out, SMT.BVAdd l_formula r_formula);
-  cell_formula (Netlist.Subtract out l r) :=
+  cell_formula (Netlist.Subtract out l r _ _) :=
     let l_formula := input_formula l in
     let r_formula := input_formula r in
     (output_name out, SMT.BVAdd l_formula (SMT.BVNeg r_formula));
-  cell_formula (Netlist.Id out in_) :=
+  cell_formula (Netlist.Id out in_ _) :=
     let formula := input_formula in_ in
     (output_name out, formula);
-  cell_formula (Netlist.Convert (Netlist.Logic from) (Netlist.Logic to) out in_) :=
+  cell_formula (Netlist.Convert out in_) :=
+    let from := Netlist.input_width in_ in
+    let to := Netlist.output_width out in
     let in_formula := input_formula in_ in
     let formula :=
       if to <? from
@@ -73,10 +75,11 @@ Definition netlist_to_formulas (nl : Netlist.circuit) : NameMap.t (SMT.qfbv name
 
 Definition netlist_declarations (nl : Netlist.circuit) : list (SMT.formula name) :=
   List.map
-    (fun (var : Netlist.variable) =>
-       SMT.CDeclare (Netlist.varName var) (nltype_sort (Netlist.varType var))
+    (fun (var : (name * Netlist.nltype)) =>
+       let (varName, varType) := var in
+       SMT.CDeclare varName (nltype_sort varType)
     )
-    (Netlist.circuitVariables nl)
+    (NameMap.elements (Netlist.circuitVariables nl))
 .
 
 (** Map each variable in the netlist to a bitvector formula *)
@@ -89,7 +92,7 @@ Definition netlist_to_smt (nl : Netlist.circuit) : SMT.smt_netlist name :=
                          SMT.CEqual (SMT.BVVar n) formula)
                       (NameMap.elements formulas) in
   {| SMT.smtnlName := Netlist.circuitName nl
-  ; SMT.smtnlPorts := Netlist.circuitPorts nl
+  ; SMT.smtnlPorts := NameMap.elements (Netlist.circuitPorts nl)
   ; SMT.smtnlFormulas := declarations ++ assertions
   |}
 .

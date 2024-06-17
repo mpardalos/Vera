@@ -8,6 +8,9 @@ let nltype fmt (t : Netlist.nltype) =
 let variable fmt (v : Netlist.variable) =
   fprintf fmt "%a <%d>" nltype v.varType v.varName
 
+let variablePair fmt (var : (name * Netlist.nltype)) =
+  fprintf fmt "%a <%d>" nltype (snd var) (fst var)
+
 let port fmt (v : int * port_direction) =
   match v with
   | n, PortOut -> fprintf fmt "Out <%d>" n
@@ -27,20 +30,19 @@ let cell fmt (c : Netlist.cell) =
   | Subtract (out, in1, in2) ->
       fprintf fmt "%a <- Subtract(%a, %a)" output out input in1 input in2
   | Id (out, in1) -> fprintf fmt "%a <- Id(%a)" output out input in1
-  | Convert (t_from, t_to, out, in1) ->
-      fprintf fmt "%a <- Convert(%a, %a, %a)" output out nltype t_from nltype
-        t_to input in1
+  | Convert (out, in1) ->
+      fprintf fmt "%a <- Convert(%a)" output out input in1
 
 let circuit fmt (c : Netlist.circuit) =
   fprintf fmt "Netlist.circuit %s {@." (Util.lst_to_string c.circuitName);
   fprintf fmt "    @[<v>";
   fprintf fmt "ports = [@,    @[<v>%a@]@,];"
     (pp_print_list port ~pp_sep:Util.colon_sep)
-    c.circuitPorts;
+    (NameMap.elements c.circuitPorts);
   fprintf fmt "@,";
   fprintf fmt "variables = [@,    @[<v>%a@]@,];"
-    (pp_print_list variable ~pp_sep:Util.colon_sep)
-    c.circuitVariables;
+    (pp_print_list variablePair ~pp_sep:Util.colon_sep)
+    (NameMap.elements c.circuitVariables);
   fprintf fmt "@,";
   fprintf fmt "cells = [@,    @[<v>%a@]@,];"
     (pp_print_list cell ~pp_sep:Util.colon_sep)

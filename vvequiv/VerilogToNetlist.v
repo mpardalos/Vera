@@ -4,6 +4,7 @@ Require Import Bitvector.
 Require Import Common.
 
 Require Import ZArith.
+Require Import BinNums.
 Require Import BinIntDef.
 Require Import String.
 Require Import FSets.
@@ -96,7 +97,12 @@ Definition transfer_ports (ports : list Verilog.port) : transf (list (name * por
 
 Definition unsupported_expression_error : string := "Unsupported expression".
 
-Definition transfer_bin_op (op : Verilog.op) : (Netlist.output -> Netlist.input -> Netlist.input -> Netlist.cell) :=
+Definition binop :=
+  forall (out : Netlist.output) (in1 in2 : Netlist.input),
+       Netlist.input_width in1 = Netlist.input_width in2 ->
+       Netlist.input_width in1 = Netlist.output_width out -> Netlist.cell.
+
+Definition transfer_bin_op (op : Verilog.op) : binop :=
   match op with
   | Verilog.Plus => Netlist.Add
   | Verilog.Minus => Netlist.Subtract
@@ -105,52 +111,58 @@ Definition transfer_bin_op (op : Verilog.op) : (Netlist.output -> Netlist.input 
 
 Definition invalid_bitvector_error : string := "Invalid bitvector (value might be too long for the number of bits)".
 
-Fixpoint transfer_expression (expr : TypedVerilog.expression) : transf (list Netlist.cell * Netlist.input) :=
-  match expr return transf (list Netlist.cell * Netlist.input) with
-  | TypedVerilog.IntegerLiteral w v =>
-      match Bitvector.mkBV_check v w with
-      | None => raise invalid_bitvector_error
-      | Some bv => ret ([], Netlist.InConstant bv)
-      end
-  | TypedVerilog.NamedExpression type name =>
-      t <- transfer_type type ;;
-      n <- transfer_name name ;;
-      ret ([], Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
-  | TypedVerilog.BinaryOp t op e1 e2 =>
-      pair1 <- transfer_expression e1 ;;
-      let (cells1, v1) := pair1 in
-      pair2 <- transfer_expression e2 ;;
-      let (cells2, v2) := pair2 in
-      t__result <- transfer_type t ;;
-      v__result <- fresh t__result ;;
-      let cells__op := [transfer_bin_op op (Netlist.OutVar v__result) v1 v2] in
-      let cells := cells1 ++ cells2 ++ cells__op in
-      ret (cells, Netlist.InVar v__result)
-  | TypedVerilog.Conversion v_t__from v_t__to e =>
-      pair <- transfer_expression e ;;
-      let (cells__expr, v__expr) := pair in
-      nl_t__from <- transfer_type v_t__from ;;
-      nl_t__to <- transfer_type v_t__to ;;
-      v__result <- fresh nl_t__to ;;
-      let cells__conv := [Netlist.Convert nl_t__from nl_t__to (Netlist.OutVar v__result) v__expr] in
-      let cells := (cells__expr ++ cells__conv) in
-      ret (cells, Netlist.InVar v__result)
-  end
+Equations transfer_expression : TypedVerilog.expression -> transf (list Netlist.cell * Netlist.input) :=
+| TypedVerilog.IntegerLiteral w v =>
+    match Bitvector.mkBV_check v w with
+    | None => raise invalid_bitvector_error
+    | Some bv => ret ([], Netlist.InConstant bv)
+    end
+| TypedVerilog.NamedExpression type name =>
+    t <- transfer_type type ;;
+    n <- transfer_name name ;;
+    ret ([], Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
+| TypedVerilog.BinaryOp t op e1 e2 =>
+    pair1 <- transfer_expression e1 ;;
+    let (cells1, v1) := pair1 in
+    pair2 <- transfer_expression e2 ;;
+    let (cells2, v2) := pair2 in
+    t__result <- transfer_type t ;;
+    v__result <- fresh t__result ;;
+    if Pos.eq_dec (Netlist.input_width v1) (Netlist.input_width v2)
+    then
+      if Pos.eq_dec (Netlist.input_width v1) (Netlist.output_width (Netlist.OutVar v__result))
+      then
+        let cells__op := [transfer_bin_op op (Netlist.OutVar v__result) v1 v2 _ _] in
+        let cells := cells1 ++ cells2 ++ cells__op in
+        ret (cells, Netlist.InVar v__result)
+      else raise "Nope"%string
+    else
+      raise "Nope"%string
+| TypedVerilog.Conversion v_t__from v_t__to e =>
+    pair <- transfer_expression e ;;
+    let (cells__expr, v__expr) := pair in
+    nl_t__from <- transfer_type v_t__from ;;
+    nl_t__to <- transfer_type v_t__to ;;
+    v__result <- fresh nl_t__to ;;
+    let cells__conv := [Netlist.Convert (Netlist.OutVar v__result) v__expr] in
+    let cells := (cells__expr ++ cells__conv) in
+    ret (cells, Netlist.InVar v__result)
 .
 
 Definition invalid_assign_err : string := "Invalid target for assign expression".
 
-Definition transfer_module_item (item : TypedVerilog.module_item) : transf (list Netlist.cell) :=
-  match item with
-  | TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression type name) from =>
-      t <- transfer_type type ;;
-      n <- transfer_name name ;;
-      let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in
-      pair <- transfer_expression from ;;
-      let (cells, result) := pair in
-      ret (cells ++ [ Netlist.Id outVar result ])
-  | TypedVerilog.ContinuousAssign _to _from => raise invalid_assign_err
-  end
+Equations transfer_module_item : TypedVerilog.module_item -> transf (list Netlist.cell) :=
+| TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression type name) from =>
+    t <- transfer_type type ;;
+    n <- transfer_name name ;;
+    let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in
+    pair <- transfer_expression from ;;
+    let (cells, result) := pair in
+    if Pos.eq_dec (Netlist.input_width result) (Netlist.output_width outVar)
+    then
+      ret (cells ++ [ Netlist.Id outVar result _])
+    else raise "Nope"%string
+| TypedVerilog.ContinuousAssign _to _from => raise invalid_assign_err
 .
 
 Definition transfer_body (items : list TypedVerilog.module_item) : transf (list Netlist.cell) :=
@@ -164,8 +176,9 @@ Definition transfer_module (vmodule : TypedVerilog.vmodule) : transf Netlist.cir
   st <- get ;;
   let vars := sourceVars ++ vars st in
   ret {| Netlist.circuitName := TypedVerilog.modName vmodule;
-        Netlist.circuitPorts := ports;
-        Netlist.circuitVariables := vars;
+        Netlist.circuitPorts := NameMap.from_list ports;
+        Netlist.circuitRegisters := NameMap.empty _;
+        Netlist.circuitVariables := NameMap.from_list (List.map (fun var => (Netlist.varName var, Netlist.varType var)) vars);
         Netlist.circuitCells := cells
       |}
 .
