@@ -198,8 +198,16 @@ Module TypedVerilog.
   | NamedExpression : vtype -> string -> expression
   .
 
+  Inductive Statement :=
+  | Block (body : list Statement)
+  | BlockingAssign (lhs rhs : expression)
+  | NonBlockingAssign (lhs rhs : expression)
+  | If (condition : expression) (trueBranch falseBranch : Statement)
+  .
+
   Inductive module_item : Set :=
   | ContinuousAssign : expression -> expression -> module_item
+  | AlwaysAtClock : Statement -> module_item
   .
 
   (** Verilog modules *)
