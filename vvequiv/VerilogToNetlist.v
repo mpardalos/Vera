@@ -21,6 +21,7 @@ From ExtLib Require Import Data.Monads.StateMonad.
 From ExtLib Require Import Data.Monads.EitherMonad.
 From ExtLib Require Import Data.List.
 Import MonadNotation.
+Import FunctorNotation.
 Open Scope monad_scope.
 Require Import Program.
 
@@ -151,7 +152,20 @@ Equations transfer_expression : TypedVerilog.expression -> transf (list Netlist.
 
 Definition invalid_assign_err : string := "Invalid target for assign expression".
 
+(*
+  Translated from the following
+https://github.com/CakeML/hardware/blob/8264e60f0f9d503c9d971991cf181012276f0c9b/compiler/RTLCompilerScript.sml#L233-L295
+*)
+
+Equations transfer_statement : TypedVerilog.Statement -> transf (list Netlist.cell) :=
+| TypedVerilog.Block body => fmap (@List.concat _) (mapT transfer_statement body)
+| TypedVerilog.BlockingAssign lhs rhs => _
+| TypedVerilog.NonBlockingAssign lhs rhs => _
+| TypedVerilog.If condition trueBranch falseBranch => _
+.
+
 Equations transfer_module_item : TypedVerilog.module_item -> transf (list Netlist.cell) :=
+| TypedVerilog.AlwaysAtClock body => transfer_statement body
 | TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression type name) from =>
     t <- transfer_type type ;;
     n <- transfer_name name ;;
