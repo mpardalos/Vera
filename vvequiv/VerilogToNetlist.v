@@ -27,9 +27,12 @@ Require Import Program.
 
 Record transf_state :=
   TransfState
-    { nextName : name;
-      nameMap : StrMap.t name;
-      vars : list Netlist.variable
+    { nextName : name
+    ; nameMap : StrMap.t name
+    ; vars : NameMap.t Netlist.nltype
+    ; cells : list Netlist.cell
+    ; substitutionsBlocking : NameMap.t Netlist.input
+    ; substitutionsNonblocking : NameMap.t Netlist.input
     }.
 
 Definition transf : Type -> Type := stateT transf_state (sum string).
@@ -37,37 +40,86 @@ Definition transf : Type -> Type := stateT transf_state (sum string).
 Instance Monad_transf : Monad transf := Monad_stateT transf_state (Monad_either string).
 
 Definition fresh_name : transf name :=
-  s <- get ;;
-  let s' := {| nextName := Pos.succ (nextName s) ; nameMap := nameMap s; vars := vars s |} in
-  put s' ;;
-  ret (nextName s)
-.
+  modify (fun s =>
+            {| nextName := Pos.succ (nextName s)
+            ; nameMap := nameMap s
+            ; vars := vars s
+            ; cells := cells s
+            ; substitutionsBlocking := substitutionsBlocking s
+            ; substitutionsNonblocking := substitutionsNonblocking s
+            |}) ;;
+  gets nextName .
 
 Definition transfer_name (vname : string) : transf name :=
-  st0 <- get ;;
-  match StrMap.find vname (nameMap st0) with
+  names <- gets nameMap ;;
+  match StrMap.find vname names with
   | Some n => ret n
   | None =>
       n <- fresh_name ;;
-      st1 <- get ;;
-      put {|
-          nextName := nextName st1 ;
-          nameMap := StrMap.add vname n (nameMap st1) ;
-          vars := vars st1
-        |} ;;
+      modify (fun s =>
+                {| nextName := nextName s
+                ; nameMap := StrMap.add vname n (nameMap s)
+                ; vars := vars s
+                ; cells := cells s
+                ; substitutionsBlocking := substitutionsBlocking s
+                ; substitutionsNonblocking := substitutionsNonblocking s
+                |}
+        ) ;;
       ret n
   end.
 
-Definition put_var (v : Netlist.variable) : transf () :=
-  st <- get ;;
-  put {| nextName := nextName st; nameMap := nameMap st; vars := vars st ++ [ v ] |}
+Definition put_var (varName : name) (varType : Netlist.nltype) : transf () :=
+  modify (fun s =>
+            {| nextName := nextName s
+            ; nameMap := nameMap s
+            ; vars := NameMap.add varName varType (vars s)
+            ; cells := cells s
+            ; substitutionsBlocking := substitutionsBlocking s
+            ; substitutionsNonblocking := substitutionsNonblocking s
+            |}) ;;
+  ret ()
+.
+
+Definition put_cells (cs : list Netlist.cell) : transf () :=
+  modify (fun s =>
+            {| nextName := nextName s
+            ; nameMap := nameMap s
+            ; vars := vars s
+            ; cells := cells s ++ cs
+            ; substitutionsBlocking := substitutionsBlocking s
+            ; substitutionsNonblocking := substitutionsNonblocking s
+            |}) ;;
+  ret ()
+.
+
+Definition set_substitution_blocking (lhs : name) (rhs : Netlist.input) : transf () :=
+  modify (fun s =>
+            {| nextName := nextName s
+            ; nameMap := nameMap s
+            ; vars := vars s
+            ; cells := cells s
+            ; substitutionsBlocking := NameMap.add lhs rhs (substitutionsBlocking s)
+            ; substitutionsNonblocking := substitutionsNonblocking s
+            |}) ;;
+  ret ()
+.
+
+Definition set_substitution_nonblocking (lhs : name) (rhs : Netlist.input) : transf () :=
+  modify (fun s =>
+            {| nextName := nextName s
+            ; nameMap := nameMap s
+            ; vars := vars s
+            ; cells := cells s
+            ; substitutionsBlocking := substitutionsBlocking s
+            ; substitutionsNonblocking := NameMap.add lhs rhs (substitutionsNonblocking s)
+            |}) ;;
+  ret ()
 .
 
 Definition fresh (t : Netlist.nltype) : transf (Netlist.variable) :=
   name <- fresh_name ;;
-  let var := {| Netlist.varType := t; Netlist.varName := name |} in
-  put_var var ;;
-  ret var
+  put_var name t ;;
+  ret {| Netlist.varType := t; Netlist.varName := name |}
 .
 
 Definition transfer_type (type : Verilog.vtype) : transf Netlist.nltype :=
@@ -80,12 +132,13 @@ Definition transfer_type (type : Verilog.vtype) : transf Netlist.nltype :=
   end
 .
 
-Definition transfer_variables (vars : list Verilog.variable) : transf (list Netlist.variable) :=
+Definition transfer_variables (vars : list Verilog.variable) : transf () :=
   mapT (fun v =>
           name <- transfer_name (Verilog.varName v) ;;
           type <- transfer_type (Verilog.varType v) ;;
-          ret (Netlist.Var type name)
-    ) vars
+          put_var name type
+    ) vars ;;
+  ret ()
 .
 
 
@@ -112,42 +165,37 @@ Definition transfer_bin_op (op : Verilog.op) : binop :=
 
 Definition invalid_bitvector_error : string := "Invalid bitvector (value might be too long for the number of bits)".
 
-Equations transfer_expression : TypedVerilog.expression -> transf (list Netlist.cell * Netlist.input) :=
-| TypedVerilog.IntegerLiteral w v =>
-    match Bitvector.mkBV_check v w with
-    | None => raise invalid_bitvector_error
-    | Some bv => ret ([], Netlist.InConstant bv)
-    end
+Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input :=
+| TypedVerilog.IntegerLiteral w v with Bitvector.mkBV_check v w => {
+  | None => raise invalid_bitvector_error
+  | Some bv => ret (Netlist.InConstant bv)
+  }
 | TypedVerilog.NamedExpression type name =>
+    (* TODO: Should look up blocking assignments map once implemented *)
     t <- transfer_type type ;;
     n <- transfer_name name ;;
-    ret ([], Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
+    ret (Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
 | TypedVerilog.BinaryOp t op e1 e2 =>
-    pair1 <- transfer_expression e1 ;;
-    let (cells1, v1) := pair1 in
-    pair2 <- transfer_expression e2 ;;
-    let (cells2, v2) := pair2 in
+    v1 <- transfer_expression e1 ;;
+    v2 <- transfer_expression e2 ;;
     t__result <- transfer_type t ;;
     v__result <- fresh t__result ;;
     if Pos.eq_dec (Netlist.input_width v1) (Netlist.input_width v2)
     then
       if Pos.eq_dec (Netlist.input_width v1) (Netlist.output_width (Netlist.OutVar v__result))
       then
-        let cells__op := [transfer_bin_op op (Netlist.OutVar v__result) v1 v2 _ _] in
-        let cells := cells1 ++ cells2 ++ cells__op in
-        ret (cells, Netlist.InVar v__result)
+        put_cells [transfer_bin_op op (Netlist.OutVar v__result) v1 v2 _ _] ;;
+        ret (Netlist.InVar v__result)
       else raise "Nope"%string
     else
       raise "Nope"%string
 | TypedVerilog.Conversion v_t__from v_t__to e =>
-    pair <- transfer_expression e ;;
-    let (cells__expr, v__expr) := pair in
+    v__expr <- transfer_expression e ;;
     nl_t__from <- transfer_type v_t__from ;;
     nl_t__to <- transfer_type v_t__to ;;
     v__result <- fresh nl_t__to ;;
-    let cells__conv := [Netlist.Convert (Netlist.OutVar v__result) v__expr] in
-    let cells := (cells__expr ++ cells__conv) in
-    ret (cells, Netlist.InVar v__result)
+    put_cells [Netlist.Convert (Netlist.OutVar v__result) v__expr] ;;
+    ret (Netlist.InVar v__result)
 .
 
 Definition invalid_assign_err : string := "Invalid target for assign expression".
@@ -157,50 +205,79 @@ Definition invalid_assign_err : string := "Invalid target for assign expression"
 https://github.com/CakeML/hardware/blob/8264e60f0f9d503c9d971991cf181012276f0c9b/compiler/RTLCompilerScript.sml#L233-L295
 *)
 
-Equations transfer_statement : TypedVerilog.Statement -> transf (list Netlist.cell) :=
-| TypedVerilog.Block body => fmap (@List.concat _) (mapT transfer_statement body)
-| TypedVerilog.BlockingAssign lhs rhs => _
-| TypedVerilog.NonBlockingAssign lhs rhs => _
-| TypedVerilog.If condition trueBranch falseBranch => _
+Equations transfer_statement : TypedVerilog.Statement -> transf () :=
+| TypedVerilog.Block body =>
+    mapT transfer_statement body ;;
+    ret ()
+| TypedVerilog.NonBlockingAssign (TypedVerilog.NamedExpression t__lhs vname__lhs) rhs =>
+    name__lhs <- transfer_name vname__lhs ;;
+    input__rhs <- transfer_expression rhs ;;
+    set_substitution_nonblocking name__lhs input__rhs
+| TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression t__lhs vname__lhs) rhs =>
+    raise "Blocking assignment not implemented"%string
+| TypedVerilog.BlockingAssign lhs rhs =>
+    raise "Invalid lhs for blocking assignment"%string
+| TypedVerilog.NonBlockingAssign lhs rhs =>
+    raise "Invalid lhs for non-blocking assignment"%string
+| TypedVerilog.If condition trueBranch falseBranch =>
+    raise "Conditionals not yet implemented"%string
 .
 
-Equations transfer_module_item : TypedVerilog.module_item -> transf (list Netlist.cell) :=
-| TypedVerilog.AlwaysAtClock body => transfer_statement body
+Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
+| TypedVerilog.AlwaysFF body => transfer_statement body
 | TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression type name) from =>
-    t <- transfer_type type ;;
-    n <- transfer_name name ;;
-    let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in
-    pair <- transfer_expression from ;;
-    let (cells, result) := pair in
-    if Pos.eq_dec (Netlist.input_width result) (Netlist.output_width outVar)
-    then
-      ret (cells ++ [ Netlist.Id outVar result _])
-    else raise "Nope"%string
+    raise "Continuous assignment not implemented"%string
+    (* t <- transfer_type type ;; *)
+    (* n <- transfer_name name ;; *)
+    (* let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in *)
+    (* result <- transfer_expression from ;; *)
+    (* if Pos.eq_dec (Netlist.input_width result) (Netlist.output_width outVar) *)
+    (* then put_cells [ Netlist.Id outVar result _] *)
+    (* else raise "Nope"%string *)
 | TypedVerilog.ContinuousAssign _to _from => raise invalid_assign_err
 .
 
-Definition transfer_body (items : list TypedVerilog.module_item) : transf (list Netlist.cell) :=
-  fmap (fun l => concat l) (mapT transfer_module_item items)
+Equations mk_register : Netlist.input -> Netlist.register_declaration :=
+| Netlist.InConstant bv =>
+    {| Netlist.init := bv
+    ; Netlist.driver := Netlist.InConstant bv
+    |}
+| Netlist.InVar v =>
+    {| Netlist.init := Bitvector.mkBV 0 (Netlist.type_width (Netlist.varType v))
+    ; Netlist.driver := Netlist.InVar v
+    |}
 .
 
 Definition transfer_module (vmodule : TypedVerilog.vmodule) : transf Netlist.circuit :=
-  sourceVars <- transfer_variables (TypedVerilog.modVariables vmodule) ;;
+  transfer_variables (TypedVerilog.modVariables vmodule) ;;
   ports <- transfer_ports (TypedVerilog.modPorts vmodule) ;;
-  cells <- transfer_body (TypedVerilog.modBody vmodule) ;;
-  st <- get ;;
-  let vars := sourceVars ++ vars st in
-  ret {| Netlist.circuitName := TypedVerilog.modName vmodule;
-        Netlist.circuitPorts := NameMap.from_list ports;
-        Netlist.circuitRegisters := NameMap.empty _;
-        Netlist.circuitVariables := NameMap.from_list (List.map (fun var => (Netlist.varName var, Netlist.varType var)) vars);
-        Netlist.circuitCells := cells
+  mapT transfer_module_item (TypedVerilog.modBody vmodule) ;;
+
+  finalState <- get ;;
+
+  let registers := NameMap.map mk_register (substitutionsNonblocking finalState) in
+
+  ret {| Netlist.circuitName := TypedVerilog.modName vmodule
+      ; Netlist.circuitPorts := NameMap.from_list ports
+      ; Netlist.circuitRegisters := registers
+      ; Netlist.circuitVariables := vars finalState
+      ; Netlist.circuitCells := cells finalState
       |}
 .
 
 Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmodule) : sum string (Netlist.circuit * positive) :=
-  let result := runStateT (transfer_module vmodule) {| nextName := start_name; nameMap := StrMap.empty name; vars := [] |} in
+  let result :=
+    runStateT
+      (transfer_module vmodule)
+      {| nextName := start_name
+      ; nameMap := StrMap.empty name
+      ; vars := NameMap.empty _
+      ; cells := []
+      ; substitutionsBlocking := NameMap.empty _
+      ; substitutionsNonblocking := NameMap.empty _
+      |} in
   match result with
   | inl err => inl err
-  | inr (result, final_state) => inr (result, nextName final_state)
+  | inr (circuit, final_state) => inr (circuit, nextName final_state)
   end
 .

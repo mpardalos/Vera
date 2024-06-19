@@ -207,7 +207,7 @@ Module TypedVerilog.
 
   Inductive module_item : Set :=
   | ContinuousAssign : expression -> expression -> module_item
-  | AlwaysAtClock : Statement -> module_item
+  | AlwaysFF : Statement -> module_item
   .
 
   (** Verilog modules *)

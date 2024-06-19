@@ -70,12 +70,15 @@ Module Netlist.
   | Convert o _ => o
   .
 
-  Inductive register_declaration :=
+  Record register_declaration :=
     MkRegister
-      (reg_type : nltype)
-      (init : bv)
-      (driver : name).
+      { init : bv
+      ; driver : Netlist.input
+      }
+  .
 
+  Definition register_width (reg : register_declaration) :=
+    input_width (driver reg).
 
   Record circuit :=
     Circuit

@@ -37,9 +37,9 @@ Record RegisterState (c : circuit) :=
   MkRegisterState
     { register_state_map :> NameMap.t bv
     ; register_state_wf :
-      forall n t i d,
-        NameMap.MapsTo n (MkRegister t i d) (circuitRegisters c)
-        -> (exists v, NameMap.MapsTo n v register_state_map /\ (width v = type_width t))
+      forall n reg,
+        NameMap.MapsTo n reg (circuitRegisters c)
+        -> (exists v, NameMap.MapsTo n v register_state_map /\ (width v = register_width reg))
 
     }.
 
