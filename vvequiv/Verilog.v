@@ -1,4 +1,6 @@
-Require Import Common.
+From vvequiv Require Import Common.
+From vvequiv Require Import Bitvector.
+Import Bitvector (bv).
 
 Require Import String.
 Require Import ZArith.
@@ -27,10 +29,10 @@ Module Verilog.
       auto.
   Defined.
 
-  Inductive op := Plus | Minus.
+  Inductive BinaryOperator := Plus | Minus.
 
   Inductive expression :=
-  | BinaryOp : op -> expression -> expression -> expression
+  | BinaryOp : BinaryOperator -> expression -> expression -> expression
   | IntegerLiteral : positive -> N -> expression
   | NamedExpression : string -> expression
   .
@@ -189,25 +191,40 @@ Module Verilog.
 End Verilog.
 
 Module TypedVerilog.
-  Export Verilog(vtype(..), op(..), variable(..), port(..)).
+  Export Verilog(vtype(..), BinaryOperator(..), variable(..), port(..)).
 
-  Inductive expression :=
-  | BinaryOp : vtype -> op -> expression -> expression -> expression
-  | Conversion : vtype -> vtype -> expression -> expression
-  | IntegerLiteral : positive -> N -> expression
-  | NamedExpression : vtype -> string -> expression
+  Definition bv_type (v : bv) :=
+    Verilog.Logic (N.pred (Npos (Bitvector.width v))) 0.
+
+  Inductive Expression : vtype -> Type :=
+  | BinaryOp :
+    forall {t}
+      (op : BinaryOperator)
+      (lhs rhs: Expression t),
+      Expression t
+  | Conversion :
+    forall (from_type to_type : vtype)
+      (operand: Expression from_type),
+      Expression to_type
+  | IntegerLiteral :
+    forall (value : Bitvector.bv),
+      Expression (bv_type value)
+  | NamedExpression :
+    forall (type : vtype)
+      (name : string),
+      Expression type
   .
 
   Inductive Statement :=
   | Block (body : list Statement)
-  | BlockingAssign (lhs rhs : expression)
-  | NonBlockingAssign (lhs rhs : expression)
-  | If (condition : expression) (trueBranch falseBranch : Statement)
+  | BlockingAssign {t} (lhs rhs : Expression t)
+  | NonBlockingAssign {t} (lhs rhs : Expression t)
+  | If {t} (condition : Expression t) (trueBranch falseBranch : Statement)
   .
 
-  Inductive module_item : Set :=
-  | ContinuousAssign : expression -> expression -> module_item
-  | AlwaysFF : Statement -> module_item
+  Inductive ModuleItem : Set :=
+  | ContinuousAssign {t} (lhs rhs : Expression t)
+  | AlwaysFF (body : Statement)
   .
 
   (** Verilog modules *)
@@ -216,6 +233,6 @@ Module TypedVerilog.
       { modName : string
       ; modPorts : list port
       ; modVariables : list variable
-      ; modBody : list module_item
+      ; modBody : list ModuleItem
       }.
 End TypedVerilog.
