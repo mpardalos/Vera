@@ -193,42 +193,60 @@ End Verilog.
 Module TypedVerilog.
   Export Verilog(vtype(..), BinaryOperator(..), variable(..), port(..)).
 
-  Definition bv_type (v : bv) :=
-    Verilog.Logic (N.pred (Npos (Bitvector.width v))) 0.
+  (* Equations bv_type (idx : Type) (bv : ) *)
+  Structure VerilogKind :=
+    { t :> Type
+    ; bv_type : Bitvector.bv -> t
+    }.
 
-  Inductive Expression : vtype -> Type :=
+  Definition vtype_kind : VerilogKind :=
+    {| t := vtype
+    ; bv_type v := Verilog.Logic (N.pred (N.pos (Bitvector.width v))) 0
+    |}.
+
+  Definition unit_kind : VerilogKind :=
+    {| t := unit
+    ; bv_type _ := tt
+    |}.
+
+  Inductive Expression {kind : VerilogKind} : kind -> Type :=
   | BinaryOp :
     forall {t}
       (op : BinaryOperator)
       (lhs rhs: Expression t),
       Expression t
   | Conversion :
-    forall (from_type to_type : vtype)
+    forall (from_type to_type : kind)
       (operand: Expression from_type),
       Expression to_type
   | IntegerLiteral :
     forall (value : Bitvector.bv),
-      Expression (bv_type value)
+      Expression (bv_type kind value)
   | NamedExpression :
-    forall (type : vtype)
+    forall (type : kind)
       (name : string),
       Expression type
   .
 
+  Definition SomeExpression := { k : VerilogKind & { t : k & Expression t}}.
+  Definition TypedExpression (t : vtype) := @Expression vtype_kind t.
+  Definition SomeTypedExpression := { t : vtype & TypedExpression t }.
+  Definition UntypedExpression := @Expression unit_kind tt.
+
   Inductive Statement :=
   | Block (body : list Statement)
-  | BlockingAssign {t} (lhs rhs : Expression t)
-  | NonBlockingAssign {t} (lhs rhs : Expression t)
-  | If {t} (condition : Expression t) (trueBranch falseBranch : Statement)
+  | BlockingAssign {k : VerilogKind} {t : k} (lhs rhs : Expression t)
+  | NonBlockingAssign {k : VerilogKind} {t : k} (lhs rhs : Expression t)
+  | If {k : VerilogKind} {t : k} (condition : Expression t) (trueBranch falseBranch : Statement)
   .
 
-  Inductive ModuleItem : Set :=
-  | ContinuousAssign {t} (lhs rhs : Expression t)
+  Inductive ModuleItem :=
+  | ContinuousAssign {k : VerilogKind} {t : k} (lhs rhs : Expression t)
   | AlwaysFF (body : Statement)
   .
 
   (** Verilog modules *)
-  Record vmodule : Set :=
+  Record vmodule :=
     MkMod
       { modName : string
       ; modPorts : list port
