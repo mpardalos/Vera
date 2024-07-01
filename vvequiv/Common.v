@@ -37,7 +37,19 @@ End NameMap.
 
 Module NameMapFacts := FMapFacts.Facts(NameMap).
 
-Module StrMap := FMapList.Make(String_as_OT).
+Module StrMap.
+  Include FMapList.Make(String_as_OT).
+  Include FMapFacts.
+
+  Fixpoint from_list {A} (l : list (key * A)) : t A :=
+    match l with
+    | nil => empty A
+    | (k,v)::xs => add k v (from_list xs)
+    end
+  .
+End StrMap.
+
+Module StrMapFacts := FMapFacts.Facts(StrMap).
 
 Equations opt_or : forall {A}, option A -> option A -> option A :=
   opt_or (Some x) _ := Some x;
