@@ -4,6 +4,7 @@ Require Import Psatz.
 Require Import Structures.OrderedType.
 Require Import Program.
 Require Import Arith.
+From Coq Require Import Logic.ProofIrrelevance.
 
 From Equations Require Import Equations.
 
@@ -18,6 +19,38 @@ Module Bitvector.
       ; width : positive
       ; wf : value < 2 ^ (Npos width)
       }.
+
+  Theorem bv_eq : forall v1 w1 v2 w2 prf1 prf2,
+      v1 = v2 ->
+      w1 = w2 ->
+      BV v1 w1 prf1 = BV v2 w2 prf2.
+  Proof.
+    intros * Hv Hw.
+    subst.
+    f_equal.
+    apply proof_irrelevance.
+  Qed.
+
+  Definition eq_dec : forall (bv1 bv2 : bv), { bv1 = bv2 } + { bv1 <> bv2 }.
+  Proof.
+    intros.
+    destruct bv1, bv2.
+    destruct (N.eq_dec value0 value1).
+    - subst.
+      destruct (Pos.eq_dec width0 width1).
+      + subst.
+        left.
+        f_equal.
+        apply proof_irrelevance.
+      + right.
+        intros contra.
+        inversion contra.
+        contradiction.
+    - right.
+      intros contra.
+      inversion contra.
+      contradiction.
+  Qed.
 
   Program Definition mkBV_check (v : N) (w : positive) :=
     if dec (v <? (Npos (2 ^ w)))%N
