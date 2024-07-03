@@ -141,7 +141,6 @@ Definition transfer_variables (vars : list Verilog.variable) : transf () :=
   ret ()
 .
 
-
 Definition transfer_ports (ports : list Verilog.port) : transf (list (name * port_direction)) :=
   mapT (fun p =>
           name <- transfer_name (Verilog.portName p) ;;
@@ -171,10 +170,13 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
   | Some bv => ret (Netlist.InConstant bv)
   }
 | TypedVerilog.NamedExpression type name =>
-    (* TODO: Should look up blocking assignments map once implemented *)
     t <- transfer_type type ;;
     n <- transfer_name name ;;
-    ret (Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
+    st <- get ;;
+    match NameMap.find n (substitutionsBlocking st) with
+    | Some e => ret e
+    | None => ret (Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
+    end
 | TypedVerilog.BinaryOp t op e1 e2 =>
     v1 <- transfer_expression e1 ;;
     v2 <- transfer_expression e2 ;;
@@ -214,7 +216,9 @@ Equations transfer_statement : TypedVerilog.Statement -> transf () :=
     input__rhs <- transfer_expression rhs ;;
     set_substitution_nonblocking name__lhs input__rhs
 | TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression t__lhs vname__lhs) rhs =>
-    raise "Blocking assignment not implemented"%string
+    name__lhs <- transfer_name vname__lhs ;;
+    input__rhs <- transfer_expression rhs ;;
+    set_substitution_blocking name__lhs input__rhs
 | TypedVerilog.BlockingAssign lhs rhs =>
     raise "Invalid lhs for blocking assignment"%string
 | TypedVerilog.NonBlockingAssign lhs rhs =>
@@ -255,7 +259,9 @@ Definition transfer_module (vmodule : TypedVerilog.vmodule) : transf Netlist.cir
 
   finalState <- get ;;
 
-  let registers := NameMap.map mk_register (substitutionsNonblocking finalState) in
+  let finalSubstitutions := NameMap.combine (substitutionsNonblocking finalState) (substitutionsBlocking finalState) in
+
+  let registers := NameMap.map mk_register finalSubstitutions in
 
   ret {| Netlist.circuitName := TypedVerilog.modName vmodule
       ; Netlist.circuitPorts := NameMap.from_list ports
@@ -281,3 +287,70 @@ Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmo
   | inr (circuit, final_state) => inr (circuit, nextName final_state)
   end
 .
+
+Section Examples.
+
+  Import TypedVerilog.
+
+  Let l n := Verilog.Logic (n - 1) 0.
+
+  Let l32 := l 32.
+
+  (* TODO: Nicer printing, match with parsing *)
+  Notation "'BV v w" := (Bitvector.BV v w _) (at level 200, only printing).
+
+  Let example1 := verilog_to_netlist
+    1
+    {|
+      TypedVerilog.modName := "test1a";
+      TypedVerilog.modPorts := [
+        Verilog.MkPort PortIn "in" ;
+        Verilog.MkPort PortOut "out"
+      ];
+      TypedVerilog.modVariables := [
+        Verilog.MkVariable l32 "in" ;
+        Verilog.MkVariable l32 "v1" ;
+        Verilog.MkVariable l32 "out"
+      ];
+      modBody := [
+        AlwaysFF (
+            Block [
+                NonBlockingAssign
+                  (NamedExpression (l 32) "v1")
+                  (IntegerLiteral 32 42) ;
+                BlockingAssign
+                  (NamedExpression l32 "v1")
+                  (BinaryOp l32 Plus
+                     (NamedExpression l32 "in")
+                     (IntegerLiteral 32 1)) ;
+                BlockingAssign
+                  (NamedExpression l32 "v1")
+                  (BinaryOp l32 Plus
+                     (NamedExpression l32 "out")
+                     (IntegerLiteral 32 1))
+              ]
+          )
+      ];
+    |}.
+
+  Compute example1.
+
+  Compute
+    match example1 with
+    | inl e => inl e
+    | inr (x, _) =>
+        inr (
+            NameMap.elements (Netlist.circuitPorts x),
+            NameMap.elements (Netlist.circuitVariables x),
+            NameMap.elements (Netlist.circuitRegisters x),
+            Netlist.circuitCells x
+          )
+    end.
+
+(* TODO:
+   We get this mapping, this is wrong
+   3 = 32'd42
+   5 = 2 + 32'd1
+   6 = 4 + 32'd1
+ *)
+End Examples.

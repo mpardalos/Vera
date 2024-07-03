@@ -27,11 +27,19 @@ Module NameMap.
   Include FMapFacts.
   Import ListNotations.
 
-  Fixpoint from_list {A} (l : list (positive * A)) : t A :=
+  Fixpoint insert_all {A} (l : list (positive * A)) (m : t A) : t A :=
     match l with
     | nil => empty A
-    | (k,v)::xs => add k v (from_list xs)
+    | (k,v)::xs => add k v (insert_all xs m)
     end
+  .
+
+  Definition from_list {A} (l : list (positive * A)) : t A :=
+    insert_all l (empty A)
+  .
+
+  Definition combine {A} (l r : t A) : t A :=
+    insert_all (elements l) r
   .
 End NameMap.
 
