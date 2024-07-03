@@ -32,8 +32,7 @@ Module Bitvector.
     bv_add_extend (BV v1 w wf1) (BV v2 ?(w) wf2) eq_refl := BV (v1 + v2) (w + 1) _.
   Next Obligation.
     enough (2 * N.pos (2 ^ w) = N.pos (2 ^ (w + 1))) by lia.
-    replace (2 * N.pos (2 ^ w)) with (2 * 2 ^ (Npos w)) by lia.
-    replace (N.pos (2 ^ (w + 1))) with (2 ^ (Npos w + 1)) by lia.
+    enough (2 * 2 ^ N.pos w = N.pos (2 ^ (w + 1))) by lia.
     rewrite <- N.pow_succ_r by lia.
     lia.
    Qed.
