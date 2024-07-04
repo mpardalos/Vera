@@ -162,11 +162,9 @@ Definition transfer_bin_op (op : Verilog.op) : binop :=
   end
 .
 
-Definition invalid_bitvector_error : string := "Invalid bitvector (value might be too long for the number of bits)".
-
 Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input :=
 | TypedVerilog.IntegerLiteral w v with Bitvector.mkBV_check v w => {
-  | None => raise invalid_bitvector_error
+  | None => raise  "Invalid bitvector (value might be too long for the number of bits)"%string
   | Some bv => ret (Netlist.InConstant bv)
   }
 | TypedVerilog.NamedExpression type name =>
@@ -199,8 +197,6 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
     put_cells [Netlist.Convert (Netlist.OutVar v__result) v__expr] ;;
     ret (Netlist.InVar v__result)
 .
-
-Definition invalid_assign_err : string := "Invalid target for assign expression".
 
 (*
   Translated from the following
@@ -238,7 +234,8 @@ Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
     (* if Pos.eq_dec (Netlist.input_width result) (Netlist.output_width outVar) *)
     (* then put_cells [ Netlist.Id outVar result _] *)
     (* else raise "Nope"%string *)
-| TypedVerilog.ContinuousAssign _to _from => raise invalid_assign_err
+| TypedVerilog.ContinuousAssign _to _from =>
+    raise "Invalid target for assign expression"%string
 .
 
 Equations mk_register : Netlist.input -> Netlist.register_declaration :=
@@ -259,19 +256,19 @@ Definition transfer_module (vmodule : TypedVerilog.vmodule) : transf Netlist.cir
 
   finalState <- get ;;
 
-  let finalSubstitutions := NameMap.combine (substitutionsNonblocking finalState) (substitutionsBlocking finalState) in
-
-  let registers := NameMap.map mk_register finalSubstitutions in
-
   ret {| Netlist.circuitName := TypedVerilog.modName vmodule
       ; Netlist.circuitPorts := NameMap.from_list ports
-      ; Netlist.circuitRegisters := registers
+      ; Netlist.circuitRegisters :=
+          NameMap.map mk_register
+            (NameMap.combine
+               (substitutionsNonblocking finalState)
+               (substitutionsBlocking finalState))
       ; Netlist.circuitVariables := vars finalState
       ; Netlist.circuitCells := cells finalState
       |}
 .
 
-Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmodule) : sum string (Netlist.circuit * positive) :=
+Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmodule) : sum string (Netlist.circuit * name) :=
   let result :=
     runStateT
       (transfer_module vmodule)
@@ -299,44 +296,41 @@ Section Examples.
   (* TODO: Nicer printing, match with parsing *)
   Notation "'BV v w" := (Bitvector.BV v w _) (at level 200, only printing).
 
-  Let example1 := verilog_to_netlist
-    1
-    {|
-      TypedVerilog.modName := "test1a";
-      TypedVerilog.modPorts := [
-        Verilog.MkPort PortIn "in" ;
-        Verilog.MkPort PortOut "out"
-      ];
-      TypedVerilog.modVariables := [
-        Verilog.MkVariable l32 "in" ;
-        Verilog.MkVariable l32 "v1" ;
-        Verilog.MkVariable l32 "out"
-      ];
-      modBody := [
-        AlwaysFF (
-            Block [
-                NonBlockingAssign
-                  (NamedExpression (l 32) "v1")
-                  (IntegerLiteral 32 42) ;
-                BlockingAssign
-                  (NamedExpression l32 "v1")
-                  (BinaryOp l32 Plus
-                     (NamedExpression l32 "in")
-                     (IntegerLiteral 32 1)) ;
-                BlockingAssign
-                  (NamedExpression l32 "v1")
-                  (BinaryOp l32 Plus
-                     (NamedExpression l32 "out")
-                     (IntegerLiteral 32 1))
-              ]
-          )
-      ];
-    |}.
-
-  Compute example1.
+  Let verilog1 :=
+        {|
+          TypedVerilog.modName := "test1a";
+          TypedVerilog.modPorts := [
+            Verilog.MkPort PortIn "in" ;
+            Verilog.MkPort PortOut "out"
+          ];
+          TypedVerilog.modVariables := [
+            Verilog.MkVariable l32 "in" ;
+            Verilog.MkVariable l32 "out";
+            Verilog.MkVariable l32 "v1"
+          ];
+          modBody := [
+            AlwaysFF (
+                Block [
+                    NonBlockingAssign
+                      (NamedExpression (l 32) "v1")
+                      (IntegerLiteral 32 42) ;
+                    BlockingAssign
+                      (NamedExpression l32 "v1")
+                      (BinaryOp l32 Plus
+                         (NamedExpression l32 "in")
+                         (BinaryOp l32 Plus (IntegerLiteral 32 1) (IntegerLiteral 32 1))) ;
+                    BlockingAssign
+                      (NamedExpression l32 "out")
+                      (BinaryOp l32 Plus
+                         (NamedExpression l32 "v1")
+                         (IntegerLiteral 32 1))
+                  ]
+              )
+          ];
+        |}.
 
   Compute
-    match example1 with
+    match verilog_to_netlist 1 verilog1 with
     | inl e => inl e
     | inr (x, _) =>
         inr (
@@ -346,11 +340,4 @@ Section Examples.
             Netlist.circuitCells x
           )
     end.
-
-(* TODO:
-   We get this mapping, this is wrong
-   3 = 32'd42
-   5 = 2 + 32'd1
-   6 = 4 + 32'd1
- *)
 End Examples.
