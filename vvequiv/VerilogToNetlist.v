@@ -122,21 +122,20 @@ Definition fresh (t : Netlist.nltype) : transf (Netlist.variable) :=
   ret {| Netlist.varType := t; Netlist.varName := name |}
 .
 
-Definition transfer_type (type : Verilog.vtype) : transf Netlist.nltype :=
+Definition transfer_type (type : Verilog.vtype) : Netlist.nltype :=
   (* Probably wrong but good enough for now*)
   match type with
-  | Verilog.Logic N0 N0 => ret (Netlist.Logic 1)
-  | Verilog.Logic (Npos n) N0 => ret (Netlist.Logic (n + 1))
-  | Verilog.Logic N0 (Npos n) => ret (Netlist.Logic (n + 1))
-  | Verilog.Logic (Npos n1) (Npos n2) => ret (Netlist.Logic (n1 - n2 + 1))
+  | Verilog.Logic N0 N0 => (Netlist.Logic 1)
+  | Verilog.Logic (Npos n) N0 => (Netlist.Logic (n + 1))
+  | Verilog.Logic N0 (Npos n) => (Netlist.Logic (n + 1))
+  | Verilog.Logic (Npos n1) (Npos n2) => (Netlist.Logic (n1 - n2 + 1))
   end
 .
 
 Definition transfer_variables (vars : list Verilog.variable) : transf () :=
   mapT (fun v =>
           name <- transfer_name (Verilog.varName v) ;;
-          type <- transfer_type (Verilog.varType v) ;;
-          put_var name type
+          put_var name (transfer_type (Verilog.varType v))
     ) vars ;;
   ret ()
 .
@@ -168,7 +167,7 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
   | Some bv => ret (Netlist.InConstant bv)
   }
 | TypedVerilog.NamedExpression type name =>
-    t <- transfer_type type ;;
+    let t := transfer_type type in
     n <- transfer_name name ;;
     st <- get ;;
     match NameMap.find n (substitutionsBlocking st) with
@@ -178,8 +177,7 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
 | TypedVerilog.BinaryOp t op e1 e2 =>
     v1 <- transfer_expression e1 ;;
     v2 <- transfer_expression e2 ;;
-    t__result <- transfer_type t ;;
-    v__result <- fresh t__result ;;
+    v__result <- fresh (transfer_type t) ;;
     if Pos.eq_dec (Netlist.input_width v1) (Netlist.input_width v2)
     then
       if Pos.eq_dec (Netlist.input_width v1) (Netlist.output_width (Netlist.OutVar v__result))
@@ -191,9 +189,7 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
       raise "Nope"%string
 | TypedVerilog.Conversion v_t__from v_t__to e =>
     v__expr <- transfer_expression e ;;
-    nl_t__from <- transfer_type v_t__from ;;
-    nl_t__to <- transfer_type v_t__to ;;
-    v__result <- fresh nl_t__to ;;
+    v__result <- fresh (transfer_type v_t__to) ;;
     put_cells [Netlist.Convert (Netlist.OutVar v__result) v__expr] ;;
     ret (Netlist.InVar v__result)
 .
