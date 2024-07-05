@@ -1,7 +1,8 @@
-Require Import Verilog.
-Require Import Netlist.
-Require Import Bitvector.
-Require Import Common.
+From vvequiv Require Import Verilog.
+From vvequiv Require Import Netlist.
+From vvequiv Require Import Bitvector.
+From vvequiv Require Import Common.
+From vvequiv Require EnvStack.
 
 Require Import ZArith.
 Require Import BinNums.
@@ -31,8 +32,8 @@ Record transf_state :=
     ; nameMap : StrMap.t name
     ; vars : NameMap.t Netlist.nltype
     ; cells : list Netlist.cell
-    ; substitutionsBlocking : NameMap.t Netlist.input
-    ; substitutionsNonblocking : NameMap.t Netlist.input
+    ; substitutionsBlocking : EnvStack.t Netlist.input
+    ; substitutionsNonblocking : EnvStack.t Netlist.input
     }.
 
 Definition transf : Type -> Type := stateT transf_state (sum string).
@@ -98,7 +99,7 @@ Definition set_substitution_blocking (lhs : name) (rhs : Netlist.input) : transf
             ; nameMap := nameMap s
             ; vars := vars s
             ; cells := cells s
-            ; substitutionsBlocking := NameMap.add lhs rhs (substitutionsBlocking s)
+            ; substitutionsBlocking := EnvStack.add lhs rhs (substitutionsBlocking s)
             ; substitutionsNonblocking := substitutionsNonblocking s
             |}) ;;
   ret ()
@@ -111,9 +112,41 @@ Definition set_substitution_nonblocking (lhs : name) (rhs : Netlist.input) : tra
             ; vars := vars s
             ; cells := cells s
             ; substitutionsBlocking := substitutionsBlocking s
-            ; substitutionsNonblocking := NameMap.add lhs rhs (substitutionsNonblocking s)
+            ; substitutionsNonblocking := EnvStack.add lhs rhs (substitutionsNonblocking s)
             |}) ;;
   ret ()
+.
+
+Definition push_block : transf () :=
+  modify (fun s =>
+            {| nextName := nextName s
+            ; nameMap := nameMap s
+            ; vars := vars s
+            ; cells := cells s
+            ; substitutionsBlocking := EnvStack.push (substitutionsBlocking s)
+            ; substitutionsNonblocking := EnvStack.push (substitutionsNonblocking s)
+            |}) ;;
+  ret ()
+.
+
+Definition pop_block : transf (NameMap.t Netlist.input * NameMap.t Netlist.input) :=
+  s <- get ;;
+  let (mBlockingEnv, substitutionsBlocking') := EnvStack.pop (substitutionsBlocking s) in
+  let (mNonblockingEnv, substitutionsNonblocking') := EnvStack.pop (substitutionsNonblocking s) in
+  match mBlockingEnv, mNonblockingEnv with
+  | Some benv, Some nbenv =>
+      modify (fun s =>
+                {| nextName := nextName s
+                ; nameMap := nameMap s
+                ; vars := vars s
+                ; cells := cells s
+                ; substitutionsBlocking := substitutionsBlocking'
+                ; substitutionsNonblocking := substitutionsNonblocking'
+                |}) ;;
+      ret (benv, nbenv)
+  | _, _ =>
+      raise "pop_block with an empty stack"%string
+  end
 .
 
 Definition fresh (t : Netlist.nltype) : transf (Netlist.variable) :=
@@ -170,7 +203,7 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
     let t := transfer_type type in
     n <- transfer_name name ;;
     st <- get ;;
-    match NameMap.find n (substitutionsBlocking st) with
+    match EnvStack.lookup n (substitutionsBlocking st) with
     | Some e => ret e
     | None => ret (Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
     end
@@ -257,8 +290,8 @@ Definition transfer_module (vmodule : TypedVerilog.vmodule) : transf Netlist.cir
       ; Netlist.circuitRegisters :=
           NameMap.map mk_register
             (NameMap.combine
-               (substitutionsNonblocking finalState)
-               (substitutionsBlocking finalState))
+               (EnvStack.flatten (substitutionsNonblocking finalState))
+               (EnvStack.flatten (substitutionsBlocking finalState)))
       ; Netlist.circuitVariables := vars finalState
       ; Netlist.circuitCells := cells finalState
       |}
@@ -272,8 +305,8 @@ Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmo
       ; nameMap := StrMap.empty name
       ; vars := NameMap.empty _
       ; cells := []
-      ; substitutionsBlocking := NameMap.empty _
-      ; substitutionsNonblocking := NameMap.empty _
+      ; substitutionsBlocking := EnvStack.empty _
+      ; substitutionsNonblocking := EnvStack.empty _
       |} in
   match result with
   | inl err => inl err
@@ -325,15 +358,23 @@ Section Examples.
           ];
         |}.
 
-  Compute
-    match verilog_to_netlist 1 verilog1 with
+  Definition map_right {A B C} (f : B -> C) (s : sum A B) : sum A C :=
+    match s with
     | inl e => inl e
-    | inr (x, _) =>
-        inr (
-            NameMap.elements (Netlist.circuitPorts x),
-            NameMap.elements (Netlist.circuitVariables x),
-            NameMap.elements (Netlist.circuitRegisters x),
-            Netlist.circuitCells x
-          )
-    end.
+    | inr x => inr (f x)
+    end
+  .
+
+  Compute
+    map_right
+      (fun (it : Netlist.circuit * name) =>
+         let (x, _) := it in
+         ( NameMap.elements (Netlist.circuitPorts x),
+           NameMap.elements (Netlist.circuitVariables x),
+           NameMap.elements (Netlist.circuitRegisters x),
+           Netlist.circuitCells x
+         )
+      ) (verilog_to_netlist 1 verilog1)
+  .
+
 End Examples.

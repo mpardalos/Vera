@@ -54,6 +54,12 @@ Module Netlist.
       (in1 in2 : input)
       (inputs_match : input_width in1 = input_width in2)
       (output_match : input_width in1 = output_width out)
+  | Mux
+      (out : output)
+      (select in1 in2 : input)
+      (select_width : input_width select = 1%positive)
+      (inputs_match : input_width in1 = input_width in2)
+      (output_match : input_width in1 = output_width out)
   | Id
       (out : output)
       (in1 : input)
@@ -66,6 +72,7 @@ Module Netlist.
   Equations cell_output : cell -> output :=
   | Add o _ _ _ _ => o
   | Subtract o _ _ _ _ => o
+  | Mux o _ _ _ _ _ _ => o
   | Id o _ _ => o
   | Convert o _ => o
   .
@@ -105,6 +112,11 @@ Module Netlist.
       /\ input_in_circuit c in2
   | c, Subtract out in1 in2 _ _ =>
       output_in_circuit c out
+      /\ input_in_circuit c in1
+      /\ input_in_circuit c in2
+  | c, Mux out select in1 in2 _ _ _ =>
+      output_in_circuit c out
+      /\ input_in_circuit c select
       /\ input_in_circuit c in1
       /\ input_in_circuit c in2
   | c, Id out in1 _ =>
