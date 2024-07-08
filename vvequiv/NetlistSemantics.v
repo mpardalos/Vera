@@ -4,6 +4,7 @@ From Coq Require Import BinPos.
 From Coq Require FMaps.
 From Coq Require FMapFacts.
 From Coq Require Import List.
+From Coq Require Import ssreflect.
 Import ListNotations.
 
 From vvequiv Require Import Netlist.
@@ -89,12 +90,11 @@ Set Primitive Projections.
 Equations varWidth : variable -> positive :=
   varWidth (Var (Logic w) _) := w.
 
-
 Equations get_var {c} (st : CircuitState c) (n : name) (name_present : NameMap.In n (variables st)) : { v : bv | NameMap.MapsTo n v (variables st) } :=
   get_var st n prf :=
-    (match NameMap.find n (variables st) as r return (NameMap.find n (variables st) = r -> { v : bv | NameMap.MapsTo n v (variables st) }) with
-     | Some x => fun _ => (@exist _ _ x _)
-     | None => fun eq => _
+    (match NameMap.find n (variables st) as r return (_ = r -> _) with
+     | Some x => fun eq => (@exist _ _ x eq)
+     | None => fun eq => False_rec _ _
      end) eq_refl.
 Next Obligation.
   rewrite <- NameMapFacts.not_find_in_iff in *.
@@ -105,12 +105,9 @@ Equations input_run {c} (st : CircuitState c) (i : input) (input_wf : input_in_c
   input_run st (InConstant const) _ := const;
   input_run st (InVar (Var t n)) i_wf := proj1_sig (get_var st n _).
 Next Obligation.
-  intros.
   unfold NameMap.In.
   edestruct circuit_to_state_variables.
-  - inversion i_wf.
-    rewrite NameMapFacts.find_mapsto_iff.
-    eauto.
+  - simp input_in_circuit in *.
   - intuition eauto.
 Qed.
 
@@ -118,17 +115,14 @@ Lemma input_run_width : forall {c} (st : CircuitState c) i input_wf,
     width (input_run st i input_wf) = input_width i.
 Proof.
   intros.
-  funelim (input_width i).
-  - simp input_run.
-    generalize (get_var st varName0 (input_run_obligations_obligation_1 c st (Logic w) varName0 input_wf)); intros [x Hx].
-    simpl in *.
-    inversion input_wf as [input_wf']; clear input_wf.
-    rewrite <- NameMapFacts.find_mapsto_iff in input_wf'.
-    edestruct circuit_to_state_variables as [x' [Hin Hwidth]]; eauto.
-    replace x with x'.
-    + simp type_width in *.
-    + eauto using NameMapFacts.MapsTo_fun.
-  - simp input_run. reflexivity.
+  funelim (input_width i); simp input_run; last done.
+  case (get_var st varName0 (input_run_obligations_obligation_1 c st (Logic w) varName0 input_wf)) => x Hx /=.
+  inversion input_wf as [input_wf'] => {input_wf}.
+  rewrite <- NameMapFacts.find_mapsto_iff in input_wf'.
+  edestruct circuit_to_state_variables as [x' [Hin Hwidth]]; first by eauto.
+  simp type_width in *.
+  replace x with x'; first done.
+  eauto using NameMapFacts.MapsTo_fun.
 Qed.
 
 Lemma variable_in_map_extend_other : forall (k : NameMap.key) (t : nltype) (n : name) (x: bv) (m : NameMap.t bv),
@@ -153,27 +147,29 @@ Proof.
   inversion H; subst; clear H.
   simp variable_in_map in *.
   destruct Hin as [xprev [Hmap Hwidth]].
-  compare n0 k; intros E.
+  compare n0 k => E.
   - subst.
     exists x.
     intuition.
     apply NameMapFacts.add_mapsto_iff.
-    intuition eauto.
+    auto.
   - exists xprev.
     intuition.
     apply NameMapFacts.add_mapsto_iff.
-    intuition eauto.
+    auto.
 Qed.
 
-Lemma variable_in_map_extend : forall (n k : name) (w : positive) (x: bv) (m : NameMap.t bv),
-    (n <> k \/ width x = w) ->
-    variable_in_map m (Var (Logic w) n) ->
-    variable_in_map (NameMap.add k x m) (Var (Logic w) n).
+Lemma variable_in_map_extend
+  (n k : name)
+  (w : positive)
+  (x: bv)
+  (m : NameMap.t bv) :
+  (n <> k \/ width x = w) ->
+  variable_in_map m (Var (Logic w) n) ->
+  variable_in_map (NameMap.add k x m) (Var (Logic w) n).
 Proof.
-  intros * H1 H2.
-  destruct H1.
-  - auto using variable_in_map_extend_other.
-  - auto using variable_in_map_extend_same.
+  move => [? | ?] H2.
+  all: auto using variable_in_map_extend_other, variable_in_map_extend_same.
 Qed.
 
 (* Ltac simpl_list_props := repeat (try rewrite Forall_forall in *; try rewrite Exists_exists in .*)
@@ -208,13 +204,11 @@ Next Obligation.
   + subst. eexists.
     NameMapFacts.map_iff.
     intuition eauto.
-    rewrite bv_add_truncate_width.
-    rewrite input_run_width.
-    rewrite output_match.
-    inversion cell_wf as [Hout _]. clear cell_wf.
+    rewrite bv_add_truncate_width input_run_width output_match.
+    destruct cell_wf as [Hout _].
     funelim (output_width _).
-    inversion eqargs; subst; clear eqargs.
-    clear inputs_match. clear output_match. clear in1. clear in2.
+    injection eqargs as <- <-.
+    (* clear inputs_match. clear output_match. clear in1. clear in2. *)
     simp output_in_circuit in *.
     destruct t as [w'].
     assert (Logic w = Logic w') as Hw by eauto using NameMapFacts.MapsTo_fun.
