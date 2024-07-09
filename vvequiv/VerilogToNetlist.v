@@ -149,6 +149,13 @@ Definition pop_block : transf (NameMap.t Netlist.input * NameMap.t Netlist.input
   end
 .
 
+Definition transfer_scoped {A} (f : transf A) : transf (A * (NameMap.t Netlist.input * NameMap.t Netlist.input)) :=
+  push_block ;;
+  result <- f ;;
+  assigns <- pop_block ;;
+  ret (result, assigns)
+.
+
 Definition fresh (t : Netlist.nltype) : transf (Netlist.variable) :=
   name <- fresh_name ;;
   put_var name t ;;
@@ -227,11 +234,41 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
     ret (Netlist.InVar v__result)
 .
 
+Definition namemap_union {A B} (l : NameMap.t A) (r : NameMap.t B)
+  : NameMap.t (option A * option B) :=
+  NameMap.fold
+    (fun k a acc =>
+       match NameMap.find k acc with
+       | Some (_, b) => NameMap.add k (Some a, b) acc
+       | None => NameMap.add k (Some a, None) acc
+       end
+    )
+    l
+    (NameMap.fold
+       (fun k b acc => NameMap.add k (None, Some b) acc)
+       r
+       (NameMap.empty (option A * option B))).
+
+Compute
+  NameMap.elements (
+      namemap_union
+        (NameMap.from_list [(1%positive, 100); (2%positive, 200)])
+        (NameMap.from_list [(2%positive, 20)])
+    )
+.
+
+Definition merge_if
+  (substitutionsTrue substitutionsFalse : NameMap.t Netlist.input)
+  : transf () :=
+  let substitutions_combined :=
+    namemap_union substitutionsTrue substitutionsFalse in
+  mapT _ substitutions_combined
+.
+
 (*
   Translated from the following
 https://github.com/CakeML/hardware/blob/8264e60f0f9d503c9d971991cf181012276f0c9b/compiler/RTLCompilerScript.sml#L233-L295
 *)
-
 Equations transfer_statement : TypedVerilog.Statement -> transf () :=
 | TypedVerilog.Block body =>
     mapT transfer_statement body ;;
@@ -240,16 +277,20 @@ Equations transfer_statement : TypedVerilog.Statement -> transf () :=
     name__lhs <- transfer_name vname__lhs ;;
     input__rhs <- transfer_expression rhs ;;
     set_substitution_nonblocking name__lhs input__rhs
+| TypedVerilog.NonBlockingAssign lhs rhs =>
+    raise "Invalid lhs for non-blocking assignment"%string
 | TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression t__lhs vname__lhs) rhs =>
     name__lhs <- transfer_name vname__lhs ;;
     input__rhs <- transfer_expression rhs ;;
     set_substitution_blocking name__lhs input__rhs
 | TypedVerilog.BlockingAssign lhs rhs =>
     raise "Invalid lhs for blocking assignment"%string
-| TypedVerilog.NonBlockingAssign lhs rhs =>
-    raise "Invalid lhs for non-blocking assignment"%string
 | TypedVerilog.If condition trueBranch falseBranch =>
-    raise "Conditionals not yet implemented"%string
+    '(_, (blockingTrue, nonblockingTrue)) <- transfer_scoped (transfer_statement trueBranch) ;;
+    '(_, (blockingFalse, nonblockingFalse)) <- transfer_scoped (transfer_statement falseBranch) ;;
+    let blockingCombined :=
+
+    ret ()
 .
 
 Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
