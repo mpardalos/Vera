@@ -5,6 +5,7 @@ Require Import BinIntDef.
 Require Import FMapPositive.
 Require Import List.
 Require Import FMaps.
+From ExtLib Require Import Structures.Maps.
 From Equations Require Import Equations.
 
 Variant port_direction := PortIn | PortOut.
@@ -81,3 +82,28 @@ Module StrMap := FMapList.Make(String_as_OT).
 Equations opt_or_else : forall {A}, option A -> A -> A :=
   opt_or_else (Some x) _ := x;
   opt_or_else None o := o.
+
+Instance NameMap_Map (V : Type) : Map name V (NameMap.t V) :=
+  {| empty := NameMap.empty V
+  ; add k v m := NameMap.add k v m
+  ; remove := @NameMap.remove V
+  ; lookup := @NameMap.find V
+  ; union := NameMap.map2 (fun l r =>
+                             match l, r with
+                             | Some x, _ => Some x
+                             | None, Some x => Some x
+                             | None, None => None
+                             end
+               )
+  |}.
+
+Instance NameMap_MapOk {V : Type} `{Map name V (NameMap.t V) } : MapOk (@eq name) (NameMap_Map V).
+Proof.
+  refine {| mapsto := (@NameMap.MapsTo V) |}; intros; simpl.
+  - eapply NameMap.empty_1.
+  - unfold NameMap.MapsTo. reflexivity.
+  - NameMapFacts.map_iff. intuition.
+  - NameMapFacts.map_iff. intuition.
+  - NameMapFacts.map_iff. intuition.
+  - NameMapFacts.map_iff. intuition.
+Qed.
