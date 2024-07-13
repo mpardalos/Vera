@@ -6,7 +6,18 @@ Require Import FMapPositive.
 Require Import List.
 Require Import FMaps.
 From ExtLib Require Import Structures.Maps.
+From ExtLib Require Import Structures.Traversable.
+From ExtLib Require Import Structures.Applicative.
+From ExtLib Require Import Structures.Functor.
+Import ApplicativeNotation.
+Import FunctorNotation.
 From Equations Require Import Equations.
+From Coq Require Import Psatz.
+
+Module CommonNotations.
+  Notation "{! x }" := (@exist _ _ x _).
+  Notation "{! x | p }" := (@exist _ _ x p).
+End CommonNotations.
 
 Variant port_direction := PortIn | PortOut.
 
@@ -26,6 +37,13 @@ Definition is_port_out dir :=
 
 Definition name := positive.
 
+Definition opt_or {A} (l r : option A) : option A :=
+  match l, r with
+  | (Some x), _ => Some x
+  | None, o => o
+  end
+.
+
 Module NameMap.
   Include PositiveMap.
   Include FMapFacts.
@@ -43,12 +61,6 @@ Module NameMap.
 
   Definition combine {A} (l r : NameMap.t A) : NameMap.t A :=
     insert_all (NameMap.elements l) r
-  .
-  Definition opt_or {A} (l r : option A) : option A :=
-    match l, r with
-    | (Some x), _ => Some x
-    | None, o => o
-    end
   .
 
   (* Lemma gcombine {A} k (l r : NameMap.t A) : *)
@@ -107,3 +119,39 @@ Proof.
   - NameMapFacts.map_iff. intuition.
   - NameMapFacts.map_iff. intuition.
 Qed.
+
+Equations traverse_namemap {A B : Type} {F : Type -> Type} `{AppF : Applicative F}
+  (f : A -> F B) (m : NameMap.t A) : F (NameMap.t B) := {
+  | f, (NameMap.Leaf _) => pure (NameMap.empty B)
+  | f, NameMap.Node l None r =>
+      @NameMap.Node B <$> traverse_namemap f l <*> @pure F AppF (option B) None <*> traverse_namemap f r
+  | f, NameMap.Node l (Some x) r =>
+      @NameMap.Node B <$> traverse_namemap f l <*> (Some <$> f x) <*> traverse_namemap f r
+  }
+.
+
+Program Instance NameMap_Traversable : Traversable NameMap.t :=
+  {|
+    mapT _ _ _ _ := traverse_namemap
+  |}.
+
+Equations traverse_namemap_with_keyx {A B : Type} {F : Type -> Type} `{AppF : Applicative F}
+  (k : NameMap.key) (f : NameMap.key -> A -> F B) (m : NameMap.t A) : F (NameMap.t B) := {
+  | k, f, (NameMap.Leaf _) => pure (NameMap.Leaf B)
+  | k, f, NameMap.Node l None r =>
+      @NameMap.Node B
+        <$> traverse_namemap_with_keyx (xO k) f l
+        <*> @pure F AppF (option B) None
+        <*> traverse_namemap_with_keyx (xI k) f r
+  | k, f, NameMap.Node l (Some x) r =>
+      @NameMap.Node B
+        <$> traverse_namemap_with_keyx (xO k) f l
+        <*> (Some <$> f k x)
+        <*> traverse_namemap_with_keyx (xI k) f r
+  }
+.
+
+Definition traverse_namemap_with_key
+  {A B : Type} {F : Type -> Type} `{AppF : Applicative F}
+  (f : NameMap.key -> A -> F B) (m : NameMap.t A) : F (NameMap.t B) :=
+  traverse_namemap_with_keyx xH f m.

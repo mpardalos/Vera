@@ -2,18 +2,22 @@ From vvequiv Require Import Verilog.
 From vvequiv Require Import Netlist.
 From vvequiv Require Import Bitvector.
 From vvequiv Require Import Common.
+Import CommonNotations.
 From vvequiv Require EnvStack.
 
-Require Import ZArith.
-Require Import BinNums.
-Require Import BinIntDef.
-Require Import String.
-Require Import FSets.
+From Coq Require Import ZArith.
+From Coq Require Import BinNums.
+From Coq Require Import BinIntDef.
+From Coq Require Import String.
+From Coq Require Import FSets.
+From Coq Require Import Psatz.
+From Coq Require ssreflect.
 
 Require Import List.
 Import ListNotations.
 
 From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Structures.Applicative.
 From ExtLib Require Import Structures.MonadState.
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.Functor.
@@ -25,6 +29,8 @@ Import MonadNotation.
 Import FunctorNotation.
 Open Scope monad_scope.
 Require Import Program.
+
+From Equations Require Import Equations.
 
 Record transf_state :=
   TransfState
@@ -156,10 +162,10 @@ Definition transfer_scoped {A} (f : transf A) : transf (A * (NameMap.t Netlist.i
   ret (result, assigns)
 .
 
-Definition fresh (t : Netlist.nltype) : transf (Netlist.variable) :=
+Program Definition fresh (t : Netlist.nltype) : transf {v : Netlist.variable | Netlist.varType v = t} :=
   name <- fresh_name ;;
   put_var name t ;;
-  ret {| Netlist.varType := t; Netlist.varName := name |}
+  ret {! {| Netlist.varType := t; Netlist.varName := name |} }
 .
 
 Definition transfer_type (type : Verilog.vtype) : Netlist.nltype :=
@@ -217,7 +223,7 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
 | TypedVerilog.BinaryOp t op e1 e2 =>
     v1 <- transfer_expression e1 ;;
     v2 <- transfer_expression e2 ;;
-    v__result <- fresh (transfer_type t) ;;
+    '{! v__result } <- fresh (transfer_type t) ;;
     if Pos.eq_dec (Netlist.input_width v1) (Netlist.input_width v2)
     then
       if Pos.eq_dec (Netlist.input_width v1) (Netlist.output_width (Netlist.OutVar v__result))
@@ -229,7 +235,7 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
       raise "Nope"%string
 | TypedVerilog.Conversion v_t__from v_t__to e =>
     v__expr <- transfer_expression e ;;
-    v__result <- fresh (transfer_type v_t__to) ;;
+    '{! v__result } <- fresh (transfer_type v_t__to) ;;
     put_cells [Netlist.Convert (Netlist.OutVar v__result) v__expr] ;;
     ret (Netlist.InVar v__result)
 .
@@ -249,21 +255,100 @@ Definition namemap_union {A B} (l : NameMap.t A) (r : NameMap.t B)
        r
        (NameMap.empty (option A * option B))).
 
-Compute
-  NameMap.elements (
-      namemap_union
-        (NameMap.from_list [(1%positive, 100); (2%positive, 200)])
-        (NameMap.from_list [(2%positive, 20)])
-    )
+Equations merge_if1
+  {w : positive}
+  (out : { o : Netlist.output | Netlist.output_width o = w } )
+  (cond : { c : Netlist.input | Netlist.input_width c = 1%positive })
+  (default trueBranch falseBranch : option {i : Netlist.input | Netlist.input_width i = w})
+  : transf () := {
+    | {! out }, {! cond }, _, Some {! t }, Some {! f } =>
+      put_cells [Netlist.Mux out cond t f _ _ _]
+    | {! out }, {! cond }, Some {! def }, Some {! t }, None =>
+      put_cells [Netlist.Mux out cond t def _ _ _]
+    | {! out }, {! cond }, Some {! def }, None, Some {! f } =>
+      put_cells [Netlist.Mux out cond def f _ _ _]
+    | _, _, _, _, _ => raise "Invalid state in merge_if"%string;
+  }
 .
 
-Definition merge_if
-  (substitutionsTrue substitutionsFalse : NameMap.t Netlist.input)
-  : transf () :=
-  let substitutions_combined :=
-    namemap_union substitutionsTrue substitutionsFalse in
-  mapT _ substitutions_combined
+
+Definition decide_or_fail {P : Prop} (dec : { P } + { ~ P }) (msg : string) : transf P :=
+  match dec with
+  | left prf => ret prf
+  | right _ => raise msg
+  end
 .
+
+Ltac crush_nl :=
+  repeat match goal with
+    | t : Netlist.nltype |- _ => destruct t; simpl
+    (* | i : Netlist.input |- _ => destruct i; simpl *)
+    | o : Netlist.output |- _ => destruct o; simpl
+    end;
+  (* repeat match goal with *)
+  (*   | e : (_ ≈ _)%vtype |- _ => unfold "≈"%vtype in e; simpl in e *)
+  (*   end; *)
+  try lia.
+
+Section merge_if.
+  Import ssreflect.
+
+  Program Definition merge_if
+    (cond : Netlist.input)
+    (defaults : NameMap.t Netlist.input)
+    (substitutionsTrue substitutionsFalse : NameMap.t Netlist.input)
+    : transf () :=
+    cond_ok <- decide_or_fail
+                (Pos.eq_dec (Netlist.input_width cond) 1)
+                "if condition must have width 1" ;;
+    let substitutions_combined : NameMap.t (option Netlist.input * option Netlist.input) :=
+      namemap_union substitutionsTrue substitutionsFalse in
+    traverse_namemap_with_key (
+        fun (n : name) (it : (option Netlist.input * option Netlist.input)) =>
+          st <- get ;;
+          let (trueBranch, falseBranch) := it in
+          let default :=
+            opt_or
+              (NameMap.find n defaults)
+              (option_map (fun t => Netlist.InVar (Netlist.Var t n))
+                (NameMap.find n (vars st)))
+          in
+          match default, trueBranch, falseBranch with
+          | _, Some t, Some f =>
+              width_ok <- decide_or_fail
+                          (Pos.eq_dec (Netlist.input_width t) (Netlist.input_width f))
+                          "Incompatible widths in conditional";;
+              out <- fresh (Netlist.input_type t) ;;
+              put_cells [Netlist.Mux (Netlist.OutVar out) cond t f _ _ _]
+          | Some def, Some t, None =>
+              width_ok <- decide_or_fail
+                          (Pos.eq_dec (Netlist.input_width def) (Netlist.input_width t))
+                          "Incompatible widths in conditional";;
+              out <- fresh (Netlist.input_type t) ;;
+              put_cells [Netlist.Mux (Netlist.OutVar out) cond t def _ _ _]
+          | Some def, None, Some f =>
+              width_ok <- decide_or_fail
+                          (Pos.eq_dec (Netlist.input_width def) (Netlist.input_width f))
+                          "Incompatible widths in conditional";;
+              out <- fresh (Netlist.input_type f) ;;
+              put_cells [Netlist.Mux (Netlist.OutVar out) cond def f _ _ _]
+          | _, _, _ => raise "Invalid state in merge_if"%string
+          end
+      ) substitutions_combined ;;
+    ret ()
+  .
+  Next Obligation.
+    unfold Netlist.input_type in *.
+    destruct out as [outType outName].
+    simpl in *; subst; simp output_width.
+    reflexivity.
+  Qed.
+  Next Obligation. (* Width of def *) Admitted.
+  Next Obligation. (* Width of def *) Admitted.
+  Next Obligation. intuition discriminate. Qed.
+  Next Obligation. intuition discriminate. Qed.
+  Next Obligation. intuition discriminate. Qed.
+End merge_if.
 
 (*
   Translated from the following
@@ -286,12 +371,20 @@ Equations transfer_statement : TypedVerilog.Statement -> transf () :=
 | TypedVerilog.BlockingAssign lhs rhs =>
     raise "Invalid lhs for blocking assignment"%string
 | TypedVerilog.If condition trueBranch falseBranch =>
+    st <- get ;;
+    let defaults := EnvStack.flatten (substitutionsBlocking st) in
+    condInput <- transfer_expression condition ;;
     '(_, (blockingTrue, nonblockingTrue)) <- transfer_scoped (transfer_statement trueBranch) ;;
     '(_, (blockingFalse, nonblockingFalse)) <- transfer_scoped (transfer_statement falseBranch) ;;
-    let blockingCombined :=
-
+    merge_if condInput defaults blockingTrue blockingFalse ;;
+    merge_if condInput defaults nonblockingTrue nonblockingFalse ;;
     ret ()
 .
+Next Obligation. etransitivity; eauto. Qed.
+Next Obligation. Admitted.
+Next Obligation. etransitivity; eauto. Qed.
+Next Obligation. etransitivity; eauto. Qed.
+Next Obligation. Admitted.
 
 Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
 | TypedVerilog.AlwaysFF body => transfer_statement body
@@ -359,40 +452,39 @@ Section Examples.
 
   Import TypedVerilog.
 
-  Let l n := Verilog.Logic (n - 1) 0.
-
-  Let l32 := l 32.
+  Local Open Scope N.
 
   (* TODO: Nicer printing, match with parsing *)
   Notation "'BV v w" := (Bitvector.BV v w _) (at level 200, only printing).
+
+  Notation "[ hi .: lo ]" := (Verilog.Logic hi lo).
 
   Let verilog1 :=
         {|
           TypedVerilog.modName := "test1a";
           TypedVerilog.modPorts := [
-            Verilog.MkPort PortIn "in" ;
+            Verilog.MkPort PortIn "cond" ;
             Verilog.MkPort PortOut "out"
           ];
           TypedVerilog.modVariables := [
-            Verilog.MkVariable l32 "in" ;
-            Verilog.MkVariable l32 "out";
-            Verilog.MkVariable l32 "v1"
+            Verilog.MkVariable [31.:0] "v1" ;
+            Verilog.MkVariable [0.:0] "cond" ;
+            Verilog.MkVariable [31.:0] "out"
           ];
           modBody := [
             AlwaysFF (
                 Block [
-                    NonBlockingAssign
-                      (NamedExpression (l 32) "v1")
-                      (IntegerLiteral 32 42) ;
+                    If (NamedExpression [0.:0] "cond")
+                      (NonBlockingAssign
+                        (NamedExpression [31.:0] "v1")
+                        (IntegerLiteral 32 42))
+                      (NonBlockingAssign
+                        (NamedExpression [31.:0] "v1")
+                        (IntegerLiteral 32 84)) ;
                     BlockingAssign
-                      (NamedExpression l32 "v1")
-                      (BinaryOp l32 Plus
-                         (NamedExpression l32 "in")
-                         (BinaryOp l32 Plus (IntegerLiteral 32 1) (IntegerLiteral 32 1))) ;
-                    BlockingAssign
-                      (NamedExpression l32 "out")
-                      (BinaryOp l32 Plus
-                         (NamedExpression l32 "v1")
+                      (NamedExpression [31.:0] "out")
+                      (BinaryOp [31.:0] Plus
+                         (NamedExpression [31.:0] "v1")
                          (IntegerLiteral 32 1))
                   ]
               )

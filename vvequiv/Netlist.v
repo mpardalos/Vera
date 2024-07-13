@@ -36,12 +36,18 @@ Module Netlist.
     input_width (InVar (Var (Logic w) _)) := w;
     input_width (InConstant (BV _ w _)) := w.
 
+  Definition input_type (i : input) : nltype :=
+    Logic (input_width i).
+
   Inductive output :=
   | OutVar : variable -> output
   .
 
   Equations output_width : output -> positive :=
     output_width (OutVar (Var (Logic w) _)) := w.
+
+  Definition output_type (o : output) : nltype :=
+    Logic (output_width o).
 
   Inductive cell :=
   | Add
