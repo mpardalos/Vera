@@ -14,6 +14,7 @@ Module SMT.
   | BVVar : T -> qfbv
   | BVZeroExtend : positive -> qfbv -> qfbv
   | BVExtract : N -> N -> qfbv -> qfbv
+  | CoreITE : qfbv -> qfbv -> qfbv -> qfbv
   .
 
   Arguments qfbv : clear implicits.

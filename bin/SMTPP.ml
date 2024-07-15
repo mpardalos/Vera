@@ -19,6 +19,8 @@ module SMT (Name : Formattable) = struct
         fprintf fmt "((_ zero_extend %d) %a)" num qfbv f
     | VVEquiv.SMT.BVExtract (hi, lo, f) ->
         fprintf fmt "((_ extract %d %d) %a)" hi lo qfbv f
+    | VVEquiv.SMT.CoreITE (cond, ifT, ifF) ->
+        fprintf fmt "(ite %a %a %a)" qfbv cond qfbv ifT qfbv ifF
 
   let sort fmt bv_sz = fprintf fmt "(_ BitVec %d)" bv_sz
 

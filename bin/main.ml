@@ -31,6 +31,11 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
       Z3.BitVector.mk_zero_ext z3_ctx num (qfbv_formula_to_z3 var_ctx z3_ctx f)
   | VVEquiv.SMT.BVExtract (hi, lo, f) ->
       Z3.BitVector.mk_extract z3_ctx hi lo (qfbv_formula_to_z3 var_ctx z3_ctx f)
+  | VVEquiv.SMT.CoreITE (select, ifT, ifF) ->
+      Z3.Boolean.mk_ite z3_ctx
+        (qfbv_formula_to_z3 var_ctx z3_ctx select)
+        (qfbv_formula_to_z3 var_ctx z3_ctx ifT)
+        (qfbv_formula_to_z3 var_ctx z3_ctx ifF)
 (* Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" v.value) v.width *)
 
 let smt_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
