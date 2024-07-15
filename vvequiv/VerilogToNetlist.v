@@ -230,9 +230,9 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
       then
         put_cells [transfer_bin_op op (Netlist.OutVar v__result) v1 v2 _ _] ;;
         ret (Netlist.InVar v__result)
-      else raise "Nope"%string
+      else raise "Incorrect output width in Verilog BinaryOp"%string
     else
-      raise "Nope"%string
+      raise "Incompatible argument widths in Verilog BinaryOp"%string
 | TypedVerilog.Conversion v_t__from v_t__to e =>
     v__expr <- transfer_expression e ;;
     '{! v__result } <- fresh (transfer_type v_t__to) ;;
