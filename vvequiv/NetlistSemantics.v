@@ -240,6 +240,9 @@ Equations circuit_run
     List.fold_left (fun st cell => cell_run st (proj1_sig cell) _) (list_with_in cells) st_init.
 Next Obligation.
   destruct c_wf.
-  rewrite Forall_forall in *.
+  match goal with
+  | H : Forall _ _ |- _ =>
+      rewrite Forall_forall in H
+  end.
   eauto.
 Qed.

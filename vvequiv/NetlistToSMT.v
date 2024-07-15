@@ -54,7 +54,14 @@ Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
       then SMT.BVExtract (Npos to - 1) 0 in_formula
       else SMT.BVZeroExtend (to - from) in_formula
     in
-    (output_name out, formula)
+    (output_name out, formula);
+  cell_formula (Netlist.Mux out select ifT ifF _ _ _) :=
+    let select_formula := input_formula select in
+    let ifT_formula := input_formula ifT in
+    let ifF_formula := input_formula ifF in
+    ( output_name out
+      , SMT.CoreITE select_formula ifT_formula ifF_formula
+    )
 .
 
 Fixpoint netlist_to_formulas_acc
