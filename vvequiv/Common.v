@@ -11,8 +11,10 @@ From ExtLib Require Import Structures.Applicative.
 From ExtLib Require Import Structures.Functor.
 Import ApplicativeNotation.
 Import FunctorNotation.
+
 From Equations Require Import Equations.
 From Coq Require Import Psatz.
+From Coq Require Import ssreflect.
 
 Module CommonNotations.
   Notation "{! x }" := (@exist _ _ x _).
@@ -38,9 +40,9 @@ Definition is_port_out dir :=
 Definition name := positive.
 
 Definition opt_or {A} (l r : option A) : option A :=
-  match l, r with
-  | (Some x), _ => Some x
-  | None, o => o
+  match l with
+  | Some x => Some x
+  | None => r
   end
 .
 
@@ -48,6 +50,7 @@ Module NameMap.
   Include PositiveMap.
   Include FMapFacts.
   Import ListNotations.
+
   Fixpoint insert_all {A} (l : list (name * A)) (m : NameMap.t A) : NameMap.t A :=
     match l with
     | nil => m
@@ -59,33 +62,17 @@ Module NameMap.
     insert_all l (NameMap.empty A)
   .
 
-  Definition combine {A} (l r : NameMap.t A) : NameMap.t A :=
-    insert_all (NameMap.elements l) r
-  .
+  Definition combine {A} (l r : NameMap.t A) : NameMap.t A := map2 opt_or l r.
 
-  (* Lemma gcombine {A} k (l r : NameMap.t A) : *)
-  (*   NameMap.find k (combine l r) = opt_or (NameMap.find k l) (NameMap.find k r) *)
-  (* . *)
-  (* Proof. *)
-  (*   unfold combine. *)
-  (*   generalize dependent k. *)
-  (*   generalize dependent r. *)
-  (*   induction l using NameMapProperties.map_induction; intros. *)
-  (*   - replace (NameMap.elements l) with (@nil (name * A)). *)
-  (*     replace (NameMap.find k l) with (@None A). *)
-  (*     reflexivity. *)
-  (*     + symmetry. *)
-  (*       apply NameMapFacts.not_find_in_iff. *)
-  (*       unfold NameMap.Empty in *. *)
-  (*       unfold NameMap.In in *. *)
-  (*       intros [c contra]. *)
-  (*       specialize (H k c). *)
-  (*       contradiction. *)
-  (*     + symmetry. *)
-  (*       apply NameMapProperties.elements_Empty. *)
-  (*       eauto. *)
-  (*   - admit. *)
-  (* Admitted. *)
+  Lemma gcombine {A} k (l r : NameMap.t A) :
+    NameMap.find k (combine l r) = opt_or (NameMap.find k l) (NameMap.find k r)
+  .
+  Proof.
+    unfold combine.
+    rewrite gmap2; try by reflexivity.
+    destruct (NameMap.find k l) eqn:El; try by reflexivity.
+    destruct (NameMap.find k r) eqn:Er; try by reflexivity.
+  Qed.
 End NameMap.
 
 Module NameMapFacts := FMapFacts.Facts(NameMap).
@@ -135,23 +122,6 @@ Program Instance NameMap_Traversable : Traversable NameMap.t :=
     mapT _ _ _ _ := traverse_namemap
   |}.
 
-Equations traverse_namemap_with_keyx {A B : Type} {F : Type -> Type} `{AppF : Applicative F}
-  (k : NameMap.key) (f : NameMap.key -> A -> F B) (m : NameMap.t A) : F (NameMap.t B) := {
-  | k, f, (NameMap.Leaf _) => pure (NameMap.Leaf B)
-  | k, f, NameMap.Node l None r =>
-      @NameMap.Node B
-        <$> traverse_namemap_with_keyx (xO k) f l
-        <*> @pure F AppF (option B) None
-        <*> traverse_namemap_with_keyx (xI k) f r
-  | k, f, NameMap.Node l (Some x) r =>
-      @NameMap.Node B
-        <$> traverse_namemap_with_keyx (xO k) f l
-        <*> (Some <$> f k x)
-        <*> traverse_namemap_with_keyx (xI k) f r
-  }
-.
-
-Definition traverse_namemap_with_key
-  {A B : Type} {F : Type -> Type} `{AppF : Applicative F}
+Definition traverse_namemap_with_key {A B : Type} {F : Type -> Type} `{AppF : Applicative F}
   (f : NameMap.key -> A -> F B) (m : NameMap.t A) : F (NameMap.t B) :=
-  traverse_namemap_with_keyx xH f m.
+  sequence (NameMap.mapi f m).

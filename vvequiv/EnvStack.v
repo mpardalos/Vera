@@ -6,7 +6,7 @@ From Equations Require Import Equations.
 
 Definition t A := list (NameMap.t A).
 
-Definition empty (A : Type) : t A := nil.
+Definition empty (A : Type) : t A := [NameMap.empty A].
 
 Equations lookup {A} : NameMap.key -> t A -> option A :=
   lookup n [] := None;
@@ -51,5 +51,11 @@ Section Correct.
   Lemma lookup_empty :
     forall A (E : t A) k,
     lookup k (empty A) = None.
-  Proof. reflexivity. Qed.
+  Proof.
+    intros.
+    unfold empty.
+    simp lookup.
+    rewrite NameMapFacts.empty_o.
+    reflexivity.
+  Qed.
 End Correct.

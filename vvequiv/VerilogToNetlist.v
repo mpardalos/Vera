@@ -22,9 +22,11 @@ From ExtLib Require Import Structures.MonadState.
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.Functor.
 From ExtLib Require Import Structures.Traversable.
+From ExtLib Require Import Structures.Monoid.
 From ExtLib Require Import Data.Monads.StateMonad.
 From ExtLib Require Import Data.Monads.EitherMonad.
 From ExtLib Require Import Data.List.
+From ExtLib Require Import Data.String.
 Import MonadNotation.
 Import FunctorNotation.
 Open Scope monad_scope.
@@ -45,6 +47,17 @@ Record transf_state :=
 Definition transf : Type -> Type := stateT transf_state (sum string).
 
 Instance Monad_transf : Monad transf := Monad_stateT transf_state (Monad_either string).
+
+Let run_transf_test {T} (a : transf T) :=
+      runStateT
+        a
+        {| nextName := 1%positive
+        ; nameMap := StrMap.empty name
+        ; vars := NameMap.empty _
+        ; cells := []
+        ; substitutionsBlocking := EnvStack.empty _
+        ; substitutionsNonblocking := EnvStack.empty _
+        |}.
 
 Definition fresh_name : transf name :=
   modify (fun s =>
@@ -242,35 +255,13 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
 
 Definition namemap_union {A B} (l : NameMap.t A) (r : NameMap.t B)
   : NameMap.t (option A * option B) :=
-  NameMap.fold
-    (fun k a acc =>
-       match NameMap.find k acc with
-       | Some (_, b) => NameMap.add k (Some a, b) acc
-       | None => NameMap.add k (Some a, None) acc
-       end
-    )
-    l
-    (NameMap.fold
-       (fun k b acc => NameMap.add k (None, Some b) acc)
-       r
-       (NameMap.empty (option A * option B))).
-
-Equations merge_if1
-  {w : positive}
-  (out : { o : Netlist.output | Netlist.output_width o = w } )
-  (cond : { c : Netlist.input | Netlist.input_width c = 1%positive })
-  (default trueBranch falseBranch : option {i : Netlist.input | Netlist.input_width i = w})
-  : transf () := {
-    | {! out }, {! cond }, _, Some {! t }, Some {! f } =>
-      put_cells [Netlist.Mux out cond t f _ _ _]
-    | {! out }, {! cond }, Some {! def }, Some {! t }, None =>
-      put_cells [Netlist.Mux out cond t def _ _ _]
-    | {! out }, {! cond }, Some {! def }, None, Some {! f } =>
-      put_cells [Netlist.Mux out cond def f _ _ _]
-    | _, _, _, _, _ => raise "Invalid state in merge_if"%string;
-  }
-.
-
+  NameMap.map2
+    (fun lv rv =>
+       match lv, rv with
+       | None, None => None
+       | _, _ => Some (lv, rv)
+       end)
+    l r.
 
 Definition decide_or_fail {P : Prop} (dec : { P } + { ~ P }) (msg : string) : transf P :=
   match dec with
@@ -303,6 +294,7 @@ Section merge_if.
                 "if condition must have width 1" ;;
     let substitutions_combined : NameMap.t (option Netlist.input * option Netlist.input) :=
       namemap_union substitutionsTrue substitutionsFalse in
+
     traverse_namemap_with_key (
         fun (n : name) (it : (option Netlist.input * option Netlist.input)) =>
           st <- get ;;
@@ -350,6 +342,8 @@ Section merge_if.
   Next Obligation. intuition discriminate. Qed.
 End merge_if.
 
+Infix "<++>" := (monoid_plus Monoid_string_append) (at level 99).
+
 (*
   Translated from the following
 https://github.com/CakeML/hardware/blob/8264e60f0f9d503c9d971991cf181012276f0c9b/compiler/RTLCompilerScript.sml#L233-L295
@@ -373,6 +367,7 @@ Equations transfer_statement : TypedVerilog.Statement -> transf () :=
 | TypedVerilog.If condition trueBranch falseBranch =>
     st <- get ;;
     let defaults := EnvStack.flatten (substitutionsBlocking st) in
+    (* @raise _ _ _ () ("defaults has length "%string <++> (nat2string10 (NameMap.cardinal defaults))) ;; *)
     condInput <- transfer_expression condition ;;
     '(_, (blockingTrue, nonblockingTrue)) <- transfer_scoped (transfer_statement trueBranch) ;;
     '(_, (blockingFalse, nonblockingFalse)) <- transfer_scoped (transfer_statement falseBranch) ;;
@@ -380,11 +375,6 @@ Equations transfer_statement : TypedVerilog.Statement -> transf () :=
     merge_if condInput defaults nonblockingTrue nonblockingFalse ;;
     ret ()
 .
-Next Obligation. etransitivity; eauto. Qed.
-Next Obligation. Admitted.
-Next Obligation. etransitivity; eauto. Qed.
-Next Obligation. etransitivity; eauto. Qed.
-Next Obligation. Admitted.
 
 Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
 | TypedVerilog.AlwaysFF body => transfer_statement body
@@ -447,67 +437,3 @@ Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmo
   | inr (circuit, final_state) => inr (circuit, nextName final_state)
   end
 .
-
-Section Examples.
-
-  Import TypedVerilog.
-
-  Local Open Scope N.
-
-  (* TODO: Nicer printing, match with parsing *)
-  Notation "'BV v w" := (Bitvector.BV v w _) (at level 200, only printing).
-
-  Notation "[ hi .: lo ]" := (Verilog.Logic hi lo).
-
-  Let verilog1 :=
-        {|
-          TypedVerilog.modName := "test1a";
-          TypedVerilog.modPorts := [
-            Verilog.MkPort PortIn "cond" ;
-            Verilog.MkPort PortOut "out"
-          ];
-          TypedVerilog.modVariables := [
-            Verilog.MkVariable [31.:0] "v1" ;
-            Verilog.MkVariable [0.:0] "cond" ;
-            Verilog.MkVariable [31.:0] "out"
-          ];
-          modBody := [
-            AlwaysFF (
-                Block [
-                    If (NamedExpression [0.:0] "cond")
-                      (NonBlockingAssign
-                        (NamedExpression [31.:0] "v1")
-                        (IntegerLiteral 32 42))
-                      (NonBlockingAssign
-                        (NamedExpression [31.:0] "v1")
-                        (IntegerLiteral 32 84)) ;
-                    BlockingAssign
-                      (NamedExpression [31.:0] "out")
-                      (BinaryOp [31.:0] Plus
-                         (NamedExpression [31.:0] "v1")
-                         (IntegerLiteral 32 1))
-                  ]
-              )
-          ];
-        |}.
-
-  Definition map_right {A B C} (f : B -> C) (s : sum A B) : sum A C :=
-    match s with
-    | inl e => inl e
-    | inr x => inr (f x)
-    end
-  .
-
-  Compute
-    map_right
-      (fun (it : Netlist.circuit * name) =>
-         let (x, _) := it in
-         ( NameMap.elements (Netlist.circuitPorts x),
-           NameMap.elements (Netlist.circuitVariables x),
-           NameMap.elements (Netlist.circuitRegisters x),
-           Netlist.circuitCells x
-         )
-      ) (verilog_to_netlist 1 verilog1)
-  .
-
-End Examples.
