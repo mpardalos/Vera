@@ -45,8 +45,8 @@ Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string 
   typed_verilog2 <- VerilogTypecheck.tc_vmodule verilog2 ;;
   netlist_result1 <- verilog_to_netlist 1%positive typed_verilog1  ;;
   let netlist1 := fst netlist_result1 in
-  let next_name := snd netlist_result1 in
-  netlist_result2 <- verilog_to_netlist next_name typed_verilog2 ;;
+  let final_state := snd netlist_result1 in
+  netlist_result2 <- verilog_to_netlist (nextName final_state) typed_verilog2 ;;
   let netlist2 := fst netlist_result2 in
   let smt_netlist1 := netlist_to_smt netlist1 in
   let smt_netlist2 := netlist_to_smt netlist2 in

@@ -11,7 +11,6 @@ From Coq Require Import BinIntDef.
 From Coq Require Import String.
 From Coq Require Import FSets.
 From Coq Require Import Psatz.
-From Coq Require ssreflect.
 
 Require Import List.
 Import ListNotations.
@@ -278,66 +277,58 @@ Ltac crush_nl :=
   (*   end; *)
   try lia.
 
-Section merge_if.
-  Import ssreflect.
+Program Definition merge_if
+  (cond : Netlist.input)
+  (defaults : NameMap.t Netlist.input)
+  (substitutionsTrue substitutionsFalse : NameMap.t Netlist.input)
+  : transf () :=
+  cond_ok <- decide_or_fail
+              (Pos.eq_dec (Netlist.input_width cond) 1)
+              "if condition must have width 1" ;;
+  let substitutions_combined : NameMap.t (option Netlist.input * option Netlist.input) :=
+    namemap_union substitutionsTrue substitutionsFalse in
 
-  Program Definition merge_if
-    (cond : Netlist.input)
-    (defaults : NameMap.t Netlist.input)
-    (substitutionsTrue substitutionsFalse : NameMap.t Netlist.input)
-    : transf () :=
-    cond_ok <- decide_or_fail
-                (Pos.eq_dec (Netlist.input_width cond) 1)
-                "if condition must have width 1" ;;
-    let substitutions_combined : NameMap.t (option Netlist.input * option Netlist.input) :=
-      namemap_union substitutionsTrue substitutionsFalse in
-
-    traverse_namemap_with_key (
-        fun (n : name) (it : (option Netlist.input * option Netlist.input)) =>
-          st <- get ;;
-          let (trueBranch, falseBranch) := it in
-          let default :=
-            opt_or
-              (NameMap.find n defaults)
-              (option_map (fun t => Netlist.InVar (Netlist.Var t n))
-                (NameMap.find n (vars st)))
-          in
-          match default, trueBranch, falseBranch with
-          | _, Some t, Some f =>
-              width_ok <- decide_or_fail
-                          (Pos.eq_dec (Netlist.input_width t) (Netlist.input_width f))
-                          "Incompatible widths in conditional";;
-              out <- fresh (Netlist.input_type t) ;;
-              put_cells [Netlist.Mux (Netlist.OutVar out) cond t f _ _ _]
-          | Some def, Some t, None =>
-              width_ok <- decide_or_fail
-                          (Pos.eq_dec (Netlist.input_width def) (Netlist.input_width t))
-                          "Incompatible widths in conditional";;
-              out <- fresh (Netlist.input_type t) ;;
-              put_cells [Netlist.Mux (Netlist.OutVar out) cond t def _ _ _]
-          | Some def, None, Some f =>
-              width_ok <- decide_or_fail
-                          (Pos.eq_dec (Netlist.input_width def) (Netlist.input_width f))
-                          "Incompatible widths in conditional";;
-              out <- fresh (Netlist.input_type f) ;;
-              put_cells [Netlist.Mux (Netlist.OutVar out) cond def f _ _ _]
-          | _, _, _ => raise "Invalid state in merge_if"%string
-          end
-      ) substitutions_combined ;;
-    ret ()
-  .
-  Next Obligation.
-    unfold Netlist.input_type in *.
-    destruct out as [outType outName].
-    simpl in *; subst; simp output_width.
-    reflexivity.
-  Qed.
-  Next Obligation. (* Width of def *) Admitted.
-  Next Obligation. (* Width of def *) Admitted.
-  Next Obligation. intuition discriminate. Qed.
-  Next Obligation. intuition discriminate. Qed.
-  Next Obligation. intuition discriminate. Qed.
-End merge_if.
+  traverse_namemap_with_key (
+      fun (n : name) (it : (option Netlist.input * option Netlist.input)) =>
+        st <- get ;;
+        let (trueBranch, falseBranch) := it in
+        let default :=
+          opt_or
+            (NameMap.find n defaults)
+            (option_map (fun t => Netlist.InVar (Netlist.Var t n))
+              (NameMap.find n (vars st)))
+        in
+        match default, trueBranch, falseBranch with
+        | _, Some t, Some f =>
+            width_ok <- decide_or_fail
+                        (Pos.eq_dec (Netlist.input_width t) (Netlist.input_width f))
+                        "Incompatible widths in conditional";;
+            let out := {| Netlist.varType := (Netlist.input_type t); Netlist.varName := n|} in
+            put_cells [Netlist.Mux (Netlist.OutVar out) cond t f _ _ _] ;;
+            set_substitution_blocking n (Netlist.InVar out)
+        | Some def, Some t, None =>
+            width_ok <- decide_or_fail
+                        (Pos.eq_dec (Netlist.input_width def) (Netlist.input_width t))
+                        "Incompatible widths in conditional";;
+            let out := {| Netlist.varType := (Netlist.input_type t); Netlist.varName := n|} in
+            put_cells [Netlist.Mux (Netlist.OutVar out) cond t def _ _ _] ;;
+            set_substitution_blocking n (Netlist.InVar out)
+        | Some def, None, Some f =>
+            width_ok <- decide_or_fail
+                        (Pos.eq_dec (Netlist.input_width def) (Netlist.input_width f))
+                        "Incompatible widths in conditional";;
+            let out := {| Netlist.varType := (Netlist.input_type f); Netlist.varName := n|} in
+            put_cells [Netlist.Mux (Netlist.OutVar out) cond def f _ _ _] ;;
+            set_substitution_blocking n (Netlist.InVar out)
+        | _, _, _ => raise "Invalid state in merge_if"%string
+        end
+    ) substitutions_combined ;;
+  ret ()
+.
+Next Obligation. (* Width *) Admitted.
+Next Obligation. intuition discriminate. Qed.
+Next Obligation. intuition discriminate. Qed.
+Next Obligation. intuition discriminate. Qed.
 
 Infix "<++>" := (monoid_plus Monoid_string_append) (at level 99).
 
@@ -418,7 +409,7 @@ Definition transfer_module (vmodule : TypedVerilog.vmodule) : transf Netlist.cir
       |}
 .
 
-Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmodule) : sum string (Netlist.circuit * name) :=
+Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmodule) : sum string (Netlist.circuit * transf_state) :=
   let result :=
     runStateT
       (transfer_module vmodule)
@@ -431,6 +422,6 @@ Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmo
       |} in
   match result with
   | inl err => inl err
-  | inr (circuit, final_state) => inr (circuit, nextName final_state)
+  | inr (circuit, final_state) => inr (circuit, final_state)
   end
 .
