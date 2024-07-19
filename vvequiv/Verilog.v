@@ -1,4 +1,6 @@
 Require Import Common.
+Require Import Bitvector.
+Import Bitvector (bv(..), mkBV).
 
 Require Import String.
 Require Import ZArith.
@@ -31,9 +33,8 @@ Module Verilog.
 
   Inductive expression :=
   | BinaryOp : op -> expression -> expression -> expression
-  | IntegerLiteral : positive -> N -> expression
-  | NamedExpression : string -> expression
-  .
+  | IntegerLiteral : bv -> expression
+  | NamedExpression : string -> expression.
 
   Record variable :=
     MkVariable
@@ -77,7 +78,7 @@ Module Verilog.
           modBody := [
             ContinuousAssign
               (NamedExpression "out")
-              (BinaryOp Plus (NamedExpression "in") (IntegerLiteral 32 0))
+              (BinaryOp Plus (NamedExpression "in") (IntegerLiteral (mkBV 0 32)))
           ];
         |},
         {|
@@ -113,7 +114,7 @@ Module Verilog.
               (NamedExpression "out")
               (BinaryOp Plus
                  (NamedExpression "in")
-                 (IntegerLiteral 32 1))
+                 (IntegerLiteral (mkBV 1 32)))
           ];
         |},
         {|
@@ -130,7 +131,7 @@ Module Verilog.
             ContinuousAssign
               (NamedExpression "out")
               (BinaryOp Plus
-                 (IntegerLiteral 32 1)
+                 (IntegerLiteral (mkBV 1 32))
                  (NamedExpression "in"))
           ];
         |}
@@ -159,7 +160,7 @@ Module Verilog.
                  (NamedExpression "v")
                  (BinaryOp Plus
                     (NamedExpression "in2")
-                    (IntegerLiteral 32 1)))
+                    (IntegerLiteral (mkBV 1 32))))
           ];
         |},
         {|
@@ -181,7 +182,7 @@ Module Verilog.
                  (NamedExpression "in2")
                  (BinaryOp Plus
                     (NamedExpression "in2")
-                    (IntegerLiteral 32 1)))
+                    (IntegerLiteral (mkBV 1 32))))
           ];
         |}
       )
@@ -194,7 +195,7 @@ Module TypedVerilog.
   Inductive expression :=
   | BinaryOp : vtype -> op -> expression -> expression -> expression
   | Conversion : vtype -> vtype -> expression -> expression
-  | IntegerLiteral : positive -> N -> expression
+  | IntegerLiteral : bv -> expression
   | NamedExpression : vtype -> string -> expression
   .
 

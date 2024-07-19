@@ -1,5 +1,7 @@
-Require Import Verilog.
-Require Import Common.
+From vvequiv Require Import Verilog.
+From vvequiv Require Import Common.
+From vvequiv Require Import Bitvector.
+
 Require Import String.
 Require Import List.
 Require Import BinPos.
@@ -28,13 +30,13 @@ Definition TC := sum string.
 Equations expr_type : TypedVerilog.expression -> Verilog.vtype :=
   expr_type (TypedVerilog.BinaryOp t _ _ _) := t;
   expr_type (TypedVerilog.Conversion _ t _) := t;
-  expr_type (TypedVerilog.IntegerLiteral width _) := Verilog.Logic (N_of_nat (nat_of_P width - 1)) 0;
+  expr_type (TypedVerilog.IntegerLiteral v) := Verilog.Logic (N_of_nat (nat_of_P (Bitvector.width v) - 1)) 0;
   expr_type (TypedVerilog.NamedExpression t _) := t.
 
 Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=
   tc_lvalue Γ (Verilog.BinaryOp op l r) :=
     raise "Binary operator not permitted as lvalue"%string;
-  tc_lvalue Γ (Verilog.IntegerLiteral _ _) :=
+  tc_lvalue Γ (Verilog.IntegerLiteral _) :=
     raise "Constant not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.NamedExpression n) :=
     match StrMap.find n Γ with
@@ -47,8 +49,8 @@ Equations tc_expr : TCContext -> TCBindings -> Verilog.expression -> TC TypedVer
     typed_l <- tc_expr ctx Γ l ;;
     typed_r <- tc_expr ctx Γ r ;;
     ret (TypedVerilog.BinaryOp ctx op typed_l typed_r) ;
-  tc_expr ctx Γ (Verilog.IntegerLiteral width value) :=
-    ret (TypedVerilog.IntegerLiteral width value) ;
+  tc_expr ctx Γ (Verilog.IntegerLiteral value) :=
+    ret (TypedVerilog.IntegerLiteral value) ;
   tc_expr ctx Γ (Verilog.NamedExpression n) :=
     match StrMap.find n Γ with
     | None =>

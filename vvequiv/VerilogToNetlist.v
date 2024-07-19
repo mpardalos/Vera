@@ -221,10 +221,7 @@ Definition transfer_bin_op (op : Verilog.op) : binop :=
 .
 
 Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input :=
-| TypedVerilog.IntegerLiteral w v with Bitvector.mkBV_check v w => {
-  | None => raise  "Invalid bitvector (value might be too long for the number of bits)"%string
-  | Some bv => ret (Netlist.InConstant bv)
-  }
+| TypedVerilog.IntegerLiteral v => ret (Netlist.InConstant v)
 | TypedVerilog.NamedExpression type name =>
     let t := transfer_type type in
     n <- transfer_name name ;;
