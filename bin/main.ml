@@ -95,7 +95,7 @@ let () =
         printf "%a\n" TypedVerilogPP.vmodule typed_v2;
         printf "\n---------------------------\n";
         let* nl1, st = VVEquiv.verilog_to_netlist 1 typed_v1 in
-        let* nl2, _ = VVEquiv.verilog_to_netlist st typed_v2 in
+        let* nl2, _ = VVEquiv.verilog_to_netlist st.nextName typed_v2 in
         printf "\n-- Netlist a --\n";
         printf "%a\n" NetlistPP.circuit nl1;
         printf "\n-- Netlist b --\n";

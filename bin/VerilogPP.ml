@@ -23,7 +23,7 @@ let operator fmt = function
 let rec expression fmt e =
   Format.fprintf fmt "@[";
   (match e with
-  | Verilog.IntegerLiteral (sz, n) -> fprintf fmt "%d'd%d" sz n
+  | Verilog.IntegerLiteral v -> fprintf fmt "%d'd%d" v.width v.value
   | Verilog.BinaryOp (op, l, r) ->
       fprintf fmt "( %a )@ %a@ ( %a )" expression l operator op expression r
   | Verilog.NamedExpression name -> fprintf fmt "%s" (Util.lst_to_string name));
