@@ -142,6 +142,7 @@ let dump_lex () =
     | _ -> print_tokens ()
   in
   print_tokens ();
+  printf "\n\n";
   close_in channel
 
 let () = dump_lex ()

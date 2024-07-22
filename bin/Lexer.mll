@@ -11,6 +11,7 @@ type token =
     | WIRE
     | OUTPUT
     | INPUT
+    | POSEDGE
     | LPAREN
     | RPAREN
     | LBRACKET
@@ -21,10 +22,13 @@ type token =
     | COLON
     | COMMA
     | EQUALS
+    | LESSTHANEQUAL
+    | GREATERTHANEQUAL
     | PLUS
     | MINUS
     | MULTIPLY
     | DIVIDE
+    | AT
     | IDENTIFIER of string
     | NUMBER of int
     | SIZED_NUMBER of int * int
@@ -36,6 +40,7 @@ let token_fmt fmt = function
     | REG -> fprintf fmt "REG"
     | WIRE -> fprintf fmt "WIRE"
     | INPUT -> fprintf fmt "INPUT"
+    | POSEDGE -> fprintf fmt "POSEDGE"
     | OUTPUT -> fprintf fmt "OUTPUT"
     | LPAREN -> fprintf fmt "LPAREN"
     | RPAREN -> fprintf fmt "RPAREN"
@@ -47,10 +52,13 @@ let token_fmt fmt = function
     | COLON -> fprintf fmt "COLON"
     | COMMA -> fprintf fmt "COMMA"
     | EQUALS -> fprintf fmt "EQUALS"
+    | LESSTHANEQUAL -> fprintf fmt "LESSTHANEQUAL"
+    | GREATERTHANEQUAL -> fprintf fmt "GREATERTHANEQUAL"
     | PLUS -> fprintf fmt "PLUS"
     | MINUS -> fprintf fmt "MINUS"
     | MULTIPLY -> fprintf fmt "MULTIPLY"
     | DIVIDE -> fprintf fmt "DIVIDE"
+    | AT -> fprintf fmt "AT"
     | IDENTIFIER n -> fprintf fmt "IDENTIFIER(%s)" n
     | NUMBER v -> fprintf fmt "CONSTANT(%d)" v
     | SIZED_NUMBER (s,v) -> fprintf fmt "SIZED_CONSTANT(%d, %d)" s v
@@ -90,6 +98,7 @@ rule read = parse
     | "wire" { WIRE }
     | "input" { INPUT }
     | "output" { OUTPUT }
+    | "posedge" { POSEDGE }
     | '(' { LPAREN }
     | ')' { RPAREN }
     | '[' { LBRACKET }
@@ -104,6 +113,9 @@ rule read = parse
     | '-' { MINUS }
     | '*' { MULTIPLY }
     | '/' { DIVIDE }
+    | '@' { AT }
+    | "<=" { LESSTHANEQUAL }
+    | ">=" { GREATERTHANEQUAL }
     | simple_identifier { IDENTIFIER (Lexing.lexeme lexbuf) }
     | sized_hex_number { Scanf.sscanf (Lexing.lexeme lexbuf) "%d'h%x" (fun s v -> SIZED_NUMBER (s, v)) }
     | unsized_hex_number { Scanf.sscanf (Lexing.lexeme lexbuf) "'h%x" (fun v -> NUMBER v)}
