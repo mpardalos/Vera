@@ -4,7 +4,7 @@ module IntSMT = SMTPP.SMT (struct
   type t = int
 
   let format fmt n = fprintf fmt "v%d" n
-end)
+                  end)
 
 let ( >>= ) (x : ('err, 'a) VVEquiv.sum) (f : 'a -> ('err, 'b) VVEquiv.sum) =
   match x with VVEquiv.Inl e -> VVEquiv.Inl e | VVEquiv.Inr x -> f x
@@ -16,7 +16,7 @@ let ret x = VVEquiv.Inr x
 type var_context = (int, Z3.Expr.expr) Hashtbl.t
 
 let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
-    (formula : int VVEquiv.SMT.qfbv) : Z3.Expr.expr =
+          (formula : int VVEquiv.SMT.qfbv) : Z3.Expr.expr =
   match formula with
   | VVEquiv.SMT.BVAdd (l, r) ->
       Z3.BitVector.mk_add z3_ctx
@@ -39,13 +39,13 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
 (* Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" v.value) v.width *)
 
 let smt_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
-    (formula : int VVEquiv.SMT.formula) : Z3.Expr.expr option =
+      (formula : int VVEquiv.SMT.formula) : Z3.Expr.expr option =
   match formula with
   | VVEquiv.SMT.CDeclare (n, s) ->
       let expr = Z3.BitVector.mk_const_s z3_ctx (sprintf "v%d" n) s in
       Hashtbl.replace var_ctx n expr;
       None
-      (* replace means add or replace if present *)
+  (* replace means add or replace if present *)
   | VVEquiv.SMT.CEqual (l, r) ->
       Some
         (Z3.Boolean.mk_eq z3_ctx
@@ -57,7 +57,7 @@ let smt_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
            [
              qfbv_formula_to_z3 var_ctx z3_ctx l;
              qfbv_formula_to_z3 var_ctx z3_ctx r;
-           ])
+        ])
 
 let smt_to_z3 (z3_ctx : Z3.context) (formulas : int VVEquiv.SMT.formula list) :
     Z3.Expr.expr list =
@@ -114,13 +114,13 @@ let coq_verilog_examples () =
         let z3_solver = Z3.Solver.mk_solver z3_ctx None in
         Z3.Solver.add z3_solver z3_exprs;
         (match Z3.Solver.check z3_solver [] with
-        | Z3.Solver.UNSATISFIABLE -> printf "Equivalent (UNSAT)\n"
-        | Z3.Solver.SATISFIABLE -> (
-            printf "Non-equivalent (SAT)\n";
-            match Z3.Solver.get_model z3_solver with
-            | None -> printf "No counterexample provided.\n"
-            | Some model -> printf "Model:\n---\n%a\n---\n" z3_model_fmt model)
-        | Z3.Solver.UNKNOWN -> printf "Unknown\n");
+         | Z3.Solver.UNSATISFIABLE -> printf "Equivalent (UNSAT)\n"
+         | Z3.Solver.SATISFIABLE -> (
+           printf "Non-equivalent (SAT)\n";
+           match Z3.Solver.get_model z3_solver with
+           | None -> printf "No counterexample provided.\n"
+           | Some model -> printf "Model:\n---\n%a\n---\n" z3_model_fmt model)
+         | Z3.Solver.UNKNOWN -> printf "Unknown\n");
         printf
           "\n==========================================================\n\n";
         ret ()
@@ -138,11 +138,36 @@ let dump_lex () =
     let token = Lexer.read lexbuf in
     printf "%a " Lexer.token_fmt token;
     match token with
-    | Lexer.EOF -> ()
+    | Parser.EOF -> ()
     | _ -> print_tokens ()
   in
   print_tokens ();
   printf "\n\n";
   close_in channel
 
-let () = dump_lex ()
+(* open Core *)
+open Lexer
+open Lexing
+
+let print_position outx lexbuf =
+  let pos = lexbuf.lex_curr_p in
+  fprintf outx "%s:%d:%d" pos.pos_fname
+    pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1)
+
+let dump_parse () =
+  let filename = Sys.argv.(1) in
+  let channel = open_in filename in
+  let lexbuf = Lexing.from_channel channel in
+  let out =
+    try Parser.expression_only Lexer.read lexbuf with
+    | SyntaxError msg ->
+        printf "%a: %s\n" print_position lexbuf msg;
+        exit (-1)
+    | Parser.Error ->
+        printf "%a: syntax error\n" print_position lexbuf;
+        exit (-1)
+  in
+  printf "%a\n" VerilogPP.expression out ;
+  close_in channel
+
+let () = dump_parse ()

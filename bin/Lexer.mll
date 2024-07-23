@@ -1,37 +1,8 @@
 {
 open Format
+open Parser
 
 exception SyntaxError of string
-
-type token =
-    | EOF
-    | MODULE
-    | ENDMODULE
-    | REG
-    | WIRE
-    | OUTPUT
-    | INPUT
-    | POSEDGE
-    | LPAREN
-    | RPAREN
-    | LBRACKET
-    | RBRACKET
-    | LBRACE
-    | RBRACE
-    | SEMICOLON
-    | COLON
-    | COMMA
-    | EQUALS
-    | LESSTHANEQUAL
-    | GREATERTHANEQUAL
-    | PLUS
-    | MINUS
-    | MULTIPLY
-    | DIVIDE
-    | AT
-    | IDENTIFIER of string
-    | NUMBER of int
-    | SIZED_NUMBER of int * int
 
 let token_fmt fmt = function
     | EOF -> fprintf fmt "EOF"
