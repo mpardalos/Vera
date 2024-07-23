@@ -5,6 +5,7 @@
 %token WIRE
 %token OUTPUT
 %token INPUT
+%token ASSIGN
 %token POSEDGE
 %token LPAREN
 %token RPAREN
@@ -30,14 +31,29 @@
 %left PLUS MINUS
 
 %start <VVEquiv.Verilog.expression> expression_only
-
 %type <VVEquiv.Verilog.expression> expression
+
+%start <VVEquiv.Verilog.module_item> module_item_only
+%type <VVEquiv.Verilog.module_item> module_item
 
 %%
 
-let expression_only := e = expression; EOF; { e }
+let only(x) :=
+    | x=x; EOF; { x }
+
+let module_item_only := x = only(module_item); { x }
+
+let module_item :=
+  | ASSIGN; lhs = expression; EQUALS; rhs = expression; SEMICOLON;
+    { VVEquiv.Verilog.ContinuousAssign (lhs, rhs) }
+
+let expression_only := x = only(expression); { x }
 
 let expression :=
+  | ident = IDENTIFIER;
+    {
+      VVEquiv.Verilog.NamedExpression (Util.string_to_lst ident)
+    }
   | n = NUMBER;
     {
       VVEquiv.Verilog.IntegerLiteral ({ value = n; width = 32 })

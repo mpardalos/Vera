@@ -154,12 +154,9 @@ let print_position outx lexbuf =
   fprintf outx "%s:%d:%d" pos.pos_fname
     pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1)
 
-let dump_parse () =
-  let filename = Sys.argv.(1) in
-  let channel = open_in filename in
-  let lexbuf = Lexing.from_channel channel in
+let test_parse (parse: ((lexbuf -> Parser.token) -> lexbuf -> 'a)) pp (lexbuf: lexbuf) =
   let out =
-    try Parser.expression_only Lexer.read lexbuf with
+    try parse Lexer.read lexbuf with
     | SyntaxError msg ->
         printf "%a: %s\n" print_position lexbuf msg;
         exit (-1)
@@ -167,7 +164,19 @@ let dump_parse () =
         printf "%a: syntax error\n" print_position lexbuf;
         exit (-1)
   in
-  printf "%a\n" VerilogPP.expression out ;
+   printf "%a\n" pp out
+
+
+let dump_parse () =
+  let filename = Sys.argv.(2) in
+  let channel = open_in filename in
+  let lexbuf = Lexing.from_channel channel in
+
+  match Sys.argv.(1) with
+  | "expression" -> test_parse Parser.expression_only VerilogPP.expression lexbuf
+  | "module_item" -> test_parse Parser.module_item_only VerilogPP.mod_item lexbuf
+  | _ -> printf "Unknown parse type: %s\n" (Sys.argv.(1));
+
   close_in channel
 
 let () = dump_parse ()

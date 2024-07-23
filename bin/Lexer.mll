@@ -11,6 +11,7 @@ let token_fmt fmt = function
     | REG -> fprintf fmt "REG"
     | WIRE -> fprintf fmt "WIRE"
     | INPUT -> fprintf fmt "INPUT"
+    | ASSIGN -> fprintf fmt "ASSIGN"
     | POSEDGE -> fprintf fmt "POSEDGE"
     | OUTPUT -> fprintf fmt "OUTPUT"
     | LPAREN -> fprintf fmt "LPAREN"
@@ -68,6 +69,7 @@ rule read = parse
     | "reg" { REG }
     | "wire" { WIRE }
     | "input" { INPUT }
+    | "assign" { ASSIGN }
     | "output" { OUTPUT }
     | "posedge" { POSEDGE }
     | '(' { LPAREN }
