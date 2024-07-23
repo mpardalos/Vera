@@ -21,18 +21,34 @@ let operator fmt = function
   | Verilog.Minus -> fprintf fmt "-"
 
 let rec expression fmt e =
-  Format.fprintf fmt "@[";
-  (match e with
-  | Verilog.IntegerLiteral v -> fprintf fmt "%d'd%d" v.width v.value
-  | Verilog.BinaryOp (op, l, r) ->
-      fprintf fmt "( %a )@ %a@ ( %a )" expression l operator op expression r
-  | Verilog.NamedExpression name -> fprintf fmt "%s" (Util.lst_to_string name));
-  Format.fprintf fmt "@]"
+    Format.fprintf fmt "@[";
+    (match e with
+    | Verilog.IntegerLiteral v -> fprintf fmt "%d'd%d" v.width v.value
+    | Verilog.BinaryOp (op, l, r) ->
+        fprintf fmt "( %a )@ %a@ ( %a )" expression l operator op expression r
+    | Verilog.NamedExpression name -> fprintf fmt "%s" (Util.lst_to_string name));
+    Format.fprintf fmt "@]"
+
+let rec statement (fmt : formatter) (s : Verilog.statement) =
+  match s with
+  | Verilog.Block body ->
+      fprintf fmt "begin @,    @[<v>%a@,end"
+        (pp_print_list statement ~pp_sep:Util.colon_sep)
+        body
+  | Verilog.BlockingAssign (lhs, rhs) ->
+      fprintf fmt "%a = %a" expression lhs expression rhs
+  | Verilog.NonBlockingAssign (lhs, rhs) ->
+      fprintf fmt "%a <= %a" expression lhs expression rhs
+  | Verilog.If (cond, trueBranch, falseBranch) ->
+      fprintf fmt "if %a then %a else %a" expression cond statement trueBranch
+        statement falseBranch
 
 let mod_item (fmt : formatter) (i : Verilog.module_item) =
   match i with
   | Verilog.ContinuousAssign (l, r) ->
       fprintf fmt "assign (%a) = (@[ %a @])" expression l expression r
+  | Verilog.AlwaysFF body ->
+      fprintf fmt "always_ff (@posedge clk) %a" statement body
 
 let vmodule (fmt : formatter) (m : Verilog.vmodule) =
   fprintf fmt "Verilog.module %s {@." (Util.lst_to_string m.modName);

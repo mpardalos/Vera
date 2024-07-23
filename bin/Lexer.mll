@@ -12,6 +12,8 @@ let token_fmt fmt = function
     | WIRE -> fprintf fmt "WIRE"
     | INPUT -> fprintf fmt "INPUT"
     | ASSIGN -> fprintf fmt "ASSIGN"
+    | ALWAYS -> fprintf fmt "ALWAYS"
+    | ALWAYS_FF -> fprintf fmt "ALWAYS_FF"
     | POSEDGE -> fprintf fmt "POSEDGE"
     | OUTPUT -> fprintf fmt "OUTPUT"
     | LPAREN -> fprintf fmt "LPAREN"
@@ -20,6 +22,8 @@ let token_fmt fmt = function
     | RBRACKET -> fprintf fmt "RBRACKET"
     | LBRACE -> fprintf fmt "LBRACE"
     | RBRACE -> fprintf fmt "RBRACE"
+    | BEGIN -> fprintf fmt "BEGIN"
+    | END -> fprintf fmt "END"
     | SEMICOLON -> fprintf fmt "SEMICOLON"
     | COLON -> fprintf fmt "COLON"
     | COMMA -> fprintf fmt "COMMA"
@@ -70,6 +74,8 @@ rule read = parse
     | "wire" { WIRE }
     | "input" { INPUT }
     | "assign" { ASSIGN }
+    | "always" { ALWAYS }
+    | "always_ff" { ALWAYS_FF }
     | "output" { OUTPUT }
     | "posedge" { POSEDGE }
     | '(' { LPAREN }
@@ -78,6 +84,8 @@ rule read = parse
     | ']' { RBRACKET }
     | '{' { LBRACE }
     | '}' { RBRACE }
+    | "begin" { BEGIN }
+    | "end" { END }
     | ';' { SEMICOLON }
     | ':' { COLON }
     | ',' { COMMA }

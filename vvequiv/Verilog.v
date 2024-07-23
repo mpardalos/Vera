@@ -48,8 +48,16 @@ Module Verilog.
       ; portName : string
       }.
 
+  Inductive statement :=
+  | Block (body : list statement)
+  | BlockingAssign (lhs rhs : expression)
+  | NonBlockingAssign (lhs rhs : expression)
+  | If (condition : expression) (trueBranch falseBranch : statement)
+  .
+
   Inductive module_item : Set :=
   | ContinuousAssign : expression -> expression -> module_item
+  | AlwaysFF : statement -> module_item
   .
 
   (** Verilog modules *)

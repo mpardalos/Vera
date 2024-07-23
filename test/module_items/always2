@@ -1,0 +1,1 @@
+always_ff @(posedge clk) out <= 1;

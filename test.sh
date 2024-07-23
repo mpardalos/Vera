@@ -13,10 +13,18 @@ run_test() {
     echo
 }
 
-for f in $(find test/module_items -type f); do
-    run_test module_item "$f"
-done
+# for f in $(find test/module_items -type f); do
+#     run_test module_item "$f"
+# done
 
 # for f in $(find test/expressions -type f); do
 #     run_test expression "$f"
 # done
+
+# for f in $(find test/statements -type f); do
+#     run_test statement "$f"
+# done
+
+for f in $(find test/modules -type f); do
+    run_test module "$f"
+done

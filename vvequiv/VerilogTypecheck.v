@@ -64,10 +64,14 @@ Equations tc_expr : TCContext -> TCBindings -> Verilog.expression -> TC TypedVer
 .
 
 Equations tc_module_item : TCBindings -> Verilog.module_item -> TC TypedVerilog.module_item :=
-  tc_module_item Γ (Verilog.ContinuousAssign to from) :=
-      typed_to <- tc_lvalue Γ to ;;
-      typed_from <- tc_expr (expr_type typed_to) Γ from ;;
-      ret (TypedVerilog.ContinuousAssign typed_to typed_from).
+| Γ, (Verilog.ContinuousAssign to from) =>
+    typed_to <- tc_lvalue Γ to ;;
+    typed_from <- tc_expr (expr_type typed_to) Γ from ;;
+    ret (TypedVerilog.ContinuousAssign typed_to typed_from)
+| Γ, (Verilog.AlwaysFF body) =>
+    raise "Typechecking AlwaysFF not implemented"%string
+.
+
 
 Equations variables_to_bindings : list Verilog.variable -> TCBindings :=
   variables_to_bindings [] :=

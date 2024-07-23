@@ -174,7 +174,9 @@ let dump_parse () =
 
   match Sys.argv.(1) with
   | "expression" -> test_parse Parser.expression_only VerilogPP.expression lexbuf
+  | "statement" -> test_parse Parser.statement_only VerilogPP.statement lexbuf
   | "module_item" -> test_parse Parser.module_item_only VerilogPP.mod_item lexbuf
+  | "module" -> test_parse Parser.vmodule_only VerilogPP.vmodule lexbuf
   | _ -> printf "Unknown parse type: %s\n" (Sys.argv.(1));
 
   close_in channel
