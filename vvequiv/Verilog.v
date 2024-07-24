@@ -69,6 +69,25 @@ Module Verilog.
       ; modBody : list module_item
       }.
 
+  Variant NetType := Reg | Wire.
+
+  Record raw_declaration :=
+    MkRawDeclaration
+      { rawDeclNetType : NetType
+      ; rawDeclPortDeclaration : option port_direction
+      ; rawDeclName : string
+      ; rawDeclType : option vtype
+      }
+  .
+
+  (** Verilog modules (as parsed) *)
+  Record raw_vmodule : Set :=
+    MkRawModule
+      { rawModName : string
+      ; rawModBody : list (module_item + raw_declaration)
+      }
+  .
+
   Example examples : list (vmodule * vmodule) :=
     let l32 := Logic 31 0 in
     let l16 := Logic 15 0 in

@@ -34,11 +34,11 @@
 
 %left PLUS MINUS
 
-%start <VVEquiv.Verilog.vmodule> vmodule_only
-%type <VVEquiv.Verilog.vmodule> vmodule
+%start <VVEquiv.Verilog.raw_vmodule> vmodule_only
+%type <VVEquiv.Verilog.raw_vmodule> vmodule
 
-%start <VVEquiv.Verilog.module_item> module_item_only
-%type <VVEquiv.Verilog.module_item> module_item
+%start <(VVEquiv.Verilog.module_item, VVEquiv.Verilog.raw_declaration) VVEquiv.sum> module_item_only
+%type <(VVEquiv.Verilog.module_item, VVEquiv.Verilog.raw_declaration) VVEquiv.sum> module_item
 
 %start <VVEquiv.Verilog.statement> statement_only
 %type <VVEquiv.Verilog.statement> statement
@@ -55,6 +55,10 @@ let many(x) :=
   | { [] }
   | x=x; xs=many(x); { x :: xs }
 
+let optional(x) :=
+  | x=x; { Some x }
+  | { None }
+
 let vmodule_only := x = only(vmodule); { x }
 
 let module_args := LPAREN; RPAREN
@@ -62,10 +66,8 @@ let module_args := LPAREN; RPAREN
 let vmodule :=
   MODULE; name = IDENTIFIER; module_args; SEMICOLON; body = many(module_item); ENDMODULE;
     {
-      { VVEquiv.Verilog.modName = (Util.string_to_lst name)
-      ; VVEquiv.Verilog.modPorts = []
-      ; VVEquiv.Verilog.modVariables = []
-      ; VVEquiv.Verilog.modBody = body
+      { VVEquiv.Verilog.rawModName = (Util.string_to_lst name)
+      ; VVEquiv.Verilog.rawModBody = body
       }
     }
 
@@ -73,11 +75,30 @@ let module_item_only := x = only(module_item); { x }
 
 let always_ff := ALWAYS | ALWAYS_FF
 
+let port_direction :=
+  | INPUT; { VVEquiv.PortIn }
+  | OUTPUT; { VVEquiv.PortOut }
+
+let net_type :=
+  | REG; { VVEquiv.Verilog.Reg }
+  | WIRE; { VVEquiv.Verilog.Wire }
+
+let vtype := LBRACKET; hi = NUMBER; COLON; lo = NUMBER; RBRACKET;
+  { VVEquiv.Verilog.Logic (hi, lo) }
+
 let module_item :=
+  | port = optional(port_direction); net_type = net_type; vtype = optional(vtype); name = IDENTIFIER; SEMICOLON;
+    {
+      VVEquiv.Inr ({ rawDeclNetType = net_type
+                   ; rawDeclPortDeclaration = port
+                   ; rawDeclName = Util.string_to_lst name
+                   ; rawDeclType = vtype
+                  })
+    }
   | ASSIGN; lhs = expression; EQUALS; rhs = expression; SEMICOLON;
-    { VVEquiv.Verilog.ContinuousAssign (lhs, rhs) }
+    { VVEquiv.Inl (VVEquiv.Verilog.ContinuousAssign (lhs, rhs)) }
   | always_ff; AT; LPAREN; POSEDGE; clkname = IDENTIFIER; RPAREN; body = statement;
-    { VVEquiv.Verilog.AlwaysFF body }
+    { VVEquiv.Inl (VVEquiv.Verilog.AlwaysFF body) }
 
 let statement_only := x = only(statement); { x }
 
