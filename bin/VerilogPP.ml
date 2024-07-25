@@ -11,7 +11,7 @@ let port (fmt : formatter) (p : Verilog.port) =
   fprintf fmt "%a %s" direction p.portDirection (Util.lst_to_string p.portName)
 
 let variable (fmt : formatter) (p : Verilog.variable) =
-  fprintf fmt "%s" (Util.lst_to_string p.varName)
+  fprintf fmt "%s%a" (Util.lst_to_string p.varName) vtype p.varType
 
 let net_type (fmt : formatter) (t : Verilog.coq_NetType) =
   match t with

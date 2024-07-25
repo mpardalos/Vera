@@ -5,6 +5,7 @@ From vvequiv Require Verilog.
 From vvequiv Require VerilogEquivalence.
 From vvequiv Require VerilogToNetlist.
 From vvequiv Require Common.
+From vvequiv Require ParseRawVerilog.
 
 From Coq Require Extraction.
 From Coq Require Import extraction.ExtrOcamlBasic.
@@ -28,4 +29,5 @@ Extraction "VVEquiv.ml"
   NetlistToSMT.netlist_to_smt
   SMT.SMT
   Common.NameMap
+  ParseRawVerilog.parse_raw_verilog
   .

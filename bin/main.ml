@@ -96,22 +96,24 @@ let print_position outx (lexbuf : Lexing.lexbuf) =
   fprintf outx "%s:%d:%d" pos.pos_fname pos.pos_lnum
     (pos.pos_cnum - pos.pos_bol + 1)
 
-let test_parse parse_func pp lexbuf =
-  let out =
-    try parse_func Lexer.read lexbuf with
-    | Lexer.SyntaxError msg ->
-        printf "%a: %s\n" print_position lexbuf msg;
-        exit (-1)
-    | Parser.Error ->
-        printf "%a: syntax error\n" print_position lexbuf;
-        exit (-1)
-  in
-  printf "%a\n" pp out
+
+let do_parse parse_func lexbuf =
+  try parse_func Lexer.read lexbuf with
+  | Lexer.SyntaxError msg ->
+      printf "%a: %s\n" print_position lexbuf msg;
+      exit (-1)
+  | Parser.Error ->
+      printf "%a: syntax error\n" print_position lexbuf;
+      exit (-1)
 
 let dump_parse () =
   let filename = Sys.argv.(2) in
   let channel = open_in filename in
   let lexbuf = Lexing.from_channel channel in
+
+  let test_parse parse_func pp lexbuf =
+    printf "%a\n" pp (do_parse parse_func lexbuf)
+  in
 
   match Sys.argv.(1) with
   | "expression" ->
@@ -124,4 +126,12 @@ let dump_parse () =
       printf "Unknown parse type: %s\n" Sys.argv.(1);
       close_in channel
 
-let () = dump_parse ()
+let parse_module () =
+  let lexbuf = Lexing.from_channel (open_in (Sys.argv.(1))) in
+  let raw_module = do_parse Parser.vmodule_only lexbuf in
+  let clean_module = VVEquiv.parse_raw_verilog raw_module in
+  match clean_module with
+  | VVEquiv.Inl err -> printf "Raw verilog parsing error: %s\n" (Util.lst_to_string err)
+  | VVEquiv.Inr m -> printf "%a\n" VerilogPP.vmodule m
+
+let () = parse_module ()
