@@ -4,7 +4,7 @@ module IntSMT = SMTPP.SMT (struct
   type t = int
 
   let format fmt n = fprintf fmt "v%d" n
-                  end)
+end)
 
 let ( >>= ) (x : ('err, 'a) VVEquiv.sum) (f : 'a -> ('err, 'b) VVEquiv.sum) =
   match x with VVEquiv.Inl e -> VVEquiv.Inl e | VVEquiv.Inr x -> f x
@@ -16,7 +16,7 @@ let ret x = VVEquiv.Inr x
 type var_context = (int, Z3.Expr.expr) Hashtbl.t
 
 let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
-          (formula : int VVEquiv.SMT.qfbv) : Z3.Expr.expr =
+    (formula : int VVEquiv.SMT.qfbv) : Z3.Expr.expr =
   match formula with
   | VVEquiv.SMT.BVAdd (l, r) ->
       Z3.BitVector.mk_add z3_ctx
@@ -39,7 +39,7 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
 (* Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" v.value) v.width *)
 
 let smt_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
-      (formula : int VVEquiv.SMT.formula) : Z3.Expr.expr option =
+    (formula : int VVEquiv.SMT.formula) : Z3.Expr.expr option =
   match formula with
   | VVEquiv.SMT.CDeclare (n, s) ->
       let expr = Z3.BitVector.mk_const_s z3_ctx (sprintf "v%d" n) s in
@@ -57,7 +57,7 @@ let smt_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
            [
              qfbv_formula_to_z3 var_ctx z3_ctx l;
              qfbv_formula_to_z3 var_ctx z3_ctx r;
-        ])
+           ])
 
 let smt_to_z3 (z3_ctx : Z3.context) (formulas : int VVEquiv.SMT.formula list) :
     Z3.Expr.expr list =
@@ -85,35 +85,28 @@ let dump_lex () =
   let rec print_tokens () : unit =
     let token = Lexer.read lexbuf in
     printf "%a " Lexer.token_fmt token;
-    match token with
-    | Parser.EOF -> ()
-    | _ -> print_tokens ()
+    match token with Parser.EOF -> () | _ -> print_tokens ()
   in
   print_tokens ();
   printf "\n\n";
   close_in channel
 
-(* open Core *)
-open Lexer
-open Lexing
-
-let print_position outx lexbuf =
+let print_position outx (lexbuf : Lexing.lexbuf) =
   let pos = lexbuf.lex_curr_p in
-  fprintf outx "%s:%d:%d" pos.pos_fname
-    pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1)
+  fprintf outx "%s:%d:%d" pos.pos_fname pos.pos_lnum
+    (pos.pos_cnum - pos.pos_bol + 1)
 
-let test_parse (parse: ((lexbuf -> Parser.token) -> lexbuf -> 'a)) pp (lexbuf: lexbuf) =
+let test_parse parse_func pp lexbuf =
   let out =
-    try parse Lexer.read lexbuf with
-    | SyntaxError msg ->
+    try parse_func Lexer.read lexbuf with
+    | Lexer.SyntaxError msg ->
         printf "%a: %s\n" print_position lexbuf msg;
         exit (-1)
     | Parser.Error ->
         printf "%a: syntax error\n" print_position lexbuf;
         exit (-1)
   in
-   printf "%a\n" pp out
-
+  printf "%a\n" pp out
 
 let dump_parse () =
   let filename = Sys.argv.(2) in
@@ -121,12 +114,14 @@ let dump_parse () =
   let lexbuf = Lexing.from_channel channel in
 
   match Sys.argv.(1) with
-  | "expression" -> test_parse Parser.expression_only VerilogPP.expression lexbuf
+  | "expression" ->
+      test_parse Parser.expression_only VerilogPP.expression lexbuf
   | "statement" -> test_parse Parser.statement_only VerilogPP.statement lexbuf
-  | "module_item" -> test_parse Parser.module_item_only VerilogPP.raw_mod_item lexbuf
+  | "module_item" ->
+      test_parse Parser.module_item_only VerilogPP.raw_mod_item lexbuf
   | "module" -> test_parse Parser.vmodule_only VerilogPP.raw_vmodule lexbuf
-  | _ -> printf "Unknown parse type: %s\n" (Sys.argv.(1));
-
-  close_in channel
+  | _ ->
+      printf "Unknown parse type: %s\n" Sys.argv.(1);
+      close_in channel
 
 let () = dump_parse ()
