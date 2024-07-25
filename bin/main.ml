@@ -78,58 +78,6 @@ let z3_model_fmt fmt (model : Z3.Model.model) =
           (Z3.Expr.to_string value))
     (Z3.Model.get_const_decls model)
 
-let coq_verilog_examples () =
-  List.iter
-    (fun (v1, v2) ->
-      let result =
-        printf "\n-- Verilog a --\n";
-        printf "%a\n" VerilogPP.vmodule v1;
-        printf "\n-- Verilog b --\n";
-        printf "%a\n" VerilogPP.vmodule v2;
-        printf "\n---------------------------\n";
-        printf "\n-- TypedVerilog a --\n";
-        let* typed_v1 = VVEquiv.tc_vmodule v1 in
-        printf "%a\n" TypedVerilogPP.vmodule typed_v1;
-        printf "\n-- TypedVerilog b --\n";
-        let* typed_v2 = VVEquiv.tc_vmodule v2 in
-        printf "%a\n" TypedVerilogPP.vmodule typed_v2;
-        printf "\n---------------------------\n";
-        let* nl1, st = VVEquiv.verilog_to_netlist 1 typed_v1 in
-        let* nl2, _ = VVEquiv.verilog_to_netlist st.nextName typed_v2 in
-        printf "\n-- Netlist a --\n";
-        printf "%a\n" NetlistPP.circuit nl1;
-        printf "\n-- Netlist b --\n";
-        printf "%a\n" NetlistPP.circuit nl2;
-        printf "\n---------------------------\n";
-        let* query = VVEquiv.equivalence_query v1 v2 in
-        printf "\n-- SMT Query --\n";
-        List.iter (printf "%a\n" IntSMT.smt) query;
-        let z3_ctx = Z3.mk_context [] in
-        let z3_exprs = smt_to_z3 z3_ctx query in
-        (* List.iter *)
-        (*   (fun e -> printf "%s\n" (Z3.AST.to_string (Z3.Expr.ast_of_expr e))) *)
-        (*   z3_exprs; *)
-        printf "\n---------------------------\n";
-        printf "\n-- SMT Result --\n";
-        let z3_solver = Z3.Solver.mk_solver z3_ctx None in
-        Z3.Solver.add z3_solver z3_exprs;
-        (match Z3.Solver.check z3_solver [] with
-         | Z3.Solver.UNSATISFIABLE -> printf "Equivalent (UNSAT)\n"
-         | Z3.Solver.SATISFIABLE -> (
-           printf "Non-equivalent (SAT)\n";
-           match Z3.Solver.get_model z3_solver with
-           | None -> printf "No counterexample provided.\n"
-           | Some model -> printf "Model:\n---\n%a\n---\n" z3_model_fmt model)
-         | Z3.Solver.UNKNOWN -> printf "Unknown\n");
-        printf
-          "\n==========================================================\n\n";
-        ret ()
-      in
-      match result with
-      | VVEquiv.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
-      | _ -> ())
-    VVEquiv.Verilog.examples
-
 let dump_lex () =
   let filename = Sys.argv.(1) in
   let channel = open_in filename in
