@@ -193,6 +193,7 @@ let () =
   | _prog :: "parse" :: rest -> parse_module rest
   | _prog :: "parse_raw" :: rest -> parse_raw rest
   | _prog :: "lex" :: rest -> lex rest
+  | _prog :: "compare" :: rest -> compare rest
   | _prog :: cmd :: _ ->
       eprintf "Unknown command: %s\n" cmd;
       usage_and_exit ()
