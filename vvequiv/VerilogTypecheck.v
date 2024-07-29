@@ -19,6 +19,7 @@ From ExtLib Require Import Data.Monads.StateMonad.
 From ExtLib Require Import Data.Monads.EitherMonad.
 From ExtLib Require Import Data.List.
 Import MonadNotation.
+Import FunctorNotation.
 Open Scope monad_scope.
 
 Definition TCBindings := StrMap.t Verilog.vtype.
@@ -63,15 +64,34 @@ Equations tc_expr : TCContext -> TCBindings -> Verilog.expression -> TC TypedVer
     end
 .
 
+Equations tc_stmt : TCBindings -> Verilog.statement -> TC TypedVerilog.Statement :=
+  tc_stmt Γ (Verilog.Block body) :=
+    TypedVerilog.Block <$> mapT (tc_stmt Γ) body;
+  tc_stmt Γ (Verilog.BlockingAssign lhs rhs) :=
+    typed_lhs <- tc_lvalue Γ lhs ;;
+    typed_rhs <- tc_expr (expr_type typed_lhs) Γ rhs ;;
+    ret (TypedVerilog.BlockingAssign typed_lhs typed_rhs);
+  tc_stmt Γ (Verilog.NonBlockingAssign lhs rhs) :=
+    typed_lhs <- tc_lvalue Γ lhs ;;
+    typed_rhs <- tc_expr (expr_type typed_lhs) Γ rhs ;;
+    ret (TypedVerilog.NonBlockingAssign typed_lhs typed_rhs);
+  tc_stmt Γ (Verilog.If condition trueBranch falseBranch) :=
+    typed_condition <- tc_lvalue Γ condition ;;
+    typed_trueBranch <- tc_stmt Γ trueBranch ;;
+    typed_falseBranch <- tc_stmt Γ falseBranch ;;
+    ret (TypedVerilog.If typed_condition typed_trueBranch typed_falseBranch)
+.
+Admit Obligations.
+
+
 Equations tc_module_item : TCBindings -> Verilog.module_item -> TC TypedVerilog.module_item :=
 | Γ, (Verilog.ContinuousAssign to from) =>
     typed_to <- tc_lvalue Γ to ;;
     typed_from <- tc_expr (expr_type typed_to) Γ from ;;
     ret (TypedVerilog.ContinuousAssign typed_to typed_from)
 | Γ, (Verilog.AlwaysFF body) =>
-    raise "Typechecking AlwaysFF not implemented"%string
+    TypedVerilog.AlwaysFF <$> tc_stmt Γ body
 .
-
 
 Equations variables_to_bindings : list Verilog.variable -> TCBindings :=
   variables_to_bindings [] :=
