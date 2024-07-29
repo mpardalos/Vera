@@ -13,6 +13,18 @@ let ( let* ) = ( >>= )
 let ( =<< ) a b = b >>= a
 let ret x = VVEquiv.Inr x
 
+let fmap f x =
+  let* xval = x in
+  ret (f xval)
+
+let ( <$> ) = fmap
+let ( <&> ) x f = fmap f x
+
+let ( >=> ) (f : 'a -> 'b VVEquiv.result) (g : 'b -> 'c VVEquiv.result) (x : 'a)
+    : 'c VVEquiv.result =
+  let* y = f x in
+  g y
+
 type var_context = (int, Z3.Expr.expr) Hashtbl.t
 
 let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
@@ -83,12 +95,14 @@ let () =
     eprintf "Usage: %s <command> [args]\n" Sys.argv.(0);
     eprintf "\n";
     eprintf "Commands:\n";
-    eprintf "  parse <filename>\n";
-    eprintf "  parse_raw <parse_raw_type> <filename>\n";
     eprintf "  lex <filename>\n";
+    eprintf "  parse_raw <parse_raw_type> <filename>\n";
+    eprintf "  parse <filename>\n";
+    eprintf "  lower <level> <filename>\n";
     eprintf "\n";
     eprintf "Arguments:\n";
     eprintf "  parse_raw_type: expression|statement|module_item|module\n";
+    eprintf "  level: parsed|typed|netlist|smt_netlist|smt_formulas\n";
     exit 1
   in
 
@@ -143,14 +157,59 @@ let () =
     | _ -> usage_and_exit ()
   in
 
-  let parse_module = function
-    | [ filename ] -> (
-        let raw_module = parse_file Parser.vmodule_only filename in
-        let clean_module = VVEquiv.parse_raw_verilog raw_module in
-        match clean_module with
-        | VVEquiv.Inl err ->
-            printf "Raw verilog parsing error: %s\n" (Util.lst_to_string err)
-        | VVEquiv.Inr m -> printf "%a\n" VerilogPP.vmodule m)
+  let lower =
+    let display_or_error pp result =
+      match result with
+      | VVEquiv.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
+      | VVEquiv.Inr x -> printf "%a\n" pp x
+    in
+
+    let module_of_file (filename : string) :
+        VVEquiv.Verilog.vmodule VVEquiv.result =
+      let raw_module = parse_file Parser.vmodule_only filename in
+      VVEquiv.parse_raw_verilog raw_module
+    in
+
+    let typed_module_of_file = module_of_file >=> VVEquiv.tc_vmodule in
+    let netlist_of_file =
+      typed_module_of_file >=> VVEquiv.verilog_to_netlist 1 >=> fun x ->
+      ret (fst x)
+    in
+    let smt_netlist_of_file filename =
+      VVEquiv.netlist_to_smt <$> netlist_of_file filename
+    in
+    let smt_formulas_of_file filename =
+      VVEquiv.SMT.smtnlFormulas <$> smt_netlist_of_file filename
+    in
+    function
+    | [ "parsed"; filename ] ->
+        display_or_error VerilogPP.vmodule (module_of_file filename)
+    | [ "typed"; filename ] ->
+        display_or_error TypedVerilogPP.vmodule (typed_module_of_file filename)
+    | [ "netlist"; filename ] ->
+        display_or_error NetlistPP.circuit (netlist_of_file filename)
+    | [ "smt_netlist"; filename ] ->
+        display_or_error IntSMT.smt_netlist (smt_netlist_of_file filename)
+    | [ "smt_formulas"; filename ] ->
+        display_or_error
+          (pp_print_list IntSMT.smt ~pp_sep:Util.colon_sep)
+          (smt_formulas_of_file filename)
+    | [ "all"; filename ] ->
+        printf "\n-- parsed -- \n";
+        display_or_error VerilogPP.vmodule (module_of_file filename);
+        printf "\n-- typed --\n";
+        display_or_error TypedVerilogPP.vmodule (typed_module_of_file filename);
+        printf "\n-- netlist --\n";
+        display_or_error NetlistPP.circuit (netlist_of_file filename);
+        printf "\n-- smt_netlist --\n";
+        display_or_error IntSMT.smt_netlist (smt_netlist_of_file filename);
+        printf "\n-- smt_formulas --\n";
+        display_or_error
+          (pp_print_list IntSMT.smt ~pp_sep:Util.colon_sep)
+          (smt_formulas_of_file filename)
+    | [ stage; _filename ] ->
+        eprintf "Unknown stage: %s\n" stage;
+        usage_and_exit ()
     | _ -> usage_and_exit ()
   in
 
@@ -190,10 +249,10 @@ let () =
 
   printf "\n\n";
   match Array.to_list Sys.argv with
-  | _prog :: "parse" :: rest -> parse_module rest
   | _prog :: "parse_raw" :: rest -> parse_raw rest
   | _prog :: "lex" :: rest -> lex rest
   | _prog :: "compare" :: rest -> compare rest
+  | _prog :: "lower" :: rest -> lower rest
   | _prog :: cmd :: _ ->
       eprintf "Unknown command: %s\n" cmd;
       usage_and_exit ()
