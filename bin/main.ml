@@ -78,60 +78,122 @@ let z3_model_fmt fmt (model : Z3.Model.model) =
           (Z3.Expr.to_string value))
     (Z3.Model.get_const_decls model)
 
-let dump_lex () =
-  let filename = Sys.argv.(1) in
-  let channel = open_in filename in
-  let lexbuf = Lexing.from_channel channel in
-  let rec print_tokens () : unit =
-    let token = Lexer.read lexbuf in
-    printf "%a " Lexer.token_fmt token;
-    match token with Parser.EOF -> () | _ -> print_tokens ()
+let () =
+  let usage_and_exit () =
+    eprintf "Usage: %s <command> [args]\n" Sys.argv.(0);
+    eprintf "\n";
+    eprintf "Commands:\n";
+    eprintf "  parse <filename>\n";
+    eprintf "  parse_raw <parse_raw_type> <filename>\n";
+    eprintf "  lex <filename>\n";
+    eprintf "\n";
+    eprintf "Arguments:\n";
+    eprintf "  parse_raw_type: expression|statement|module_item|module\n";
+    exit 1
   in
-  print_tokens ();
+
+  let lex = function
+    | [ filename ] ->
+        let channel = open_in filename in
+        let lexbuf = Lexing.from_channel channel in
+        let rec print_tokens () : unit =
+          let token = Lexer.read lexbuf in
+          printf "%a " Lexer.token_fmt token;
+          match token with Parser.EOF -> () | _ -> print_tokens ()
+        in
+        print_tokens ();
+        printf "\n\n";
+        close_in channel
+    | [] -> eprintf "Missing filename\n"
+    | _ -> eprintf "Too many arguments\n"
+  in
+
+  let print_position outx (lexbuf : Lexing.lexbuf) =
+    let pos = lexbuf.lex_curr_p in
+    fprintf outx "%s:%d:%d" pos.pos_fname pos.pos_lnum
+      (pos.pos_cnum - pos.pos_bol + 1)
+  in
+
+  let parse_file parse_func filename =
+    let lexbuf = Lexing.from_channel (open_in filename) in
+    try parse_func Lexer.read lexbuf with
+    | Lexer.SyntaxError msg ->
+        printf "%a: %s\n" print_position lexbuf msg;
+        exit (-1)
+    | Parser.Error ->
+        printf "%a: syntax error\n" print_position lexbuf;
+        exit (-1)
+  in
+
+  let parse_raw = function
+    | [ parse_type; filename ] -> (
+        let test_parse parse_func pp =
+          printf "%a\n" pp (parse_file parse_func filename)
+        in
+
+        match parse_type with
+        | "expression" -> test_parse Parser.expression_only VerilogPP.expression
+        | "statement" -> test_parse Parser.statement_only VerilogPP.statement
+        | "module_item" ->
+            test_parse Parser.module_item_only VerilogPP.raw_mod_item
+        | "module" -> test_parse Parser.vmodule_only VerilogPP.raw_vmodule
+        | _ ->
+            printf "Unknown parse type: %s\n" parse_type;
+            usage_and_exit ())
+    | _ -> usage_and_exit ()
+  in
+
+  let parse_module = function
+    | [ filename ] -> (
+        let raw_module = parse_file Parser.vmodule_only filename in
+        let clean_module = VVEquiv.parse_raw_verilog raw_module in
+        match clean_module with
+        | VVEquiv.Inl err ->
+            printf "Raw verilog parsing error: %s\n" (Util.lst_to_string err)
+        | VVEquiv.Inr m -> printf "%a\n" VerilogPP.vmodule m)
+    | _ -> usage_and_exit ()
+  in
+
+  let compare = function
+    | [ filename1; filename2 ] -> (
+        let queryResult =
+          let* module1 =
+            VVEquiv.parse_raw_verilog (parse_file Parser.vmodule_only filename1)
+          in
+          let* module2 =
+            VVEquiv.parse_raw_verilog (parse_file Parser.vmodule_only filename2)
+          in
+          VVEquiv.equivalence_query module1 module2
+        in
+        match queryResult with
+        | VVEquiv.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
+        | VVEquiv.Inr query ->
+            List.iter (printf "%a\n" IntSMT.smt) query;
+            let z3_ctx = Z3.mk_context [] in
+            let z3_solver = Z3.Solver.mk_solver z3_ctx None in
+            let z3_exprs = smt_to_z3 z3_ctx query in
+            Z3.Solver.add z3_solver z3_exprs;
+            (match Z3.Solver.check z3_solver [] with
+            | Z3.Solver.UNSATISFIABLE -> printf "Equivalent (UNSAT)\n"
+            | Z3.Solver.SATISFIABLE -> (
+                printf "Non-equivalent (SAT)\n";
+                match Z3.Solver.get_model z3_solver with
+                | None -> printf "No counterexample provided.\n"
+                | Some model ->
+                    printf "Model:\n---\n%a\n---\n" z3_model_fmt model)
+            | Z3.Solver.UNKNOWN -> printf "Unknown\n");
+            printf
+              "\n==========================================================\n\n"
+        )
+    | _ -> usage_and_exit ()
+  in
+
   printf "\n\n";
-  close_in channel
-
-let print_position outx (lexbuf : Lexing.lexbuf) =
-  let pos = lexbuf.lex_curr_p in
-  fprintf outx "%s:%d:%d" pos.pos_fname pos.pos_lnum
-    (pos.pos_cnum - pos.pos_bol + 1)
-
-
-let do_parse parse_func lexbuf =
-  try parse_func Lexer.read lexbuf with
-  | Lexer.SyntaxError msg ->
-      printf "%a: %s\n" print_position lexbuf msg;
-      exit (-1)
-  | Parser.Error ->
-      printf "%a: syntax error\n" print_position lexbuf;
-      exit (-1)
-
-let dump_parse () =
-  let filename = Sys.argv.(2) in
-  let channel = open_in filename in
-  let lexbuf = Lexing.from_channel channel in
-
-  let test_parse parse_func pp lexbuf =
-    printf "%a\n" pp (do_parse parse_func lexbuf)
-  in
-
-  match Sys.argv.(1) with
-  | "expression" ->
-      test_parse Parser.expression_only VerilogPP.expression lexbuf
-  | "statement" -> test_parse Parser.statement_only VerilogPP.statement lexbuf
-  | "module_item" ->
-      test_parse Parser.module_item_only VerilogPP.raw_mod_item lexbuf
-  | "module" -> test_parse Parser.vmodule_only VerilogPP.raw_vmodule lexbuf
-  | _ ->
-      printf "Unknown parse type: %s\n" Sys.argv.(1);
-      close_in channel
-
-let parse_module () =
-  let lexbuf = Lexing.from_channel (open_in (Sys.argv.(1))) in
-  let raw_module = do_parse Parser.vmodule_only lexbuf in
-  let clean_module = VVEquiv.parse_raw_verilog raw_module in
-  match clean_module with
-  | VVEquiv.Inl err -> printf "Raw verilog parsing error: %s\n" (Util.lst_to_string err)
-  | VVEquiv.Inr m -> printf "%a\n" VerilogPP.vmodule m
-
-let () = parse_module ()
+  match Array.to_list Sys.argv with
+  | _prog :: "parse" :: rest -> parse_module rest
+  | _prog :: "parse_raw" :: rest -> parse_raw rest
+  | _prog :: "lex" :: rest -> lex rest
+  | _prog :: cmd :: _ ->
+      eprintf "Unknown command: %s\n" cmd;
+      usage_and_exit ()
+  | _ -> usage_and_exit ()
