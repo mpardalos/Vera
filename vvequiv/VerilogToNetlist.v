@@ -367,14 +367,13 @@ Equations transfer_statement : TypedVerilog.Statement -> transf () :=
 Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
 | TypedVerilog.AlwaysFF body => transfer_statement body
 | TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression type name) from =>
-    raise "Continuous assignment not implemented"%string
-    (* t <- transfer_type type ;; *)
-    (* n <- transfer_name name ;; *)
-    (* let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in *)
-    (* result <- transfer_expression from ;; *)
-    (* if Pos.eq_dec (Netlist.input_width result) (Netlist.output_width outVar) *)
-    (* then put_cells [ Netlist.Id outVar result _] *)
-    (* else raise "Nope"%string *)
+    let t := transfer_type type in
+    n <- transfer_name name ;;
+    let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in
+    result <- transfer_expression from ;;
+    if Pos.eq_dec (Netlist.input_width result) (Netlist.output_width outVar)
+    then put_cells [ Netlist.Id outVar result _]
+    else raise "Nope"%string
 | TypedVerilog.ContinuousAssign _to _from =>
     raise "Invalid target for assign expression"%string
 .
