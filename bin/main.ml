@@ -192,7 +192,7 @@ let () =
         display_or_error IntSMT.smt_netlist (smt_netlist_of_file filename)
     | [ "smt_formulas"; filename ] ->
         display_or_error
-          (pp_print_list IntSMT.smt ~pp_sep:Util.colon_sep)
+          (pp_print_list IntSMT.smt ~pp_sep:Util.newline_sep)
           (smt_formulas_of_file filename)
     | [ "all"; filename ] ->
         printf "\n-- parsed -- \n";
@@ -205,7 +205,7 @@ let () =
         display_or_error IntSMT.smt_netlist (smt_netlist_of_file filename);
         printf "\n-- smt_formulas --\n";
         display_or_error
-          (pp_print_list IntSMT.smt ~pp_sep:Util.colon_sep)
+          (pp_print_list IntSMT.smt ~pp_sep:Util.newline_sep)
           (smt_formulas_of_file filename)
     | [ stage; _filename ] ->
         eprintf "Unknown stage: %s\n" stage;
