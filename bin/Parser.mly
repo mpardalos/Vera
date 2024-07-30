@@ -89,7 +89,7 @@ let vtype := LBRACKET; hi = NUMBER; COLON; lo = NUMBER; RBRACKET;
 let module_item :=
   | port = optional(port_direction); net_type = net_type; vtype = optional(vtype); name = IDENTIFIER; SEMICOLON;
     {
-      VVEquiv.Inr ({ rawDeclNetType = net_type
+      VVEquiv.Inr ({ rawDeclStorageType = net_type
                    ; rawDeclPortDeclaration = port
                    ; rawDeclName = Util.string_to_lst name
                    ; rawDeclType = vtype

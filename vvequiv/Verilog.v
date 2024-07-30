@@ -15,6 +15,8 @@ From Equations Require Import Equations.
 Module Verilog.
   Inductive vtype := Logic : N -> N -> vtype.
 
+  Variant StorageType := Reg | Wire.
+
   Equations Derive NoConfusionHom EqDec for vtype.
   Next Obligation.
     destruct x as [hi1 lo1].
@@ -39,6 +41,7 @@ Module Verilog.
   Record variable :=
     MkVariable
       { varType : vtype
+      ; varStorageType : StorageType
       ; varName : string
       }.
 
@@ -69,11 +72,9 @@ Module Verilog.
       ; modBody : list module_item
       }.
 
-  Variant NetType := Reg | Wire.
-
   Record raw_declaration :=
     MkRawDeclaration
-      { rawDeclNetType : NetType
+      { rawDeclStorageType : StorageType
       ; rawDeclPortDeclaration : option port_direction
       ; rawDeclName : string
       ; rawDeclType : option vtype

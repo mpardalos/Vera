@@ -13,7 +13,7 @@ let port (fmt : formatter) (p : Verilog.port) =
 let variable (fmt : formatter) (p : Verilog.variable) =
   fprintf fmt "%s%a" (Util.lst_to_string p.varName) vtype p.varType
 
-let net_type (fmt : formatter) (t : Verilog.coq_NetType) =
+let net_type (fmt : formatter) (t : Verilog.coq_StorageType) =
   match t with
   | Verilog.Reg -> fprintf fmt "reg"
   | Verilog.Wire -> fprintf fmt "wire"
@@ -77,7 +77,7 @@ let optionally_space (f : formatter -> 'a -> unit) (fmt : formatter) (v : 'a opt
 let raw_declaration (fmt : formatter) (decl : Verilog.raw_declaration) =
   fprintf fmt "%a%a %a%s"
     (optionally_space direction) decl.rawDeclPortDeclaration
-    net_type decl.rawDeclNetType
+    net_type decl.rawDeclStorageType
     (optionally_space vtype) decl.rawDeclType
     (Util.lst_to_string decl.rawDeclName)
 

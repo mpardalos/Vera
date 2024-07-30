@@ -96,7 +96,7 @@ Equations tc_module_item : TCBindings -> Verilog.module_item -> TC TypedVerilog.
 Equations variables_to_bindings : list Verilog.variable -> TCBindings :=
   variables_to_bindings [] :=
     StrMap.empty Verilog.vtype;
-  variables_to_bindings ((Verilog.MkVariable t n) :: tl) :=
+  variables_to_bindings ((Verilog.MkVariable t _st n) :: tl) :=
     StrMap.add n t (variables_to_bindings tl).
 
 Definition tc_vmodule (m : Verilog.vmodule) : TC TypedVerilog.vmodule :=

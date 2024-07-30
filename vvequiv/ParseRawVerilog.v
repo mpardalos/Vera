@@ -52,16 +52,14 @@ Equations add_raw_module_item
   : (Verilog.module_item + Verilog.raw_declaration) -> Verilog.vmodule -> Result Verilog.vmodule := {
   | inl item, m =>
       ret (add_module_item item m)
-  | inr (Verilog.MkRawDeclaration Verilog.Reg None name type), m =>
-      ret (add_variable (Verilog.MkVariable (parse_optional_type type) name) m)
-  | inr (Verilog.MkRawDeclaration Verilog.Reg (Some dir) name type), m =>
+  | inr (Verilog.MkRawDeclaration storage_type None name type), m =>
+      ret (add_variable (Verilog.MkVariable (parse_optional_type type) storage_type name) m)
+  | inr (Verilog.MkRawDeclaration storage_type (Some dir) name type), m =>
       ret (add_variable
-             (Verilog.MkVariable (parse_optional_type type) name)
+             (Verilog.MkVariable (parse_optional_type type) storage_type name)
              (add_port
                 (Verilog.MkPort dir name)
                 m))
-  | inr (Verilog.MkRawDeclaration Verilog.Wire _ _ _), m =>
-      raise "Not implemented: wires"%string
   }
 .
 
