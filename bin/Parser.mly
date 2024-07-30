@@ -61,12 +61,20 @@ let optional(x) :=
 
 let vmodule_only := x = only(vmodule); { x }
 
-let module_args := LPAREN; RPAREN
+let module_port := direction = port_direction; name = IDENTIFIER;
+    { { VVEquiv.Verilog.portDirection = direction
+      ; VVEquiv.Verilog.portName = Util.string_to_lst name
+      }
+    }
+
+let module_ports := LPAREN; args = many(module_port); RPAREN;
+  { args }
 
 let vmodule :=
-  MODULE; name = IDENTIFIER; module_args; SEMICOLON; body = many(module_item); ENDMODULE;
+  MODULE; name = IDENTIFIER; ports = module_ports; SEMICOLON; body = many(module_item); ENDMODULE;
     {
       { VVEquiv.Verilog.rawModName = (Util.string_to_lst name)
+      ; VVEquiv.Verilog.rawModPorts = ports
       ; VVEquiv.Verilog.rawModBody = body
       }
     }

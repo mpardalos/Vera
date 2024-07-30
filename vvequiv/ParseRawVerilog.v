@@ -68,7 +68,7 @@ Definition parse_raw_verilog (m: Verilog.raw_vmodule) : Result Verilog.vmodule :
     add_raw_module_item
     (ret
        {| Verilog.modName := Verilog.rawModName m
-       ; Verilog.modPorts := []
+       ; Verilog.modPorts := Verilog.rawModPorts m
        ; Verilog.modVariables := []
        ; Verilog.modBody := []
        |})

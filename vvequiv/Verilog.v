@@ -85,6 +85,7 @@ Module Verilog.
   Record raw_vmodule : Set :=
     MkRawModule
       { rawModName : string
+      ; rawModPorts : list port
       ; rawModBody : list (module_item + raw_declaration)
       }
   .
