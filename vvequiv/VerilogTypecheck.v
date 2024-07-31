@@ -45,13 +45,27 @@ Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expres
     | Some t => ret (TypedVerilog.NamedExpression t n)
     end.
 
+Definition vtype_width (t : Verilog.vtype) : positive :=
+  let (hi, lo) := t in
+  N.succ_pos ((N.max hi lo) - (N.min hi lo))
+.
+
+Definition dec_value_matches_type (v: Bitvector.bv) (t: Verilog.vtype) : { Bitvector.width v = vtype_width t } + { Bitvector.width v <> vtype_width t } :=
+  Pos.eq_dec (Bitvector.width v) (vtype_width t).
+
 Equations tc_expr : TCContext -> TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=
   tc_expr ctx Γ (Verilog.BinaryOp op l r) :=
     typed_l <- tc_expr ctx Γ l ;;
     typed_r <- tc_expr ctx Γ r ;;
     ret (TypedVerilog.BinaryOp ctx op typed_l typed_r) ;
   tc_expr ctx Γ (Verilog.IntegerLiteral value) :=
-    ret (TypedVerilog.IntegerLiteral value) ;
+    if dec_value_matches_type value ctx then
+      ret (TypedVerilog.IntegerLiteral value)
+    else
+      ret (TypedVerilog.Conversion
+             (Verilog.Logic (Pos.pred_N (Bitvector.width value)) 0)
+             ctx
+             (TypedVerilog.IntegerLiteral value));
   tc_expr ctx Γ (Verilog.NamedExpression n) :=
     match StrMap.find n Γ with
     | None =>
