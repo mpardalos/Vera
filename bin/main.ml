@@ -141,6 +141,7 @@ let () =
 
   let parse_file parse_func filename =
     let lexbuf = Lexing.from_channel (open_in filename) in
+    Lexing.set_filename lexbuf filename;
     try parse_func Lexer.read lexbuf with
     | Lexer.SyntaxError msg ->
         printf "%a: %s\n" print_position lexbuf msg;
