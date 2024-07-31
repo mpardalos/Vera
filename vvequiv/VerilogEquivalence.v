@@ -17,24 +17,21 @@ Import ListNotations.
 Import EqNotations.
 
 Definition mk_equivalence_formulas (smtnl1 smtnl2 : SMT.smt_netlist name) : sum string (list (SMT.formula name)) :=
-  let inputs1 := filter (fun (a: (name * port_direction)) => let (_, dir) := a in is_port_in dir) (SMT.smtnlPorts smtnl1) in
-  let inputs2 := filter (fun (a: (name * port_direction)) => let (_, dir) := a in is_port_in dir) (SMT.smtnlPorts smtnl2) in
-  let outputs1 := filter (fun (a: (name * port_direction)) => let (_, dir) := a in is_port_out dir) (SMT.smtnlPorts smtnl1) in
-  let outputs2 := filter (fun (a: (name * port_direction)) => let (_, dir) := a in is_port_out dir) (SMT.smtnlPorts smtnl2) in
+  let inputs1 := filter (fun '(_, dir) => is_port_in dir) (SMT.smtnlPorts smtnl1) in
+  let inputs2 := filter (fun '(_, dir) => is_port_in dir) (SMT.smtnlPorts smtnl2) in
+  let outputs1 := filter (fun '(_, dir) => is_port_out dir) (SMT.smtnlPorts smtnl1) in
+  let outputs2 := filter (fun '(_, dir) => is_port_out dir) (SMT.smtnlPorts smtnl2) in
   if negb (length inputs1 =? length inputs2) then inl "Input counts do not match"%string
   else if negb (length outputs1 =? length outputs2) then inl "Output counts do not match"%string
        else let input_pairs: list ((name * port_direction) * (name * port_direction)) := combine inputs1 inputs2 in
             let output_pairs: list ((name * port_direction) * (name * port_direction)) := combine outputs1 outputs2 in
             let inputs_same :=
-              map (fun a =>
-                     let in1 := fst (fst a) in
-                     let in2 := fst (snd a) in
-                     SMT.CEqual (SMT.BVVar in1) (SMT.BVVar in2))
+              map
+                (fun '((in1, _), (in2, _)) =>
+                   SMT.CEqual (SMT.BVVar in1) (SMT.BVVar in2))
                 input_pairs in
             let outputs_different :=
-              map (fun a =>
-                     let in1 := fst (fst a) in
-                     let in2 := fst (snd a) in
+              map (fun '((in1, _), (in2, _)) =>
                      SMT.CDistinct (SMT.BVVar in1) (SMT.BVVar in2))
                 output_pairs in
             inr (inputs_same ++ outputs_different)
