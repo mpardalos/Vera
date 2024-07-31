@@ -108,13 +108,12 @@ let () =
     eprintf "\n";
     eprintf "Commands:\n";
     eprintf "  lex <filename>\n";
-    eprintf "  parse_raw <parse_raw_type> <filename>\n";
     eprintf "  parse <filename>\n";
     eprintf "  lower <level> <filename>\n";
     eprintf "\n";
     eprintf "Arguments:\n";
     eprintf "  parse_raw_type: expression|statement|module_item|module\n";
-    eprintf "  level: parsed|typed|netlist|smt_netlist|smt_formulas\n";
+    eprintf "  level: parsed|typed|netlist|smt_netlist|smt\n";
     exit 1
   in
 
@@ -202,7 +201,7 @@ let () =
         display_or_error NetlistPP.circuit (netlist_of_file filename)
     | [ "smt_netlist"; filename ] ->
         display_or_error IntSMT.smt_netlist (smt_netlist_of_file filename)
-    | [ "smt_formulas"; filename ] ->
+    | [ "smt"; filename ] ->
         display_or_error
           (pp_print_list IntSMT.smt ~pp_sep:Util.newline_sep)
           (smt_formulas_of_file filename)
