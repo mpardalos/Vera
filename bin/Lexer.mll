@@ -61,11 +61,12 @@ let sized_decimal_number = size decimal_base decimal_value
 let unsized_decimal_number = decimal_base decimal_value
 let unmarked_decimal_number = decimal_value
 
-let whitespace = [' ' '\t' '\n' '\r']+
-let newline = '\n'
+let whitespace = [ ' ' '\t' ]+
+let newline =  "\r\n" | '\r' | '\n'
 
 rule read = parse
     | eof { EOF }
+    | newline { new_line lexbuf; read lexbuf }
     | whitespace { read lexbuf }
     | "//" { read_single_line_comment lexbuf }
     | "module" { MODULE }
@@ -104,5 +105,5 @@ rule read = parse
     | unsized_decimal_number { Scanf.sscanf (Lexing.lexeme lexbuf) "'d%d" (fun v -> NUMBER v)}
     | unmarked_decimal_number { Scanf.sscanf (Lexing.lexeme lexbuf) "%d" (fun v -> NUMBER v)}
 and read_single_line_comment = parse
-  | newline { read lexbuf }
+  | newline { new_line lexbuf; read lexbuf }
   | _ { read_single_line_comment lexbuf }
