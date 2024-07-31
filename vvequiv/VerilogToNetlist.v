@@ -216,6 +216,9 @@ Definition transfer_bin_op (op : Verilog.op) : binop :=
   match op with
   | Verilog.Plus => Netlist.Add
   | Verilog.Minus => Netlist.Subtract
+  | Verilog.Multiply => Netlist.Multiply
+  | Verilog.ShiftLeft => Netlist.ShiftLeft
+  | Verilog.ShiftRight => Netlist.ShiftRight
   end
 .
 

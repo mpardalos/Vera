@@ -42,6 +42,18 @@ Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
     let l_formula := input_formula l in
     let r_formula := input_formula r in
     (output_name out, SMT.BVAdd l_formula (SMT.BVNeg r_formula));
+  cell_formula (Netlist.Multiply out l r _ _) :=
+    let l_formula := input_formula l in
+    let r_formula := input_formula r in
+    (output_name out, SMT.BVMul l_formula r_formula);
+  cell_formula (Netlist.ShiftLeft out l r _ _) :=
+    let l_formula := input_formula l in
+    let r_formula := input_formula r in
+    (output_name out, SMT.BVShl l_formula r_formula);
+  cell_formula (Netlist.ShiftRight out l r _ _) :=
+    let l_formula := input_formula l in
+    let r_formula := input_formula r in
+    (output_name out, SMT.BVLShr l_formula r_formula);
   cell_formula (Netlist.Id out in_ _) :=
     let formula := input_formula in_ in
     (output_name out, formula);

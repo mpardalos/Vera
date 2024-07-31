@@ -1,5 +1,6 @@
 {
 open Format
+open Lexing
 open Parser
 
 exception SyntaxError of string
@@ -34,6 +35,8 @@ let token_fmt fmt = function
     | MINUS -> fprintf fmt "MINUS"
     | MULTIPLY -> fprintf fmt "MULTIPLY"
     | DIVIDE -> fprintf fmt "DIVIDE"
+    | SHIFTLEFT -> fprintf fmt "SHIFTLEFT"
+    | SHIFTRIGHT -> fprintf fmt "SHIFTRIGHT"
     | AT -> fprintf fmt "AT"
     | IDENTIFIER n -> fprintf fmt "IDENTIFIER(%s)" n
     | NUMBER v -> fprintf fmt "CONSTANT(%d)" v
@@ -95,6 +98,8 @@ rule read = parse
     | '-' { MINUS }
     | '*' { MULTIPLY }
     | '/' { DIVIDE }
+    | "<<" { SHIFTLEFT }
+    | ">>" { SHIFTRIGHT }
     | '@' { AT }
     | "<=" { LESSTHANEQUAL }
     | ">=" { GREATERTHANEQUAL }

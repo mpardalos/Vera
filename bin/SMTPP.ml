@@ -12,7 +12,10 @@ end
 module SMT (Name : Formattable) = struct
   let rec qfbv fmt = function
     | VVEquiv.SMT.BVAdd (l, r) -> fprintf fmt "(bvadd %a %a)" qfbv l qfbv r
+    | VVEquiv.SMT.BVMul (l, r) -> fprintf fmt "(bvmult %a %a)" qfbv l qfbv r
     | VVEquiv.SMT.BVNeg f -> fprintf fmt "(bvneg %a)" qfbv f
+    | VVEquiv.SMT.BVShl (l, r) -> fprintf fmt "(bvshl %a %a)" qfbv l qfbv r
+    | VVEquiv.SMT.BVLShr (l, r) -> fprintf fmt "(bvlshr %a %a)" qfbv l qfbv r
     | VVEquiv.SMT.BVLit v -> fprintf fmt "(_ bv%d %d)" v.value v.width
     | VVEquiv.SMT.BVVar n -> Name.format fmt n
     | VVEquiv.SMT.BVZeroExtend (num, f) ->

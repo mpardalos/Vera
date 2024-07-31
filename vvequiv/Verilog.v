@@ -31,7 +31,13 @@ Module Verilog.
       auto.
   Defined.
 
-  Inductive op := Plus | Minus.
+  Variant op :=
+    | Plus
+    | Minus
+    | Multiply
+    | ShiftLeft
+    | ShiftRight
+  .
 
   Inductive expression :=
   | BinaryOp : op -> expression -> expression -> expression

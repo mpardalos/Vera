@@ -35,6 +35,12 @@ let cell fmt (c : Netlist.cell) =
       fprintf fmt "%a <- Add(%a, %a)" output out input in1 input in2
   | Subtract (out, in1, in2) ->
       fprintf fmt "%a <- Subtract(%a, %a)" output out input in1 input in2
+  | Multiply (out, in1, in2) ->
+      fprintf fmt "%a <- Multiply(%a, %a)" output out input in1 input in2
+  | ShiftLeft (out, in1, in2) ->
+      fprintf fmt "%a <- ShiftLeft(%a, %a)" output out input in1 input in2
+  | ShiftRight (out, in1, in2) ->
+      fprintf fmt "%a <- ShiftRight(%a, %a)" output out input in1 input in2
   | Id (out, in1) -> fprintf fmt "%a <- Id(%a)" output out input in1
   | Convert (out, in1) -> fprintf fmt "%a <- Convert(%a)" output out input in1
   | Mux (out, select, ifT, ifF) ->

@@ -9,7 +9,10 @@ Import Bitvector.
 Module SMT.
   Inductive qfbv {T} :=
   | BVAdd : qfbv -> qfbv -> qfbv
+  | BVMul : qfbv -> qfbv -> qfbv
   | BVNeg : qfbv -> qfbv
+  | BVShl : qfbv -> qfbv -> qfbv
+  | BVLShr : qfbv -> qfbv -> qfbv
   | BVLit : bv -> qfbv
   | BVVar : T -> qfbv
   | BVZeroExtend : positive -> qfbv -> qfbv

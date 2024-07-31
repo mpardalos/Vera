@@ -21,6 +21,9 @@ let net_type (fmt : formatter) (t : Verilog.coq_StorageType) =
 let operator fmt = function
   | Verilog.Plus -> fprintf fmt "+"
   | Verilog.Minus -> fprintf fmt "-"
+  | Verilog.Multiply -> fprintf fmt "*"
+  | Verilog.ShiftLeft -> fprintf fmt "<<"
+  | Verilog.ShiftRight -> fprintf fmt ">>"
 
 let rec expression fmt e =
   Format.fprintf fmt "@[";

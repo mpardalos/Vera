@@ -27,12 +27,16 @@
 %token MINUS
 %token MULTIPLY
 %token DIVIDE
+%token SHIFTLEFT
+%token SHIFTRIGHT
 %token AT
 %token <string> IDENTIFIER
 %token <int> NUMBER
 %token <int * int> SIZED_NUMBER
 
 %left PLUS MINUS
+%left MULTIPLY DIVIDE
+%left SHIFTLEFT SHIFTRIGHT
 
 %start <VVEquiv.Verilog.raw_vmodule> vmodule_only
 %type <VVEquiv.Verilog.raw_vmodule> vmodule
@@ -55,6 +59,11 @@ let many(x) :=
   | { [] }
   | x=x; xs=many(x); { x :: xs }
 
+let sepBy(x, sep) :=
+  | { [] }
+  | x=x; sep; xs=sepBy(x, sep); { x :: xs }
+  | x=x; { [ x ] }
+
 let optional(x) :=
   | x=x; { Some x }
   | { None }
@@ -67,7 +76,7 @@ let module_port := direction = port_direction; name = IDENTIFIER;
       }
     }
 
-let module_ports := LPAREN; args = many(module_port); RPAREN;
+let module_ports := LPAREN; args = sepBy(module_port, COMMA); RPAREN;
   { args }
 
 let vmodule :=
@@ -140,6 +149,18 @@ let expression :=
   | l = expression; MINUS; r = expression;
     {
       VVEquiv.Verilog.BinaryOp (VVEquiv.Verilog.Minus, l, r)
+    }
+  | l = expression; MULTIPLY; r = expression;
+    {
+      VVEquiv.Verilog.BinaryOp (VVEquiv.Verilog.Multiply, l, r)
+    }
+  | l = expression; SHIFTLEFT; r = expression;
+    {
+      VVEquiv.Verilog.BinaryOp (VVEquiv.Verilog.ShiftLeft, l, r)
+    }
+  | l = expression; SHIFTRIGHT; r = expression;
+    {
+      VVEquiv.Verilog.BinaryOp (VVEquiv.Verilog.ShiftRight, l, r)
     }
   | LPAREN; e = expression; RPAREN;
     { e }
