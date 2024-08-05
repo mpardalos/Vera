@@ -3,6 +3,8 @@ From Coq Require Import BinNat.
 From Coq Require Import BinPos.
 From Coq Require Import String.
 From Coq Require FMaps.
+From Coq Require MSets.
+From Coq Require Import Structures.OrderedTypeEx.
 From Coq Require FMapFacts.
 From Coq Require Import List.
 From Coq Require Import ssreflect.
@@ -22,22 +24,29 @@ From Equations Require Import Equations.
 
 Import Bitvector.
 
+Definition Process := Verilog.module_item.
+
+Definition PendingProcesses := list Process.
+
 Record VerilogState :=
   MkVerilogState
     { regState : StrMap.t Bitvector.bv
     ; nbaValues : StrMap.t Bitvector.bv
+    ; pendingProcesses : NameMap.t Process
     }
 .
 
 Definition set_reg (name : string) (value : Bitvector.bv) (st : VerilogState) : VerilogState :=
   {| regState := StrMap.add name value (regState st)
   ; nbaValues := nbaValues st
+  ; pendingProcesses := pendingProcesses st
   |}
 .
 
 Definition set_nba (name : string) (value : Bitvector.bv) (st : VerilogState) : VerilogState :=
   {| regState := regState st
   ; nbaValues := StrMap.add name value (nbaValues st)
+  ; pendingProcesses := pendingProcesses st
   |}
 .
 
@@ -58,13 +67,8 @@ Equations
 .
 
 Equations
-  exec_statement : VerilogState -> Verilog.statement -> option VerilogState :=
-  exec_statement st (Verilog.Block stmts) :=
-    List.fold_left
-      (fun mSt stmt => st <- mSt ;; exec_statement st stmt)
-      stmts
-      (Some st)
-  ;
+  exec_statement (st : VerilogState) (stmt : Verilog.statement) : option VerilogState by struct :=
+  exec_statement st (Verilog.Block stmts) := exec_statements st stmts ;
   exec_statement st (Verilog.If cond trueBranch falseBranch) :=
     condVal <- eval_expr st cond ;;
     if N.eqb (Bitvector.value condVal) 0%N
@@ -82,7 +86,12 @@ Equations
     Some (set_nba name rhs__val st)
   ;
   exec_statement st (Verilog.NonBlockingAssign lhs rhs) :=
-    None
+    None;
+where exec_statements (st : VerilogState) (stmts : list Verilog.statement) : option VerilogState :=
+  exec_statements st [] := Some st;
+  exec_statements st (hd :: tl) :=
+    st' <- exec_statement st hd ;;
+    exec_statements st' tl;
 .
 
 Equations
@@ -97,5 +106,105 @@ Equations
     None
 .
 
-Inductive step_module (m : Verilog.vmodule) (st1 st2 : VerilogState) : Prop :=
-  | step_
+Lemma exec_statement_procs : forall st1 stmt st2,
+    exec_statement st1 stmt = Some st2 ->
+    pendingProcesses st1 = pendingProcesses st2
+.
+Proof.
+  refine (fst (exec_statement_elim
+                 (fun st1 stmt mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
+                 (fun st1 stmts mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
+                 _ _ _ _ _ _ _ _ _ _)); intros; auto; try discriminate.
+  - inversion H; destruct (eval_expr st rhs); try discriminate; clear H.
+    inversion H1; clear H1.
+    reflexivity.
+  - inversion H; destruct (eval_expr st rhs); try discriminate; clear H.
+    inversion H1; clear H1.
+    reflexivity.
+  - inversion H1; destruct (eval_expr st cond); try discriminate; clear H1.
+    destruct (value b =? 0)%N; auto.
+  - inversion H. reflexivity.
+  - inversion H1; clear H1.
+    destruct (exec_statement st hd) eqn:E; try discriminate.
+    transitivity (pendingProcesses v); eauto.
+Qed.
+
+Lemma exec_module_item_procs : forall st1 st2 mi,
+    exec_module_item st1 mi = Some st2 ->
+    pendingProcesses st1 = pendingProcesses st2
+.
+Proof.
+  intros * H.
+  funelim (exec_module_item st1 mi); simp exec_module_item in *.
+  - discriminate.
+  - discriminate.
+  - inversion H as [H']; clear H.
+    destruct (eval_expr st rhs); try discriminate.
+    inversion H' as [H'']; clear H' H''.
+    reflexivity.
+  - eauto using exec_statement_procs.
+Qed.
+
+Definition least_element {A} (m : NameMap.t A) : option (name * A) :=
+  List.hd_error (NameMap.elements m).
+
+Inductive step_ndet (st1 st2 : VerilogState) :=
+| step_ndet_exec_process
+    (st_temp : VerilogState)
+    (p_name : name)
+    (p : Process)
+    (p_pending : NameMap.MapsTo p_name p (pendingProcesses st1))
+    (p_exec : exec_module_item st1 p = Some st_temp)
+    (p_removed : pendingProcesses st2 = NameMap.remove p_name (pendingProcesses st1))
+.
+
+Inductive step_sequential (st1 st2 : VerilogState) :=
+| step_sequential_exec_process
+    (st_temp : VerilogState)
+    (p_name : name)
+    (p : Process)
+    (p_first : least_element (pendingProcesses st1) = Some (p_name, p))
+    (p_exec : exec_module_item st1 p = Some st_temp)
+    (p_removed : pendingProcesses st2 = NameMap.remove p_name (pendingProcesses st1))
+.
+
+Equations stmt_driven_signals : Verilog.statement -> StrSet.t :=
+  stmt_driven_signals (Verilog.Block body) :=
+    List.fold_left StrSet.union (List.map stmt_driven_signals body) StrSet.empty;
+  stmt_driven_signals (Verilog.BlockingAssign (Verilog.NamedExpression n) rhs) :=
+    StrSet.singleton n ;
+  stmt_driven_signals (Verilog.BlockingAssign _ _) :=
+    StrSet.empty;
+  stmt_driven_signals (Verilog.NonBlockingAssign (Verilog.NamedExpression n) rhs) :=
+    StrSet.singleton n ;
+  stmt_driven_signals (Verilog.NonBlockingAssign _ _) :=
+    StrSet.empty;
+  stmt_driven_signals (Verilog.If _ trueBranch falseBranch) :=
+    StrSet.union (stmt_driven_signals trueBranch) (stmt_driven_signals falseBranch)
+.
+
+Equations driven_signals : Process -> StrSet.t :=
+  driven_signals (Verilog.ContinuousAssign (Verilog.NamedExpression n) _) :=
+    StrSet.singleton n ;
+  driven_signals (Verilog.ContinuousAssign _ _) :=
+    StrSet.empty;
+  driven_signals (Verilog.AlwaysFF stmts) :=
+    stmt_driven_signals stmts
+.
+
+Definition single_driver (st : VerilogState) :=
+  forall n1 n2 p1 p2,
+    n1 <> n2 ->
+    NameMap.MapsTo n1 p1 (pendingProcesses st) ->
+    NameMap.MapsTo n2 p2 (pendingProcesses st) ->
+    StrSet.Empty (StrSet.inter (driven_signals p1) (driven_signals p2))
+.
+
+(* Invalid, because they are equivalent in the eventual state, not in each individual step *)
+(* Conjecture ndet_sequential_equivalence: *)
+(*   forall (st1 st2 st2': VerilogState), *)
+(*     single_driver st1 -> *)
+(*     step_ndet st1 st2 -> *)
+(*     step_sequential st1 st2' -> *)
+(*     st2 = st2'. *)
+(* No matter what process we pick for ndet, it will not affect the evaluation of other processes *)

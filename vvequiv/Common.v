@@ -5,6 +5,7 @@ Require Import BinIntDef.
 Require Import FMapPositive.
 Require Import List.
 Require Import FMaps.
+Require Import FSets.
 From ExtLib Require Import Structures.Maps.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Structures.Applicative.
@@ -77,6 +78,11 @@ End NameMap.
 
 Module NameMapFacts := FMapFacts.Facts(NameMap).
 Module StrMap := FMapList.Make(String_as_OT).
+Module StrSet.
+ Module X' := OrdersAlt.Update_OT String_as_OT.
+ Module MSet := MSetList.Make X'.
+ Include FSetCompat.Backport_Sets String_as_OT MSet.
+End StrSet.
 
 Equations opt_or_else : forall {A}, option A -> A -> A :=
   opt_or_else (Some x) _ := x;
