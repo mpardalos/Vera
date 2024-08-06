@@ -72,8 +72,8 @@ Equations
   exec_statement st (Verilog.If cond trueBranch falseBranch) :=
     condVal <- eval_expr st cond ;;
     if N.eqb (Bitvector.value condVal) 0%N
-    then exec_statement st trueBranch
-    else exec_statement st falseBranch
+    then exec_statement st falseBranch
+    else exec_statement st trueBranch
   ;
   exec_statement st (Verilog.BlockingAssign (Verilog.NamedExpression name) rhs) :=
     rhs__val <- eval_expr st rhs ;;
