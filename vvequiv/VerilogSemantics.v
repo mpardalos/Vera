@@ -8,6 +8,7 @@ From Coq Require Import Structures.OrderedTypeEx.
 From Coq Require FMapFacts.
 From Coq Require Import List.
 From Coq Require Import ssreflect.
+From Coq Require Import Relations.
 Import ListNotations.
 
 From vvequiv Require Import Verilog.
@@ -47,6 +48,13 @@ Definition set_nba (name : string) (value : Bitvector.bv) (st : VerilogState) : 
   {| regState := regState st
   ; nbaValues := StrMap.add name value (nbaValues st)
   ; pendingProcesses := pendingProcesses st
+  |}
+.
+
+Definition remove_process (name : name) (st : VerilogState) : VerilogState :=
+  {| regState := regState st
+  ; nbaValues := nbaValues st
+  ; pendingProcesses := NameMap.remove name (pendingProcesses st)
   |}
 .
 
@@ -158,11 +166,10 @@ Definition flush_nonblocking (st : VerilogState) : VerilogState :=
 
 Inductive step_ndet (st1 st2 : VerilogState) : Prop :=
 | step_ndet_exec_process
-    (st_temp : VerilogState)
     (p_name : name)
     (p : Process)
     (p_pending : NameMap.MapsTo p_name p (pendingProcesses st1))
-    (p_exec : exec_module_item st1 p = Some st_temp)
+    (p_exec : exec_module_item (remove_process p_name st1) p = Some st2)
     (p_removed : pendingProcesses st2 = NameMap.remove p_name (pendingProcesses st1))
 | step_ndet_flush_nonblocking
     (no_processes_pending : NameMap.Empty (pendingProcesses st1))
@@ -184,14 +191,15 @@ Proof.
   - contradiction.
 Qed.
 
+Definition multistep_ndet (st1 st2 : VerilogState) : VerilogState -> VerilogState -> Prop :=
+  clos_refl_trans VerilogState step_ndet.
+
 Inductive step_sequential (st1 st2 : VerilogState) :=
 | step_sequential_exec_process
-    (st_temp : VerilogState)
     (p_name : name)
     (p : Process)
     (p_first : least_element (pendingProcesses st1) = Some (p_name, p))
-    (p_exec : exec_module_item st1 p = Some st_temp)
-    (p_removed : pendingProcesses st2 = NameMap.remove p_name (pendingProcesses st1))
+    (p_exec : exec_module_item (remove_process p_name st1) p = Some st2)
 .
 
 Equations stmt_driven_signals : Verilog.statement -> StrSet.t :=
