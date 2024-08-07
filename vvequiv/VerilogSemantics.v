@@ -148,7 +148,15 @@ Qed.
 Definition least_element {A} (m : NameMap.t A) : option (name * A) :=
   List.hd_error (NameMap.elements m).
 
-Inductive step_ndet (st1 st2 : VerilogState) :=
+Definition flush_nonblocking (st : VerilogState) : VerilogState :=
+  {|
+    regState := StrMap.map2 opt_or (nbaValues st) (regState st);
+    nbaValues := StrMap.empty bv;
+    pendingProcesses := pendingProcesses st
+  |}
+.
+
+Inductive step_ndet (st1 st2 : VerilogState) : Prop :=
 | step_ndet_exec_process
     (st_temp : VerilogState)
     (p_name : name)
@@ -156,7 +164,25 @@ Inductive step_ndet (st1 st2 : VerilogState) :=
     (p_pending : NameMap.MapsTo p_name p (pendingProcesses st1))
     (p_exec : exec_module_item st1 p = Some st_temp)
     (p_removed : pendingProcesses st2 = NameMap.remove p_name (pendingProcesses st1))
+| step_ndet_flush_nonblocking
+    (no_processes_pending : NameMap.Empty (pendingProcesses st1))
+    (nba_pending : ~ StrMap.Empty (nbaValues st1))
+    (flushed : st2 = flush_nonblocking st1)
 .
+
+Definition ndet_blocked (st : VerilogState) : Prop :=
+  ~ exists st', step_ndet st st'.
+
+Definition ndet_final (st : VerilogState) : Prop :=
+  NameMap.Empty (pendingProcesses st) /\ StrMap.Empty (nbaValues st).
+
+Lemma ndet_final_blocked_iff (st : VerilogState) : ndet_final st -> ndet_blocked st.
+Proof.
+  intros [Hprocs Hnbas] [st' Hstep].
+  destruct Hstep.
+  - eapply Hprocs. eauto.
+  - contradiction.
+Qed.
 
 Inductive step_sequential (st1 st2 : VerilogState) :=
 | step_sequential_exec_process
@@ -192,6 +218,17 @@ Equations driven_signals : Process -> StrSet.t :=
     stmt_driven_signals stmts
 .
 
+Definition is_continuous_assign (p : Process) : Prop :=
+  match p with
+  | Verilog.ContinuousAssign _ _ => True
+  | _ => False
+  end
+.
+
+Definition no_continuous_assigns (st : VerilogState) : Prop :=
+  forall n p, NameMap.MapsTo n p (pendingProcesses st) -> ~ is_continuous_assign p
+.
+
 Definition single_driver (st : VerilogState) :=
   forall n1 n2 p1 p2,
     n1 <> n2 ->
@@ -201,10 +238,66 @@ Definition single_driver (st : VerilogState) :=
 .
 
 (* Invalid, because they are equivalent in the eventual state, not in each individual step *)
-(* Conjecture ndet_sequential_equivalence: *)
-(*   forall (st1 st2 st2': VerilogState), *)
-(*     single_driver st1 -> *)
-(*     step_ndet st1 st2 -> *)
-(*     step_sequential st1 st2' -> *)
-(*     st2 = st2'. *)
+Conjecture ndet_sequential_equivalence:
+  forall (st1 st2 st2': VerilogState),
+    single_driver st1 ->
+    no_continuous_assigns st1 ->
+    step_ndet st1 st2 ->
+    step_sequential st1 st2' ->
+    st2 = st2'.
 (* No matter what process we pick for ndet, it will not affect the evaluation of other processes *)
+
+
+Import VerilogNotations.
+Import BitvectorNotations.
+
+Definition nondeterminism1 : Verilog.vmodule :=
+  {|
+    Verilog.modName := "nondeterminism1";
+    Verilog.modPorts := [
+      Verilog.MkPort PortIn "clk";
+      Verilog.MkPort PortOut "a";
+      Verilog.MkPort PortOut "b"
+    ];
+    Verilog.modVariables := [
+      Verilog.MkVariable (Verilog.Logic 1 0) Verilog.Reg "a";
+      Verilog.MkVariable (Verilog.Logic 1 0) Verilog.Reg "b"
+    ];
+    Verilog.modBody := [
+      Verilog.AlwaysFF
+        ( Verilog.BlockingAssign
+            (Verilog.NamedExpression "a")
+            (Verilog.BinaryOp
+               Verilog.Plus
+               (Verilog.NamedExpression "a")
+               (Verilog.IntegerLiteral (Bitvector.mkBV 1 2))));
+      Verilog.AlwaysFF
+        ( Verilog.BlockingAssign
+            (Verilog.NamedExpression "b")
+            (Verilog.IntegerLiteral (Bitvector.mkBV 1 2)))
+    ]
+  |}
+.
+
+Print nondeterminism1.
+
+Definition initial_state (m : Verilog.vmodule) : VerilogState :=
+  {|
+    regState :=
+      (* TODO: correct initialization of regs *)
+      List.fold_left
+        (fun vars var => StrMap.add (Verilog.varName var) (mkBV 0 32) vars)
+        (Verilog.modVariables m)
+        (StrMap.empty bv);
+    nbaValues := StrMap.empty bv;
+    pendingProcesses :=
+      snd
+        (List.fold_left
+           (fun '(nextName, procs) proc =>
+            (Pos.succ nextName, NameMap.add nextName proc procs))
+           (Verilog.modBody m)
+           (1%positive, NameMap.empty Process))
+  |}
+.
+
+Compute (initial_state nondeterminism1).
