@@ -128,3 +128,9 @@ Module TypedVerilog.
       ; modBody : list module_item
       }.
 End TypedVerilog.
+
+Module VerilogNotations.
+  Notation "[ hi .: lo ]" :=
+    (Verilog.Logic hi lo)
+      (format "[ hi '.:' lo ]").
+End VerilogNotations.

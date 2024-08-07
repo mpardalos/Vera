@@ -169,3 +169,25 @@ Module Netlist.
       }.
 
 End Netlist.
+
+
+Module NetlistNotations.
+  Notation "${ v }" :=
+    (Netlist.InConstant v)
+      (at level 1, only printing, format "'${' v '}'").
+  Notation "$ n" :=
+    (Netlist.OutVar {| Netlist.varType := Netlist.Logic _; Netlist.varName := n |})
+      (at level 1, only printing, format "'$' n").
+  Notation "$ n" :=
+    (Netlist.InVar {| Netlist.varType := Netlist.Logic _; Netlist.varName := n |})
+      (at level 1, only printing, format "'$' n").
+  Notation "a <- Mux( b , c , d  )" :=
+    (Netlist.Mux a b c d _ _ _)
+      (at level 200, only printing).
+  Notation "a <- Add( b , c  )" :=
+    (Netlist.Add a b c _ _)
+      (at level 200, only printing).
+  Notation "'l' w" :=
+    (Netlist.Logic w)
+      (at level 200, only printing, format "'l' w").
+End NetlistNotations.

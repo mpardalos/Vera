@@ -65,3 +65,9 @@ Module Bitvector.
     reflexivity.
   Qed.
 End Bitvector.
+
+Module BitvectorNotations.
+  Notation "w ''d' v" :=
+    (Bitvector.BV v w _)
+      (at level 1, format "w ''d' v").
+End BitvectorNotations.
