@@ -78,6 +78,7 @@ End NameMap.
 
 Module NameMapFacts := FMapFacts.Facts(NameMap).
 Module StrMap := FMapList.Make(String_as_OT).
+Module StrMapFacts := FMapFacts.Facts(StrMap).
 Module StrSet.
  Module X' := OrdersAlt.Update_OT String_as_OT.
  Module MSet := MSetList.Make X'.
