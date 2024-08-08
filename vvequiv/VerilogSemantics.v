@@ -25,7 +25,7 @@ From Equations Require Import Equations.
 
 Import Bitvector.
 
-Definition Process := Verilog.module_item.
+Definition Process := TypedVerilog.module_item.
 
 Definition PendingProcesses := list Process.
 
@@ -59,43 +59,67 @@ Definition remove_process (name : name) (st : VerilogState) : VerilogState :=
 .
 
 Equations
-  eval_op : Verilog.op -> Bitvector.bv -> Bitvector.bv -> Bitvector.bv :=
-  eval_op _ lhs rhs := _
+  eval_op (op : Verilog.op) (lhs rhs : Bitvector.bv) (width_match : width lhs = width rhs) : Bitvector.bv :=
+  eval_op Verilog.Plus lhs rhs prf := Bitvector.bv_add_truncate lhs rhs prf;
+  eval_op _ lhs rhs prf := _
 .
 Admit Obligations.
 
-Equations
-  eval_expr : VerilogState -> Verilog.expression -> option Bitvector.bv :=
-  eval_expr st (Verilog.BinaryOp op lhs rhs) :=
-    lhs__val <- eval_expr st lhs ;;
-    rhs__val <- eval_expr st rhs ;;
-    ret (eval_op op lhs__val rhs__val) ;
-  eval_expr st (Verilog.IntegerLiteral val) := Some val;
-  eval_expr st (Verilog.NamedExpression name) := StrMap.find name (regState st)
-.
+Require Import Psatz.
 
 Equations
-  exec_statement (st : VerilogState) (stmt : Verilog.statement) : option VerilogState by struct :=
-  exec_statement st (Verilog.Block stmts) := exec_statements st stmts ;
-  exec_statement st (Verilog.If cond trueBranch falseBranch) :=
+  eval_expr : VerilogState -> TypedVerilog.expression -> option Bitvector.bv :=
+  eval_expr st (TypedVerilog.BinaryOp _ op lhs rhs) :=
+    lhs__val <- eval_expr st lhs ;;
+    rhs__val <- eval_expr st rhs ;;
+    match Pos.eq_dec (Bitvector.width lhs__val) (Bitvector.width rhs__val) with
+    | left prf => ret (eval_op op lhs__val rhs__val _)
+    | right _ => None
+    end;
+  eval_expr st (TypedVerilog.Conversion from_type to_type expr) :=
+    val <- eval_expr st expr;;
+    let width := Verilog.vtype_width to_type in
+    ret ((match (Bitvector.width val <? width)%positive as x return (_ = x -> _) with
+          | true => fun prf => Bitvector.zero_extend width val _
+          | false => fun prf => Bitvector.truncate width val _
+          end) eq_refl)
+  ;
+  eval_expr st (TypedVerilog.IntegerLiteral val) := Some val;
+  eval_expr st (TypedVerilog.NamedExpression _ name) := StrMap.find name (regState st)
+.
+Next Obligation.
+  rewrite Pos.ltb_lt in prf.
+  rewrite Pos.compare_lt_iff in H.
+  lia.
+Qed.
+Next Obligation.
+  rewrite Pos.ltb_nlt in prf.
+  rewrite Pos.compare_gt_iff in H.
+  lia.
+Qed.
+
+Equations
+  exec_statement (st : VerilogState) (stmt : TypedVerilog.Statement) : option VerilogState by struct :=
+  exec_statement st (TypedVerilog.Block stmts) := exec_statements st stmts ;
+  exec_statement st (TypedVerilog.If cond trueBranch falseBranch) :=
     condVal <- eval_expr st cond ;;
     if N.eqb (Bitvector.value condVal) 0%N
     then exec_statement st falseBranch
     else exec_statement st trueBranch
   ;
-  exec_statement st (Verilog.BlockingAssign (Verilog.NamedExpression name) rhs) :=
+  exec_statement st (TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression _ name) rhs) :=
     rhs__val <- eval_expr st rhs ;;
     Some (set_reg name rhs__val st)
   ;
-  exec_statement st (Verilog.BlockingAssign lhs rhs) :=
+  exec_statement st (TypedVerilog.BlockingAssign lhs rhs) :=
     None;
-  exec_statement st (Verilog.NonBlockingAssign (Verilog.NamedExpression name) rhs) :=
+  exec_statement st (TypedVerilog.NonBlockingAssign (TypedVerilog.NamedExpression _ name) rhs) :=
     rhs__val <- eval_expr st rhs ;;
     Some (set_nba name rhs__val st)
   ;
-  exec_statement st (Verilog.NonBlockingAssign lhs rhs) :=
+  exec_statement st (TypedVerilog.NonBlockingAssign lhs rhs) :=
     None;
-where exec_statements (st : VerilogState) (stmts : list Verilog.statement) : option VerilogState :=
+where exec_statements (st : VerilogState) (stmts : list TypedVerilog.Statement) : option VerilogState :=
   exec_statements st [] := Some st;
   exec_statements st (hd :: tl) :=
     st' <- exec_statement st hd ;;
@@ -103,14 +127,14 @@ where exec_statements (st : VerilogState) (stmts : list Verilog.statement) : opt
 .
 
 Equations
-  exec_module_item : VerilogState -> Verilog.module_item -> option VerilogState :=
-  exec_module_item st (Verilog.AlwaysFF stmt) :=
+  exec_module_item : VerilogState -> TypedVerilog.module_item -> option VerilogState :=
+  exec_module_item st (TypedVerilog.AlwaysFF stmt) :=
     exec_statement st stmt;
-  exec_module_item st (Verilog.ContinuousAssign (Verilog.NamedExpression name) rhs) :=
+  exec_module_item st (TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression _ name) rhs) :=
     rhs__val <- eval_expr st rhs ;;
     Some (set_reg name rhs__val st)
   ;
-  exec_module_item st (Verilog.ContinuousAssign _ _) :=
+  exec_module_item st (TypedVerilog.ContinuousAssign _ _) :=
     None
 .
 
@@ -122,7 +146,7 @@ Proof.
   refine (fst (exec_statement_elim
                  (fun st1 stmt mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
                  (fun st1 stmts mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
-                 _ _ _ _ _ _ _ _ _ _)); intros; auto; try discriminate.
+                 _ _ _ _ _ _ _ _ _ _ _ _)); intros; auto; try discriminate.
   - inversion H; destruct (eval_expr st rhs); try discriminate; clear H.
     inversion H1; clear H1.
     reflexivity.
@@ -144,6 +168,7 @@ Lemma exec_module_item_procs : forall st1 st2 mi,
 Proof.
   intros * H.
   funelim (exec_module_item st1 mi); simp exec_module_item in *.
+  - discriminate.
   - discriminate.
   - discriminate.
   - inversion H as [H']; clear H.
@@ -191,8 +216,11 @@ Proof.
   - contradiction.
 Qed.
 
-Definition multistep_ndet (st1 st2 : VerilogState) : VerilogState -> VerilogState -> Prop :=
+Definition multistep_ndet : VerilogState -> VerilogState -> Prop :=
   clos_refl_trans VerilogState step_ndet.
+
+Definition evaluate_ndet (st1 st2 : VerilogState) : Prop :=
+  multistep_ndet st1 st2 /\ ndet_final st2.
 
 Inductive step_sequential (st1 st2 : VerilogState) :=
 | step_sequential_exec_process
@@ -202,33 +230,33 @@ Inductive step_sequential (st1 st2 : VerilogState) :=
     (p_exec : exec_module_item (remove_process p_name st1) p = Some st2)
 .
 
-Equations stmt_driven_signals : Verilog.statement -> StrSet.t :=
-  stmt_driven_signals (Verilog.Block body) :=
+Equations stmt_driven_signals : TypedVerilog.Statement -> StrSet.t :=
+  stmt_driven_signals (TypedVerilog.Block body) :=
     List.fold_left StrSet.union (List.map stmt_driven_signals body) StrSet.empty;
-  stmt_driven_signals (Verilog.BlockingAssign (Verilog.NamedExpression n) rhs) :=
+  stmt_driven_signals (TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression _ n) rhs) :=
     StrSet.singleton n ;
-  stmt_driven_signals (Verilog.BlockingAssign _ _) :=
+  stmt_driven_signals (TypedVerilog.BlockingAssign _ _) :=
     StrSet.empty;
-  stmt_driven_signals (Verilog.NonBlockingAssign (Verilog.NamedExpression n) rhs) :=
+  stmt_driven_signals (TypedVerilog.NonBlockingAssign (TypedVerilog.NamedExpression _ n) rhs) :=
     StrSet.singleton n ;
-  stmt_driven_signals (Verilog.NonBlockingAssign _ _) :=
+  stmt_driven_signals (TypedVerilog.NonBlockingAssign _ _) :=
     StrSet.empty;
-  stmt_driven_signals (Verilog.If _ trueBranch falseBranch) :=
+  stmt_driven_signals (TypedVerilog.If _ trueBranch falseBranch) :=
     StrSet.union (stmt_driven_signals trueBranch) (stmt_driven_signals falseBranch)
 .
 
 Equations driven_signals : Process -> StrSet.t :=
-  driven_signals (Verilog.ContinuousAssign (Verilog.NamedExpression n) _) :=
+  driven_signals (TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression _ n) _) :=
     StrSet.singleton n ;
-  driven_signals (Verilog.ContinuousAssign _ _) :=
+  driven_signals (TypedVerilog.ContinuousAssign _ _) :=
     StrSet.empty;
-  driven_signals (Verilog.AlwaysFF stmts) :=
+  driven_signals (TypedVerilog.AlwaysFF stmts) :=
     stmt_driven_signals stmts
 .
 
 Definition is_continuous_assign (p : Process) : Prop :=
   match p with
-  | Verilog.ContinuousAssign _ _ => True
+  | TypedVerilog.ContinuousAssign _ _ => True
   | _ => False
   end
 .
@@ -255,47 +283,47 @@ Conjecture ndet_sequential_equivalence:
     st2 = st2'.
 (* No matter what process we pick for ndet, it will not affect the evaluation of other processes *)
 
-
 Import VerilogNotations.
 Import BitvectorNotations.
 
-Definition nondeterminism1 : Verilog.vmodule :=
+Definition nondeterminism1 : TypedVerilog.vmodule :=
   {|
-    Verilog.modName := "nondeterminism1";
-    Verilog.modPorts := [
+    TypedVerilog.modName := "nondeterminism1";
+    TypedVerilog.modPorts := [
       Verilog.MkPort PortIn "clk";
       Verilog.MkPort PortOut "a";
       Verilog.MkPort PortOut "b"
     ];
-    Verilog.modVariables := [
-      Verilog.MkVariable (Verilog.Logic 1 0) Verilog.Reg "a";
-      Verilog.MkVariable (Verilog.Logic 1 0) Verilog.Reg "b"
+    TypedVerilog.modVariables := [
+      Verilog.MkVariable [1.:0] Verilog.Reg "a";
+      Verilog.MkVariable [1.:0] Verilog.Reg "b"
     ];
-    Verilog.modBody := [
-      Verilog.AlwaysFF
-        ( Verilog.BlockingAssign
-            (Verilog.NamedExpression "a")
-            (Verilog.BinaryOp
+    TypedVerilog.modBody := [
+      TypedVerilog.AlwaysFF
+        ( TypedVerilog.BlockingAssign
+            (TypedVerilog.NamedExpression [1.:0] "a")
+            (TypedVerilog.BinaryOp
+               [1.:0]
                Verilog.Plus
-               (Verilog.NamedExpression "a")
-               (Verilog.IntegerLiteral (Bitvector.mkBV 1 2))));
-      Verilog.AlwaysFF
-        ( Verilog.BlockingAssign
-            (Verilog.NamedExpression "b")
-            (Verilog.IntegerLiteral (Bitvector.mkBV 1 2)))
+               (TypedVerilog.NamedExpression [1.:0] "a")
+               (TypedVerilog.IntegerLiteral (Bitvector.mkBV 1 2))));
+      TypedVerilog.AlwaysFF
+        ( TypedVerilog.BlockingAssign
+            (TypedVerilog.NamedExpression [1.:0] "b")
+            (TypedVerilog.NamedExpression [1.:0] "a"))
     ]
   |}
 .
 
 Print nondeterminism1.
 
-Definition initial_state (m : Verilog.vmodule) : VerilogState :=
+Definition initial_state (m : TypedVerilog.vmodule) : VerilogState :=
   {|
     regState :=
       (* TODO: correct initialization of regs *)
       List.fold_left
-        (fun vars var => StrMap.add (Verilog.varName var) (mkBV 0 32) vars)
-        (Verilog.modVariables m)
+        (fun vars var => StrMap.add (Verilog.varName var) (mkBV 0 (Verilog.vtype_width (Verilog.varType var))) vars)
+        (TypedVerilog.modVariables m)
         (StrMap.empty bv);
     nbaValues := StrMap.empty bv;
     pendingProcesses :=
@@ -303,9 +331,49 @@ Definition initial_state (m : Verilog.vmodule) : VerilogState :=
         (List.fold_left
            (fun '(nextName, procs) proc =>
             (Pos.succ nextName, NameMap.add nextName proc procs))
-           (Verilog.modBody m)
+           (TypedVerilog.modBody m)
            (1%positive, NameMap.empty Process))
   |}
 .
 
 Compute (initial_state nondeterminism1).
+
+Ltac verilog_exec_tac :=
+  repeat progress
+    (simp exec_module_item exec_statement eval_expr
+     || unfold remove_process, set_reg
+     || simpl).
+
+Ltac verilog_step_process_tac n :=
+  apply rt_step;
+  eapply step_ndet_exec_process with (p_name := n);
+  repeat (try progress verilog_exec_tac; reflexivity).
+
+Ltac maps_to_tac :=
+  apply StrMapFacts.find_mapsto_iff;
+  unfold StrMap.add, StrMap.find;
+  simpl;
+  (reflexivity || f_equal).
+
+Example nondeterminism1_eval1 :
+  exists st,
+    evaluate_ndet (initial_state nondeterminism1) st
+    /\ StrMap.MapsTo "a"%string (mkBV 1 2) (regState st)
+    /\ StrMap.MapsTo "b"%string (mkBV 1 2) (regState st)
+.
+Proof.
+  unfold evaluate_ndet.
+  eexists.
+  repeat split.
+  {
+    unfold nondeterminism1, initial_state; simpl.
+    eapply rt_trans.
+    - verilog_step_process_tac 1%positive.
+    - verilog_step_process_tac 2%positive.
+  }
+  all: simpl; simp eval_op bv_add_truncate.
+  - apply NameMapFacts.is_empty_iff. reflexivity.
+  - apply StrMapFacts.is_empty_iff. reflexivity.
+  - maps_to_tac. admit.
+  - maps_to_tac. admit.
+Admitted.
