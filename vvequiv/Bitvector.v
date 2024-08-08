@@ -64,6 +64,16 @@ Module Bitvector.
     simpl.
     reflexivity.
   Qed.
+
+  Equations truncate (w : positive) (bv1 : bv) (prf : (w <= width bv1)%positive) : bv :=
+    truncate w (BV val _ _) prf := (BV (N.min (N.pred (2 ^ N.pos w)) val) w _)
+  .
+  Next Obligation. lia. Qed.
+
+  Equations zero_extend (w : positive) (bv1 : bv) (prf : (w >= width bv1)%positive) : bv :=
+    zero_extend w (BV val _ _) prf := (BV val w _)
+  .
+  Next Obligation. Admitted.
 End Bitvector.
 
 Module BitvectorNotations.
