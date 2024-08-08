@@ -15,6 +15,11 @@ From Equations Require Import Equations.
 Module Verilog.
   Inductive vtype := Logic : N -> N -> vtype.
 
+  Definition vtype_width (t : Verilog.vtype) : positive :=
+    let (hi, lo) := t in
+    N.succ_pos ((N.max hi lo) - (N.min hi lo))
+  .
+
   Variant StorageType := Reg | Wire.
 
   Equations Derive NoConfusionHom EqDec for vtype.
