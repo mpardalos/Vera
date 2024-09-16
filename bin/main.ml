@@ -6,12 +6,12 @@ module IntSMT = SMTPP.SMT (struct
   let format fmt n = fprintf fmt "v%d" n
 end)
 
-let ( >>= ) (x : ('err, 'a) VVEquiv.sum) (f : 'a -> ('err, 'b) VVEquiv.sum) =
-  match x with VVEquiv.Inl e -> VVEquiv.Inl e | VVEquiv.Inr x -> f x
+let ( >>= ) (x : ('err, 'a) Vera.sum) (f : 'a -> ('err, 'b) Vera.sum) =
+  match x with Vera.Inl e -> Vera.Inl e | Vera.Inr x -> f x
 
 let ( let* ) = ( >>= )
 let ( =<< ) a b = b >>= a
-let ret x = VVEquiv.Inr x
+let ret x = Vera.Inr x
 
 let fmap f x =
   let* xval = x in
@@ -20,42 +20,42 @@ let fmap f x =
 let ( <$> ) = fmap
 let ( <&> ) x f = fmap f x
 
-let ( >=> ) (f : 'a -> 'b VVEquiv.result) (g : 'b -> 'c VVEquiv.result) (x : 'a)
-    : 'c VVEquiv.result =
+let ( >=> ) (f : 'a -> 'b Vera.result) (g : 'b -> 'c Vera.result) (x : 'a)
+    : 'c Vera.result =
   let* y = f x in
   g y
 
 type var_context = (int, Z3.Expr.expr) Hashtbl.t
 
 let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
-    (formula : int VVEquiv.SMT.qfbv) : Z3.Expr.expr =
+    (formula : int Vera.SMT.qfbv) : Z3.Expr.expr =
   match formula with
-  | VVEquiv.SMT.BVAdd (l, r) ->
+  | Vera.SMT.BVAdd (l, r) ->
       Z3.BitVector.mk_add z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
         (qfbv_formula_to_z3 var_ctx z3_ctx r)
-  | VVEquiv.SMT.BVMul (l, r) ->
+  | Vera.SMT.BVMul (l, r) ->
       Z3.BitVector.mk_mul z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
         (qfbv_formula_to_z3 var_ctx z3_ctx r)
-  | VVEquiv.SMT.BVNeg f ->
+  | Vera.SMT.BVNeg f ->
       Z3.BitVector.mk_neg z3_ctx (qfbv_formula_to_z3 var_ctx z3_ctx f)
-  | VVEquiv.SMT.BVShl (l, r) ->
+  | Vera.SMT.BVShl (l, r) ->
       Z3.BitVector.mk_shl z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
         (qfbv_formula_to_z3 var_ctx z3_ctx r)
-  | VVEquiv.SMT.BVLShr (l, r) ->
+  | Vera.SMT.BVLShr (l, r) ->
       Z3.BitVector.mk_lshr z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
         (qfbv_formula_to_z3 var_ctx z3_ctx r)
-  | VVEquiv.SMT.BVLit v ->
+  | Vera.SMT.BVLit v ->
       Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" v.value) v.width
-  | VVEquiv.SMT.BVVar n -> Hashtbl.find var_ctx n
-  | VVEquiv.SMT.BVZeroExtend (num, f) ->
+  | Vera.SMT.BVVar n -> Hashtbl.find var_ctx n
+  | Vera.SMT.BVZeroExtend (num, f) ->
       Z3.BitVector.mk_zero_ext z3_ctx num (qfbv_formula_to_z3 var_ctx z3_ctx f)
-  | VVEquiv.SMT.BVExtract (hi, lo, f) ->
+  | Vera.SMT.BVExtract (hi, lo, f) ->
       Z3.BitVector.mk_extract z3_ctx hi lo (qfbv_formula_to_z3 var_ctx z3_ctx f)
-  | VVEquiv.SMT.CoreITE (select, ifT, ifF) ->
+  | Vera.SMT.CoreITE (select, ifT, ifF) ->
       Z3.Boolean.mk_ite z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx select)
         (qfbv_formula_to_z3 var_ctx z3_ctx ifT)
@@ -63,19 +63,19 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
 (* Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" v.value) v.width *)
 
 let smt_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
-    (formula : int VVEquiv.SMT.formula) : Z3.Expr.expr option =
+    (formula : int Vera.SMT.formula) : Z3.Expr.expr option =
   match formula with
-  | VVEquiv.SMT.CDeclare (n, s) ->
+  | Vera.SMT.CDeclare (n, s) ->
       let expr = Z3.BitVector.mk_const_s z3_ctx (sprintf "v%d" n) s in
       Hashtbl.replace var_ctx n expr;
       None
   (* replace means add or replace if present *)
-  | VVEquiv.SMT.CEqual (l, r) ->
+  | Vera.SMT.CEqual (l, r) ->
       Some
         (Z3.Boolean.mk_eq z3_ctx
            (qfbv_formula_to_z3 var_ctx z3_ctx l)
            (qfbv_formula_to_z3 var_ctx z3_ctx r))
-  | VVEquiv.SMT.CDistinct (l, r) ->
+  | Vera.SMT.CDistinct (l, r) ->
       Some
         (Z3.Boolean.mk_distinct z3_ctx
            [
@@ -83,7 +83,7 @@ let smt_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
              qfbv_formula_to_z3 var_ctx z3_ctx r;
            ])
 
-let smt_to_z3 (z3_ctx : Z3.context) (formulas : int VVEquiv.SMT.formula list) :
+let smt_to_z3 (z3_ctx : Z3.context) (formulas : int Vera.SMT.formula list) :
     Z3.Expr.expr list =
   let var_ctx = Hashtbl.create 20 in
   List.filter_map (smt_formula_to_z3 var_ctx z3_ctx) formulas
@@ -172,26 +172,26 @@ let () =
   let lower =
     let display_or_error pp result =
       match result with
-      | VVEquiv.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
-      | VVEquiv.Inr x -> printf "%a\n" pp x
+      | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
+      | Vera.Inr x -> printf "%a\n" pp x
     in
 
     let module_of_file (filename : string) :
-        VVEquiv.Verilog.vmodule VVEquiv.result =
+        Vera.Verilog.vmodule Vera.result =
       let raw_module = parse_file Parser.vmodule_only filename in
-      VVEquiv.parse_raw_verilog raw_module
+      Vera.parse_raw_verilog raw_module
     in
 
-    let typed_module_of_file = module_of_file >=> VVEquiv.tc_vmodule in
+    let typed_module_of_file = module_of_file >=> Vera.tc_vmodule in
     let netlist_of_file =
-      typed_module_of_file >=> VVEquiv.verilog_to_netlist 1 >=> fun x ->
+      typed_module_of_file >=> Vera.verilog_to_netlist 1 >=> fun x ->
       ret (fst x)
     in
     let smt_netlist_of_file filename =
-      VVEquiv.netlist_to_smt <$> netlist_of_file filename
+      Vera.netlist_to_smt <$> netlist_of_file filename
     in
     let smt_formulas_of_file filename =
-      VVEquiv.SMT.smtnlFormulas <$> smt_netlist_of_file filename
+      Vera.SMT.smtnlFormulas <$> smt_netlist_of_file filename
     in
     function
     | [ "parsed"; filename ] ->
@@ -229,16 +229,16 @@ let () =
     | [ filename1; filename2 ] -> (
         let queryResult =
           let* module1 =
-            VVEquiv.parse_raw_verilog (parse_file Parser.vmodule_only filename1)
+            Vera.parse_raw_verilog (parse_file Parser.vmodule_only filename1)
           in
           let* module2 =
-            VVEquiv.parse_raw_verilog (parse_file Parser.vmodule_only filename2)
+            Vera.parse_raw_verilog (parse_file Parser.vmodule_only filename2)
           in
-          VVEquiv.equivalence_query module1 module2
+          Vera.equivalence_query module1 module2
         in
         match queryResult with
-        | VVEquiv.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
-        | VVEquiv.Inr query ->
+        | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
+        | Vera.Inr query ->
             List.iter (printf "%a\n" IntSMT.smt) query;
             let z3_ctx = Z3.mk_context [] in
             let z3_solver = Z3.Solver.mk_solver z3_ctx None in

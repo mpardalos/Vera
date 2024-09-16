@@ -15,7 +15,7 @@ From ExtLib Require Import Structures.Reducible.
 Import MonadNotation.
 Open Scope monad_scope.
 
-From vvequiv Require Import Verilog.
+From vera Require Import Verilog.
 
 Definition Result := sum string.
 

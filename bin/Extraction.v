@@ -1,11 +1,11 @@
-From vvequiv Require Netlist.
-From vvequiv Require NetlistToSMT.
-From vvequiv Require SMT.
-From vvequiv Require Verilog.
-From vvequiv Require VerilogEquivalence.
-From vvequiv Require VerilogToNetlist.
-From vvequiv Require Common.
-From vvequiv Require ParseRawVerilog.
+From vera Require Netlist.
+From vera Require NetlistToSMT.
+From vera Require SMT.
+From vera Require Verilog.
+From vera Require VerilogEquivalence.
+From vera Require VerilogToNetlist.
+From vera Require Common.
+From vera Require ParseRawVerilog.
 
 From Coq Require Extraction.
 From Coq Require Import extraction.ExtrOcamlBasic.
@@ -18,7 +18,7 @@ Extraction Language OCaml.
 Extract Inlined Constant List.flat_map => "List.concat_map".
 
 
-Extraction "VVEquiv.ml"
+Extraction "Vera.ml"
   Bitvector.Bitvector
   VerilogEquivalence.equivalence_query
   Verilog.Verilog

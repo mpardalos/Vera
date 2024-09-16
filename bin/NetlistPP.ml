@@ -1,5 +1,5 @@
 open Format
-open VVEquiv
+open Vera
 
 let bitvector fmt (bv : Bitvector.bv) = fprintf fmt "%d'd%d" bv.width bv.value
 

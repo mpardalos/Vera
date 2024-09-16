@@ -7,9 +7,9 @@ From Coq Require Import List.
 From Coq Require Import ssreflect.
 Import ListNotations.
 
-From vvequiv Require Import Netlist.
-From vvequiv Require Import Common.
-From vvequiv Require Import Bitvector.
+From vera Require Import Netlist.
+From vera Require Import Common.
+From vera Require Import Bitvector.
 
 From Equations Require Import Equations.
 

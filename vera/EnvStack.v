@@ -1,4 +1,4 @@
-From vvequiv Require Import Common.
+From vera Require Import Common.
 From Coq Require Import List.
 Import ListNotations.
 

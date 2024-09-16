@@ -1,9 +1,9 @@
-From vvequiv Require Import Verilog.
-From vvequiv Require Import Netlist.
-From vvequiv Require Import Bitvector.
-From vvequiv Require Import Common.
+From vera Require Import Verilog.
+From vera Require Import Netlist.
+From vera Require Import Bitvector.
+From vera Require Import Common.
 Import CommonNotations.
-From vvequiv Require EnvStack.
+From vera Require EnvStack.
 
 From Coq Require Import ZArith.
 From Coq Require Import BinNums.

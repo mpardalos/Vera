@@ -38,17 +38,17 @@
 %left MULTIPLY DIVIDE
 %left SHIFTLEFT SHIFTRIGHT
 
-%start <VVEquiv.Verilog.raw_vmodule> vmodule_only
-%type <VVEquiv.Verilog.raw_vmodule> vmodule
+%start <Vera.Verilog.raw_vmodule> vmodule_only
+%type <Vera.Verilog.raw_vmodule> vmodule
 
-%start <(VVEquiv.Verilog.module_item, VVEquiv.Verilog.raw_declaration) VVEquiv.sum> module_item_only
-%type <(VVEquiv.Verilog.module_item, VVEquiv.Verilog.raw_declaration) VVEquiv.sum> module_item
+%start <(Vera.Verilog.module_item, Vera.Verilog.raw_declaration) Vera.sum> module_item_only
+%type <(Vera.Verilog.module_item, Vera.Verilog.raw_declaration) Vera.sum> module_item
 
-%start <VVEquiv.Verilog.statement> statement_only
-%type <VVEquiv.Verilog.statement> statement
+%start <Vera.Verilog.statement> statement_only
+%type <Vera.Verilog.statement> statement
 
-%start <VVEquiv.Verilog.expression> expression_only
-%type <VVEquiv.Verilog.expression> expression
+%start <Vera.Verilog.expression> expression_only
+%type <Vera.Verilog.expression> expression
 
 %%
 
@@ -71,8 +71,8 @@ let optional(x) :=
 let vmodule_only := x = only(vmodule); { x }
 
 let module_port := direction = port_direction; name = IDENTIFIER;
-    { { VVEquiv.Verilog.portDirection = direction
-      ; VVEquiv.Verilog.portName = Util.string_to_lst name
+    { { Vera.Verilog.portDirection = direction
+      ; Vera.Verilog.portName = Util.string_to_lst name
       }
     }
 
@@ -82,9 +82,9 @@ let module_ports := LPAREN; args = sepBy(module_port, COMMA); RPAREN;
 let vmodule :=
   MODULE; name = IDENTIFIER; ports = module_ports; SEMICOLON; body = many(module_item); ENDMODULE;
     {
-      { VVEquiv.Verilog.rawModName = (Util.string_to_lst name)
-      ; VVEquiv.Verilog.rawModPorts = ports
-      ; VVEquiv.Verilog.rawModBody = body
+      { Vera.Verilog.rawModName = (Util.string_to_lst name)
+      ; Vera.Verilog.rawModPorts = ports
+      ; Vera.Verilog.rawModBody = body
       }
     }
 
@@ -93,74 +93,74 @@ let module_item_only := x = only(module_item); { x }
 let always_ff := ALWAYS | ALWAYS_FF
 
 let port_direction :=
-  | INPUT; { VVEquiv.PortIn }
-  | OUTPUT; { VVEquiv.PortOut }
+  | INPUT; { Vera.PortIn }
+  | OUTPUT; { Vera.PortOut }
 
 let net_type :=
-  | REG; { VVEquiv.Verilog.Reg }
-  | WIRE; { VVEquiv.Verilog.Wire }
+  | REG; { Vera.Verilog.Reg }
+  | WIRE; { Vera.Verilog.Wire }
 
 let vtype := LBRACKET; hi = NUMBER; COLON; lo = NUMBER; RBRACKET;
-  { VVEquiv.Verilog.Logic (hi, lo) }
+  { Vera.Verilog.Logic (hi, lo) }
 
 let module_item :=
   | port = optional(port_direction); net_type = net_type; vtype = optional(vtype); name = IDENTIFIER; SEMICOLON;
     {
-      VVEquiv.Inr ({ rawDeclStorageType = net_type
+      Vera.Inr ({ rawDeclStorageType = net_type
                    ; rawDeclPortDeclaration = port
                    ; rawDeclName = Util.string_to_lst name
                    ; rawDeclType = vtype
                   })
     }
   | ASSIGN; lhs = expression; EQUALS; rhs = expression; SEMICOLON;
-    { VVEquiv.Inl (VVEquiv.Verilog.ContinuousAssign (lhs, rhs)) }
+    { Vera.Inl (Vera.Verilog.ContinuousAssign (lhs, rhs)) }
   | always_ff; AT; LPAREN; POSEDGE; clkname = IDENTIFIER; RPAREN; body = statement;
-    { VVEquiv.Inl (VVEquiv.Verilog.AlwaysFF body) }
+    { Vera.Inl (Vera.Verilog.AlwaysFF body) }
 
 let statement_only := x = only(statement); { x }
 
 let statement :=
   | lhs = expression; LESSTHANEQUAL; rhs = expression; SEMICOLON;
-    { VVEquiv.Verilog.NonBlockingAssign (lhs, rhs) }
+    { Vera.Verilog.NonBlockingAssign (lhs, rhs) }
   | lhs = expression; EQUALS; rhs = expression; SEMICOLON;
-    { VVEquiv.Verilog.BlockingAssign (lhs, rhs) }
+    { Vera.Verilog.BlockingAssign (lhs, rhs) }
   | BEGIN; body = many(statement); END;
-    { VVEquiv.Verilog.Block body }
+    { Vera.Verilog.Block body }
 
 let expression_only := x = only(expression); { x }
 
 let expression :=
   | ident = IDENTIFIER;
     {
-      VVEquiv.Verilog.NamedExpression (Util.string_to_lst ident)
+      Vera.Verilog.NamedExpression (Util.string_to_lst ident)
     }
   | n = NUMBER;
     {
-      VVEquiv.Verilog.IntegerLiteral ({ value = n; width = 32 })
+      Vera.Verilog.IntegerLiteral ({ value = n; width = 32 })
     }
   | (sz, v) = SIZED_NUMBER;
     {
-      VVEquiv.Verilog.IntegerLiteral ({ value = v; width = sz })
+      Vera.Verilog.IntegerLiteral ({ value = v; width = sz })
     }
   | l = expression; PLUS; r = expression;
     {
-      VVEquiv.Verilog.BinaryOp (VVEquiv.Verilog.Plus, l, r)
+      Vera.Verilog.BinaryOp (Vera.Verilog.Plus, l, r)
     }
   | l = expression; MINUS; r = expression;
     {
-      VVEquiv.Verilog.BinaryOp (VVEquiv.Verilog.Minus, l, r)
+      Vera.Verilog.BinaryOp (Vera.Verilog.Minus, l, r)
     }
   | l = expression; MULTIPLY; r = expression;
     {
-      VVEquiv.Verilog.BinaryOp (VVEquiv.Verilog.Multiply, l, r)
+      Vera.Verilog.BinaryOp (Vera.Verilog.Multiply, l, r)
     }
   | l = expression; SHIFTLEFT; r = expression;
     {
-      VVEquiv.Verilog.BinaryOp (VVEquiv.Verilog.ShiftLeft, l, r)
+      Vera.Verilog.BinaryOp (Vera.Verilog.ShiftLeft, l, r)
     }
   | l = expression; SHIFTRIGHT; r = expression;
     {
-      VVEquiv.Verilog.BinaryOp (VVEquiv.Verilog.ShiftRight, l, r)
+      Vera.Verilog.BinaryOp (Vera.Verilog.ShiftRight, l, r)
     }
   | LPAREN; e = expression; RPAREN;
     { e }

@@ -1,12 +1,12 @@
 (coq.extraction
  (prelude Extraction)
- (extracted_modules VVEquiv)
- (theories vvequiv ExtLib Equations))
+ (extracted_modules Vera)
+ (theories vera ExtLib Equations))
 
 (ocamllex Lexer)
 (menhir (modules Parser))
 
 (executable
- (public_name vvequiv)
+ (public_name vera)
  (name main)
  (libraries unix z3))

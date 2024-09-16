@@ -1,5 +1,5 @@
 open Format
-open VVEquiv
+open Vera
 
 module type Formattable = sig
   type t
@@ -11,34 +11,34 @@ end
 
 module SMT (Name : Formattable) = struct
   let rec qfbv fmt = function
-    | VVEquiv.SMT.BVAdd (l, r) -> fprintf fmt "(bvadd %a %a)" qfbv l qfbv r
-    | VVEquiv.SMT.BVMul (l, r) -> fprintf fmt "(bvmult %a %a)" qfbv l qfbv r
-    | VVEquiv.SMT.BVNeg f -> fprintf fmt "(bvneg %a)" qfbv f
-    | VVEquiv.SMT.BVShl (l, r) -> fprintf fmt "(bvshl %a %a)" qfbv l qfbv r
-    | VVEquiv.SMT.BVLShr (l, r) -> fprintf fmt "(bvlshr %a %a)" qfbv l qfbv r
-    | VVEquiv.SMT.BVLit v -> fprintf fmt "(_ bv%d %d)" v.value v.width
-    | VVEquiv.SMT.BVVar n -> Name.format fmt n
-    | VVEquiv.SMT.BVZeroExtend (num, f) ->
+    | Vera.SMT.BVAdd (l, r) -> fprintf fmt "(bvadd %a %a)" qfbv l qfbv r
+    | Vera.SMT.BVMul (l, r) -> fprintf fmt "(bvmult %a %a)" qfbv l qfbv r
+    | Vera.SMT.BVNeg f -> fprintf fmt "(bvneg %a)" qfbv f
+    | Vera.SMT.BVShl (l, r) -> fprintf fmt "(bvshl %a %a)" qfbv l qfbv r
+    | Vera.SMT.BVLShr (l, r) -> fprintf fmt "(bvlshr %a %a)" qfbv l qfbv r
+    | Vera.SMT.BVLit v -> fprintf fmt "(_ bv%d %d)" v.value v.width
+    | Vera.SMT.BVVar n -> Name.format fmt n
+    | Vera.SMT.BVZeroExtend (num, f) ->
         fprintf fmt "((_ zero_extend %d) %a)" num qfbv f
-    | VVEquiv.SMT.BVExtract (hi, lo, f) ->
+    | Vera.SMT.BVExtract (hi, lo, f) ->
         fprintf fmt "((_ extract %d %d) %a)" hi lo qfbv f
-    | VVEquiv.SMT.CoreITE (cond, ifT, ifF) ->
+    | Vera.SMT.CoreITE (cond, ifT, ifF) ->
         fprintf fmt "(ite %a %a %a)" qfbv cond qfbv ifT qfbv ifF
 
   let sort fmt bv_sz = fprintf fmt "(_ BitVec %d)" bv_sz
 
   let smt fmt = function
-    | VVEquiv.SMT.CDeclare (n, s) ->
+    | Vera.SMT.CDeclare (n, s) ->
         fprintf fmt "(declare-const %a %a)" Name.format n sort s
-    | VVEquiv.SMT.CEqual (l, r) ->
+    | Vera.SMT.CEqual (l, r) ->
         fprintf fmt "(assert (= %a %a))" qfbv l qfbv r
-    | VVEquiv.SMT.CDistinct (l, r) ->
+    | Vera.SMT.CDistinct (l, r) ->
         fprintf fmt "(assert (distinct %a %a))" qfbv l qfbv r
 
   let smt_netlist fmt (m : Name.t SMT.smt_netlist) =
     let formula_helper ports _ f =
       match f with
-      | VVEquiv.SMT.CDeclare (n, _) -> (
+      | Vera.SMT.CDeclare (n, _) -> (
           match List.find_opt (fun p -> fst p == n) ports with
           | Some (_, PortIn) -> fprintf fmt "%a ; In" smt f
           | Some (_, PortOut) -> fprintf fmt "%a ; Out" smt f

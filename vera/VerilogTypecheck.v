@@ -1,6 +1,13 @@
-From vvequiv Require Import Verilog.
-From vvequiv Require Import Common.
-From vvequiv Require Import Bitvector.
+From vera Require Import Verilog.
+From vera Require Import Common.
+From vera Require Import Bitvector.
+From vera Require Import Verilog.
+From vera Require Import Netlist.
+From vera Require Import Bitvector.
+From vera Require Import Common.
+From vera Require EnvStack.
+From vera Require Import Common.
+From vera Require Import Bitvector.
 
 Require Import String.
 Require Import List.

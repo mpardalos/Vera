@@ -1,6 +1,6 @@
 (lang dune 3.13)
 
-(name vvequiv)
+(name vera)
 
 (generate_opam_files true)
 
@@ -19,7 +19,7 @@
 (using menhir 3.0)
 
 (package
- (name vvequiv)
+ (name vera)
  (synopsis "A short synopsis")
  (description "A longer description")
  (depends ocaml dune)

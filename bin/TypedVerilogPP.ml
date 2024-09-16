@@ -1,5 +1,5 @@
 open Format
-open VVEquiv
+open Vera
 
 let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"

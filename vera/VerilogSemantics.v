@@ -11,9 +11,9 @@ From Coq Require Import ssreflect.
 From Coq Require Import Relations.
 Import ListNotations.
 
-From vvequiv Require Import Verilog.
-From vvequiv Require Import Common.
-From vvequiv Require Import Bitvector.
+From vera Require Import Verilog.
+From vera Require Import Common.
+From vera Require Import Bitvector.
 
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.MonadExc.
