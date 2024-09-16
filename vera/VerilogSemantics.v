@@ -1,7 +1,6 @@
-From Coq Require Import BinNums.
-From Coq Require Import BinNat.
 From Coq Require Import BinPos.
 From Coq Require Import String.
+From Coq Require Import Nat.
 From Coq Require FMaps.
 From Coq Require MSets.
 From Coq Require Import Structures.OrderedTypeEx.
@@ -9,21 +8,22 @@ From Coq Require FMapFacts.
 From Coq Require Import List.
 From Coq Require Import ssreflect.
 From Coq Require Import Relations.
-Import ListNotations.
 
 From vera Require Import Verilog.
 From vera Require Import Common.
-From vera Require Import Bitvector.
+
+From nbits Require Import NBits.
+From mathcomp Require Import seq.
+From Equations Require Import Equations.
 
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Data.Monads.OptionMonad.
+
+Import ListNotations.
 Import MonadNotation.
+Local Open Scope bits_scope.
 Local Open Scope monad_scope.
-
-From Equations Require Import Equations.
-
-Import Bitvector.
 
 Definition Process := TypedVerilog.module_item.
 
@@ -31,20 +31,20 @@ Definition PendingProcesses := list Process.
 
 Record VerilogState :=
   MkVerilogState
-    { regState : StrMap.t Bitvector.bv
-    ; nbaValues : StrMap.t Bitvector.bv
+    { regState : StrMap.t bits
+    ; nbaValues : StrMap.t bits
     ; pendingProcesses : NameMap.t Process
     }
 .
 
-Definition set_reg (name : string) (value : Bitvector.bv) (st : VerilogState) : VerilogState :=
+Definition set_reg (name : string) (value : bits) (st : VerilogState) : VerilogState :=
   {| regState := StrMap.add name value (regState st)
   ; nbaValues := nbaValues st
   ; pendingProcesses := pendingProcesses st
   |}
 .
 
-Definition set_nba (name : string) (value : Bitvector.bv) (st : VerilogState) : VerilogState :=
+Definition set_nba (name : string) (value : bits) (st : VerilogState) : VerilogState :=
   {| regState := regState st
   ; nbaValues := StrMap.add name value (nbaValues st)
   ; pendingProcesses := pendingProcesses st
@@ -59,8 +59,8 @@ Definition remove_process (name : name) (st : VerilogState) : VerilogState :=
 .
 
 Equations
-  eval_op (op : Verilog.op) (lhs rhs : Bitvector.bv) (width_match : width lhs = width rhs) : Bitvector.bv :=
-  eval_op Verilog.Plus lhs rhs prf := Bitvector.bv_add_truncate lhs rhs prf;
+  eval_op (op : Verilog.op) (lhs rhs : bits) (width_match : size lhs = size rhs) : bits :=
+  eval_op Verilog.Plus lhs rhs prf := lhs +# rhs;
   eval_op _ lhs rhs prf := _
 .
 Admit Obligations.
@@ -68,42 +68,31 @@ Admit Obligations.
 Require Import Psatz.
 
 Equations
-  eval_expr : VerilogState -> TypedVerilog.expression -> option Bitvector.bv :=
+  eval_expr : VerilogState -> TypedVerilog.expression -> option bits :=
   eval_expr st (TypedVerilog.BinaryOp _ op lhs rhs) :=
     lhs__val <- eval_expr st lhs ;;
     rhs__val <- eval_expr st rhs ;;
-    match Pos.eq_dec (Bitvector.width lhs__val) (Bitvector.width rhs__val) with
+    match eq_dec (size lhs__val) (size rhs__val) with
     | left prf => ret (eval_op op lhs__val rhs__val _)
     | right _ => None
     end;
   eval_expr st (TypedVerilog.Conversion from_type to_type expr) :=
     val <- eval_expr st expr;;
     let width := Verilog.vtype_width to_type in
-    ret ((match (Bitvector.width val <? width)%positive as x return (_ = x -> _) with
-          | true => fun prf => Bitvector.zero_extend width val _
-          | false => fun prf => Bitvector.truncate width val _
-          end) eq_refl)
+    ret (if size val <? width
+         then zext width val
+         else low width val)
   ;
   eval_expr st (TypedVerilog.IntegerLiteral val) := Some val;
   eval_expr st (TypedVerilog.NamedExpression _ name) := StrMap.find name (regState st)
 .
-Next Obligation.
-  rewrite Pos.ltb_lt in prf.
-  rewrite Pos.compare_lt_iff in H.
-  lia.
-Qed.
-Next Obligation.
-  rewrite Pos.ltb_nlt in prf.
-  rewrite Pos.compare_gt_iff in H.
-  lia.
-Qed.
 
 Equations
   exec_statement (st : VerilogState) (stmt : TypedVerilog.Statement) : option VerilogState by struct :=
   exec_statement st (TypedVerilog.Block stmts) := exec_statements st stmts ;
   exec_statement st (TypedVerilog.If cond trueBranch falseBranch) :=
     condVal <- eval_expr st cond ;;
-    if N.eqb (Bitvector.value condVal) 0%N
+    if (to_nat condVal) =? 0
     then exec_statement st falseBranch
     else exec_statement st trueBranch
   ;
@@ -154,7 +143,7 @@ Proof.
     inversion H1; clear H1.
     reflexivity.
   - inversion H1; destruct (eval_expr st cond); try discriminate; clear H1.
-    destruct (value b =? 0)%N; auto.
+    destruct (to_nat b =? 0); auto.
   - inversion H. reflexivity.
   - inversion H1; clear H1.
     destruct (exec_statement st hd) eqn:E; try discriminate.
@@ -184,7 +173,7 @@ Definition least_element {A} (m : NameMap.t A) : option (name * A) :=
 Definition flush_nonblocking (st : VerilogState) : VerilogState :=
   {|
     regState := StrMap.map2 opt_or (nbaValues st) (regState st);
-    nbaValues := StrMap.empty bv;
+    nbaValues := StrMap.empty bits;
     pendingProcesses := pendingProcesses st
   |}
 .
@@ -284,7 +273,6 @@ Conjecture ndet_sequential_equivalence:
 (* No matter what process we pick for ndet, it will not affect the evaluation of other processes *)
 
 Import VerilogNotations.
-Import BitvectorNotations.
 
 Definition nondeterminism1 : TypedVerilog.vmodule :=
   {|
@@ -306,7 +294,7 @@ Definition nondeterminism1 : TypedVerilog.vmodule :=
                [1.:0]
                Verilog.Plus
                (TypedVerilog.NamedExpression [1.:0] "a")
-               (TypedVerilog.IntegerLiteral (Bitvector.mkBV 1 2))));
+               (TypedVerilog.IntegerLiteral (2-bits of 1))));
       TypedVerilog.AlwaysFF
         ( TypedVerilog.BlockingAssign
             (TypedVerilog.NamedExpression [1.:0] "b")
@@ -315,17 +303,19 @@ Definition nondeterminism1 : TypedVerilog.vmodule :=
   |}
 .
 
-Print nondeterminism1.
-
 Definition initial_state (m : TypedVerilog.vmodule) : VerilogState :=
   {|
     regState :=
       (* TODO: correct initialization of regs *)
       List.fold_left
-        (fun vars var => StrMap.add (Verilog.varName var) (mkBV 0 (Verilog.vtype_width (Verilog.varType var))) vars)
+        (fun vars var =>
+           StrMap.add
+             (Verilog.varName var)
+             ((Verilog.vtype_width (Verilog.varType var))-bits of 0)
+             vars)
         (TypedVerilog.modVariables m)
-        (StrMap.empty bv);
-    nbaValues := StrMap.empty bv;
+        (StrMap.empty bits);
+    nbaValues := StrMap.empty bits;
     pendingProcesses :=
       snd
         (List.fold_left
@@ -358,8 +348,8 @@ Ltac maps_to_tac :=
 Example nondeterminism1_eval1 :
   exists st,
     evaluate_ndet (initial_state nondeterminism1) st
-    /\ StrMap.MapsTo "a"%string (mkBV 1 2) (regState st)
-    /\ StrMap.MapsTo "b"%string (mkBV 1 2) (regState st)
+    /\ StrMap.MapsTo "a"%string (2-bits of 1) (regState st)
+    /\ StrMap.MapsTo "b"%string (2-bits of 1) (regState st)
 .
 Proof.
   unfold evaluate_ndet.
@@ -374,6 +364,29 @@ Proof.
   all: simpl; simp eval_op bv_add_truncate.
   - apply NameMapFacts.is_empty_iff. reflexivity.
   - apply StrMapFacts.is_empty_iff. reflexivity.
-  - maps_to_tac. admit.
-  - maps_to_tac. admit.
-Admitted.
+  - maps_to_tac.
+  - maps_to_tac.
+Qed.
+
+Example nondeterminism1_eval2 :
+  exists st,
+    evaluate_ndet (initial_state nondeterminism1) st
+    /\ StrMap.MapsTo "a"%string (2-bits of 1) (regState st)
+    /\ StrMap.MapsTo "b"%string (2-bits of 0) (regState st)
+.
+Proof.
+  unfold evaluate_ndet.
+  eexists.
+  repeat split.
+  {
+    unfold nondeterminism1, initial_state; simpl.
+    eapply rt_trans.
+    - verilog_step_process_tac 2%positive.
+    - verilog_step_process_tac 1%positive.
+  }
+  all: simpl; simp eval_op bv_add_truncate.
+  - apply NameMapFacts.is_empty_iff. reflexivity.
+  - apply StrMapFacts.is_empty_iff. reflexivity.
+  - maps_to_tac.
+  - maps_to_tac.
+Qed.

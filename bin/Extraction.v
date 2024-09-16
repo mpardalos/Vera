@@ -19,7 +19,6 @@ Extract Inlined Constant List.flat_map => "List.concat_map".
 
 
 Extraction "Vera.ml"
-  Bitvector.Bitvector
   VerilogEquivalence.equivalence_query
   Verilog.Verilog
   VerilogTypecheck.tc_vmodule

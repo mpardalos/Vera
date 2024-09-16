@@ -1,4 +1,4 @@
 (coq.theory
  (name vera)
- (theories Equations ExtLib)
+ (theories Equations ExtLib nbits mathcomp)
 )

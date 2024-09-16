@@ -1,22 +1,9 @@
-From vera Require Import Verilog.
-From vera Require Import Common.
-From vera Require Import Bitvector.
-From vera Require Import Verilog.
-From vera Require Import Netlist.
-From vera Require Import Bitvector.
-From vera Require Import Common.
-From vera Require EnvStack.
-From vera Require Import Common.
-From vera Require Import Bitvector.
-
-Require Import String.
-Require Import List.
-Require Import BinPos.
-Require Import BinNat.
-Import ListNotations.
-
+From Coq Require Import String.
+From Coq Require Import List.
+From Coq Require Import BinPos.
+From Coq Require Import BinNat.
 From Coq Require Arith Lia Program.
-From Equations Require Import Equations.
+
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.MonadState.
 From ExtLib Require Import Structures.MonadExc.
@@ -25,8 +12,21 @@ From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Data.Monads.StateMonad.
 From ExtLib Require Import Data.Monads.EitherMonad.
 From ExtLib Require Import Data.List.
+From Equations Require Import Equations.
+From nbits Require Import NBits.
+From mathcomp Require Import seq.
+
+From vera Require Import Verilog.
+From vera Require Import Common.
+From vera Require Import Verilog.
+From vera Require Import Netlist.
+From vera Require Import Common.
+From vera Require EnvStack.
+From vera Require Import Common.
+
 Import MonadNotation.
 Import FunctorNotation.
+Import ListNotations.
 Open Scope monad_scope.
 
 Definition TCBindings := StrMap.t Verilog.vtype.
@@ -38,7 +38,7 @@ Definition TC := sum string.
 Equations expr_type : TypedVerilog.expression -> Verilog.vtype :=
   expr_type (TypedVerilog.BinaryOp t _ _ _) := t;
   expr_type (TypedVerilog.Conversion _ t _) := t;
-  expr_type (TypedVerilog.IntegerLiteral v) := Verilog.Logic (N_of_nat (nat_of_P (Bitvector.width v) - 1)) 0;
+  expr_type (TypedVerilog.IntegerLiteral v) := Verilog.Logic (size v - 1) 0;
   expr_type (TypedVerilog.NamedExpression t _) := t.
 
 Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=
@@ -52,8 +52,8 @@ Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expres
     | Some t => ret (TypedVerilog.NamedExpression t n)
     end.
 
-Definition dec_value_matches_type (v: Bitvector.bv) (t: Verilog.vtype) : { Bitvector.width v = Verilog.vtype_width t } + { Bitvector.width v <> Verilog.vtype_width t } :=
-  Pos.eq_dec (Bitvector.width v) (Verilog.vtype_width t).
+Definition dec_value_matches_type (v: bits) (t: Verilog.vtype) : { size v = Verilog.vtype_width t } + { size v <> Verilog.vtype_width t } :=
+  eq_dec (size v) (Verilog.vtype_width t).
 
 Equations tc_expr : TCContext -> TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=
   tc_expr ctx Γ (Verilog.BinaryOp op l r) :=
@@ -65,7 +65,7 @@ Equations tc_expr : TCContext -> TCBindings -> Verilog.expression -> TC TypedVer
       ret (TypedVerilog.IntegerLiteral value)
     else
       ret (TypedVerilog.Conversion
-             (Verilog.Logic (Pos.pred_N (Bitvector.width value)) 0)
+             (Verilog.Logic (size value - 1) 0)
              ctx
              (TypedVerilog.IntegerLiteral value));
   tc_expr ctx Γ (Verilog.NamedExpression n) :=

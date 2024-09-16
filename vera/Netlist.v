@@ -1,10 +1,12 @@
-Require Import Bitvector.
-Import Bitvector (bv(..)).
-Require Import Common.
+From Coq Require Import String.
+From Coq Require Import ZArith.
+From Coq Require Import BinNums.
 
-Require Import String.
-Require Import ZArith.
-Require Import BinNums.
+From nbits Require Import NBits.
+Local Open Scope bits_scope.
+From mathcomp Require Import seq.
+
+From vera Require Import Common.
 
 From Equations Require Import Equations.
 
@@ -13,9 +15,9 @@ Import ListNotations.
 
 (* This module will be Netlist.Netlist. Redundant, but it is needed for extraction. See Extraction.v *)
 Module Netlist.
-  Inductive nltype := Logic : positive -> nltype.
+  Inductive nltype := Logic : nat -> nltype.
 
-  Equations type_width : nltype -> positive :=
+  Equations type_width : nltype -> nat :=
     type_width (Logic w) := w.
 
   (** These are not registers, just names used to connect the netlist graph *)
@@ -29,12 +31,12 @@ Module Netlist.
 
   Inductive input :=
   | InVar : variable -> input
-  | InConstant : bv -> input
+  | InConstant : bits -> input
   .
 
-  Equations input_width : input -> positive :=
+  Equations input_width : input -> nat :=
     input_width (InVar (Var (Logic w) _)) := w;
-    input_width (InConstant (BV _ w _)) := w.
+    input_width (InConstant v) := size v.
 
   Definition input_type (i : input) : nltype :=
     Logic (input_width i).
@@ -43,8 +45,8 @@ Module Netlist.
   | OutVar : variable -> output
   .
 
-  Equations output_width : output -> positive :=
-    output_width (OutVar (Var (Logic w) _)) := w.
+  Equations output_width : output -> nat :=
+    output_width (OutVar (Var t _)) := type_width t.
 
   Definition output_type (o : output) : nltype :=
     Logic (output_width o).
@@ -78,7 +80,7 @@ Module Netlist.
   | Mux
       (out : output)
       (select in1 in2 : input)
-      (select_width : input_width select = 1%positive)
+      (select_width : input_width select = 1)
       (inputs_match : input_width in1 = input_width in2)
       (output_match : input_width in1 = output_width out)
   | Id
@@ -103,7 +105,7 @@ Module Netlist.
 
   Record register_declaration :=
     MkRegister
-      { init : bv
+      { init : bits
       ; driver : Netlist.input
       }
   .

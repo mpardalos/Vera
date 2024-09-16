@@ -5,28 +5,30 @@ From Coq Require FMaps.
 From Coq Require FMapFacts.
 From Coq Require Import List.
 From Coq Require Import ssreflect.
-Import ListNotations.
+
+From nbits Require Import NBits.
+From mathcomp Require Import seq.
 
 From vera Require Import Netlist.
 From vera Require Import Common.
-From vera Require Import Bitvector.
 
 From Equations Require Import Equations.
 
-Import Bitvector.
+Import ListNotations.
 Import Netlist.
+Local Open Scope bits_scope.
 
 (** Based on Lööw (2021) Lutsig: a verified Verilog compiler for verified circuit development, ACM. *)
 
 Definition RandomSource := nat -> bool.
 
-Equations input_port_in_map : NameMap.t bv -> (name * port_direction) -> Prop :=
+Equations input_port_in_map : NameMap.t bits -> (name * port_direction) -> Prop :=
 | map, (n, PortIn) => NameMap.In n map
 | map, (n, PortOut) => True.
 
 Record ExternalState (c : circuit) :=
   MkExternalState
-    { external_state_map :> NameMap.t bv
+    { external_state_map :> NameMap.t bits
     ; external_state_match_circuit :
       forall n, NameMap.In n (circuitPorts c) -> NameMap.In n external_state_map
     }.
@@ -35,26 +37,26 @@ Arguments MkExternalState [_] _ _.
 
 Record RegisterState (c : circuit) :=
   MkRegisterState
-    { register_state_map :> NameMap.t bv
+    { register_state_map :> NameMap.t bits
     ; register_state_wf :
       forall n reg,
         NameMap.MapsTo n reg (circuitRegisters c)
-        -> (exists v, NameMap.MapsTo n v register_state_map /\ (width v = register_width reg))
+        -> (exists v, NameMap.MapsTo n v register_state_map /\ (size v = register_width reg))
 
     }.
 
 Arguments MkRegisterState [_] _ _.
 
-Equations variable_in_map : NameMap.t bv -> variable -> Prop :=
-| map, Var (Logic w) n => exists bv, NameMap.MapsTo n bv map /\ width bv = w.
+Equations variable_in_map : NameMap.t bits -> variable -> Prop :=
+| map, Var (Logic w) n => exists v, NameMap.MapsTo n v map /\ size v = w.
 
 Record VariableState (c : circuit) :=
   MkVariableState
-    { variable_state_map :> NameMap.t bv
+    { variable_state_map :> NameMap.t bits
     ; variable_state_wf :
       forall n t,
         NameMap.MapsTo n t (circuitVariables c)
-        -> (exists v, NameMap.MapsTo n v variable_state_map /\ (width v = type_width t))
+        -> (exists v, NameMap.MapsTo n v variable_state_map /\ (size v = type_width t))
     }.
 
 Arguments MkVariableState [_] _ _.
@@ -77,7 +79,7 @@ Ltac inv_circuit_state st :=
 
 Lemma circuit_to_state_variables : forall c (st: CircuitState c) n t,
     NameMap.MapsTo n t (circuitVariables c) ->
-    exists v, (NameMap.MapsTo n v (variables st) /\ width v = type_width t).
+    exists v, (NameMap.MapsTo n v (variables st) /\ size v = type_width t).
 Proof.
   intros * H.
   inv_circuit_state st.
@@ -87,10 +89,10 @@ Qed.
 
 Set Primitive Projections.
 
-Equations varWidth : variable -> positive :=
+Equations varWidth : variable -> nat :=
   varWidth (Var (Logic w) _) := w.
 
-Equations get_var {c} (st : CircuitState c) (n : name) (name_present : NameMap.In n (variables st)) : { v : bv | NameMap.MapsTo n v (variables st) } :=
+Equations get_var {c} (st : CircuitState c) (n : name) (name_present : NameMap.In n (variables st)) : { v : bits | NameMap.MapsTo n v (variables st) } :=
   get_var st n prf :=
     (match NameMap.find n (variables st) as r return (_ = r -> _) with
      | Some x => fun eq => (@exist _ _ x eq)
@@ -101,7 +103,7 @@ Next Obligation.
   contradiction.
 Qed.
 
-Equations input_run {c} (st : CircuitState c) (i : input) (input_wf : input_in_circuit c i) : bv :=
+Equations input_run {c} (st : CircuitState c) (i : input) (input_wf : input_in_circuit c i) : bits :=
   input_run st (InConstant const) _ := const;
   input_run st (InVar (Var t n)) i_wf := proj1_sig (get_var st n _).
 Next Obligation.
@@ -112,7 +114,7 @@ Next Obligation.
 Qed.
 
 Lemma input_run_width : forall {c} (st : CircuitState c) i input_wf,
-    width (input_run st i input_wf) = input_width i.
+    size (input_run st i input_wf) = input_width i.
 Proof.
   intros.
   funelim (input_width i); simp input_run; last done.
@@ -125,7 +127,7 @@ Proof.
   eauto using NameMapFacts.MapsTo_fun.
 Qed.
 
-Lemma variable_in_map_extend_other : forall (k : NameMap.key) (t : nltype) (n : name) (x: bv) (m : NameMap.t bv),
+Lemma variable_in_map_extend_other : forall (k : NameMap.key) (t : nltype) (n : name) (x: bits) (m : NameMap.t bits),
     n <> k -> variable_in_map m (Var t n) -> variable_in_map (NameMap.add k x m) (Var t n).
 Proof.
   intros * Hdiff Hin.
@@ -137,13 +139,13 @@ Proof.
   intuition eauto using NameMap.add_2.
 Qed.
 
-Lemma variable_in_map_extend_same : forall (n k : name) (w : positive) (x: bv) (m : NameMap.t bv),
-    width x = w ->
+Lemma variable_in_map_extend_same : forall (n k : name) (w : nat) (x: bits) (m : NameMap.t bits),
+    size x = w ->
     variable_in_map m (Var (Logic w) n) ->
     variable_in_map (NameMap.add k x m) (Var (Logic w) n).
 Proof.
   intros * Heq Hin. subst.
-  funelim (variable_in_map m (Var (Logic (width x)) n)).
+  funelim (variable_in_map m (Var (Logic (size x)) n)).
   inversion H; subst; clear H.
   simp variable_in_map in *.
   destruct Hin as [xprev [Hmap Hwidth]].
@@ -161,10 +163,10 @@ Qed.
 
 Lemma variable_in_map_extend
   (n k : name)
-  (w : positive)
-  (x: bv)
-  (m : NameMap.t bv) :
-  (n <> k \/ width x = w) ->
+  (w : nat)
+  (x: bits)
+  (m : NameMap.t bits) :
+  (n <> k \/ size x = w) ->
   variable_in_map m (Var (Logic w) n) ->
   variable_in_map (NameMap.add k x m) (Var (Logic w) n).
 Proof.
@@ -178,7 +180,7 @@ Equations cell_run {c} (st : CircuitState c) (cl : cell) (cell_wf : cell_in_circ
   cell_run st (Add (OutVar (Var _ out)) in1 in2 inputs_match output_match) cell_wf :=
     let val1 := input_run st in1 _ in
     let val2 := input_run st in2 _ in
-    let result := bv_add_truncate val1 val2 _ in
+    let result := val1 +# val2 in
     MkCircuitState
       (external st)
       (registers st)
@@ -196,25 +198,26 @@ Next Obligation.
   assumption.
 Qed.
 Next Obligation.
-  repeat rewrite input_run_width.
-  assumption.
-Qed.
-Next Obligation.
   compare n out; intros E.
   + subst. eexists.
     NameMapFacts.map_iff.
     intuition eauto.
-    rewrite bv_add_truncate_width input_run_width output_match.
-    destruct cell_wf as [Hout _].
-    funelim (output_width _).
-    injection eqargs as <- <-.
-    (* clear inputs_match. clear output_match. clear in1. clear in2. *)
-    simp output_in_circuit in *.
-    destruct t as [w'].
-    assert (Logic w = Logic w') as Hw by eauto using NameMapFacts.MapsTo_fun.
-    inversion Hw; subst; clear Hw.
-    simp type_width.
-    trivial.
+    enough (input_width in1 = type_width t). {
+      repeat (
+          assumption
+          || rewrite size_addB
+          || rewrite input_run_width
+          || rewrite <- inputs_match
+          || rewrite ssrnat.minnn).
+    }
+    enough (varType0 = t). {
+      subst.
+      simp output_in_circuit in *.
+    }
+    eapply NameMapFacts.MapsTo_fun.
+    - destruct cell_wf as [Hout _].
+      simp output_in_circuit in *.
+    - assumption.
   + edestruct circuit_to_state_variables as [v [Hv_in Hv_width]]; eauto.
     exists v.
     erewrite NameMapFacts.add_mapsto_iff.

@@ -1,18 +1,20 @@
-Require Import Netlist.
-Require Import SMT.
-Require Import String.
-Require Import BinNums.
-Require Import BinPos.
-Require Import Common.
-Require Import Coq.NArith.BinNat.
-Require Import Coq.PArith.BinPos.
+From Coq Require Import String.
+(* From Coq Require Import BinNums. *)
+From Coq Require Import BinPos.
+(* From Coq Require Import NArith.BinNat. *)
+(* From Coq Require Import PArith.BinPos. *)
+From Coq Require Import List.
+From Coq Require Import Nat.
 
-
-Require Import List.
-Import ListNotations.
+From nbits Require Import NBits.
+From mathcomp Require Import seq.
 From Equations Require Import Equations.
 
-Local Open Scope positive.
+From vera Require Import Common.
+From vera Require Import Netlist.
+From vera Require Import SMT.
+
+Import ListNotations.
 
 Definition input_formula (input : Netlist.input) : SMT.qfbv name :=
   match input with
@@ -29,7 +31,7 @@ Definition output_name (output : Netlist.output) : name :=
 
 Definition nltype_sort (t : Netlist.nltype) : SMT.sort :=
   match t with
-  | Netlist.Logic sz => SMT.SBitVector sz
+  | Netlist.Logic sz => SMT.SBitVector (Pos.of_nat sz)
   end
 .
 
@@ -63,7 +65,7 @@ Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
     let in_formula := input_formula in_ in
     let formula :=
       if to <? from
-      then SMT.BVExtract (Npos to - 1) 0 in_formula
+      then SMT.BVExtract (to - 1) 0 in_formula
       else SMT.BVZeroExtend (to - from) in_formula
     in
     (output_name out, formula);

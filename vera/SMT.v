@@ -1,10 +1,13 @@
-Require Import ZArith.
-Require Import BinNums.
-Require Import String.
+From Coq Require Import ZArith.
+From Coq Require Import BinNums.
+From Coq Require Import String.
 
-Require Import Bitvector.
-Require Import Common (port_direction).
-Import Bitvector.
+From nbits Require Import NBits.
+From mathcomp Require Import seq.
+
+From vera Require Import Common (port_direction).
+
+Local Open Scope bits_scope.
 
 Module SMT.
   Inductive qfbv {T} :=
@@ -13,10 +16,10 @@ Module SMT.
   | BVNeg : qfbv -> qfbv
   | BVShl : qfbv -> qfbv -> qfbv
   | BVLShr : qfbv -> qfbv -> qfbv
-  | BVLit : bv -> qfbv
+  | BVLit : bits -> qfbv
   | BVVar : T -> qfbv
-  | BVZeroExtend : positive -> qfbv -> qfbv
-  | BVExtract : N -> N -> qfbv -> qfbv
+  | BVZeroExtend : nat -> qfbv -> qfbv
+  | BVExtract : nat -> nat -> qfbv -> qfbv
   | CoreITE : qfbv -> qfbv -> qfbv -> qfbv
   .
 
@@ -26,10 +29,10 @@ Module SMT.
   | SBitVector : positive -> sort
   .
 
-  Inductive formula {N} :=
-  | CDeclare : N -> sort -> formula
-  | CEqual : qfbv N -> qfbv N -> formula
-  | CDistinct : qfbv N -> qfbv N -> formula
+  Inductive formula {T} :=
+  | CDeclare : T -> sort -> formula
+  | CEqual : qfbv T -> qfbv T -> formula
+  | CDistinct : qfbv T -> qfbv T -> formula
   .
 
   Arguments formula : clear implicits.

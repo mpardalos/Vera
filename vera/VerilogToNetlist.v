@@ -1,37 +1,37 @@
-From vera Require Import Verilog.
-From vera Require Import Netlist.
-From vera Require Import Bitvector.
-From vera Require Import Common.
-Import CommonNotations.
-From vera Require EnvStack.
-
-From Coq Require Import ZArith.
-From Coq Require Import BinNums.
 From Coq Require Import BinIntDef.
-From Coq Require Import String.
+From Coq Require Import BinNums.
 From Coq Require Import FSets.
+From Coq Require Import List.
+From Coq Require Import Program.
 From Coq Require Import Psatz.
-
-Require Import List.
-Import ListNotations.
-
-From ExtLib Require Import Structures.Monads.
-From ExtLib Require Import Structures.Applicative.
-From ExtLib Require Import Structures.MonadState.
-From ExtLib Require Import Structures.MonadExc.
-From ExtLib Require Import Structures.Functor.
-From ExtLib Require Import Structures.Traversable.
-From ExtLib Require Import Structures.Monoid.
-From ExtLib Require Import Data.Monads.StateMonad.
-From ExtLib Require Import Data.Monads.EitherMonad.
-From ExtLib Require Import Data.List.
-From ExtLib Require Import Data.String.
-Import MonadNotation.
-Import FunctorNotation.
-Open Scope monad_scope.
-Require Import Program.
+From Coq Require Import String.
+From Coq Require Import ZArith.
 
 From Equations Require Import Equations.
+From ExtLib Require Import Data.List.
+From ExtLib Require Import Data.Monads.EitherMonad.
+From ExtLib Require Import Data.Monads.StateMonad.
+From ExtLib Require Import Data.String.
+From ExtLib Require Import Structures.Applicative.
+From ExtLib Require Import Structures.Functor.
+From ExtLib Require Import Structures.MonadExc.
+From ExtLib Require Import Structures.MonadState.
+From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Structures.Monoid.
+From ExtLib Require Import Structures.Traversable.
+From nbits Require Import NBits.
+
+From vera Require Import Verilog.
+From vera Require Import Netlist.
+From vera Require Import Common.
+From vera Require EnvStack.
+
+Import ListNotations.
+Import CommonNotations.
+Import MonadNotation.
+Import FunctorNotation.
+Local Open Scope monad_scope.
+Local Open Scope bits_scope.
 
 Record transf_state :=
   TransfState
@@ -182,12 +182,8 @@ Program Definition fresh (t : Netlist.nltype) : transf {v : Netlist.variable | N
 
 Definition transfer_type (type : Verilog.vtype) : Netlist.nltype :=
   (* Probably wrong but good enough for now*)
-  match type with
-  | Verilog.Logic N0 N0 => (Netlist.Logic 1)
-  | Verilog.Logic (Npos n) N0 => (Netlist.Logic (n + 1))
-  | Verilog.Logic N0 (Npos n) => (Netlist.Logic (n + 1))
-  | Verilog.Logic (Npos n1) (Npos n2) => (Netlist.Logic (n1 - n2 + 1))
-  end
+  let '(Verilog.Logic hi lo) := type
+  in Netlist.Logic (max hi lo - min hi lo)
 .
 
 Definition transfer_variables (vars : list Verilog.variable) : transf () :=
@@ -236,9 +232,9 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
     v1 <- transfer_expression e1 ;;
     v2 <- transfer_expression e2 ;;
     '{! v__result } <- fresh (transfer_type t) ;;
-    if Pos.eq_dec (Netlist.input_width v1) (Netlist.input_width v2)
+    if eq_dec (Netlist.input_width v1) (Netlist.input_width v2)
     then
-      if Pos.eq_dec (Netlist.input_width v1) (Netlist.output_width (Netlist.OutVar v__result))
+      if eq_dec (Netlist.input_width v1) (Netlist.output_width (Netlist.OutVar v__result))
       then
         put_cells [transfer_bin_op op (Netlist.OutVar v__result) v1 v2 _ _] ;;
         ret (Netlist.InVar v__result)
@@ -286,7 +282,7 @@ Program Definition merge_if
   (substitutionsTrue substitutionsFalse : NameMap.t Netlist.input)
   : transf () :=
   cond_ok <- decide_or_fail
-              (Pos.eq_dec (Netlist.input_width cond) 1)
+              (eq_dec (Netlist.input_width cond) 1)
               "if condition must have width 1" ;;
   let substitutions_combined : NameMap.t (option Netlist.input * option Netlist.input) :=
     namemap_union substitutionsTrue substitutionsFalse in
@@ -304,21 +300,21 @@ Program Definition merge_if
         match default, trueBranch, falseBranch with
         | _, Some t, Some f =>
             width_ok <- decide_or_fail
-                        (Pos.eq_dec (Netlist.input_width t) (Netlist.input_width f))
+                        (eq_dec (Netlist.input_width t) (Netlist.input_width f))
                         "Incompatible widths in conditional";;
             let out := {| Netlist.varType := (Netlist.input_type t); Netlist.varName := n|} in
             put_cells [Netlist.Mux (Netlist.OutVar out) cond t f _ _ _] ;;
             set_substitution_blocking n (Netlist.InVar out)
         | Some def, Some t, None =>
             width_ok <- decide_or_fail
-                        (Pos.eq_dec (Netlist.input_width def) (Netlist.input_width t))
+                        (eq_dec (Netlist.input_width def) (Netlist.input_width t))
                         "Incompatible widths in conditional";;
             let out := {| Netlist.varType := (Netlist.input_type t); Netlist.varName := n|} in
             put_cells [Netlist.Mux (Netlist.OutVar out) cond t def _ _ _] ;;
             set_substitution_blocking n (Netlist.InVar out)
         | Some def, None, Some f =>
             width_ok <- decide_or_fail
-                        (Pos.eq_dec (Netlist.input_width def) (Netlist.input_width f))
+                        (eq_dec (Netlist.input_width def) (Netlist.input_width f))
                         "Incompatible widths in conditional";;
             let out := {| Netlist.varType := (Netlist.input_type f); Netlist.varName := n|} in
             put_cells [Netlist.Mux (Netlist.OutVar out) cond def f _ _ _] ;;
@@ -374,7 +370,7 @@ Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
     n <- transfer_name name ;;
     let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in
     result <- transfer_expression from ;;
-    if Pos.eq_dec (Netlist.input_width result) (Netlist.output_width outVar)
+    if eq_dec (Netlist.input_width result) (Netlist.output_width outVar)
     then put_cells [ Netlist.Id outVar result _]
     else raise "Nope"%string
 | TypedVerilog.ContinuousAssign _to _from =>
@@ -387,7 +383,7 @@ Equations mk_register : Netlist.input -> Netlist.register_declaration :=
     ; Netlist.driver := Netlist.InConstant bv
     |}
 | Netlist.InVar v =>
-    {| Netlist.init := Bitvector.mkBV 0 (Netlist.type_width (Netlist.varType v))
+    {| Netlist.init := (Netlist.type_width (Netlist.varType v))-bits of 0
     ; Netlist.driver := Netlist.InVar v
     |}
 .

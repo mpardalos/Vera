@@ -1,10 +1,10 @@
-Require Import Common.
-Require Import Bitvector.
-Import Bitvector (bv(..), mkBV).
+From Coq Require Import String.
+From Coq Require Import ZArith.
+From Coq Require Import BinNums.
 
-Require Import String.
-Require Import ZArith.
-Require Import BinNums.
+From nbits Require Import NBits.
+
+From vera Require Import Common.
 
 Require Import List.
 Import ListNotations.
@@ -13,28 +13,16 @@ From Equations Require Import Equations.
 
 (* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
 Module Verilog.
-  Inductive vtype := Logic : N -> N -> vtype.
+  Inductive vtype := Logic : nat -> nat -> vtype.
 
-  Definition vtype_width (t : Verilog.vtype) : positive :=
+  Definition vtype_width (t : Verilog.vtype) : nat :=
     let (hi, lo) := t in
-    N.succ_pos ((N.max hi lo) - (N.min hi lo))
+    ((max hi lo) - (min hi lo)) + 1
   .
 
   Variant StorageType := Reg | Wire.
 
   Equations Derive NoConfusionHom EqDec for vtype.
-  Next Obligation.
-    destruct x as [hi1 lo1].
-    destruct y as [hi2 lo2].
-    destruct (N.eq_dec hi1 hi2); destruct (N.eq_dec lo1 lo2); subst.
-    - left. reflexivity.
-    - right. intros contra. inversion contra.
-      auto.
-    - right. intros contra. inversion contra.
-      auto.
-    - right. intros contra. inversion contra.
-      auto.
-  Defined.
 
   Variant op :=
     | Plus
@@ -46,7 +34,7 @@ Module Verilog.
 
   Inductive expression :=
   | BinaryOp : op -> expression -> expression -> expression
-  | IntegerLiteral : bv -> expression
+  | IntegerLiteral : bits -> expression
   | NamedExpression : string -> expression.
 
   Record variable :=
@@ -108,7 +96,7 @@ Module TypedVerilog.
   Inductive expression :=
   | BinaryOp : vtype -> op -> expression -> expression -> expression
   | Conversion : vtype -> vtype -> expression -> expression
-  | IntegerLiteral : bv -> expression
+  | IntegerLiteral : bits -> expression
   | NamedExpression : vtype -> string -> expression
   .
 
