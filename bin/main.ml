@@ -49,12 +49,12 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
         (qfbv_formula_to_z3 var_ctx z3_ctx r)
   | Vera.SMT.BVLit v ->
-      Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" v.value) v.width
+      Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" (Vera.bits_to_int v)) (Vera.int_from_nat (Vera.size v))
   | Vera.SMT.BVVar n -> Hashtbl.find var_ctx n
   | Vera.SMT.BVZeroExtend (num, f) ->
-      Z3.BitVector.mk_zero_ext z3_ctx num (qfbv_formula_to_z3 var_ctx z3_ctx f)
+      Z3.BitVector.mk_zero_ext z3_ctx (Vera.int_from_nat num) (qfbv_formula_to_z3 var_ctx z3_ctx f)
   | Vera.SMT.BVExtract (hi, lo, f) ->
-      Z3.BitVector.mk_extract z3_ctx hi lo (qfbv_formula_to_z3 var_ctx z3_ctx f)
+      Z3.BitVector.mk_extract z3_ctx (Vera.int_from_nat hi) (Vera.int_from_nat lo) (qfbv_formula_to_z3 var_ctx z3_ctx f)
   | Vera.SMT.CoreITE (select, ifT, ifF) ->
       Z3.Boolean.mk_ite z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx select)

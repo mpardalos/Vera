@@ -101,7 +101,7 @@ let net_type :=
   | WIRE; { Vera.Verilog.Wire }
 
 let vtype := LBRACKET; hi = NUMBER; COLON; lo = NUMBER; RBRACKET;
-  { Vera.Verilog.Logic (hi, lo) }
+  { Vera.Verilog.Logic (Vera.N.to_nat hi, Vera.N.to_nat lo) }
 
 let module_item :=
   | port = optional(port_direction); net_type = net_type; vtype = optional(vtype); name = IDENTIFIER; SEMICOLON;
@@ -136,11 +136,11 @@ let expression :=
     }
   | n = NUMBER;
     {
-      Vera.Verilog.IntegerLiteral ({ value = n; width = 32 })
+      Vera.Verilog.IntegerLiteral (Vera.bits_from_int 32 n)
     }
   | (sz, v) = SIZED_NUMBER;
     {
-      Vera.Verilog.IntegerLiteral ({ value = v; width = sz })
+      Vera.Verilog.IntegerLiteral (Vera.bits_from_int sz v)
     }
   | l = expression; PLUS; r = expression;
     {

@@ -1,11 +1,11 @@
 open Format
 open Vera
 
-let bitvector fmt (bv : Bitvector.bv) = fprintf fmt "%d'd%d" bv.width bv.value
+let bitvector fmt (bv : bits) = fprintf fmt "%d'd%d" (N.of_nat (size bv)) (N.of_nat (bits_to_nat bv))
 
 let nltype fmt (t : Netlist.nltype) =
   (* nltype gets extracted to just int *)
-  fprintf fmt "logic[%d]" t
+  fprintf fmt "logic[%d]" (int_from_nat t)
 
 let variable fmt (v : Netlist.variable) =
   fprintf fmt "%a <%d>" nltype v.varType v.varName

@@ -7,7 +7,7 @@ let direction fmt d =
 let rec expression fmt e =
   Format.fprintf fmt "@[";
   (match e with
-  | TypedVerilog.IntegerLiteral v -> fprintf fmt "%d'd%d" v.width v.value
+  | TypedVerilog.IntegerLiteral v -> fprintf fmt "%d'd%d" (int_from_nat (size v)) (bits_to_int v)
   | TypedVerilog.Conversion (_, t, e) ->
       fprintf fmt "( %a )@ as@ ( %a )" expression e VerilogPP.vtype t
   | TypedVerilog.BinaryOp (_, op, l, r) ->

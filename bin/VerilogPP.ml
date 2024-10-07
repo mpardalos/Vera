@@ -5,7 +5,7 @@ let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"
 
 let vtype fmt t =
-  match t with Verilog.Logic (high, low) -> fprintf fmt "[%d:%d]" high low
+  match t with Verilog.Logic (high, low) -> fprintf fmt "[%d:%d]" (int_from_nat high) (int_from_nat low)
 
 let port (fmt : formatter) (p : Verilog.port) =
   fprintf fmt "%a %s" direction p.portDirection (Util.lst_to_string p.portName)
@@ -28,7 +28,7 @@ let operator fmt = function
 let rec expression fmt e =
   Format.fprintf fmt "@[";
   (match e with
-  | Verilog.IntegerLiteral v -> fprintf fmt "%d'd%d" v.width v.value
+  | Verilog.IntegerLiteral v -> fprintf fmt "%d'd%d" (int_from_nat (size v)) (bits_to_int v)
   | Verilog.BinaryOp (op, l, r) ->
       fprintf fmt "( %a )@ %a@ ( %a )" expression l operator op expression r
   | Verilog.NamedExpression name -> fprintf fmt "%s" (Util.lst_to_string name));

@@ -16,12 +16,12 @@ module SMT (Name : Formattable) = struct
     | Vera.SMT.BVNeg f -> fprintf fmt "(bvneg %a)" qfbv f
     | Vera.SMT.BVShl (l, r) -> fprintf fmt "(bvshl %a %a)" qfbv l qfbv r
     | Vera.SMT.BVLShr (l, r) -> fprintf fmt "(bvlshr %a %a)" qfbv l qfbv r
-    | Vera.SMT.BVLit v -> fprintf fmt "(_ bv%d %d)" v.value v.width
+    | Vera.SMT.BVLit v -> fprintf fmt "(_ bv%d %d)" (bits_to_int v) (int_from_nat (size v))
     | Vera.SMT.BVVar n -> Name.format fmt n
     | Vera.SMT.BVZeroExtend (num, f) ->
-        fprintf fmt "((_ zero_extend %d) %a)" num qfbv f
+        fprintf fmt "((_ zero_extend %d) %a)" (int_from_nat num) qfbv f
     | Vera.SMT.BVExtract (hi, lo, f) ->
-        fprintf fmt "((_ extract %d %d) %a)" hi lo qfbv f
+        fprintf fmt "((_ extract %d %d) %a)" (int_from_nat hi) (int_from_nat lo) qfbv f
     | Vera.SMT.CoreITE (cond, ifT, ifF) ->
         fprintf fmt "(ite %a %a %a)" qfbv cond qfbv ifT qfbv ifF
 
