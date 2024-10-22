@@ -27,6 +27,8 @@
             coqPackages.mathcomp.algebra
           ];
         };
+        # Fix for github.com/NixOS/nixpkgs/issues/324959
+        synlig = pkgs.yosys-synlig.overrideAttrs (f: p: { plugin = "systemverilog"; });
       in {
         devShells.default = pkgs.mkShell {
           packages =
@@ -49,6 +51,7 @@
               pkgs.verible
               pkgs.surelog
               pkgs.z3
+              (pkgs.yosys.withPlugins [synlig])
             ];
         };
       }
