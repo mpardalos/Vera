@@ -3,52 +3,91 @@
 %token ENDMODULE
 %token REG
 %token WIRE
+%token IF
+%token ELSE
+%token LOGIC
 %token OUTPUT
 %token INPUT
 %token ASSIGN
 %token ALWAYS
 %token ALWAYS_FF
+%token INITIAL
 %token POSEDGE
+%token NEGEDGE
 %token LPAREN
 %token RPAREN
 %token LBRACKET
 %token RBRACKET
-%token LBRACE
-%token RBRACE
+/* %token LBRACE */
+/* %token RBRACE */
 %token BEGIN
 %token END
 %token SEMICOLON
+%token QUESTIONMARK
 %token COLON
 %token COMMA
 %token EQUALS
-%token LESSTHANEQUAL
-%token GREATERTHANEQUAL
-%token PLUS
-%token MINUS
-%token MULTIPLY
-%token DIVIDE
-%token SHIFTLEFT
-%token SHIFTRIGHT
+
+%token PLUS (* '+' *)
+%token MINUS (* '-' *)
+%token STAR (* '*' *)
+%token SLASH (* '/' *)
+%token PERCENT (* '%' *)
+%token EQUALSEQUALS (* '==' *)
+%token NOTEQUALS (* '!=' *)
+%token EQUALSEQUALSEQUALS (* '===' *)
+%token NOTEQUALSEQUALS (* '!==' *)
+%token WILDCARDEQUAL (* '==?' *)
+%token WILDCARDNOTEQUAL (* '!=?' *)
+%token LOGICALAND (* '&&' *)
+%token LOGICALOR (* '||' *)
+%token EXPONENT (* '**' *)
+%token LESSTHAN (* '<' *)
+%token LESSTHANEQUAL (* '<=' *)
+%token GREATERTHAN (* '>' *)
+%token GREATERTHANEQUAL (* '>=' *)
+%token BITWISEAND (* '&' *)
+%token BITWISEOR (* '|' *)
+%token BITWISEXOR (* '^' *)
+%token BITWISEXNOR (* '^~', '~^' *)
+%token SHIFTRIGHT (* '>>' *)
+%token SHIFTLEFT (* '<<' *)
+%token SHIFTRIGHTARITHMETIC (* '>>>' *)
+%token SHIFTLEFTARITHMETIC (* '<<<' *)
+%token LOGICALIMPLICATION (* '->' *)
+%token LOGICALEQUIVALENCE (* '<->' *)
+
 %token AT
 %token <string> IDENTIFIER
 %token <int> NUMBER
 %token <int * int> SIZED_NUMBER
 
+%left EXPONENT
+%left STAR SLASH PERCENT
 %left PLUS MINUS
-%left MULTIPLY DIVIDE
-%left SHIFTLEFT SHIFTRIGHT
+%left SHIFTLEFT SHIFTRIGHT SHIFTLEFTARITHMETIC SHIFTRIGHTARITHMETIC
+%left LESSTHAN LESSTHANEQUAL GREATERTHAN GREATERTHANEQUAL
+%left EQUALSEQUALS NOTEQUALS EQUALSEQUALSEQUALS NOTEQUALSEQUALS WILDCARDEQUAL WILDCARDNOTEQUAL
+%left BITWISEAND
+%left BITWISEXOR BITWISEXNOR
+%left BITWISEOR
+%left LOGICALAND
+%left LOGICALOR
+// ?: (Conditional operator)
+%left LOGICALIMPLICATION LOGICALEQUIVALENCE
 
-%start <Vera.Verilog.raw_vmodule> vmodule_only
-%type <Vera.Verilog.raw_vmodule> vmodule
 
-%start <(Vera.Verilog.module_item, Vera.Verilog.raw_declaration) Vera.sum> module_item_only
-%type <(Vera.Verilog.module_item, Vera.Verilog.raw_declaration) Vera.sum> module_item
+%start <RawVerilog.vmodule> vmodule_only
+%type <RawVerilog.vmodule> vmodule
 
-%start <Vera.Verilog.statement> statement_only
-%type <Vera.Verilog.statement> statement
+%start <RawVerilog.module_item> module_item_only
+%type <RawVerilog.module_item> module_item
 
-%start <Vera.Verilog.expression> expression_only
-%type <Vera.Verilog.expression> expression
+%start <RawVerilog.statement> statement_only
+%type <RawVerilog.statement> statement
+
+%start <RawVerilog.expression> expression_only
+%type <RawVerilog.expression> expression
 
 %%
 
@@ -70,21 +109,24 @@ let optional(x) :=
 
 let vmodule_only := x = only(vmodule); { x }
 
-let module_port := direction = port_direction; name = IDENTIFIER;
-    { { Vera.Verilog.portDirection = direction
-      ; Vera.Verilog.portName = Util.string_to_lst name
+let port_declaration := direction = port_direction; net_type = net_type; name = IDENTIFIER;
+    {
+      {
+        RawVerilog.direction = direction;
+        net_type;
+        name
       }
     }
 
-let module_ports := LPAREN; args = sepBy(module_port, COMMA); RPAREN;
+let module_ports := LPAREN; args = sepBy(port_declaration, COMMA); RPAREN;
   { args }
 
 let vmodule :=
   MODULE; name = IDENTIFIER; ports = module_ports; SEMICOLON; body = many(module_item); ENDMODULE;
     {
-      { Vera.Verilog.rawModName = (Util.string_to_lst name)
-      ; Vera.Verilog.rawModPorts = ports
-      ; Vera.Verilog.rawModBody = body
+      { RawVerilog.name = name
+      ; RawVerilog.ports = ports
+      ; RawVerilog.body = body
       }
     }
 
@@ -93,74 +135,146 @@ let module_item_only := x = only(module_item); { x }
 let always_ff := ALWAYS | ALWAYS_FF
 
 let port_direction :=
-  | INPUT; { Vera.PortIn }
-  | OUTPUT; { Vera.PortOut }
+  | INPUT; { RawVerilog.Input }
+  | OUTPUT; { RawVerilog.Output }
 
 let net_type :=
-  | REG; { Vera.Verilog.Reg }
-  | WIRE; { Vera.Verilog.Wire }
+  | REG; LBRACKET; high = NUMBER; COLON; low = NUMBER; RBRACKET; { RawVerilog.Logic (high, low); }
+  | REG; { RawVerilog.Logic (0, 0); }
+  | WIRE; LBRACKET; high = NUMBER; COLON; low = NUMBER; RBRACKET; { RawVerilog.Logic (high, low); }
+  | WIRE; { RawVerilog.Logic (0, 0); }
+  | LOGIC; LBRACKET; high = NUMBER; COLON; low = NUMBER; RBRACKET; { RawVerilog.Logic (high, low); }
+  | LOGIC; { RawVerilog.Logic (0, 0); }
 
-let vtype := LBRACKET; hi = NUMBER; COLON; lo = NUMBER; RBRACKET;
-  { Vera.Verilog.Logic (Vera.N.to_nat hi, Vera.N.to_nat lo) }
+let edge :=
+  | POSEDGE; { RawVerilog.Posedge }
+  | NEGEDGE; { RawVerilog.Negedge }
+
+let clocking :=
+  | AT; LPAREN; edge = edge; name = IDENTIFIER; RPAREN; { RawVerilog.ClockingEdge (edge, name) }
+  | AT; LPAREN; STAR; RPAREN; { RawVerilog.ClockingStar }
+
+let declaration :=
+  | name = IDENTIFIER;
+    { { name; initialization = None }}
+  | name = IDENTIFIER; EQUALS; initialization = expression;
+    { { name; initialization = Some initialization } }
 
 let module_item :=
-  | port = optional(port_direction); net_type = net_type; vtype = optional(vtype); name = IDENTIFIER; SEMICOLON;
+  | port = optional(port_direction); net_type = net_type; declarations = sepBy(declaration, COMMA); SEMICOLON;
     {
-      Vera.Inr ({ rawDeclStorageType = net_type
-                   ; rawDeclPortDeclaration = port
-                   ; rawDeclName = Util.string_to_lst name
-                   ; rawDeclType = vtype
-                  })
+      RawVerilog.NetDeclaration {
+          port;
+          net_type;
+          declarations;
+      }
     }
-  | ASSIGN; lhs = expression; EQUALS; rhs = expression; SEMICOLON;
-    { Vera.Inl (Vera.Verilog.ContinuousAssign (lhs, rhs)) }
-  | always_ff; AT; LPAREN; POSEDGE; clkname = IDENTIFIER; RPAREN; body = statement;
-    { Vera.Inl (Vera.Verilog.AlwaysFF body) }
+  | ASSIGN; lhs = lhs_expression; EQUALS; rhs = expression; SEMICOLON;
+    { RawVerilog.ContinuousAssign (lhs, rhs) }
+  | always_ff; clocking = clocking; body = statement;
+    { RawVerilog.AlwaysFF (clocking, body) }
+  | INITIAL; body = statement;
+    { RawVerilog.Initial body }
 
 let statement_only := x = only(statement); { x }
 
 let statement :=
-  | lhs = expression; LESSTHANEQUAL; rhs = expression; SEMICOLON;
-    { Vera.Verilog.NonBlockingAssign (lhs, rhs) }
-  | lhs = expression; EQUALS; rhs = expression; SEMICOLON;
-    { Vera.Verilog.BlockingAssign (lhs, rhs) }
+  | lhs = lhs_expression; EQUALS; rhs = expression; SEMICOLON;
+    { RawVerilog.Assign { assignment_type = RawVerilog.Blocking; lhs; rhs  } }
+  | lhs = lhs_expression; LESSTHANEQUAL; rhs = expression; SEMICOLON;
+    { RawVerilog.Assign { assignment_type = RawVerilog.NonBlocking; lhs; rhs  } }
+  | IF; condition = expression; if_branch = statement; ELSE; else_branch = statement;
+    { RawVerilog.If { condition; if_branch; else_branch = Some else_branch } }
+  | IF; condition = expression; if_branch = statement;
+    { RawVerilog.If { condition; if_branch; else_branch = None } }
   | BEGIN; body = many(statement); END;
-    { Vera.Verilog.Block body }
+    { RawVerilog.Block body }
 
 let expression_only := x = only(expression); { x }
+
+%inline binary_operator :
+  | (* '+' *)        PLUS;                 { RawVerilog.BinaryPlus                 }
+  | (* '-' *)        MINUS;                { RawVerilog.BinaryMinus                }
+  | (* '*' *)        STAR;                 { RawVerilog.BinaryStar                 }
+  | (* '/' *)        SLASH;                { RawVerilog.BinarySlash                }
+  | (* '%' *)        PERCENT;              { RawVerilog.BinaryPercent              }
+  | (* '==' *)       EQUALSEQUALS;         { RawVerilog.BinaryEqualsEquals         }
+  | (* '!=' *)       NOTEQUALS;            { RawVerilog.BinaryNotEquals            }
+  | (* '===' *)      EQUALSEQUALSEQUALS;   { RawVerilog.BinaryEqualsEqualsEquals   }
+  | (* '!==' *)      NOTEQUALSEQUALS;      { RawVerilog.BinaryNotEqualsEquals      }
+  | (* '==?' *)      WILDCARDEQUAL;        { RawVerilog.BinaryWildcardEqual        }
+  | (* '!=?' *)      WILDCARDNOTEQUAL;     { RawVerilog.BinaryWildcardNotEqual     }
+  | (* '&&' *)       LOGICALAND;           { RawVerilog.BinaryLogicalAnd           }
+  | (* '||' *)       LOGICALOR;            { RawVerilog.BinaryLogicalOr            }
+  | (* '**' *)       EXPONENT;             { RawVerilog.BinaryExponent             }
+  | (* '<' *)        LESSTHAN;             { RawVerilog.BinaryLessThan             }
+  | (* '<=' *)       LESSTHANEQUAL;        { RawVerilog.BinaryLessThanEqual        }
+  | (* '>' *)        GREATERTHAN;          { RawVerilog.BinaryGreaterThan          }
+  | (* '>=' *)       GREATERTHANEQUAL;     { RawVerilog.BinaryGreaterThanEqual     }
+  | (* '&' *)        BITWISEAND;           { RawVerilog.BinaryBitwiseAnd           }
+  | (* '|' *)        BITWISEOR;            { RawVerilog.BinaryBitwiseOr            }
+  | (* '^' *)        BITWISEXOR;           { RawVerilog.BinaryBitwiseXor           }
+  | (* '^~', '~^' *) BITWISEXNOR;          { RawVerilog.BinaryXNor                 }
+  | (* '>>' *)       SHIFTRIGHT;           { RawVerilog.BinaryShiftRight           }
+  | (* '<<' *)       SHIFTLEFT;            { RawVerilog.BinaryShiftLeft            }
+  | (* '>>>' *)      SHIFTRIGHTARITHMETIC; { RawVerilog.BinaryShiftRightArithmetic }
+  | (* '<<<' *)      SHIFTLEFTARITHMETIC;  { RawVerilog.BinaryShiftLeftArithmetic  }
+  | (* '->' *)       LOGICALIMPLICATION;   { RawVerilog.BinaryLogicalImplication   }
+  | (* '<->' *)      LOGICALEQUIVALENCE;   { RawVerilog.BinaryLogicalEquivalence   }
+
+
+let lhs_expression :=
+  | ident = IDENTIFIER;
+    {
+      RawVerilog.Identifier ident
+    }
+  | value = NUMBER;
+    {
+      RawVerilog.Literal { width = 32; value }
+    }
+  | target = expression; LBRACKET; index = expression; RBRACKET;
+    {
+      RawVerilog.BitSelect { target; index }
+    }
+  | target = expression; LBRACKET; low = expression; COLON; high = expression; RBRACKET;
+    {
+      RawVerilog.RangeSelect { target; low; high }
+    }
+  | (width, value) = SIZED_NUMBER;
+    {
+      RawVerilog.Literal { width; value }
+    }
+  | LPAREN; e = expression; RPAREN;
+    { e }
 
 let expression :=
   | ident = IDENTIFIER;
     {
-      Vera.Verilog.NamedExpression (Util.string_to_lst ident)
+      RawVerilog.Identifier ident
     }
-  | n = NUMBER;
+  | value = NUMBER;
     {
-      Vera.Verilog.IntegerLiteral (Vera.bits_from_int 32 n)
+      RawVerilog.Literal { width = 32; value }
     }
-  | (sz, v) = SIZED_NUMBER;
+  | target = expression; LBRACKET; index = expression; RBRACKET;
     {
-      Vera.Verilog.IntegerLiteral (Vera.bits_from_int sz v)
+      RawVerilog.BitSelect { target; index }
     }
-  | l = expression; PLUS; r = expression;
+  | target = expression; LBRACKET; low = expression; COLON; high = expression; RBRACKET;
     {
-      Vera.Verilog.BinaryOp (Vera.Verilog.Plus, l, r)
+      RawVerilog.RangeSelect { target; low; high }
     }
-  | l = expression; MINUS; r = expression;
+  | (width, value) = SIZED_NUMBER;
     {
-      Vera.Verilog.BinaryOp (Vera.Verilog.Minus, l, r)
+      RawVerilog.Literal { width; value }
     }
-  | l = expression; MULTIPLY; r = expression;
+  | lhs = expression; operator = binary_operator; rhs = expression;
     {
-      Vera.Verilog.BinaryOp (Vera.Verilog.Multiply, l, r)
+      RawVerilog.BinaryOp { lhs; operator; rhs }
     }
-  | l = expression; SHIFTLEFT; r = expression;
+  | condition = expression; QUESTIONMARK; true_branch = expression; COLON; false_branch = expression;
     {
-      Vera.Verilog.BinaryOp (Vera.Verilog.ShiftLeft, l, r)
-    }
-  | l = expression; SHIFTRIGHT; r = expression;
-    {
-      Vera.Verilog.BinaryOp (Vera.Verilog.ShiftRight, l, r)
+      RawVerilog.Conditional { condition; true_branch; false_branch }
     }
   | LPAREN; e = expression; RPAREN;
     { e }

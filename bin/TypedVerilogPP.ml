@@ -9,10 +9,14 @@ let rec expression fmt e =
   (match e with
   | TypedVerilog.IntegerLiteral v -> fprintf fmt "%d'd%d" (int_from_nat (size v)) (bits_to_int v)
   | TypedVerilog.Conversion (_, t, e) ->
-      fprintf fmt "( %a )@ as@ ( %a )" expression e VerilogPP.vtype t
+      fprintf fmt "( %a@ as@ %a )" expression e VerilogPP.vtype t
   | TypedVerilog.BinaryOp (_, op, l, r) ->
-      fprintf fmt "( %a )@ %a@ ( %a )" expression l VerilogPP.operator op
+      fprintf fmt "( %a@ %a@ %a )" expression l VerilogPP.operator op
         expression r
+  | TypedVerilog.BitSelect (target, index) ->
+      fprintf fmt "%a[%a]" expression target expression index
+  | TypedVerilog.Conditional (cond, t, f) ->
+      fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression f
   | TypedVerilog.NamedExpression (t, name) ->
       fprintf fmt "%a %s" VerilogPP.vtype t (Util.lst_to_string name));
   Format.fprintf fmt "@]"
@@ -33,8 +37,10 @@ let rec statement (fmt : formatter) (s : TypedVerilog.coq_Statement) =
 
 let mod_item (fmt : formatter) (i : TypedVerilog.module_item) =
   match i with
-  | TypedVerilog.ContinuousAssign (l, r) ->
-      fprintf fmt "assign (%a) = (@[ %a @])" expression l expression r
+  | TypedVerilog.Initial body ->
+      fprintf fmt "initial %a" statement body
+  | TypedVerilog.AlwaysComb body ->
+      fprintf fmt "always_comb %a" statement body
   | TypedVerilog.AlwaysFF body ->
       fprintf fmt "always_ff (@posedge clk) %a" statement body
 

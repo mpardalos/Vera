@@ -20,8 +20,8 @@ let fmap f x =
 let ( <$> ) = fmap
 let ( <&> ) x f = fmap f x
 
-let ( >=> ) (f : 'a -> 'b Vera.result) (g : 'b -> 'c Vera.result) (x : 'a)
-    : 'c Vera.result =
+let ( >=> ) (f : 'a -> ('err, 'b) Vera.sum) (g : 'b -> ('err, 'c) Vera.sum)
+    (x : 'a) : ('err, 'c) Vera.sum =
   let* y = f x in
   g y
 
@@ -49,12 +49,17 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
         (qfbv_formula_to_z3 var_ctx z3_ctx r)
   | Vera.SMT.BVLit v ->
-      Z3.BitVector.mk_numeral z3_ctx (sprintf "%d" (Vera.bits_to_int v)) (Vera.int_from_nat (Vera.size v))
+      Z3.BitVector.mk_numeral z3_ctx
+        (sprintf "%d" (Vera.bits_to_int v))
+        (Vera.int_from_nat (Vera.size v))
   | Vera.SMT.BVVar n -> Hashtbl.find var_ctx n
   | Vera.SMT.BVZeroExtend (num, f) ->
-      Z3.BitVector.mk_zero_ext z3_ctx (Vera.int_from_nat num) (qfbv_formula_to_z3 var_ctx z3_ctx f)
+      Z3.BitVector.mk_zero_ext z3_ctx (Vera.int_from_nat num)
+        (qfbv_formula_to_z3 var_ctx z3_ctx f)
   | Vera.SMT.BVExtract (hi, lo, f) ->
-      Z3.BitVector.mk_extract z3_ctx (Vera.int_from_nat hi) (Vera.int_from_nat lo) (qfbv_formula_to_z3 var_ctx z3_ctx f)
+      Z3.BitVector.mk_extract z3_ctx (Vera.int_from_nat hi)
+        (Vera.int_from_nat lo)
+        (qfbv_formula_to_z3 var_ctx z3_ctx f)
   | Vera.SMT.CoreITE (select, ifT, ifF) ->
       Z3.Boolean.mk_ite z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx select)
@@ -107,8 +112,9 @@ let () =
     eprintf "Usage: %s <command> [args]\n" Sys.argv.(0);
     eprintf "\n";
     eprintf "Commands:\n";
+    eprintf "  parse_raw <parse_raw_type> <filename>\n";
+    eprintf "  compare <filename1> <filename2>\n";
     eprintf "  lex <filename>\n";
-    eprintf "  parse <filename>\n";
     eprintf "  lower <level> <filename>\n";
     eprintf "\n";
     eprintf "Arguments:\n";
@@ -158,11 +164,13 @@ let () =
         in
 
         match parse_type with
-        | "expression" -> test_parse Parser.expression_only VerilogPP.expression
-        | "statement" -> test_parse Parser.statement_only VerilogPP.statement
+        | "expression" ->
+            test_parse Parser.expression_only RawVerilog.pp_expression
+        | "statement" ->
+            test_parse Parser.statement_only RawVerilog.pp_statement
         | "module_item" ->
-            test_parse Parser.module_item_only VerilogPP.raw_mod_item
-        | "module" -> test_parse Parser.vmodule_only VerilogPP.raw_vmodule
+            test_parse Parser.module_item_only RawVerilog.pp_module_item
+        | "module" -> test_parse Parser.vmodule_only RawVerilog.pp_vmodule
         | _ ->
             printf "Unknown parse type: %s\n" parse_type;
             usage_and_exit ())
@@ -176,13 +184,11 @@ let () =
       | Vera.Inr x -> printf "%a\n" pp x
     in
 
-    let module_of_file (filename : string) :
-        Vera.Verilog.vmodule Vera.result =
-      let raw_module = parse_file Parser.vmodule_only filename in
-      Vera.parse_raw_verilog raw_module
+    let module_of_file (filename : string) : Vera.Verilog.vmodule =
+      ParseRawVerilog.parse_raw_verilog (parse_file Parser.vmodule_only filename)
     in
 
-    let typed_module_of_file = module_of_file >=> Vera.tc_vmodule in
+    let typed_module_of_file f = Vera.tc_vmodule (module_of_file f) in
     let netlist_of_file =
       typed_module_of_file >=> Vera.verilog_to_netlist 1 >=> fun x ->
       ret (fst x)
@@ -195,7 +201,7 @@ let () =
     in
     function
     | [ "parsed"; filename ] ->
-        display_or_error VerilogPP.vmodule (module_of_file filename)
+        display_or_error VerilogPP.vmodule (Vera.Inr (module_of_file filename))
     | [ "typed"; filename ] ->
         display_or_error TypedVerilogPP.vmodule (typed_module_of_file filename)
     | [ "netlist"; filename ] ->
@@ -208,7 +214,7 @@ let () =
           (smt_formulas_of_file filename)
     | [ "all"; filename ] ->
         printf "\n-- parsed -- \n";
-        display_or_error VerilogPP.vmodule (module_of_file filename);
+        display_or_error VerilogPP.vmodule (Vera.Inr (module_of_file filename));
         printf "\n-- typed --\n";
         display_or_error TypedVerilogPP.vmodule (typed_module_of_file filename);
         printf "\n-- netlist --\n";
@@ -228,13 +234,14 @@ let () =
   let compare = function
     | [ filename1; filename2 ] -> (
         let queryResult =
-          let* module1 =
-            Vera.parse_raw_verilog (parse_file Parser.vmodule_only filename1)
-          in
-          let* module2 =
-            Vera.parse_raw_verilog (parse_file Parser.vmodule_only filename2)
-          in
-          Vera.equivalence_query module1 module2
+          (* let* module1 = *)
+          (*   Vera.parse_raw_verilog (parse_file Parser.vmodule_only filename1) *)
+          (* in *)
+          (* let* module2 = *)
+          (*   Vera.parse_raw_verilog (parse_file Parser.vmodule_only filename2) *)
+          (* in *)
+          (* Vera.equivalence_query module1 module2 *)
+          Vera.Inl (Util.string_to_lst "Raw verilog parsing not implemented")
         in
         match queryResult with
         | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)

@@ -208,13 +208,14 @@ Definition binop :=
        Netlist.input_width in1 = Netlist.input_width in2 ->
        Netlist.input_width in1 = Netlist.output_width out -> Netlist.cell.
 
-Definition transfer_bin_op (op : Verilog.op) : binop :=
+Definition transfer_bin_op (op : Verilog.op) : transf binop :=
   match op with
-  | Verilog.Plus => Netlist.Add
-  | Verilog.Minus => Netlist.Subtract
-  | Verilog.Multiply => Netlist.Multiply
-  | Verilog.ShiftLeft => Netlist.ShiftLeft
-  | Verilog.ShiftRight => Netlist.ShiftRight
+  | Verilog.BinaryPlus => ret Netlist.Add
+  | Verilog.BinaryMinus => ret Netlist.Subtract
+  | Verilog.BinaryStar => ret Netlist.Multiply
+  | Verilog.BinaryShiftLeft => ret Netlist.ShiftLeft
+  | Verilog.BinaryShiftRight => ret Netlist.ShiftRight
+  | _ => raise "Unsupported operator"%string
   end
 .
 
@@ -228,6 +229,15 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
     | Some e => ret e
     | None => ret (Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
     end
+| TypedVerilog.Conditional cond tBranch fBranch =>
+    v__cond <- transfer_expression cond ;;
+    v__true <- transfer_expression tBranch ;;
+    v__false <- transfer_expression fBranch ;;
+    raise "Conditional not supported in netlist"%string ;
+| TypedVerilog.BitSelect target index =>
+    v__target <- transfer_expression target ;;
+    v__index <- transfer_expression index ;;
+    raise "Conditional not supported in netlist"%string ;
 | TypedVerilog.BinaryOp t op e1 e2 =>
     v1 <- transfer_expression e1 ;;
     v2 <- transfer_expression e2 ;;
@@ -236,7 +246,8 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
     then
       if eq_dec (Netlist.input_width v1) (Netlist.output_width (Netlist.OutVar v__result))
       then
-        put_cells [transfer_bin_op op (Netlist.OutVar v__result) v1 v2 _ _] ;;
+        operator <- transfer_bin_op op ;;
+        put_cells [operator (Netlist.OutVar v__result) v1 v2 _ _] ;;
         ret (Netlist.InVar v__result)
       else raise "Incorrect output width in Verilog BinaryOp"%string
     else
@@ -365,16 +376,10 @@ Equations transfer_statement : TypedVerilog.Statement -> transf () :=
 
 Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
 | TypedVerilog.AlwaysFF body => transfer_statement body
-| TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression type name) from =>
-    let t := transfer_type type in
-    n <- transfer_name name ;;
-    let outVar := Netlist.OutVar {| Netlist.varType := t; Netlist.varName := n |} in
-    result <- transfer_expression from ;;
-    if eq_dec (Netlist.input_width result) (Netlist.output_width outVar)
-    then put_cells [ Netlist.Id outVar result _]
-    else raise "Nope"%string
-| TypedVerilog.ContinuousAssign _to _from =>
-    raise "Invalid target for assign expression"%string
+| TypedVerilog.Initial body =>
+    raise "initial not supported in netlist"%string
+| TypedVerilog.AlwaysComb body =>
+    raise "combinational logic not supported in netlist"%string
 .
 
 Equations mk_register : Netlist.input -> Netlist.register_declaration :=

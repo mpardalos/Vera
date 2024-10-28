@@ -46,6 +46,8 @@
               coq.ocamlPackages.ocamlformat
               coq.ocamlPackages.z3
               coq.ocamlPackages.menhir
+              coq.ocamlPackages.ppx_deriving
+              coq.ocamlPackages.ppxlib
 
               pkgs.sv-lang
               pkgs.verible

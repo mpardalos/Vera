@@ -5,7 +5,6 @@ From vera Require Verilog.
 From vera Require VerilogEquivalence.
 From vera Require VerilogToNetlist.
 From vera Require Common.
-From vera Require ParseRawVerilog.
 
 From Coq Require Extraction.
 From Coq Require Import BinNat.
@@ -44,5 +43,4 @@ Extraction "Vera.ml"
   NetlistToSMT.netlist_to_smt
   SMT.SMT
   Common.NameMap
-  ParseRawVerilog.parse_raw_verilog
   .

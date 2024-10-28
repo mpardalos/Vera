@@ -37,6 +37,8 @@ Definition TC := sum string.
 
 Equations expr_type : TypedVerilog.expression -> Verilog.vtype :=
   expr_type (TypedVerilog.BinaryOp t _ _ _) := t;
+  expr_type (TypedVerilog.BitSelect _ _) := Verilog.Logic 0 0;
+  expr_type (TypedVerilog.Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
   expr_type (TypedVerilog.Conversion _ t _) := t;
   expr_type (TypedVerilog.IntegerLiteral v) := Verilog.Logic (size v - 1) 0;
   expr_type (TypedVerilog.NamedExpression t _) := t.
@@ -44,8 +46,12 @@ Equations expr_type : TypedVerilog.expression -> Verilog.vtype :=
 Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=
   tc_lvalue Γ (Verilog.BinaryOp op l r) :=
     raise "Binary operator not permitted as lvalue"%string;
+  tc_lvalue Γ (Verilog.Conditional _ _ _) :=
+    raise "Conditional not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.IntegerLiteral _) :=
     raise "Constant not permitted as lvalue"%string;
+  tc_lvalue Γ (Verilog.BitSelect _ _) :=
+    raise "BitSelect lvalues not implemented"%string;
   tc_lvalue Γ (Verilog.NamedExpression n) :=
     match StrMap.find n Γ with
     | None => raise "Name not in context"%string
@@ -60,6 +66,19 @@ Equations tc_expr : TCContext -> TCBindings -> Verilog.expression -> TC TypedVer
     typed_l <- tc_expr ctx Γ l ;;
     typed_r <- tc_expr ctx Γ r ;;
     ret (TypedVerilog.BinaryOp ctx op typed_l typed_r) ;
+  tc_expr ctx Γ (Verilog.BitSelect target index) :=
+    typed_target <- tc_expr ctx Γ target ;;
+    typed_index <- tc_expr ctx Γ index ;;
+    ret (TypedVerilog.BitSelect typed_target typed_index) ;
+  tc_expr ctx Γ (Verilog.Conditional cond tBranch fBranch) :=
+    typed_cond <- tc_expr ctx Γ cond ;;
+    typed_tBranch <- tc_expr ctx Γ tBranch ;;
+    typed_fBranch <- tc_expr ctx Γ fBranch ;;
+    if (eq_dec (expr_type typed_tBranch) (expr_type typed_fBranch)) then
+      ret (TypedVerilog.Conditional typed_cond typed_tBranch typed_fBranch)
+    else
+      (**  TODO: Should probably upcast, *)
+      raise "Conditional branches do not match"%string ;
   tc_expr ctx Γ (Verilog.IntegerLiteral value) :=
     if dec_value_matches_type value ctx then
       ret (TypedVerilog.IntegerLiteral value)
@@ -101,12 +120,12 @@ Admit Obligations.
 
 
 Equations tc_module_item : TCBindings -> Verilog.module_item -> TC TypedVerilog.module_item :=
-| Γ, (Verilog.ContinuousAssign to from) =>
-    typed_to <- tc_lvalue Γ to ;;
-    typed_from <- tc_expr (expr_type typed_to) Γ from ;;
-    ret (TypedVerilog.ContinuousAssign typed_to typed_from)
+| Γ, (Verilog.AlwaysComb body) =>
+    TypedVerilog.AlwaysComb <$> tc_stmt Γ body
 | Γ, (Verilog.AlwaysFF body) =>
     TypedVerilog.AlwaysFF <$> tc_stmt Γ body
+| Γ, (Verilog.Initial body) =>
+    TypedVerilog.Initial <$> tc_stmt Γ body
 .
 
 Equations variables_to_bindings : list Verilog.variable -> TCBindings :=

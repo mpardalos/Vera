@@ -25,15 +25,40 @@ Module Verilog.
   Equations Derive NoConfusionHom EqDec for vtype.
 
   Variant op :=
-    | Plus
-    | Minus
-    | Multiply
-    | ShiftLeft
-    | ShiftRight
+    | BinaryPlus (* '+' *)
+    | BinaryMinus (* '-' *)
+    | BinaryStar (* '*' *)
+    | BinarySlash (* '/' *)
+    | BinaryPercent (* '%' *)
+    | BinaryEqualsEquals (* '==' *)
+    | BinaryNotEquals (* '!=' *)
+    | BinaryEqualsEqualsEquals (* '===' *)
+    | BinaryNotEqualsEquals (* '!==' *)
+    | BinaryWildcardEqual (* '==?' *)
+    | BinaryWildcardNotEqual (* '!=?' *)
+    | BinaryLogicalAnd (* '&&' *)
+    | BinaryLogicalOr (* '||' *)
+    | BinaryExponent (* '**' *)
+    | BinaryLessThan (* '<' *)
+    | BinaryLessThanEqual (* '<=' *)
+    | BinaryGreaterThan (* '>' *)
+    | BinaryGreaterThanEqual (* '>=' *)
+    | BinaryBitwiseAnd (* '&' *)
+    | BinaryBitwiseOr (* '|' *)
+    | BinaryBitwiseXor (* '^' *)
+    | BinaryXNor (* '^~', '~^' *)
+    | BinaryShiftRight (* '>>' *)
+    | BinaryShiftLeft (* '<<' *)
+    | BinaryShiftRightArithmetic (* '>>>' *)
+    | BinaryShiftLeftArithmetic (* '<<<' *)
+    | BinaryLogicalImplication (* '->' *)
+    | BinaryLogicalEquivalence (* '<->' *)
   .
 
   Inductive expression :=
   | BinaryOp : op -> expression -> expression -> expression
+  | Conditional : expression -> expression -> expression -> expression
+  | BitSelect : expression -> expression -> expression
   | IntegerLiteral : bits -> expression
   | NamedExpression : string -> expression.
 
@@ -58,8 +83,9 @@ Module Verilog.
   .
 
   Inductive module_item : Set :=
-  | ContinuousAssign : expression -> expression -> module_item
+  | AlwaysComb : statement -> module_item
   | AlwaysFF : statement -> module_item
+  | Initial : statement -> module_item
   .
 
   (** Verilog modules *)
@@ -95,6 +121,8 @@ Module TypedVerilog.
 
   Inductive expression :=
   | BinaryOp : vtype -> op -> expression -> expression -> expression
+  | Conditional : expression -> expression -> expression -> expression
+  | BitSelect : expression -> expression -> expression
   | Conversion : vtype -> vtype -> expression -> expression
   | IntegerLiteral : bits -> expression
   | NamedExpression : vtype -> string -> expression
@@ -108,8 +136,9 @@ Module TypedVerilog.
   .
 
   Inductive module_item : Set :=
-  | ContinuousAssign : expression -> expression -> module_item
+  | AlwaysComb : Statement -> module_item
   | AlwaysFF : Statement -> module_item
+  | Initial : Statement -> module_item
   .
 
   (** Verilog modules *)
