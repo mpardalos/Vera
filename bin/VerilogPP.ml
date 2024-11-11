@@ -5,13 +5,18 @@ let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"
 
 let vtype fmt t =
-  match t with Verilog.Logic (high, low) -> fprintf fmt "[%d:%d]" (int_from_nat high) (int_from_nat low)
+  fprintf fmt "<%d>" (int_from_nat t)
+
+let vector_declaration fmt t =
+  match t with
+  | Verilog.Vector (high, low) -> fprintf fmt "[%d:%d]" (int_from_nat high) (int_from_nat low)
+  | Verilog.Scalar -> ()
 
 let port (fmt : formatter) (p : Verilog.port) =
   fprintf fmt "%a %s" direction p.portDirection (Util.lst_to_string p.portName)
 
 let variable (fmt : formatter) (p : Verilog.variable) =
-  fprintf fmt "%s%a" (Util.lst_to_string p.varName) vtype p.varType
+  fprintf fmt "%s%a" (Util.lst_to_string p.varName) vector_declaration p.varVectorDeclaration
 
 let net_type (fmt : formatter) (t : Verilog.coq_StorageType) =
   match t with

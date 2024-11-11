@@ -13,16 +13,9 @@ From Equations Require Import Equations.
 
 (* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
 Module Verilog.
-  Inductive vtype := Logic : nat -> nat -> vtype.
-
-  Definition vtype_width (t : Verilog.vtype) : nat :=
-    let (hi, lo) := t in
-    ((max hi lo) - (min hi lo)) + 1
-  .
+  Definition vtype := nat.
 
   Variant StorageType := Reg | Wire.
-
-  Equations Derive NoConfusionHom EqDec for vtype.
 
   Variant op :=
     | BinaryPlus (* '+' *)
@@ -62,9 +55,17 @@ Module Verilog.
   | IntegerLiteral : bits -> expression
   | NamedExpression : string -> expression.
 
+  Variant vector_declaration :=
+    | Scalar
+    | Vector (msb : nat) (lsb : nat).
+
+  Equations vector_declaration_width : Verilog.vector_declaration -> nat :=
+    vector_declaration_width Verilog.Scalar := 1 ;
+    vector_declaration_width (Verilog.Vector hi lo) := 1 + (max hi lo) - (min hi lo).
+
   Record variable :=
     MkVariable
-      { varType : vtype
+      { varVectorDeclaration : vector_declaration
       ; varStorageType : StorageType
       ; varName : string
       }.
@@ -117,7 +118,7 @@ Module Verilog.
 End Verilog.
 
 Module TypedVerilog.
-  Export Verilog(vtype(..), op(..), variable(..), port(..)).
+  Export Verilog(vtype, op(..), variable(..), port(..)).
 
   Inductive expression :=
   | BinaryOp : vtype -> op -> expression -> expression -> expression
@@ -153,6 +154,6 @@ End TypedVerilog.
 
 Module VerilogNotations.
   Notation "[ hi .: lo ]" :=
-    (Verilog.Logic hi lo)
+    (Verilog.Vector hi lo)
       (format "[ hi '.:' lo ]").
 End VerilogNotations.

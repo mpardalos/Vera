@@ -2,13 +2,13 @@ let translate_direction = function
   | RawVerilog.Input -> Vera.PortIn
   | RawVerilog.Output -> Vera.PortOut
 
-let type_to_net_type = function
+let type_to_vector_declaration = function
   | RawVerilog.Logic (hi, lo) ->
-      Vera.Verilog.Logic (Vera.int_to_nat hi, Vera.int_to_nat lo)
+      Vera.Verilog.Vector (Vera.int_to_nat hi, Vera.int_to_nat lo)
   | RawVerilog.Reg (hi, lo) ->
-      Vera.Verilog.Logic (Vera.int_to_nat hi, Vera.int_to_nat lo)
+      Vera.Verilog.Vector (Vera.int_to_nat hi, Vera.int_to_nat lo)
   | RawVerilog.Wire (hi, lo) ->
-      Vera.Verilog.Logic (Vera.int_to_nat hi, Vera.int_to_nat lo)
+      Vera.Verilog.Vector (Vera.int_to_nat hi, Vera.int_to_nat lo)
 
 let type_to_storage_type = function
   | RawVerilog.Logic _ -> Vera.Verilog.Reg
@@ -24,7 +24,7 @@ let translate_ports (ports : RawVerilog.port_declaration list) :
              Vera.Verilog.portName = Util.string_to_lst p.name;
            },
            {
-             Vera.Verilog.varType = type_to_net_type p.net_type;
+             Vera.Verilog.varVectorDeclaration = type_to_vector_declaration p.net_type;
              Vera.Verilog.varStorageType = type_to_storage_type p.net_type;
              Vera.Verilog.varName = Util.string_to_lst p.name;
            } ))
@@ -42,7 +42,7 @@ let collect_ports (body : RawVerilog.module_item list) =
                    Vera.Verilog.portName = Util.string_to_lst d.name;
                  },
                  {
-                   Vera.Verilog.varType = type_to_net_type net_type;
+                   Vera.Verilog.varVectorDeclaration = type_to_vector_declaration net_type;
                    Vera.Verilog.varStorageType = type_to_storage_type net_type;
                    Vera.Verilog.varName = Util.string_to_lst d.name;
                  } ))
@@ -57,7 +57,7 @@ let collect_variables (body : RawVerilog.module_item list) =
            List.map
              (fun (d : RawVerilog.declaration) ->
                {
-                 Vera.Verilog.varType = type_to_net_type net_type;
+                 Vera.Verilog.varVectorDeclaration = type_to_vector_declaration net_type;
                  Vera.Verilog.varStorageType = type_to_storage_type net_type;
                  Vera.Verilog.varName = Util.string_to_lst d.name;
                })

@@ -180,16 +180,12 @@ Program Definition fresh (t : Netlist.nltype) : transf {v : Netlist.variable | N
   ret {! {| Netlist.varType := t; Netlist.varName := name |} }
 .
 
-Definition transfer_type (type : Verilog.vtype) : Netlist.nltype :=
-  (* Probably wrong but good enough for now*)
-  let '(Verilog.Logic hi lo) := type
-  in Netlist.Logic (max hi lo - min hi lo)
-.
+Definition transfer_type (width : Verilog.vtype) : Netlist.nltype := Netlist.Logic width.
 
 Definition transfer_variables (vars : list Verilog.variable) : transf () :=
   mapT (fun v =>
           name <- transfer_name (Verilog.varName v) ;;
-          put_var name (transfer_type (Verilog.varType v))
+          put_var name (transfer_type ((Verilog.vector_declaration_width (Verilog.varVectorDeclaration v))))
     ) vars ;;
   ret ()
 .

@@ -18,13 +18,13 @@ let rec expression fmt e =
   | TypedVerilog.Conditional (cond, t, f) ->
       fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression f
   | TypedVerilog.NamedExpression (t, name) ->
-      fprintf fmt "%a %s" VerilogPP.vtype t (Util.lst_to_string name));
+      fprintf fmt "%s%a" (Util.lst_to_string name) VerilogPP.vtype t);
   Format.fprintf fmt "@]"
 
 let rec statement (fmt : formatter) (s : TypedVerilog.coq_Statement) =
   match s with
   | TypedVerilog.Block body ->
-      fprintf fmt "begin @,    @[<v>%a@,]"
+      fprintf fmt "begin @,    @[<v>%a@]@,end"
         (pp_print_list statement ~pp_sep:Util.colon_sep)
         body
   | TypedVerilog.BlockingAssign (lhs, rhs) ->

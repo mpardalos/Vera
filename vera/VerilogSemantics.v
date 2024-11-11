@@ -60,7 +60,7 @@ Definition remove_process (name : name) (st : VerilogState) : VerilogState :=
 
 Equations
   eval_op (op : Verilog.op) (lhs rhs : bits) (width_match : size lhs = size rhs) : bits :=
-  eval_op Verilog.Plus lhs rhs prf := lhs +# rhs;
+  eval_op Verilog.BinaryPlus lhs rhs prf := lhs +# rhs;
   eval_op _ lhs rhs prf := _
 .
 Admit Obligations.
