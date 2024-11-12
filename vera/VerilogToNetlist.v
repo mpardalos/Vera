@@ -199,22 +199,6 @@ Definition transfer_ports (ports : list Verilog.port) : transf (list (name * por
 
 Definition unsupported_expression_error : string := "Unsupported expression".
 
-Definition binop :=
-  forall (out : Netlist.output) (in1 in2 : Netlist.input),
-       Netlist.input_width in1 = Netlist.input_width in2 ->
-       Netlist.input_width in1 = Netlist.output_width out -> Netlist.cell.
-
-Definition transfer_bin_op (op : Verilog.op) : transf binop :=
-  match op with
-  | Verilog.BinaryPlus => ret Netlist.Add
-  | Verilog.BinaryMinus => ret Netlist.Subtract
-  | Verilog.BinaryStar => ret Netlist.Multiply
-  | Verilog.BinaryShiftLeft => ret Netlist.ShiftLeft
-  | Verilog.BinaryShiftRight => ret Netlist.ShiftRight
-  | _ => raise "Unsupported operator"%string
-  end
-.
-
 Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input :=
 | TypedVerilog.IntegerLiteral v => ret (Netlist.InConstant v)
 | TypedVerilog.NamedExpression type name =>
@@ -242,8 +226,7 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
     then
       if eq_dec (Netlist.input_width v1) (Netlist.output_width (Netlist.OutVar v__result))
       then
-        operator <- transfer_bin_op op ;;
-        put_cells [operator (Netlist.OutVar v__result) v1 v2 _ _] ;;
+        put_cells [Netlist.BinaryCell op (Netlist.OutVar v__result) v1 v2 _ _] ;;
         ret (Netlist.InVar v__result)
       else raise "Incorrect output width in Verilog BinaryOp"%string
     else

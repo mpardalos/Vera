@@ -11,6 +11,7 @@ From mathcomp Require Import seq.
 From Equations Require Import Equations.
 
 From vera Require Import Common.
+From vera Require Import Verilog.
 From vera Require Import Netlist.
 From vera Require Import SMT.
 
@@ -36,26 +37,17 @@ Definition nltype_sort (t : Netlist.nltype) : SMT.sort :=
 .
 
 Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
-  cell_formula (Netlist.Add out l r _ _) :=
+  cell_formula (Netlist.BinaryCell op out l r _ _) :=
     let l_formula := input_formula l in
     let r_formula := input_formula r in
-    (output_name out, SMT.BVAdd l_formula r_formula);
-  cell_formula (Netlist.Subtract out l r _ _) :=
-    let l_formula := input_formula l in
-    let r_formula := input_formula r in
-    (output_name out, SMT.BVAdd l_formula (SMT.BVNeg r_formula));
-  cell_formula (Netlist.Multiply out l r _ _) :=
-    let l_formula := input_formula l in
-    let r_formula := input_formula r in
-    (output_name out, SMT.BVMul l_formula r_formula);
-  cell_formula (Netlist.ShiftLeft out l r _ _) :=
-    let l_formula := input_formula l in
-    let r_formula := input_formula r in
-    (output_name out, SMT.BVShl l_formula r_formula);
-  cell_formula (Netlist.ShiftRight out l r _ _) :=
-    let l_formula := input_formula l in
-    let r_formula := input_formula r in
-    (output_name out, SMT.BVLShr l_formula r_formula);
+    match op with
+    | Verilog.BinaryPlus => (output_name out, SMT.BVAdd l_formula r_formula)
+    | Verilog.BinaryMinus => (output_name out, SMT.BVAdd l_formula (SMT.BVNeg r_formula))
+    | Verilog.BinaryStar => (output_name out, SMT.BVMul l_formula r_formula)
+    | Verilog.BinaryShiftLeft => (output_name out, SMT.BVShl l_formula r_formula)
+    | Verilog.BinaryShiftRight => (output_name out, SMT.BVLShr l_formula r_formula)
+    | _ => (output_name out, SMT.BVVar (output_name out)) (* Leave unconstrained *)
+    end ;
   cell_formula (Netlist.Id out in_ _) :=
     let formula := input_formula in_ in
     (output_name out, formula);

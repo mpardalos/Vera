@@ -7,6 +7,7 @@ Local Open Scope bits_scope.
 From mathcomp Require Import seq.
 
 From vera Require Import Common.
+From vera Require Import Verilog.
 
 From Equations Require Import Equations.
 
@@ -52,27 +53,8 @@ Module Netlist.
     Logic (output_width o).
 
   Inductive cell :=
-  | Add
-      (out : output)
-      (in1 in2 : input)
-      (inputs_match : input_width in1 = input_width in2)
-      (output_match : input_width in1 = output_width out)
-  | Subtract
-      (out : output)
-      (in1 in2 : input)
-      (inputs_match : input_width in1 = input_width in2)
-      (output_match : input_width in1 = output_width out)
-  | Multiply
-      (out : output)
-      (in1 in2 : input)
-      (inputs_match : input_width in1 = input_width in2)
-      (output_match : input_width in1 = output_width out)
-  | ShiftLeft
-      (out : output)
-      (in1 in2 : input)
-      (inputs_match : input_width in1 = input_width in2)
-      (output_match : input_width in1 = output_width out)
-  | ShiftRight
+  | BinaryCell
+      (operator : Verilog.op)
       (out : output)
       (in1 in2 : input)
       (inputs_match : input_width in1 = input_width in2)
@@ -93,11 +75,7 @@ Module Netlist.
   .
 
   Equations cell_output : cell -> output :=
-  | Add o _ _ _ _ => o
-  | Subtract o _ _ _ _ => o
-  | Multiply o _ _ _ _ => o
-  | ShiftLeft o _ _ _ _ => o
-  | ShiftRight o _ _ _ _ => o
+  | BinaryCell _ o _ _ _ _ => o
   | Mux o _ _ _ _ _ _ => o
   | Id o _ _ => o
   | Convert o _ => o
@@ -132,23 +110,7 @@ Module Netlist.
 
 
   Equations cell_in_circuit : circuit -> cell -> Prop :=
-  | c, Add out in1 in2 _ _ =>
-      output_in_circuit c out
-      /\ input_in_circuit c in1
-      /\ input_in_circuit c in2
-  | c, Subtract out in1 in2 _ _ =>
-      output_in_circuit c out
-      /\ input_in_circuit c in1
-      /\ input_in_circuit c in2
-  | c, Multiply out in1 in2 _ _ =>
-      output_in_circuit c out
-      /\ input_in_circuit c in1
-      /\ input_in_circuit c in2
-  | c, ShiftLeft out in1 in2 _ _ =>
-      output_in_circuit c out
-      /\ input_in_circuit c in1
-      /\ input_in_circuit c in2
-  | c, ShiftRight out in1 in2 _ _ =>
+  | c, BinaryCell op out in1 in2 _ _ =>
       output_in_circuit c out
       /\ input_in_circuit c in1
       /\ input_in_circuit c in2
@@ -186,8 +148,8 @@ Module NetlistNotations.
   Notation "a <- Mux( b , c , d  )" :=
     (Netlist.Mux a b c d _ _ _)
       (at level 200, only printing).
-  Notation "a <- Add( b , c  )" :=
-    (Netlist.Add a b c _ _)
+  Notation "a <- BinaryCell( b , c , d  )" :=
+    (Netlist.BinaryCell a b c d _ _)
       (at level 200, only printing).
   Notation "'l' w" :=
     (Netlist.Logic w)
