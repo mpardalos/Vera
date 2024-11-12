@@ -17,7 +17,7 @@ module iterative (
 
    // Stage logic
    always @(posedge clk) begin
-      stage <= (stage < 4'd9) ? stage + 3'd1 : 3'd0;
+      stage <= stage < 4'd9 ? stage + 3'd1 : 3'd0;
    end
 
    // Stage 0: Capture inputs
