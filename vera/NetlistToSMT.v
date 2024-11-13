@@ -30,10 +30,8 @@ Definition output_name (output : Netlist.output) : name :=
   end
 .
 
-Definition nltype_sort (t : Netlist.nltype) : SMT.sort :=
-  match t with
-  | Netlist.Logic sz => SMT.SBitVector (Pos.of_nat sz)
-  end
+Definition nltype_sort (sz : Netlist.nltype) : SMT.sort :=
+  SMT.SBitVector (Pos.of_nat sz)
 .
 
 Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
@@ -52,8 +50,8 @@ Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
     let formula := input_formula in_ in
     (output_name out, formula);
   cell_formula (Netlist.Convert out in_) :=
-    let from := Netlist.input_width in_ in
-    let to := Netlist.output_width out in
+    let from := Netlist.input_type in_ in
+    let to := Netlist.output_type out in
     let in_formula := input_formula in_ in
     let formula :=
       if to <? from

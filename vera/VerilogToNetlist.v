@@ -39,6 +39,7 @@ Record transf_state :=
     ; nameMap : StrMap.t name
     ; vars : NameMap.t Netlist.nltype
     ; cells : list Netlist.cell
+    ; initVals : NameMap.t bits
     ; substitutionsBlocking : EnvStack.t Netlist.input
     ; substitutionsNonblocking : EnvStack.t Netlist.input
     }.
@@ -54,6 +55,7 @@ Let run_transf_test {T} (a : transf T) :=
         ; nameMap := StrMap.empty name
         ; vars := NameMap.empty _
         ; cells := []
+        ; initVals := NameMap.empty _
         ; substitutionsBlocking := EnvStack.empty _
         ; substitutionsNonblocking := EnvStack.empty _
         |}.
@@ -64,6 +66,7 @@ Definition fresh_name : transf name :=
             ; nameMap := nameMap s
             ; vars := vars s
             ; cells := cells s
+            ; initVals := initVals s
             ; substitutionsBlocking := substitutionsBlocking s
             ; substitutionsNonblocking := substitutionsNonblocking s
             |}) ;;
@@ -80,6 +83,7 @@ Definition transfer_name (vname : string) : transf name :=
                 ; nameMap := StrMap.add vname n (nameMap s)
                 ; vars := vars s
                 ; cells := cells s
+                ; initVals := initVals s
                 ; substitutionsBlocking := substitutionsBlocking s
                 ; substitutionsNonblocking := substitutionsNonblocking s
                 |}
@@ -93,6 +97,7 @@ Definition put_var (varName : name) (varType : Netlist.nltype) : transf () :=
             ; nameMap := nameMap s
             ; vars := NameMap.add varName varType (vars s)
             ; cells := cells s
+            ; initVals := initVals s
             ; substitutionsBlocking := substitutionsBlocking s
             ; substitutionsNonblocking := substitutionsNonblocking s
             |}) ;;
@@ -105,6 +110,7 @@ Definition put_cells (cs : list Netlist.cell) : transf () :=
             ; nameMap := nameMap s
             ; vars := vars s
             ; cells := cells s ++ cs
+            ; initVals := initVals s
             ; substitutionsBlocking := substitutionsBlocking s
             ; substitutionsNonblocking := substitutionsNonblocking s
             |}) ;;
@@ -117,6 +123,7 @@ Definition set_substitution_blocking (lhs : name) (rhs : Netlist.input) : transf
             ; nameMap := nameMap s
             ; vars := vars s
             ; cells := cells s
+            ; initVals := initVals s
             ; substitutionsBlocking := EnvStack.add lhs rhs (substitutionsBlocking s)
             ; substitutionsNonblocking := substitutionsNonblocking s
             |}) ;;
@@ -129,11 +136,26 @@ Definition set_substitution_nonblocking (lhs : name) (rhs : Netlist.input) : tra
             ; nameMap := nameMap s
             ; vars := vars s
             ; cells := cells s
+            ; initVals := initVals s
             ; substitutionsBlocking := substitutionsBlocking s
             ; substitutionsNonblocking := EnvStack.add lhs rhs (substitutionsNonblocking s)
             |}) ;;
   ret ()
 .
+
+Definition set_initval (lhs : name) (rhs : bits) : transf () :=
+  modify (fun s =>
+            {| nextName := nextName s
+            ; nameMap := nameMap s
+            ; vars := vars s
+            ; cells := cells s
+            ; initVals := NameMap.add lhs rhs (initVals s)
+            ; substitutionsBlocking := substitutionsBlocking s
+            ; substitutionsNonblocking := substitutionsNonblocking s
+            |}) ;;
+  ret ()
+.
+
 
 Definition push_block : transf () :=
   modify (fun s =>
@@ -141,6 +163,7 @@ Definition push_block : transf () :=
             ; nameMap := nameMap s
             ; vars := vars s
             ; cells := cells s
+            ; initVals := initVals s
             ; substitutionsBlocking := EnvStack.push (substitutionsBlocking s)
             ; substitutionsNonblocking := EnvStack.push (substitutionsNonblocking s)
             |}) ;;
@@ -158,6 +181,7 @@ Definition pop_block : transf (NameMap.t Netlist.input * NameMap.t Netlist.input
                 ; nameMap := nameMap s
                 ; vars := vars s
                 ; cells := cells s
+                ; initVals := initVals s
                 ; substitutionsBlocking := substitutionsBlocking'
                 ; substitutionsNonblocking := substitutionsNonblocking'
                 |}) ;;
@@ -180,12 +204,10 @@ Program Definition fresh (t : Netlist.nltype) : transf {v : Netlist.variable | N
   ret {! {| Netlist.varType := t; Netlist.varName := name |} }
 .
 
-Definition transfer_type (width : Verilog.vtype) : Netlist.nltype := Netlist.Logic width.
-
 Definition transfer_variables (vars : list Verilog.variable) : transf () :=
   mapT (fun v =>
           name <- transfer_name (Verilog.varName v) ;;
-          put_var name (transfer_type ((Verilog.vector_declaration_width (Verilog.varVectorDeclaration v))))
+          put_var name ((Verilog.vector_declaration_width (Verilog.varVectorDeclaration v)))
     ) vars ;;
   ret ()
 .
@@ -199,21 +221,55 @@ Definition transfer_ports (ports : list Verilog.port) : transf (list (name * por
 
 Definition unsupported_expression_error : string := "Unsupported expression".
 
+Equations check_not_zero : Netlist.input -> transf Netlist.input :=
+  check_not_zero val :=
+    let val_type := Netlist.input_type val in
+    '{! v__result } <- fresh 1 ;;
+    put_cells [
+        Netlist.BinaryCell
+          Verilog.BinaryNotEquals
+          (Netlist.OutVar v__result)
+          val
+          (Netlist.InConstant (val_type-bits of 0))
+          _ _
+      ] ;;
+    ret (Netlist.InVar v__result)
+.
+Next Obligation.
+  simp input_type.
+  rewrite size_from_nat.
+  trivial.
+Qed.
+Next Obligation. Admitted. (* TODO: Output of equality is expected to match input width (should just be 1-bit) *)
+
 Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input :=
 | TypedVerilog.IntegerLiteral v => ret (Netlist.InConstant v)
 | TypedVerilog.NamedExpression type name =>
-    let t := transfer_type type in
     n <- transfer_name name ;;
     st <- get ;;
     match EnvStack.lookup n (substitutionsBlocking st) with
     | Some e => ret e
-    | None => ret (Netlist.InVar {| Netlist.varType := t; Netlist.varName := n |})
+    | None => ret (Netlist.InVar {| Netlist.varType := type; Netlist.varName := n |})
     end
 | TypedVerilog.Conditional cond tBranch fBranch =>
-    v__cond <- transfer_expression cond ;;
+    v__condval <- transfer_expression cond ;;
+    v__cond <- check_not_zero v__condval ;;
     v__true <- transfer_expression tBranch ;;
     v__false <- transfer_expression fBranch ;;
-    raise "Conditional not supported in netlist"%string ;
+    '{! v__result } <- fresh (TypedVerilog.expr_type tBranch) ;;
+    if eq_dec (Netlist.input_type v__true) (Netlist.input_type v__false)
+    then
+      if eq_dec (Netlist.input_type v__true) (Netlist.output_type (Netlist.OutVar v__result))
+      then
+        if eq_dec (Netlist.input_type v__cond) 1 then
+          put_cells [Netlist.Mux (Netlist.OutVar v__result) v__cond v__true v__false _ _ _] ;;
+          ret (Netlist.InVar v__result)
+        else
+          raise "Expected 1-bit condition in conditional"%string
+      else
+        raise "Incompatible argument widths in Verilog conditional"%string
+    else
+      raise "Incompatible argument widths in Verilog conditional"%string
 | TypedVerilog.BitSelect target index =>
     v__target <- transfer_expression target ;;
     v__index <- transfer_expression index ;;
@@ -221,10 +277,10 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
 | TypedVerilog.BinaryOp t op e1 e2 =>
     v1 <- transfer_expression e1 ;;
     v2 <- transfer_expression e2 ;;
-    '{! v__result } <- fresh (transfer_type t) ;;
-    if eq_dec (Netlist.input_width v1) (Netlist.input_width v2)
+    '{! v__result } <- fresh t ;;
+    if eq_dec (Netlist.input_type v1) (Netlist.input_type v2)
     then
-      if eq_dec (Netlist.input_width v1) (Netlist.output_width (Netlist.OutVar v__result))
+      if eq_dec (Netlist.input_type v1) (Netlist.output_type (Netlist.OutVar v__result))
       then
         put_cells [Netlist.BinaryCell op (Netlist.OutVar v__result) v1 v2 _ _] ;;
         ret (Netlist.InVar v__result)
@@ -233,7 +289,7 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
       raise "Incompatible argument widths in Verilog BinaryOp"%string
 | TypedVerilog.Conversion v_t__from v_t__to e =>
     v__expr <- transfer_expression e ;;
-    '{! v__result } <- fresh (transfer_type v_t__to) ;;
+    '{! v__result } <- fresh v_t__to ;;
     put_cells [Netlist.Convert (Netlist.OutVar v__result) v__expr] ;;
     ret (Netlist.InVar v__result)
 .
@@ -267,12 +323,13 @@ Ltac crush_nl :=
   try lia.
 
 Program Definition merge_if
-  (cond : Netlist.input)
+  (cond_val : Netlist.input)
   (defaults : NameMap.t Netlist.input)
   (substitutionsTrue substitutionsFalse : NameMap.t Netlist.input)
   : transf () :=
+  cond <- check_not_zero cond_val ;;
   cond_ok <- decide_or_fail
-              (eq_dec (Netlist.input_width cond) 1)
+              (eq_dec (Netlist.input_type cond) 1)
               "if condition must have width 1" ;;
   let substitutions_combined : NameMap.t (option Netlist.input * option Netlist.input) :=
     namemap_union substitutionsTrue substitutionsFalse in
@@ -290,21 +347,21 @@ Program Definition merge_if
         match default, trueBranch, falseBranch with
         | _, Some t, Some f =>
             width_ok <- decide_or_fail
-                        (eq_dec (Netlist.input_width t) (Netlist.input_width f))
+                        (eq_dec (Netlist.input_type t) (Netlist.input_type f))
                         "Incompatible widths in conditional";;
             let out := {| Netlist.varType := (Netlist.input_type t); Netlist.varName := n|} in
             put_cells [Netlist.Mux (Netlist.OutVar out) cond t f _ _ _] ;;
             set_substitution_blocking n (Netlist.InVar out)
         | Some def, Some t, None =>
             width_ok <- decide_or_fail
-                        (eq_dec (Netlist.input_width def) (Netlist.input_width t))
+                        (eq_dec (Netlist.input_type def) (Netlist.input_type t))
                         "Incompatible widths in conditional";;
             let out := {| Netlist.varType := (Netlist.input_type t); Netlist.varName := n|} in
             put_cells [Netlist.Mux (Netlist.OutVar out) cond t def _ _ _] ;;
             set_substitution_blocking n (Netlist.InVar out)
         | Some def, None, Some f =>
             width_ok <- decide_or_fail
-                        (eq_dec (Netlist.input_width def) (Netlist.input_width f))
+                        (eq_dec (Netlist.input_type def) (Netlist.input_type f))
                         "Incompatible widths in conditional";;
             let out := {| Netlist.varType := (Netlist.input_type f); Netlist.varName := n|} in
             put_cells [Netlist.Mux (Netlist.OutVar out) cond def f _ _ _] ;;
@@ -314,7 +371,6 @@ Program Definition merge_if
     ) substitutions_combined ;;
   ret ()
 .
-Next Obligation. (* Width *) Admitted.
 Next Obligation. intuition discriminate. Qed.
 Next Obligation. intuition discriminate. Qed.
 Next Obligation. intuition discriminate. Qed.
@@ -357,11 +413,19 @@ Equations transfer_initial_statement : TypedVerilog.Statement -> transf () :=
 | TypedVerilog.Block body =>
     mapT transfer_initial_statement body ;;
     ret ()
-| TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression t__lhs vname__lhs) (TypedVerilog.IntegerLiteral value) =>
+| TypedVerilog.BlockingAssign
+    (TypedVerilog.NamedExpression _ vname__lhs)
+    (TypedVerilog.IntegerLiteral value) =>
     name__lhs <- transfer_name vname__lhs ;;
-    input__rhs <- transfer_expression rhs ;;
-    set_substitution_blocking name__lhs input__rhs
-| TypedVerilog.BlockingAssign lhs rhs =>
+    set_initval name__lhs value
+| TypedVerilog.BlockingAssign
+    (TypedVerilog.NamedExpression _ vname__lhs)
+    (TypedVerilog.Conversion _ _ (TypedVerilog.IntegerLiteral value)) =>
+    name__lhs <- transfer_name vname__lhs ;;
+    set_initval name__lhs value
+| TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression _ _) _ =>
+    raise "Invalid rhs for assignment in initial block"%string
+| TypedVerilog.BlockingAssign _ _ =>
     raise "Invalid lhs for blocking assignment"%string
 | TypedVerilog.NonBlockingAssign lhs rhs =>
     raise "Non-blocking assignment not allowed in initial blocks"%string
@@ -371,8 +435,7 @@ Equations transfer_initial_statement : TypedVerilog.Statement -> transf () :=
 
 Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
 | TypedVerilog.AlwaysFF body => transfer_statement body
-| TypedVerilog.Initial body =>
-    raise "initial not supported in netlist"%string
+| TypedVerilog.Initial body => transfer_initial_statement body
 | TypedVerilog.AlwaysComb body =>
     raise "combinational logic not supported in netlist"%string
 .
@@ -383,7 +446,7 @@ Equations mk_register : Netlist.input -> Netlist.register_declaration :=
     ; Netlist.driver := Netlist.InConstant bv
     |}
 | Netlist.InVar v =>
-    {| Netlist.init := (Netlist.type_width (Netlist.varType v))-bits of 0
+    {| Netlist.init := (Netlist.varType v)-bits of 0
     ; Netlist.driver := Netlist.InVar v
     |}
 .
@@ -415,6 +478,7 @@ Definition verilog_to_netlist (start_name: positive) (vmodule : TypedVerilog.vmo
       ; nameMap := StrMap.empty name
       ; vars := NameMap.empty _
       ; cells := []
+      ; initVals := NameMap.empty _
       ; substitutionsBlocking := EnvStack.empty _
       ; substitutionsNonblocking := EnvStack.empty _
       |} in

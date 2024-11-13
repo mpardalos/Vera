@@ -16,10 +16,7 @@ Import ListNotations.
 
 (* This module will be Netlist.Netlist. Redundant, but it is needed for extraction. See Extraction.v *)
 Module Netlist.
-  Inductive nltype := Logic : nat -> nltype.
-
-  Equations type_width : nltype -> nat :=
-    type_width (Logic w) := w.
+  Definition nltype := nat.
 
   (** These are not registers, just names used to connect the netlist graph *)
   Record variable :=
@@ -35,40 +32,34 @@ Module Netlist.
   | InConstant : bits -> input
   .
 
-  Equations input_width : input -> nat :=
-    input_width (InVar (Var (Logic w) _)) := w;
-    input_width (InConstant v) := size v.
-
-  Definition input_type (i : input) : nltype :=
-    Logic (input_width i).
+  Equations input_type : input -> nltype :=
+    input_type (InVar (Var w _)) := w;
+    input_type (InConstant v) := size v.
 
   Inductive output :=
   | OutVar : variable -> output
   .
 
-  Equations output_width : output -> nat :=
-    output_width (OutVar (Var t _)) := type_width t.
-
-  Definition output_type (o : output) : nltype :=
-    Logic (output_width o).
+  Equations output_type : output -> nltype :=
+    output_type (OutVar (Var w _)) := w.
 
   Inductive cell :=
   | BinaryCell
       (operator : Verilog.op)
       (out : output)
       (in1 in2 : input)
-      (inputs_match : input_width in1 = input_width in2)
-      (output_match : input_width in1 = output_width out)
+      (inputs_match : input_type in1 = input_type in2)
+      (output_match : input_type in1 = output_type out)
   | Mux
       (out : output)
       (select in1 in2 : input)
-      (select_width : input_width select = 1)
-      (inputs_match : input_width in1 = input_width in2)
-      (output_match : input_width in1 = output_width out)
+      (select_width : input_type select = 1)
+      (inputs_match : input_type in1 = input_type in2)
+      (output_match : input_type in1 = output_type out)
   | Id
       (out : output)
       (in1 : input)
-      (output_match : input_width in1 = output_width out)
+      (output_match : input_type in1 = output_type out)
   | Convert
       (out : output)
       (in1 : input)
@@ -89,7 +80,7 @@ Module Netlist.
   .
 
   Definition register_width (reg : register_declaration) :=
-    input_width (driver reg).
+    input_type (driver reg).
 
   Record circuit :=
     Circuit
@@ -140,10 +131,10 @@ Module NetlistNotations.
     (Netlist.InConstant v)
       (at level 1, only printing, format "'${' v '}'").
   Notation "$ n" :=
-    (Netlist.OutVar {| Netlist.varType := Netlist.Logic _; Netlist.varName := n |})
+    (Netlist.OutVar {| Netlist.varType := _; Netlist.varName := n |})
       (at level 1, only printing, format "'$' n").
   Notation "$ n" :=
-    (Netlist.InVar {| Netlist.varType := Netlist.Logic _; Netlist.varName := n |})
+    (Netlist.InVar {| Netlist.varType := _; Netlist.varName := n |})
       (at level 1, only printing, format "'$' n").
   Notation "a <- Mux( b , c , d  )" :=
     (Netlist.Mux a b c d _ _ _)
@@ -151,7 +142,4 @@ Module NetlistNotations.
   Notation "a <- BinaryCell( b , c , d  )" :=
     (Netlist.BinaryCell a b c d _ _)
       (at level 200, only printing).
-  Notation "'l' w" :=
-    (Netlist.Logic w)
-      (at level 200, only printing, format "'l' w").
 End NetlistNotations.

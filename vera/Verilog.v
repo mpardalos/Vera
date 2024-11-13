@@ -3,6 +3,7 @@ From Coq Require Import ZArith.
 From Coq Require Import BinNums.
 
 From nbits Require Import NBits.
+From mathcomp Require Import seq.
 
 From vera Require Import Common.
 
@@ -150,6 +151,14 @@ Module TypedVerilog.
       ; modVariables : list variable
       ; modBody : list module_item
       }.
+
+  Equations expr_type : TypedVerilog.expression -> Verilog.vtype :=
+    expr_type (TypedVerilog.BinaryOp t _ _ _) := t;
+    expr_type (TypedVerilog.BitSelect _ _) := 0;
+    expr_type (TypedVerilog.Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
+    expr_type (TypedVerilog.Conversion _ t _) := t;
+    expr_type (TypedVerilog.IntegerLiteral v) := size v;
+    expr_type (TypedVerilog.NamedExpression t _) := t.
 End TypedVerilog.
 
 Module VerilogNotations.
