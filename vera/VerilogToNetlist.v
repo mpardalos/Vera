@@ -353,6 +353,22 @@ Equations transfer_statement : TypedVerilog.Statement -> transf () :=
     ret ()
 .
 
+Equations transfer_initial_statement : TypedVerilog.Statement -> transf () :=
+| TypedVerilog.Block body =>
+    mapT transfer_initial_statement body ;;
+    ret ()
+| TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression t__lhs vname__lhs) (TypedVerilog.IntegerLiteral value) =>
+    name__lhs <- transfer_name vname__lhs ;;
+    input__rhs <- transfer_expression rhs ;;
+    set_substitution_blocking name__lhs input__rhs
+| TypedVerilog.BlockingAssign lhs rhs =>
+    raise "Invalid lhs for blocking assignment"%string
+| TypedVerilog.NonBlockingAssign lhs rhs =>
+    raise "Non-blocking assignment not allowed in initial blocks"%string
+| TypedVerilog.If condition trueBranch falseBranch =>
+    raise "Conditionals not allowed in initial blocks"%string
+.
+
 Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
 | TypedVerilog.AlwaysFF body => transfer_statement body
 | TypedVerilog.Initial body =>
