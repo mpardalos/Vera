@@ -3,12 +3,11 @@ open Vera
 
 let bitvector fmt (bv : bits) = fprintf fmt "%d'd%d" (N.of_nat (size bv)) (N.of_nat (bits_to_nat bv))
 
-let nltype fmt (t : Netlist.nltype) =
-  (* nltype gets extracted to just int *)
-  fprintf fmt "logic[%d]" (int_from_nat t)
-
 let variable fmt (v : Netlist.variable) =
-  fprintf fmt "%a <%d>" nltype v.varType v.varName
+  fprintf fmt "v%d<%d>" v.varName (int_from_nat v.varType)
+
+let variablePair fmt (var : name * Netlist.nltype) =
+  variable fmt { varName = fst var; varType = snd var}
 
 let input fmt (i : Netlist.input) =
   match i with
@@ -20,9 +19,6 @@ let output fmt (o : Netlist.output) = variable fmt o
 let registerPair fmt (rp : name * Netlist.register_declaration) =
   let name, r = rp in
   fprintf fmt "<%d> (init: %a) <- %a" name bitvector r.init input r.driver
-
-let variablePair fmt (var : name * Netlist.nltype) =
-  fprintf fmt "%a <%d>" nltype (snd var) (fst var)
 
 let port fmt (v : int * port_direction) =
   match v with
