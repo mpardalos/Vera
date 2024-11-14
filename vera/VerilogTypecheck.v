@@ -104,7 +104,7 @@ Equations tc_expr : option TCContext -> TCBindings -> Verilog.expression -> TC T
         | Gt => 
             typed_r_final <- tc_expr (Some (expr_type typed_l)) Γ r ;;
             ret (TypedVerilog.BinaryOp (expr_type typed_l) op typed_l typed_r_final)
-        | Eq => ret (TypedVerilog.BinaryOp (expr_type typed_l) op typed_l typed_r)
+        | Eq => ret (TypedVerilog.BinaryOp 1 op typed_l typed_r)
         end
     | Verilog.BinaryLogicalAnd (* '&&' *)
     | Verilog.BinaryLogicalOr (* '||' *)
