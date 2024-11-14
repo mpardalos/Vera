@@ -271,9 +271,11 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
     else
       raise "Incompatible argument widths in Verilog conditional"%string
 | TypedVerilog.BitSelect target index =>
-    v__target <- transfer_expression target ;;
+    v__vec <- transfer_expression target ;;
     v__index <- transfer_expression index ;;
-    raise "Conditional not supported in netlist"%string ;
+    '{! v__result } <- fresh 1 ;;
+    put_cells [Netlist.BitSelect (Netlist.OutVar v__result) v__vec v__index _ ] ;;
+    ret (Netlist.InVar v__result);
 | TypedVerilog.BinaryOp t op e1 e2 =>
     v1 <- transfer_expression e1 ;;
     v2 <- transfer_expression e2 ;;

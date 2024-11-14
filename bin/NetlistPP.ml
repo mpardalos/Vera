@@ -30,6 +30,7 @@ let cell fmt (c : Netlist.cell) =
   | BinaryCell (op, out, in1, in2) ->
       fprintf fmt "%a <- BinaryCell(%a, %a, %a)" output out VerilogPP.operator op input in1 input in2
   | Id (out, in1) -> fprintf fmt "%a <- Id(%a)" output out input in1
+  | BitSelect (out, in_vec, in_idx) -> fprintf fmt "%a <- %a[%a]" output out input in_vec input in_idx
   | Convert (out, in1) -> fprintf fmt "%a <- Convert(%a)" output out input in1
   | Mux (out, select, ifT, ifF) ->
       fprintf fmt "%a <- Mux(%a, %a, %a)" output out input select input ifT

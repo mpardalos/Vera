@@ -46,6 +46,11 @@ Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
     | Verilog.BinaryShiftRight => (output_name out, SMT.BVLShr l_formula r_formula)
     | _ => (output_name out, SMT.BVVar (output_name out)) (* Leave unconstrained *)
     end ;
+  cell_formula (Netlist.BitSelect out in_vec in_idx _) :=
+    let in_vec_formula := input_formula in_vec in
+    let in_idx_formula := input_formula in_idx in
+    let formula := SMT.BVExtract 0 0 (SMT.BVLShr in_vec_formula in_idx_formula) in
+    (output_name out, formula);
   cell_formula (Netlist.Id out in_ _) :=
     let formula := input_formula in_ in
     (output_name out, formula);
