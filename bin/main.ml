@@ -206,6 +206,8 @@ let () =
         display_or_error TypedVerilogPP.vmodule (typed_module_of_file filename)
     | [ "netlist"; filename ] ->
         display_or_error NetlistPP.circuit (netlist_of_file filename)
+    | [ "netlist_dot"; filename ] ->
+        display_or_error NetlistGraphviz.circuit (netlist_of_file filename)
     | [ "smt_netlist"; filename ] ->
         display_or_error IntSMT.smt_netlist (smt_netlist_of_file filename)
     | [ "smt"; filename ] ->
