@@ -424,8 +424,8 @@ Equations transfer_initial_statement : TypedVerilog.Statement -> transf () :=
 Equations transfer_module_item : TypedVerilog.module_item -> transf () :=
 | TypedVerilog.AlwaysFF body => transfer_statement body
 | TypedVerilog.Initial body => transfer_initial_statement body
-| TypedVerilog.AlwaysComb body =>
-    raise "combinational logic not supported in netlist"%string
+(* TODO: Do we need to handle always_comb differently to synchronous logic? *)
+| TypedVerilog.AlwaysComb body => transfer_statement body
 .
 
 Equations mk_register : Netlist.input -> Netlist.register_declaration :=
