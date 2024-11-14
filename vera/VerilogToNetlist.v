@@ -260,7 +260,7 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
         else
           raise "Expected 1-bit condition in conditional"%string
       else
-        raise "Incompatible argument widths in Verilog conditional"%string
+        raise "Incompatible argument and output widths in Verilog conditional"%string
     else
       raise "Incompatible argument widths in Verilog conditional"%string
 | TypedVerilog.BitSelect target index =>
