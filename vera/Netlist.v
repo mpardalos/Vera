@@ -48,8 +48,6 @@ Module Netlist.
       (operator : Verilog.op)
       (out : output)
       (in1 in2 : input)
-      (inputs_match : input_type in1 = input_type in2)
-      (output_match : input_type in1 = output_type out)
   | BitSelect
       (out : output)
       (in_vec in_idx : input)
@@ -70,7 +68,7 @@ Module Netlist.
   .
 
   Equations cell_output : cell -> output :=
-  | BinaryCell _ o _ _ _ _ => o
+  | BinaryCell _ o _ _ => o
   | BitSelect o _ _ _ => o
   | Mux o _ _ _ _ _ _ => o
   | Id o _ _ => o
@@ -106,7 +104,7 @@ Module Netlist.
 
 
   Equations cell_in_circuit : circuit -> cell -> Prop :=
-  | c, BinaryCell op out in1 in2 _ _ =>
+  | c, BinaryCell op out in1 in2 =>
       output_in_circuit c out
       /\ input_in_circuit c in1
       /\ input_in_circuit c in2

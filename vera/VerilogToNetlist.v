@@ -231,16 +231,9 @@ Equations check_not_zero : Netlist.input -> transf Netlist.input :=
           (Netlist.OutVar v__result)
           val
           (Netlist.InConstant (val_type-bits of 0))
-          _ _
       ] ;;
     ret (Netlist.InVar v__result)
 .
-Next Obligation.
-  simp input_type.
-  rewrite size_from_nat.
-  trivial.
-Qed.
-Next Obligation. Admitted. (* TODO: Output of equality is expected to match input width (should just be 1-bit) *)
 
 Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input :=
 | TypedVerilog.IntegerLiteral v => ret (Netlist.InConstant v)
@@ -280,15 +273,8 @@ Equations transfer_expression : TypedVerilog.expression -> transf Netlist.input 
     v1 <- transfer_expression e1 ;;
     v2 <- transfer_expression e2 ;;
     '{! v__result } <- fresh t ;;
-    if eq_dec (Netlist.input_type v1) (Netlist.input_type v2)
-    then
-      if eq_dec (Netlist.input_type v1) (Netlist.output_type (Netlist.OutVar v__result))
-      then
-        put_cells [Netlist.BinaryCell op (Netlist.OutVar v__result) v1 v2 _ _] ;;
-        ret (Netlist.InVar v__result)
-      else raise "Incorrect output width in Verilog BinaryOp"%string
-    else
-      raise "Incompatible argument widths in Verilog BinaryOp"%string
+    put_cells [Netlist.BinaryCell op (Netlist.OutVar v__result) v1 v2] ;;
+    ret (Netlist.InVar v__result)
 | TypedVerilog.Conversion v_t__from v_t__to e =>
     v__expr <- transfer_expression e ;;
     '{! v__result } <- fresh v_t__to ;;

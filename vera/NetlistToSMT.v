@@ -35,7 +35,7 @@ Definition nltype_sort (sz : Netlist.nltype) : SMT.sort :=
 .
 
 Equations cell_formula : Netlist.cell -> name * SMT.qfbv name :=
-  cell_formula (Netlist.BinaryCell op out l r _ _) :=
+  cell_formula (Netlist.BinaryCell op out l r) :=
     let l_formula := input_formula l in
     let r_formula := input_formula r in
     match op with
