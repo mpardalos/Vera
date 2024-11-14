@@ -32,7 +32,7 @@ let port fmt (v : int * port_direction) =
 let cell fmt (c : Netlist.cell) =
   match c with
   | BinaryCell (op, out, in1, in2) ->
-      fprintf fmt "%a <- BinaryCell(%a, %a, %a)" VerilogPP.operator op output out input in1 input in2
+      fprintf fmt "%a <- BinaryCell(%a, %a, %a)" output out VerilogPP.operator op input in1 input in2
   | Id (out, in1) -> fprintf fmt "%a <- Id(%a)" output out input in1
   | Convert (out, in1) -> fprintf fmt "%a <- Convert(%a)" output out input in1
   | Mux (out, select, ifT, ifF) ->
