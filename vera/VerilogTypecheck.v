@@ -169,11 +169,6 @@ Let gamma := StrMap.add "stage"%string 9 (StrMap.empty _).
 
 Local Open Scope bits_scope.
 
-Compute tc_expr (Some 32) gamma
-  (Verilog.BinaryOp Verilog.BinaryLessThan
-     (Verilog.NamedExpression "stage"%string)
-     (Verilog.IntegerLiteral 32-bits of 9)).
-
 Equations tc_stmt : TCBindings -> Verilog.statement -> TC TypedVerilog.Statement :=
   tc_stmt Γ (Verilog.Block body) :=
     TypedVerilog.Block <$> mapT (tc_stmt Γ) body;
