@@ -25,6 +25,8 @@ Import MonadNotation.
 Local Open Scope bits_scope.
 Local Open Scope monad_scope.
 
+Set Bullet Behavior "Strict Subproofs".
+
 Definition Process := TypedVerilog.module_item.
 
 Definition PendingProcesses := list Process.
@@ -76,12 +78,24 @@ Equations
     | left prf => ret (eval_op op lhs__val rhs__val _)
     | right _ => None
     end;
+  eval_expr st (TypedVerilog.Conditional cond tBranch fBranch) :=
+    cond__val <- eval_expr st cond ;;
+    tBranch__val <- eval_expr st tBranch ;;
+    fBranch__val <- eval_expr st fBranch ;;
+    match (eq_dec (size tBranch__val) (size fBranch__val)), (eq_dec cond__val ((size cond__val)-bits of 0)) with
+    | left size_ok, left cond_zero => ret fBranch__val
+    | left size_ok, right cond_not_zero => ret tBranch__val
+    | right _, _ => None
+    end;
+  eval_expr st (TypedVerilog.BitSelect vec idx) :=
+    vec__val <- eval_expr st vec ;;
+    idx__val <- eval_expr st idx ;;
+    ret [ nth false vec__val (to_nat idx__val) ];
   eval_expr st (TypedVerilog.Conversion from_type to_type expr) :=
     val <- eval_expr st expr;;
-    let width := Verilog.vtype_width to_type in
-    ret (if size val <? width
-         then zext width val
-         else low width val)
+    ret (if size val <? to_type
+         then zext to_type val
+         else low to_type val)
   ;
   eval_expr st (TypedVerilog.IntegerLiteral val) := Some val;
   eval_expr st (TypedVerilog.NamedExpression _ name) := StrMap.find name (regState st)
@@ -117,14 +131,12 @@ where exec_statements (st : VerilogState) (stmts : list TypedVerilog.Statement) 
 
 Equations
   exec_module_item : VerilogState -> TypedVerilog.module_item -> option VerilogState :=
+  exec_module_item st (TypedVerilog.Initial _) :=
+    Some st;
   exec_module_item st (TypedVerilog.AlwaysFF stmt) :=
     exec_statement st stmt;
-  exec_module_item st (TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression _ name) rhs) :=
-    rhs__val <- eval_expr st rhs ;;
-    Some (set_reg name rhs__val st)
-  ;
-  exec_module_item st (TypedVerilog.ContinuousAssign _ _) :=
-    None
+  exec_module_item st (TypedVerilog.AlwaysComb stmt ) :=
+    exec_statement st stmt; (* TODO: Do we need to handle always_comb differently? *)
 .
 
 Lemma exec_statement_procs : forall st1 stmt st2,
@@ -135,7 +147,7 @@ Proof.
   refine (fst (exec_statement_elim
                  (fun st1 stmt mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
                  (fun st1 stmts mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
-                 _ _ _ _ _ _ _ _ _ _ _ _)); intros; auto; try discriminate.
+                 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _)); intros; auto; try discriminate.
   - inversion H; destruct (eval_expr st rhs); try discriminate; clear H.
     inversion H1; clear H1.
     reflexivity.
@@ -157,14 +169,9 @@ Lemma exec_module_item_procs : forall st1 st2 mi,
 Proof.
   intros * H.
   funelim (exec_module_item st1 mi); simp exec_module_item in *.
-  - discriminate.
-  - discriminate.
-  - discriminate.
-  - inversion H as [H']; clear H.
-    destruct (eval_expr st rhs); try discriminate.
-    inversion H' as [H'']; clear H' H''.
-    reflexivity.
   - eauto using exec_statement_procs.
+  - eauto using exec_statement_procs.
+  - inversion H. subst. reflexivity.
 Qed.
 
 Definition least_element {A} (m : NameMap.t A) : option (name * A) :=
@@ -235,23 +242,23 @@ Equations stmt_driven_signals : TypedVerilog.Statement -> StrSet.t :=
 .
 
 Equations driven_signals : Process -> StrSet.t :=
-  driven_signals (TypedVerilog.ContinuousAssign (TypedVerilog.NamedExpression _ n) _) :=
-    StrSet.singleton n ;
-  driven_signals (TypedVerilog.ContinuousAssign _ _) :=
-    StrSet.empty;
   driven_signals (TypedVerilog.AlwaysFF stmts) :=
-    stmt_driven_signals stmts
+    stmt_driven_signals stmts;
+  driven_signals (TypedVerilog.AlwaysComb stmts) :=
+    stmt_driven_signals stmts;
+  driven_signals (TypedVerilog.Initial stmts) :=
+    StrSet.empty
 .
 
-Definition is_continuous_assign (p : Process) : Prop :=
+Definition is_combinational (p : Process) : Prop :=
   match p with
-  | TypedVerilog.ContinuousAssign _ _ => True
+  | TypedVerilog.AlwaysComb _ => True
   | _ => False
   end
 .
 
-Definition no_continuous_assigns (st : VerilogState) : Prop :=
-  forall n p, NameMap.MapsTo n p (pendingProcesses st) -> ~ is_continuous_assign p
+Definition no_combinational (st : VerilogState) : Prop :=
+  forall n p, NameMap.MapsTo n p (pendingProcesses st) -> ~ is_combinational p
 .
 
 Definition single_driver (st : VerilogState) :=
@@ -266,7 +273,7 @@ Definition single_driver (st : VerilogState) :=
 Conjecture ndet_sequential_equivalence:
   forall (st1 st2 st2': VerilogState),
     single_driver st1 ->
-    no_continuous_assigns st1 ->
+    no_combinational st1 ->
     step_ndet st1 st2 ->
     step_sequential st1 st2' ->
     st2 = st2'.
@@ -289,16 +296,16 @@ Definition nondeterminism1 : TypedVerilog.vmodule :=
     TypedVerilog.modBody := [
       TypedVerilog.AlwaysFF
         ( TypedVerilog.BlockingAssign
-            (TypedVerilog.NamedExpression [1.:0] "a")
+            (TypedVerilog.NamedExpression 2 "a")
             (TypedVerilog.BinaryOp
-               [1.:0]
-               Verilog.Plus
-               (TypedVerilog.NamedExpression [1.:0] "a")
+               2
+               Verilog.BinaryPlus
+               (TypedVerilog.NamedExpression 2 "a")
                (TypedVerilog.IntegerLiteral (2-bits of 1))));
       TypedVerilog.AlwaysFF
         ( TypedVerilog.BlockingAssign
-            (TypedVerilog.NamedExpression [1.:0] "b")
-            (TypedVerilog.NamedExpression [1.:0] "a"))
+            (TypedVerilog.NamedExpression 2 "b")
+            (TypedVerilog.NamedExpression 2 "a"))
     ]
   |}
 .
@@ -311,7 +318,7 @@ Definition initial_state (m : TypedVerilog.vmodule) : VerilogState :=
         (fun vars var =>
            StrMap.add
              (Verilog.varName var)
-             ((Verilog.vtype_width (Verilog.varType var))-bits of 0)
+             ((Verilog.vector_declaration_width (Verilog.varVectorDeclaration var))-bits of 0)
              vars)
         (TypedVerilog.modVariables m)
         (StrMap.empty bits);
@@ -326,7 +333,7 @@ Definition initial_state (m : TypedVerilog.vmodule) : VerilogState :=
   |}
 .
 
-Compute (initial_state nondeterminism1).
+(* Compute (initial_state nondeterminism1). *)
 
 Ltac verilog_exec_tac :=
   repeat progress
