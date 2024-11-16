@@ -47,7 +47,7 @@ Definition transf : Type -> Type := stateT transf_state (sum string).
 
 Instance Monad_transf : Monad transf := Monad_stateT transf_state (Monad_either string).
 
-Let run_transf_test {T} (a : transf T) :=
+Definition run_transf_test {T} (a : transf T) :=
       runStateT
         a
         {| nextName := 1%positive

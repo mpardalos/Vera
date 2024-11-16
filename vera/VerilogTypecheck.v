@@ -165,7 +165,7 @@ Equations tc_expr : option TCContext -> TCBindings -> Verilog.expression -> TC T
     end
 .
 
-Let gamma := StrMap.add "stage"%string 9 (StrMap.empty _).
+Definition gamma := StrMap.add "stage"%string 9 (StrMap.empty _).
 
 Local Open Scope bits_scope.
 
