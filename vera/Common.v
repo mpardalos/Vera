@@ -47,38 +47,40 @@ Definition opt_or {A} (l r : option A) : option A :=
   end
 .
 
-Module NameMap.
-  Include PositiveMap.
-  Include FMapFacts.
+Module MapExtras(M: FMapInterface.WS).
   Import ListNotations.
 
-  Fixpoint insert_all {A} (l : list (name * A)) (m : NameMap.t A) : NameMap.t A :=
+  Fixpoint insert_all {A} (l : list (M.key * A)) (m : M.t A) : M.t A :=
     match l with
     | nil => m
-    | (k,v)::xs => NameMap.add k v (insert_all xs m)
+    | (k,v)::xs => M.add k v (insert_all xs m)
     end
   .
 
-  Definition from_list {A} (l : list (positive * A)) : NameMap.t A :=
-    insert_all l (NameMap.empty A)
+  Definition from_list {A} (l : list (M.key * A)) : M.t A :=
+    insert_all l (M.empty A)
   .
 
-  Definition combine {A} (l r : NameMap.t A) : NameMap.t A := map2 opt_or l r.
+  Definition combine {A} (l r : M.t A) : M.t A := M.map2 opt_or l r.
 
-  Lemma gcombine {A} k (l r : NameMap.t A) :
-    NameMap.find k (combine l r) = opt_or (NameMap.find k l) (NameMap.find k r)
+  Lemma gcombine {A} k (l r : M.t A) :
+    M.find k (combine l r) = opt_or (M.find k l) (M.find k r)
   .
-  Proof.
-    unfold combine.
-    rewrite gmap2; try by reflexivity.
-    destruct (NameMap.find k l) eqn:El; try by reflexivity.
-    destruct (NameMap.find k r) eqn:Er; try by reflexivity.
-  Qed.
+  Admitted.
+End MapExtras.
+
+Module NameMap.
+  Include PositiveMap.
+  Include FMapFacts.Facts.
+  Include MapExtras.
 End NameMap.
 
-Module NameMapFacts := FMapFacts.Facts(NameMap).
-Module StrMap := FMapList.Make(String_as_OT).
-Module StrMapFacts := FMapFacts.Facts(StrMap).
+Module StrMap.
+  Include FMapList.Make(String_as_OT).
+  Include FMapFacts.Facts.
+  Include MapExtras.
+End StrMap.
+
 Module StrSet.
  Module X' := OrdersAlt.Update_OT String_as_OT.
  Module MSet := MSetList.Make X'.
@@ -108,10 +110,10 @@ Proof.
   refine {| mapsto := (@NameMap.MapsTo V) |}; intros; simpl.
   - eapply NameMap.empty_1.
   - unfold NameMap.MapsTo. reflexivity.
-  - NameMapFacts.map_iff. intuition.
-  - NameMapFacts.map_iff. intuition.
-  - NameMapFacts.map_iff. intuition.
-  - NameMapFacts.map_iff. intuition.
+  - NameMap.map_iff. intuition.
+  - NameMap.map_iff. intuition.
+  - NameMap.map_iff. intuition.
+  - NameMap.map_iff. intuition.
 Qed.
 
 Equations traverse_namemap {A B : Type} {F : Type -> Type} `{AppF : Applicative F}

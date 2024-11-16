@@ -347,7 +347,7 @@ Ltac verilog_step_process_tac n :=
   repeat (try progress verilog_exec_tac; reflexivity).
 
 Ltac maps_to_tac :=
-  apply StrMapFacts.find_mapsto_iff;
+  apply StrMap.find_mapsto_iff;
   unfold StrMap.add, StrMap.find;
   simpl;
   (reflexivity || f_equal).
@@ -369,8 +369,8 @@ Proof.
     - verilog_step_process_tac 2%positive.
   }
   all: simpl; simp eval_op bv_add_truncate.
-  - apply NameMapFacts.is_empty_iff. reflexivity.
-  - apply StrMapFacts.is_empty_iff. reflexivity.
+  - apply NameMap.is_empty_iff. reflexivity.
+  - apply StrMap.is_empty_iff. reflexivity.
   - maps_to_tac.
   - maps_to_tac.
 Qed.
@@ -392,8 +392,8 @@ Proof.
     - verilog_step_process_tac 1%positive.
   }
   all: simpl; simp eval_op bv_add_truncate.
-  - apply NameMapFacts.is_empty_iff. reflexivity.
-  - apply StrMapFacts.is_empty_iff. reflexivity.
+  - apply NameMap.is_empty_iff. reflexivity.
+  - apply StrMap.is_empty_iff. reflexivity.
   - maps_to_tac.
   - maps_to_tac.
 Qed.

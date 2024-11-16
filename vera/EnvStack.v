@@ -44,7 +44,7 @@ Section Correct.
     intros.
     unfold push.
     simp lookup.
-    rewrite NameMapFacts.empty_o.
+    rewrite StrMap.empty_o.
     reflexivity.
   Qed.
 
@@ -55,7 +55,7 @@ Section Correct.
     intros.
     unfold empty.
     simp lookup.
-    rewrite NameMapFacts.empty_o.
+    rewrite StrMap.empty_o.
     reflexivity.
   Qed.
 End Correct.

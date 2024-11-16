@@ -2,7 +2,6 @@ From Coq Require Import BinNums.
 From Coq Require Import BinNat.
 From Coq Require Import BinPos.
 From Coq Require FMaps.
-From Coq Require FMapFacts.
 From Coq Require Import List.
 From Coq Require Import ssreflect.
 
@@ -99,7 +98,7 @@ Equations get_var {c} (st : CircuitState c) (n : name) (name_present : NameMap.I
      | None => fun eq => False_rec _ _
      end) eq_refl.
 Next Obligation.
-  rewrite <- NameMapFacts.not_find_in_iff in *.
+  rewrite <- NameMap.not_find_in_iff in *.
   contradiction.
 Qed.
 
@@ -120,11 +119,11 @@ Proof.
   funelim (input_width i); simp input_run; last done.
   case (get_var st varName0 (input_run_obligations_obligation_1 c st (Logic w) varName0 input_wf)) => x Hx /=.
   inversion input_wf as [input_wf'] => {input_wf}.
-  rewrite <- NameMapFacts.find_mapsto_iff in input_wf'.
+  rewrite <- NameMap.find_mapsto_iff in input_wf'.
   edestruct circuit_to_state_variables as [x' [Hin Hwidth]]; first by eauto.
   simp type_width in *.
   replace x with x'; first done.
-  eauto using NameMapFacts.MapsTo_fun.
+  eauto using NameMap.MapsTo_fun.
 Qed.
 
 Lemma variable_in_map_extend_other : forall (k : NameMap.key) (t : nltype) (n : name) (x: bits) (m : NameMap.t bits),
@@ -153,11 +152,11 @@ Proof.
   - subst.
     exists x.
     intuition.
-    apply NameMapFacts.add_mapsto_iff.
+    apply NameMap.add_mapsto_iff.
     auto.
   - exists xprev.
     intuition.
-    apply NameMapFacts.add_mapsto_iff.
+    apply NameMap.add_mapsto_iff.
     auto.
 Qed.
 
@@ -200,7 +199,7 @@ Qed.
 Next Obligation.
   compare n out; intros E.
   + subst. eexists.
-    NameMapFacts.map_iff.
+    NameMap.map_iff.
     intuition eauto.
     enough (input_width in1 = type_width t). {
       repeat (
@@ -214,13 +213,13 @@ Next Obligation.
       subst.
       simp output_in_circuit in *.
     }
-    eapply NameMapFacts.MapsTo_fun.
+    eapply NameMap.MapsTo_fun.
     - destruct cell_wf as [Hout _].
       simp output_in_circuit in *.
     - assumption.
   + edestruct circuit_to_state_variables as [v [Hv_in Hv_width]]; eauto.
     exists v.
-    erewrite NameMapFacts.add_mapsto_iff.
+    erewrite NameMap.add_mapsto_iff.
     intuition eauto.
 Qed.
 
