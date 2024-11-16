@@ -1,9 +1,9 @@
 open Format
 
-module IntSMT = SMTPP.SMT (struct
-  type t = int
+module StrSMT = SMTPP.SMT (struct
+  type t = char list
 
-  let format fmt n = fprintf fmt "v%d" n
+  let format fmt n = fprintf fmt "%s" (Util.lst_to_string n)
 end)
 
 let ( >>= ) (x : ('err, 'a) Vera.sum) (f : 'a -> ('err, 'b) Vera.sum) =
@@ -71,7 +71,7 @@ let smt_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
     (formula : int Vera.SMT.formula) : Z3.Expr.expr option =
   match formula with
   | Vera.SMT.CDeclare (n, s) ->
-      let expr = Z3.BitVector.mk_const_s z3_ctx (sprintf "v%d" n) s in
+      let expr = Z3.BitVector.mk_const_s z3_ctx (sprintf "v%d" n) (Vera.int_from_nat s) in
       Hashtbl.replace var_ctx n expr;
       None
   (* replace means add or replace if present *)
@@ -189,12 +189,11 @@ let () =
     in
 
     let typed_module_of_file f = Vera.tc_vmodule (module_of_file f) in
-    let netlist_of_file =
-      typed_module_of_file >=> Vera.verilog_to_netlist 1 >=> fun x ->
-      ret (fst x)
+    let canonical_module_of_file =
+      typed_module_of_file >=> Vera.canonicalize_verilog
     in
-    let smt_netlist_of_file filename =
-      Vera.netlist_to_smt <$> netlist_of_file filename
+    let smt_netlist_of_file =
+      canonical_module_of_file >=> Vera.verilog_to_smt
     in
     let smt_formulas_of_file filename =
       Vera.SMT.smtnlFormulas <$> smt_netlist_of_file filename
@@ -204,26 +203,26 @@ let () =
         display_or_error VerilogPP.vmodule (Vera.Inr (module_of_file filename))
     | [ "typed"; filename ] ->
         display_or_error TypedVerilogPP.vmodule (typed_module_of_file filename)
-    | [ "netlist"; filename ] ->
-        display_or_error NetlistPP.circuit (netlist_of_file filename)
+    | [ "canonical"; filename ] ->
+        display_or_error TypedVerilogPP.vmodule (canonical_module_of_file filename)
     | [ "smt_netlist"; filename ] ->
-        display_or_error IntSMT.smt_netlist (smt_netlist_of_file filename)
+        display_or_error StrSMT.smt_netlist (smt_netlist_of_file filename)
     | [ "smt"; filename ] ->
         display_or_error
-          (pp_print_list IntSMT.smt ~pp_sep:Util.newline_sep)
+          (pp_print_list StrSMT.smt ~pp_sep:Util.newline_sep)
           (smt_formulas_of_file filename)
     | [ "all"; filename ] ->
         printf "\n-- parsed -- \n";
         display_or_error VerilogPP.vmodule (Vera.Inr (module_of_file filename));
         printf "\n-- typed --\n";
         display_or_error TypedVerilogPP.vmodule (typed_module_of_file filename);
-        printf "\n-- netlist --\n";
-        display_or_error NetlistPP.circuit (netlist_of_file filename);
+        printf "\n-- canonical --\n";
+        display_or_error TypedVerilogPP.vmodule (canonical_module_of_file filename);
         printf "\n-- smt_netlist --\n";
-        display_or_error IntSMT.smt_netlist (smt_netlist_of_file filename);
+        display_or_error StrSMT.smt_netlist (smt_netlist_of_file filename);
         printf "\n-- smt_formulas --\n";
         display_or_error
-          (pp_print_list IntSMT.smt ~pp_sep:Util.newline_sep)
+          (pp_print_list StrSMT.smt ~pp_sep:Util.newline_sep)
           (smt_formulas_of_file filename)
     | [ stage; _filename ] ->
         eprintf "Unknown stage: %s\n" stage;
@@ -246,7 +245,7 @@ let () =
         match queryResult with
         | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
         | Vera.Inr query ->
-            List.iter (printf "%a\n" IntSMT.smt) query;
+            List.iter (printf "%a\n" StrSMT.smt) query;
             let z3_ctx = Z3.mk_context [] in
             let z3_solver = Z3.Solver.mk_solver z3_ctx None in
             let z3_exprs = smt_to_z3 z3_ctx query in

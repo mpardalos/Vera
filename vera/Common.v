@@ -67,6 +67,16 @@ Module MapExtras(M: FMapInterface.WS).
     M.find k (combine l r) = opt_or (M.find k l) (M.find k r)
   .
   Admitted.
+
+  Definition union_both {A B} (l : M.t A) (r : M.t B)
+    : M.t (option A * option B) :=
+    M.map2
+      (fun lv rv =>
+         match lv, rv with
+         | None, None => None
+         | _, _ => Some (lv, rv)
+         end)
+      l r.
 End MapExtras.
 
 Module NameMap.

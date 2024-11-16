@@ -25,7 +25,7 @@ module SMT (Name : Formattable) = struct
     | Vera.SMT.CoreITE (cond, ifT, ifF) ->
         fprintf fmt "(ite %a %a %a)" qfbv cond qfbv ifT qfbv ifF
 
-  let sort fmt bv_sz = fprintf fmt "(_ BitVec %d)" bv_sz
+  let sort fmt bv_sz = fprintf fmt "(_ BitVec %d)" (int_from_nat bv_sz)
 
   let smt fmt = function
     | Vera.SMT.CDeclare (n, s) ->

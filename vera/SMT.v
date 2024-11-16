@@ -26,7 +26,7 @@ Module SMT.
   Arguments qfbv : clear implicits.
 
   Inductive sort :=
-  | SBitVector : positive -> sort
+  | SBitVector : nat -> sort
   .
 
   Inductive formula {T} :=

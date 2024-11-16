@@ -1,9 +1,7 @@
-From vera Require Netlist.
-From vera Require NetlistToSMT.
 From vera Require SMT.
 From vera Require Verilog.
 From vera Require VerilogEquivalence.
-From vera Require VerilogToNetlist.
+From vera Require VerilogToSMT.
 From vera Require Common.
 
 From Coq Require Extraction.
@@ -38,9 +36,8 @@ Extraction "Vera.ml"
   Verilog.Verilog
   VerilogTypecheck.tc_vmodule
   Verilog.TypedVerilog
-  VerilogToNetlist.verilog_to_netlist
-  Netlist.Netlist
-  NetlistToSMT.netlist_to_smt
+  VerilogToSMT.expr_to_smt
+  VerilogCanonicalize.canonicalize_verilog
   SMT.SMT
   Common.NameMap
   .

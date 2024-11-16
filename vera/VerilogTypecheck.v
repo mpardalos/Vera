@@ -19,7 +19,6 @@ From mathcomp Require Import seq.
 From vera Require Import Verilog.
 From vera Require Import Common.
 From vera Require Import Verilog.
-From vera Require Import Netlist.
 From vera Require Import Common.
 From vera Require EnvStack.
 From vera Require Import Common.
