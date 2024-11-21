@@ -4,6 +4,7 @@ From Coq Require Import BinNums.
 
 From nbits Require Import NBits.
 From mathcomp Require Import seq.
+From ExtLib Require Import Programming.Show.
 
 From vera Require Import Common.
 
@@ -48,6 +49,44 @@ Module Verilog.
     | BinaryLogicalImplication (* '->' *)
     | BinaryLogicalEquivalence (* '<->' *)
   .
+
+  Section op_show.
+    Local Open Scope string.
+    Import ShowNotation.
+    Global Instance op_Show : Show op :=
+      { show u :=
+          match u with
+          | BinaryPlus => "+"
+          | BinaryMinus => "-"
+          | BinaryStar => "*"
+          | BinarySlash => "/"
+          | BinaryPercent => "%"
+          | BinaryEqualsEquals => "=="
+          | BinaryNotEquals => "!="
+          | BinaryEqualsEqualsEquals => "==="
+          | BinaryNotEqualsEquals => "!=="
+          | BinaryWildcardEqual => "==?"
+          | BinaryWildcardNotEqual => "!=?"
+          | BinaryLogicalAnd => "&&"
+          | BinaryLogicalOr => "||"
+          | BinaryExponent => "**"
+          | BinaryLessThan => "<"
+          | BinaryLessThanEqual => "<="
+          | BinaryGreaterThan => ">"
+          | BinaryGreaterThanEqual => ">="
+          | BinaryBitwiseAnd => "&"
+          | BinaryBitwiseOr => "|"
+          | BinaryBitwiseXor => "^"
+          | BinaryXNor => "^~"
+          | BinaryShiftRight => ">>"
+          | BinaryShiftLeft => "<<"
+          | BinaryShiftRightArithmetic => ">>>"
+          | BinaryShiftLeftArithmetic => "<<<"
+          | BinaryLogicalImplication => "->"
+          | BinaryLogicalEquivalence => "<->"
+          end
+      }.
+  End op_show.
 
   Inductive expression :=
   | BinaryOp : op -> expression -> expression -> expression
