@@ -36,8 +36,6 @@ Local Open Scope bits_scope.
 
 Definition transf := sum string.
 
-Definition transfer_name (n : string) : transf string := raise "not implemented"%string.
-
 Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
   expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryPlus lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
@@ -63,8 +61,28 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     ret (SMT.BVLShr lhs__smt rhs__smt);
-  expr_to_smt (TypedVerilog.BinaryOp _ _ _ _) :=
-    raise "Unsupported operator in SMT"%string;
+  expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryGreaterThan lhs rhs) :=
+    lhs__smt <- expr_to_smt lhs ;;
+    rhs__smt <- expr_to_smt rhs ;;
+    raise "todo"%string;
+  expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryLessThan lhs rhs) :=
+    lhs__smt <- expr_to_smt lhs ;;
+    rhs__smt <- expr_to_smt rhs ;;
+    raise "todo"%string;
+  expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryLessThanEqual lhs rhs) :=
+    lhs__smt <- expr_to_smt lhs ;;
+    rhs__smt <- expr_to_smt rhs ;;
+    raise "todo"%string;
+  expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryEqualsEquals lhs rhs) :=
+    lhs__smt <- expr_to_smt lhs ;;
+    rhs__smt <- expr_to_smt rhs ;;
+    raise "todo"%string;
+  expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryLogicalAnd lhs rhs) :=
+    lhs__smt <- expr_to_smt lhs ;;
+    rhs__smt <- expr_to_smt rhs ;;
+    raise "todo"%string;
+  expr_to_smt (TypedVerilog.BinaryOp _ op _ _) :=
+    raise ("Unsupported operator in SMT: " ++ to_string op)%string;
   expr_to_smt (TypedVerilog.Conditional cond ifT ifF) :=
     cond__smt <- expr_to_smt cond ;;
     ifT__smt <- expr_to_smt ifT ;;
@@ -79,9 +97,59 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
   expr_to_smt (TypedVerilog.IntegerLiteral val) :=
     ret (SMT.BVLit val);
   expr_to_smt (TypedVerilog.NamedExpression t n) :=
-    n__smt <- transfer_name n ;;
-    ret (SMT.BVVar n__smt).
+    ret (SMT.BVVar n).
 
-Definition verilog_to_smt
-  (vmodule : TypedVerilog.vmodule)
-  : sum string (SMT.smt_netlist string) := raise "not_implemented"%string.
+
+Definition transfer_ports (ports : list Verilog.port) : transf (list (string * port_direction)) :=
+  ret (map (fun '(Verilog.MkPort dir name) => (name, dir)) ports).
+
+Equations transfer_initial (stmt : TypedVerilog.Statement) : transf (list (SMT.formula string)) :=
+  transfer_initial (TypedVerilog.Block stmts) =>
+    lists <- mapT transfer_initial stmts ;;
+    ret (concat lists) ;
+  transfer_initial (TypedVerilog.BlockingAssign
+                      (TypedVerilog.NamedExpression _ n)
+                      (TypedVerilog.IntegerLiteral val)) =>
+    (* raise "VerilogToSMT: initial block blegh"%string; *)
+    ret [] ;
+  transfer_initial (TypedVerilog.BlockingAssign
+                      (TypedVerilog.NamedExpression _ n)
+                      (TypedVerilog.Conversion _ _ (TypedVerilog.IntegerLiteral val))) =>
+    (* raise "VerilogToSMT: initial block blegh"%string; *)
+    ret [] ;
+  transfer_initial _ =>
+    raise "VerilogToSMT: Invalid expression in initial block"%string
+.
+
+Equations transfer_comb_assignments (_ : TypedVerilog.Statement) : transf (list (SMT.formula string)) :=
+  transfer_comb_assignments (TypedVerilog.Block stmts) =>
+    lists <- mapT transfer_comb_assignments stmts ;;
+    ret (concat lists) ;
+  transfer_comb_assignments (TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression _ n) rhs) =>
+    rhs__smt <- expr_to_smt rhs ;;
+    ret [SMT.CEqual (SMT.BVVar n) rhs__smt] ;
+  transfer_comb_assignments _ =>
+    raise "VerilogToSMT: Invalid expression in always_comb block"%string
+.
+
+Definition verilog_to_smt (vmodule : TypedVerilog.vmodule) : transf (SMT.smt_netlist string) :=
+  match TypedVerilog.modBody vmodule with
+  | [ TypedVerilog.Initial initial_body;
+      TypedVerilog.AlwaysFF (TypedVerilog.Block []);
+      TypedVerilog.AlwaysComb always_comb_body
+    ] =>
+      ports <- transfer_ports (TypedVerilog.modPorts vmodule) ;;
+      initial_smt <- transfer_initial initial_body ;;
+      always_comb_smt <- transfer_comb_assignments always_comb_body ;;
+      ret {|
+          SMT.smtnlName := TypedVerilog.modName vmodule ;
+          SMT.smtnlPorts := ports ;
+          SMT.smtnlFormulas := initial_smt ++ always_comb_smt
+        |}
+  | [ TypedVerilog.Initial _;
+      TypedVerilog.AlwaysFF _;
+      TypedVerilog.AlwaysComb _
+    ] => raise "always_ff not yet supported"%string
+  | _ => raise "Non-canonical verilog passed to verilog_to_smt"%string
+  end
+.
