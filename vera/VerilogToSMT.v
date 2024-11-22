@@ -36,6 +36,14 @@ Local Open Scope bits_scope.
 
 Definition transf := sum string.
 
+Definition cast_from_to {N} (from to: nat) (expr : SMT.qfbv N) : SMT.qfbv N :=
+  match Nat.compare to from with
+  | Lt => SMT.BVExtract (to - 1) 0 expr
+  | Gt => SMT.BVZeroExtend (to - from) expr
+  | Eq => expr
+  end
+.
+
 Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
   expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryPlus lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
@@ -50,17 +58,35 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
     rhs__smt <- expr_to_smt rhs ;;
     ret (SMT.BVMul lhs__smt rhs__smt);
   expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryShiftLeft lhs rhs) :=
+    let t__lhs := TypedVerilog.expr_type lhs in
+    let t__rhs := TypedVerilog.expr_type rhs in
+    let t__shift := max t__lhs t__rhs in
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
-    ret (SMT.BVShl lhs__smt rhs__smt);
+    ret (cast_from_to t__shift t__lhs
+           (SMT.BVShl
+              (cast_from_to t__lhs t__shift lhs__smt)
+              (cast_from_to t__rhs t__shift rhs__smt)));
   expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryShiftLeftArithmetic lhs rhs) :=
+    let t__lhs := TypedVerilog.expr_type lhs in
+    let t__rhs := TypedVerilog.expr_type rhs in
+    let t__shift := max t__lhs t__rhs in
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
-    ret (SMT.BVShl lhs__smt rhs__smt);
+    ret (cast_from_to t__shift t__lhs
+           (SMT.BVShl
+              (cast_from_to t__lhs t__shift lhs__smt)
+              (cast_from_to t__rhs t__shift rhs__smt)));
   expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryShiftRight lhs rhs) :=
+    let t__lhs := TypedVerilog.expr_type lhs in
+    let t__rhs := TypedVerilog.expr_type rhs in
+    let t__shift := max t__lhs t__rhs in
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
-    ret (SMT.BVLShr lhs__smt rhs__smt);
+    ret (cast_from_to t__shift t__lhs
+           (SMT.BVLShr
+              (cast_from_to t__lhs t__shift lhs__smt)
+              (cast_from_to t__rhs t__shift rhs__smt)));
   expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryGreaterThan lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
@@ -84,24 +110,44 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
   expr_to_smt (TypedVerilog.BinaryOp _ op _ _) :=
     raise ("Unsupported operator in SMT: " ++ to_string op)%string;
   expr_to_smt (TypedVerilog.Conditional cond ifT ifF) :=
-    cond__smt <- expr_to_smt cond ;;
+    let t__cond := TypedVerilog.expr_type cond in
+    condval__smt <- expr_to_smt cond ;;
     ifT__smt <- expr_to_smt ifT ;;
     ifF__smt <- expr_to_smt ifF ;;
+    let cond__smt := SMT.CoreNot
+                     (SMT.CoreEq
+                        condval__smt
+                        (SMT.BVLit (t__cond-bits of 0)))
+    in
     ret (SMT.CoreITE cond__smt ifT__smt ifF__smt);
   expr_to_smt (TypedVerilog.BitSelect vec idx) :=
+    let t__vec := TypedVerilog.expr_type vec in
+    let t__idx := TypedVerilog.expr_type idx in
+    let t__shift := max t__vec t__idx in
     vec__smt <- expr_to_smt vec ;;
     idx__smt <- expr_to_smt idx ;;
-    ret (SMT.BVExtract 0 0 (SMT.BVLShr vec__smt idx__smt));
+    ret (SMT.BVExtract 0 0
+           (SMT.BVLShr
+              (cast_from_to t__vec t__shift vec__smt)
+              (cast_from_to t__idx t__shift idx__smt)));
   expr_to_smt (TypedVerilog.Conversion from to expr) :=
-    _;
+    expr__smt <- expr_to_smt expr ;;
+    ret (cast_from_to from to expr__smt);
   expr_to_smt (TypedVerilog.IntegerLiteral val) :=
     ret (SMT.BVLit val);
   expr_to_smt (TypedVerilog.NamedExpression t n) :=
     ret (SMT.BVVar n).
 
 
-Definition transfer_ports (ports : list Verilog.port) : transf (list (string * port_direction)) :=
-  ret (map (fun '(Verilog.MkPort dir name) => (name, dir)) ports).
+Definition transfer_ports (ports : list Verilog.port) : list (string * port_direction) :=
+  map (fun '(Verilog.MkPort dir name) => (name, dir)) ports.
+
+Definition transfer_vars (vars : list Verilog.variable) : list (SMT.formula string) :=
+  map
+    (fun '(Verilog.MkVariable vec storage name) =>
+       SMT.CDeclare name
+         (SMT.SBitVector (Verilog.vector_declaration_width vec)))
+    vars.
 
 Equations transfer_initial (stmt : TypedVerilog.Statement) : transf (list (SMT.formula string)) :=
   transfer_initial (TypedVerilog.Block stmts) =>
