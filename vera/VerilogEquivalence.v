@@ -50,5 +50,5 @@ Definition equivalence_query
   let formulas2 := SMT.smtnlFormulas smt_netlist2 in
   equivalence_formulas <- mk_equivalence_formulas smt_netlist1 smt_netlist2 ;;
   (** Add equivalence queries *)
-  ret formulas1 (* (formulas1 ++ formulas2 ++ equivalence_formulas) *)
+  ret (formulas1 ++ formulas2 ++ equivalence_formulas)
 .
