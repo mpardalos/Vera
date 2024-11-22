@@ -138,13 +138,14 @@ Definition verilog_to_smt (vmodule : TypedVerilog.vmodule) : transf (SMT.smt_net
       TypedVerilog.AlwaysFF (TypedVerilog.Block []);
       TypedVerilog.AlwaysComb always_comb_body
     ] =>
-      ports <- transfer_ports (TypedVerilog.modPorts vmodule) ;;
+      let ports := transfer_ports (TypedVerilog.modPorts vmodule) in
+      let var_decls := transfer_vars (TypedVerilog.modVariables vmodule) in
       initial_smt <- transfer_initial initial_body ;;
       always_comb_smt <- transfer_comb_assignments always_comb_body ;;
       ret {|
           SMT.smtnlName := TypedVerilog.modName vmodule ;
           SMT.smtnlPorts := ports ;
-          SMT.smtnlFormulas := initial_smt ++ always_comb_smt
+          SMT.smtnlFormulas := var_decls ++ initial_smt ++ always_comb_smt
         |}
   | [ TypedVerilog.Initial _;
       TypedVerilog.AlwaysFF _;
