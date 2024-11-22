@@ -22,6 +22,10 @@ module SMT (Name : Formattable) = struct
         fprintf fmt "((_ zero_extend %d) %a)" (int_from_nat num) qfbv f
     | Vera.SMT.BVExtract (hi, lo, f) ->
         fprintf fmt "((_ extract %d %d) %a)" (int_from_nat hi) (int_from_nat lo) qfbv f
+    | Vera.SMT.CoreEq (l, r) ->
+        fprintf fmt "(= %a %a)" qfbv l qfbv r
+    | Vera.SMT.CoreNot e ->
+        fprintf fmt "(not %a)" qfbv e
     | Vera.SMT.CoreITE (cond, ifT, ifF) ->
         fprintf fmt "(ite %a %a %a)" qfbv cond qfbv ifT qfbv ifF
 

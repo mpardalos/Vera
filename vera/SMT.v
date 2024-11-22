@@ -20,6 +20,8 @@ Module SMT.
   | BVVar : T -> qfbv
   | BVZeroExtend : nat -> qfbv -> qfbv
   | BVExtract : nat -> nat -> qfbv -> qfbv
+  | CoreEq : qfbv -> qfbv -> qfbv
+  | CoreNot : qfbv -> qfbv
   | CoreITE : qfbv -> qfbv -> qfbv -> qfbv
   .
 

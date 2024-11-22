@@ -60,6 +60,12 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
       Z3.BitVector.mk_extract z3_ctx (Vera.int_from_nat hi)
         (Vera.int_from_nat lo)
         (qfbv_formula_to_z3 var_ctx z3_ctx f)
+  | Vera.SMT.CoreEq (l, r) ->
+      Z3.Boolean.mk_eq z3_ctx
+        (qfbv_formula_to_z3 var_ctx z3_ctx l)
+        (qfbv_formula_to_z3 var_ctx z3_ctx r)
+  | Vera.SMT.CoreNot e ->
+      Z3.Boolean.mk_not z3_ctx (qfbv_formula_to_z3 var_ctx z3_ctx e)
   | Vera.SMT.CoreITE (select, ifT, ifF) ->
       Z3.Boolean.mk_ite z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx select)
