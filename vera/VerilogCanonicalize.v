@@ -31,35 +31,28 @@ Module StrEnvStack := EnvStack.M(StrMap).
 
 Record state :=
   TransfState
-    { initialStatements : list TypedVerilog.Statement
-    ; substitutionsBlocking : StrEnvStack.t TypedVerilog.expression
+    { substitutionsBlocking : StrEnvStack.t TypedVerilog.expression
     ; substitutionsNonblocking : StrEnvStack.t TypedVerilog.expression
     }.
+
+Definition empty_state :=
+  {| substitutionsBlocking := StrEnvStack.empty _
+  ; substitutionsNonblocking := StrEnvStack.empty _
+  |}.
 
 Definition transf : Type -> Type := stateT state (sum string).
 
 Global Instance Monad_transf : Monad transf := Monad_stateT state (Monad_either string).
 
-Definition run_transf_test {T} (a : transf T) :=
-      runStateT
-        a
-        {| initialStatements := []
-        ; substitutionsBlocking := StrEnvStack.empty _
-        ; substitutionsNonblocking := StrEnvStack.empty _
-        |}.
+Definition run_transf {T} (a : transf T) : sum string (T * state) := runStateT a empty_state.
 
-Definition run_transf {T} (a : transf T) :=
-      runStateT
-        a
-        {| initialStatements := []
-        ; substitutionsBlocking := StrEnvStack.empty _
-        ; substitutionsNonblocking := StrEnvStack.empty _
-        |}.
+Definition exec_transf {T} (a : transf T) : sum string state := execStateT a empty_state.
+
+Definition eval_transf {T} (a : transf T) : sum string T := evalStateT a empty_state.
 
 Definition set_substitution_blocking (lhs : string) (rhs : TypedVerilog.expression) : transf () :=
   modify (fun s =>
-            {| initialStatements := initialStatements s
-            ; substitutionsBlocking := StrEnvStack.add lhs rhs (substitutionsBlocking s)
+            {| substitutionsBlocking := StrEnvStack.add lhs rhs (substitutionsBlocking s)
             ; substitutionsNonblocking := substitutionsNonblocking s
             |}) ;;
   ret ()
@@ -67,8 +60,7 @@ Definition set_substitution_blocking (lhs : string) (rhs : TypedVerilog.expressi
 
 Definition set_substitution_nonblocking (lhs : string) (rhs : TypedVerilog.expression) : transf () :=
   modify (fun s =>
-            {| initialStatements := initialStatements s
-            ; substitutionsBlocking := substitutionsBlocking s
+            {| substitutionsBlocking := substitutionsBlocking s
             ; substitutionsNonblocking := StrEnvStack.add lhs rhs (substitutionsNonblocking s)
             |}) ;;
   ret ()
@@ -76,8 +68,7 @@ Definition set_substitution_nonblocking (lhs : string) (rhs : TypedVerilog.expre
 
 Definition push_block : transf () :=
   modify (fun s =>
-            {| initialStatements := initialStatements s
-            ; substitutionsBlocking := StrEnvStack.push (substitutionsBlocking s)
+            {| substitutionsBlocking := StrEnvStack.push (substitutionsBlocking s)
             ; substitutionsNonblocking := StrEnvStack.push (substitutionsNonblocking s)
             |}) ;;
   ret ()
@@ -90,8 +81,7 @@ Definition pop_block : transf (StrMap.t TypedVerilog.expression * StrMap.t Typed
   match mBlockingEnv, mNonblockingEnv with
   | Some benv, Some nbenv =>
       modify (fun s =>
-                {| initialStatements := initialStatements s
-                ; substitutionsBlocking := substitutionsBlocking'
+                {| substitutionsBlocking := substitutionsBlocking'
                 ; substitutionsNonblocking := substitutionsNonblocking'
                 |}) ;;
       ret (benv, nbenv)
@@ -102,13 +92,11 @@ Definition pop_block : transf (StrMap.t TypedVerilog.expression * StrMap.t Typed
 
 Definition add_initial_statements (statements : list TypedVerilog.Statement) : transf () :=
   modify (fun s =>
-            {| initialStatements := initialStatements s ++ statements
-            ; substitutionsBlocking := StrEnvStack.push (substitutionsBlocking s)
+            {| substitutionsBlocking := StrEnvStack.push (substitutionsBlocking s)
             ; substitutionsNonblocking := StrEnvStack.push (substitutionsNonblocking s)
             |}) ;;
   ret ()
 .
-
 
 Definition transfer_scoped {A} (f : transf A) : transf (A * (StrMap.t TypedVerilog.expression * StrMap.t TypedVerilog.expression)) :=
   push_block ;;
@@ -197,41 +185,72 @@ Equations transfer_statement : TypedVerilog.Statement -> transf () :=
     ret ()
 .
 
-Equations canonicalize_module_item : TypedVerilog.module_item -> transf () :=
-| TypedVerilog.AlwaysFF body =>
-    transfer_statement body ;;
-    ret ()
-| TypedVerilog.AlwaysComb body =>
-    transfer_statement body ;;
-    ret ()
-| TypedVerilog.Initial (TypedVerilog.Block stmts) =>
-    add_initial_statements stmts
-| TypedVerilog.Initial stmt =>
-    add_initial_statements [stmt]
+Definition substitution : Type := string * TypedVerilog.expression.
+
+
+Definition transfer_all_always_ff (items : list TypedVerilog.module_item) : transf () :=
+  mapT
+    (fun it =>
+       match it with
+       | TypedVerilog.AlwaysFF body => transfer_statement body
+       | _ => ret ()
+       end) items ;;
+  ret ()
 .
 
-Definition substitutions_to_assignments :
-  list (string * TypedVerilog.expression) -> list TypedVerilog.Statement :=
+Definition transfer_all_always_comb (items : list TypedVerilog.module_item) : transf () :=
+  mapT
+    (fun it =>
+       match it with
+       | TypedVerilog.AlwaysComb body => transfer_statement body
+       | _ => ret ()
+       end) items ;;
+  ret ()
+.
+
+Definition collect_initial_statements (items : list TypedVerilog.module_item) : list TypedVerilog.Statement :=
+  let stmts := map
+    (fun it =>
+       match it with
+       | TypedVerilog.Initial (TypedVerilog.Block stmts) => stmts
+       | TypedVerilog.Initial stmt => [stmt]
+       | _ => []
+       end) items in
+  concat stmts
+.
+
+
+Definition substitutions_from_state (st : state) : list substitution :=
+  let subsBlocking := StrEnvStack.flatten (substitutionsBlocking st) in
+  let subsNonblocking := StrEnvStack.flatten (substitutionsNonblocking st) in
+  StrMap.elements (StrMap.combine subsNonblocking subsBlocking)
+.
+
+Definition substitutions_to_assignments
+  (assignment : TypedVerilog.expression -> TypedVerilog.expression -> TypedVerilog.Statement)
+  (subs : list substitution)
+  : list TypedVerilog.Statement :=
   map (fun '(lhs, rhs) =>
-         TypedVerilog.NonBlockingAssign
+         assignment
            (* TODO: Keep the original type, rather than getting it from rhs *)
            (TypedVerilog.NamedExpression (TypedVerilog.expr_type rhs) lhs)
-           rhs).
+           rhs) subs.
 
-Definition canonicalize_module (vmodule : TypedVerilog.vmodule) : transf TypedVerilog.vmodule :=
-  mapT canonicalize_module_item (TypedVerilog.modBody vmodule) ;;
-  finalState <- get ;;
+Definition canonicalize_module (vmodule : TypedVerilog.vmodule) : sum string TypedVerilog.vmodule :=
+  let initial_body := collect_initial_statements (TypedVerilog.modBody vmodule) in
 
-  let subs :=
-    StrMap.elements
-      (StrMap.combine
-         (StrEnvStack.flatten (substitutionsNonblocking finalState))
-         (StrEnvStack.flatten (substitutionsBlocking finalState))) in
-  let always_body := substitutions_to_assignments subs in
-  let initial_body := initialStatements finalState in
+  always_ff_final_state <- exec_transf (transfer_all_always_ff (TypedVerilog.modBody vmodule)) ;;
+  let always_ff_subs := substitutions_from_state always_ff_final_state in
+  let always_ff_body := substitutions_to_assignments TypedVerilog.NonBlockingAssign always_ff_subs in
+
+  always_comb_final_state <- exec_transf (transfer_all_always_comb (TypedVerilog.modBody vmodule)) ;;
+  let always_comb_subs := substitutions_from_state always_comb_final_state in
+  let always_comb_body := substitutions_to_assignments TypedVerilog.BlockingAssign always_comb_subs in
+
   let body := [
       TypedVerilog.Initial (TypedVerilog.Block initial_body);
-      TypedVerilog.AlwaysFF (TypedVerilog.Block always_body)
+      TypedVerilog.AlwaysFF (TypedVerilog.Block always_ff_body);
+      TypedVerilog.AlwaysComb (TypedVerilog.Block always_comb_body)
     ] in
   ret
     {|
@@ -242,13 +261,4 @@ Definition canonicalize_module (vmodule : TypedVerilog.vmodule) : transf TypedVe
     |}
 .
 
-Definition canonicalize_verilog
-  (vmodule : TypedVerilog.vmodule)
-  : sum string TypedVerilog.vmodule :=
-  evalStateT
-    (canonicalize_module vmodule)
-    {| initialStatements := []
-    ; substitutionsBlocking := StrEnvStack.empty _
-    ; substitutionsNonblocking := StrEnvStack.empty _
-    |}
-.
+Definition canonicalize_verilog := canonicalize_module.
