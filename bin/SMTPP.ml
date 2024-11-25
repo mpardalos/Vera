@@ -54,3 +54,9 @@ module SMT (Name : Formattable) = struct
       (fun f -> fprintf fmt "%a\n" (formula_helper m.smtnlPorts) f)
       m.smtnlFormulas
 end
+
+module StrSMT = SMT (struct
+  type t = char list
+
+  let format fmt n = fprintf fmt "%s" (Util.lst_to_string n)
+end)
