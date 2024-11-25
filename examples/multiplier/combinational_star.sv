@@ -1,8 +1,7 @@
 module combinational_star (
-    input  logic [ 7:0] star_in1,
-    input  logic [ 7:0] star_in2,
-    output logic [15:0] star_out
+    input  logic [ 7:0] in1,
+    input  logic [ 7:0] in2,
+    output logic [15:0] out
 );
-
-   assign star_out = 1 + star_in1 * star_in2;
+   assign out = in1 * in2;
 endmodule

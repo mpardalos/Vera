@@ -19,13 +19,28 @@ let ( >=> ) (f : 'a -> ('err, 'b) Vera.sum) (g : 'b -> ('err, 'c) Vera.sum)
   let* y = f x in
   g y
 
+let read_verafile filename : (string * string) list * (string * string) list =
+  let channel = open_in filename in
+  let rec read_verafile_lines acc_in acc_out =
+    try
+      let line = input_line channel in
+      match String.split_on_char ' ' line with
+      | [ "IN"; l; r ] ->
+          read_verafile_lines (List.append acc_in [ (l, r) ]) acc_out
+      | [ "OUT"; l; r ] ->
+          read_verafile_lines acc_in (List.append acc_out [ (l, r) ])
+      | _ -> raise (Failure (String.cat "Invalid line in .vera file: " line))
+    with End_of_file -> (acc_in, acc_out)
+  in
+  read_verafile_lines [] []
+
 let () =
   let usage_and_exit () =
     eprintf "Usage: %s <command> [args]\n" Sys.argv.(0);
     eprintf "\n";
     eprintf "Commands:\n";
     eprintf "  parse_raw <parse_raw_type> <filename>\n";
-    eprintf "  compare <filename1> <filename2>\n";
+    eprintf "  compare <verafile> <filename1> <filename2>\n";
     eprintf "  lex <filename>\n";
     eprintf "  lower <level> <filename>\n";
     eprintf "\n";
@@ -142,10 +157,22 @@ let () =
   in
 
   let compare = function
-    | [ filename1; filename2 ] -> (
+    | [ verafile_filename; filename1; filename2 ] -> (
+        let in_matches_str, out_matches_str = read_verafile verafile_filename in
+        let in_matches =
+          List.map
+            (fun (l, r) -> (Util.string_to_lst l, Util.string_to_lst r))
+            in_matches_str
+        in
+        let out_matches =
+          List.map
+            (fun (l, r) -> (Util.string_to_lst l, Util.string_to_lst r))
+            out_matches_str
+        in
+
         let queryResult =
-          Vera.equivalence_query (module_of_file filename1)
-            (module_of_file filename2)
+          Vera.equivalence_query in_matches out_matches
+            (module_of_file filename1) (module_of_file filename2)
         in
         match queryResult with
         | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
