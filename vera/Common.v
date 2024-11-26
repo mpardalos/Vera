@@ -92,8 +92,8 @@ Module StrMap.
 End StrMap.
 
 Module StrSet.
- Module X' := OrdersAlt.Update_OT String_as_OT.
- Module MSet := MSetList.Make X'.
+ Module X' := OrdersAlt.Update_OT(String_as_OT).
+ Module MSet := MSetList.Make(X').
  Include FSetCompat.Backport_Sets String_as_OT MSet.
 End StrSet.
 

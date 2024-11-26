@@ -2,11 +2,10 @@ From Coq Require Import String.
 From Coq Require Import ZArith.
 From Coq Require Import BinNums.
 
-From nbits Require Import NBits.
-From mathcomp Require Import seq.
 From ExtLib Require Import Programming.Show.
 
 From vera Require Import Common.
+From vera Require Import BitvectorInterface.
 
 Require Import List.
 Import ListNotations.
@@ -14,8 +13,8 @@ From Coq Require Arith Lia Program.
 From Equations Require Import Equations.
 
 (* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
-Module Verilog.
-  Definition vtype := nat.
+Module MkVerilog(BV : Bitvector).
+  Definition vtype := BV.t.
 
   Variant StorageType := Reg | Wire.
 
@@ -50,10 +49,10 @@ Module Verilog.
     | BinaryLogicalEquivalence (* '<->' *)
   .
 
-  Section op_show.
+  Section show_op.
     Local Open Scope string.
     Import ShowNotation.
-    Global Instance op_Show : Show op :=
+    Global Instance Show_op : Show op :=
       { show u :=
           match u with
           | BinaryPlus => "+"
@@ -86,22 +85,22 @@ Module Verilog.
           | BinaryLogicalEquivalence => "<->"
           end
       }.
-  End op_show.
+  End show_op.
 
   Inductive expression :=
   | BinaryOp : op -> expression -> expression -> expression
   | Conditional : expression -> expression -> expression -> expression
   | BitSelect : expression -> expression -> expression
-  | IntegerLiteral : bits -> expression
+  | IntegerLiteral : BV.t -> expression
   | NamedExpression : string -> expression.
 
   Variant vector_declaration :=
     | Scalar
     | Vector (msb : nat) (lsb : nat).
 
-  Equations vector_declaration_width : Verilog.vector_declaration -> nat :=
-    vector_declaration_width Verilog.Scalar := 1 ;
-    vector_declaration_width (Verilog.Vector hi lo) := 1 + (max hi lo) - (min hi lo).
+  Equations vector_declaration_width : vector_declaration -> nat :=
+    vector_declaration_width Scalar := 1 ;
+    vector_declaration_width (Vector hi lo) := 1 + (max hi lo) - (min hi lo).
 
   Record variable :=
     MkVariable
@@ -155,27 +154,37 @@ Module Verilog.
       ; rawModBody : list (module_item + raw_declaration)
       }
   .
-End Verilog.
 
-Module TypedVerilog.
-  Export Verilog(vtype, op(..), variable(..), port(..)).
+  Module Notations.
+    Notation "[ hi .: lo ]" :=
+      (Vector hi lo)
+        (format "[ hi '.:' lo ]").
+  End Notations.
+End MkVerilog.
+
+Module MkTypedVerilog(BV : Bitvector).
+  Import (coercions) BV.
+  Local Open Scope positive.
+
+  Module Verilog := MkVerilog(BV).
+  Definition vtype := BV.size.
 
   Inductive expression :=
-  | BinaryOp : vtype -> op -> expression -> expression -> expression
+  | BinaryOp : vtype -> Verilog.op -> expression -> expression -> expression
   | Conditional : expression -> expression -> expression -> expression
   | BitSelect : expression -> expression -> expression
   | Conversion : vtype -> vtype -> expression -> expression
-  | IntegerLiteral : bits -> expression
+  | IntegerLiteral : BV.t -> expression
   | NamedExpression : vtype -> string -> expression
   .
 
-  Equations expr_type : TypedVerilog.expression -> Verilog.vtype :=
-    expr_type (TypedVerilog.BinaryOp t _ _ _) := t;
-    expr_type (TypedVerilog.BitSelect _ _) := 1;
-    expr_type (TypedVerilog.Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
-    expr_type (TypedVerilog.Conversion _ t _) := t;
-    expr_type (TypedVerilog.IntegerLiteral v) := size v;
-    expr_type (TypedVerilog.NamedExpression t _) := t.
+  Equations expr_type : expression -> vtype :=
+    expr_type (BinaryOp t _ _ _) := t;
+    expr_type (BitSelect _ _) := 1;
+    expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
+    expr_type (Conversion _ t _) := t;
+    expr_type (IntegerLiteral v) := BV.length v;
+    expr_type (NamedExpression t _) := t.
 
   Inductive Statement :=
   | Block (body : list Statement)
@@ -194,14 +203,11 @@ Module TypedVerilog.
   Record vmodule : Set :=
     MkMod
       { modName : string
-      ; modPorts : list port
-      ; modVariables : list variable
+      ; modPorts : list Verilog.port
+      ; modVariables : list Verilog.variable
       ; modBody : list module_item
       }.
-End TypedVerilog.
+End MkTypedVerilog.
 
-Module VerilogNotations.
-  Notation "[ hi .: lo ]" :=
-    (Verilog.Vector hi lo)
-      (format "[ hi '.:' lo ]").
-End VerilogNotations.
+Module Verilog_bits := MkVerilog(Bitvector_bits).
+Module TypedVerilog_bits := MkTypedVerilog(Bitvector_bits).
