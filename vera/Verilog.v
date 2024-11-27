@@ -11,11 +11,13 @@ From vera Require Import Common.
 Require Import List.
 Import ListNotations.
 From Coq Require Arith Lia Program.
+From Coq Require Import Structures.Equalities.
+From Coq Require Arith.PeanoNat.
 From Equations Require Import Equations.
 
 (* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
-Module Verilog.
-  Definition vtype := nat.
+Module MkVerilog(VType : DecidableType).
+  Definition vtype := VType.t.
 
   Variant StorageType := Reg | Wire.
 
@@ -89,19 +91,21 @@ Module Verilog.
   End op_show.
 
   Inductive expression :=
-  | BinaryOp : op -> expression -> expression -> expression
+  | BinaryOp : VType.t -> op -> expression -> expression -> expression
   | Conditional : expression -> expression -> expression -> expression
   | BitSelect : expression -> expression -> expression
   | IntegerLiteral : bits -> expression
-  | NamedExpression : string -> expression.
+  | NamedExpression : VType.t -> string -> expression
+  | Annotation : VType.t -> expression -> expression
+  .
 
   Variant vector_declaration :=
     | Scalar
     | Vector (msb : nat) (lsb : nat).
 
-  Equations vector_declaration_width : Verilog.vector_declaration -> nat :=
-    vector_declaration_width Verilog.Scalar := 1 ;
-    vector_declaration_width (Verilog.Vector hi lo) := 1 + (max hi lo) - (min hi lo).
+  Equations vector_declaration_width : vector_declaration -> nat :=
+    vector_declaration_width Scalar := 1 ;
+    vector_declaration_width (Vector hi lo) := 1 + (max hi lo) - (min hi lo).
 
   Record variable :=
     MkVariable
@@ -123,14 +127,14 @@ Module Verilog.
   | If (condition : expression) (trueBranch falseBranch : statement)
   .
 
-  Inductive module_item : Set :=
+  Inductive module_item :=
   | AlwaysComb : statement -> module_item
   | AlwaysFF : statement -> module_item
   | Initial : statement -> module_item
   .
 
   (** Verilog modules *)
-  Record vmodule : Set :=
+  Record vmodule :=
     MkMod
       { modName : string
       ; modPorts : list port
@@ -148,60 +152,40 @@ Module Verilog.
   .
 
   (** Verilog modules (as parsed) *)
-  Record raw_vmodule : Set :=
+  Record raw_vmodule :=
     MkRawModule
       { rawModName : string
       ; rawModPorts : list port
       ; rawModBody : list (module_item + raw_declaration)
       }
   .
-End Verilog.
+  Module Notations.
+    Notation "[ hi .: lo ]" :=
+      (Vector hi lo)
+        (format "[ hi '.:' lo ]").
+  End Notations.
+End MkVerilog.
 
 Module TypedVerilog.
-  Export Verilog(vtype, op(..), variable(..), port(..)).
+  Include MkVerilog(Arith.PeanoNat.Nat).
 
-  Inductive expression :=
-  | BinaryOp : vtype -> op -> expression -> expression -> expression
-  | Conditional : expression -> expression -> expression -> expression
-  | BitSelect : expression -> expression -> expression
-  | Conversion : vtype -> vtype -> expression -> expression
-  | IntegerLiteral : bits -> expression
-  | NamedExpression : vtype -> string -> expression
-  .
-
-  Equations expr_type : TypedVerilog.expression -> Verilog.vtype :=
-    expr_type (TypedVerilog.BinaryOp t _ _ _) := t;
-    expr_type (TypedVerilog.BitSelect _ _) := 1;
-    expr_type (TypedVerilog.Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
-    expr_type (TypedVerilog.Conversion _ t _) := t;
-    expr_type (TypedVerilog.IntegerLiteral v) := size v;
-    expr_type (TypedVerilog.NamedExpression t _) := t.
-
-  Inductive Statement :=
-  | Block (body : list Statement)
-  | BlockingAssign (lhs rhs : expression)
-  | NonBlockingAssign (lhs rhs : expression)
-  | If (condition : expression) (trueBranch falseBranch : Statement)
-  .
-
-  Inductive module_item : Set :=
-  | AlwaysComb : Statement -> module_item
-  | AlwaysFF : Statement -> module_item
-  | Initial : Statement -> module_item
-  .
-
-  (** Verilog modules *)
-  Record vmodule : Set :=
-    MkMod
-      { modName : string
-      ; modPorts : list port
-      ; modVariables : list variable
-      ; modBody : list module_item
-      }.
+  Equations expr_type : expression -> vtype :=
+    expr_type (BinaryOp t _ _ _) := t;
+    expr_type (BitSelect _ _) := 1;
+    expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
+    expr_type (Annotation t _) := t;
+    expr_type (IntegerLiteral v) := size v;
+    expr_type (NamedExpression t _) := t.
 End TypedVerilog.
 
-Module VerilogNotations.
-  Notation "[ hi .: lo ]" :=
-    (Verilog.Vector hi lo)
-      (format "[ hi '.:' lo ]").
-End VerilogNotations.
+Module Unit_as_MDT <: MiniDecidableType.
+  Definition t := unit.
+  Definition eq_dec (x y : unit) : { x = y } + { x <> y } :=
+    match x, y with
+    | tt, tt => left eq_refl
+    end.
+End Unit_as_MDT.
+
+Module Unit_as_DT := Make_UDT(Unit_as_MDT).
+
+Module Verilog := MkVerilog(Unit_as_DT).
