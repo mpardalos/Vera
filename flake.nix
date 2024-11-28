@@ -2,7 +2,7 @@
   description = "A verified verilog equivalence checker (minimum viable product)";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -27,15 +27,14 @@
             coqPackages.mathcomp.algebra
           ];
         };
-        # Fix for github.com/NixOS/nixpkgs/issues/324959
-        synlig = pkgs.yosys-synlig.overrideAttrs (f: p: { plugin = "systemverilog"; });
       in {
         devShells.default = pkgs.mkShell {
           packages =
             [
               coq
-              coqPackages.coq-ext-lib
+              coqPackages.ExtLib
               coqPackages.equations
+              coqPackages.smtcoq
               coq-nbits
 
               coq.ocaml
@@ -53,7 +52,6 @@
               pkgs.verible
               pkgs.surelog
               pkgs.z3
-              (pkgs.yosys.withPlugins [synlig])
             ];
         };
       }
