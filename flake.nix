@@ -10,23 +10,8 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        coq = pkgs.coq_8_18;
-        coqPackages = pkgs.coqPackages_8_18;
-        coq-nbits = coqPackages.mkCoqDerivation {
-          pname = "coq-nbits";
-          owner = "fmlab-iis";
-          version = "2022-11-28";
-          release = {
-            "2022-11-28" = {
-              rev = "c360c35bd263807d0f960f4edfac713b1257ea80";
-              sha256 = "sha256-eeF1HouyyPxZG8wdEtxQP1daO7taxNVGzMyWv7UkE0k=";
-            };
-          };
-          propagatedBuildInputs = [
-            coqPackages.mathcomp.ssreflect
-            coqPackages.mathcomp.algebra
-          ];
-        };
+        coq = pkgs.coq_8_19;
+        coqPackages = pkgs.coqPackages_8_19;
       in {
         devShells.default = pkgs.mkShell {
           packages =
@@ -35,7 +20,6 @@
               coqPackages.ExtLib
               coqPackages.equations
               coqPackages.smtcoq
-              coq-nbits
 
               coq.ocaml
               coq.ocamlPackages.findlib
