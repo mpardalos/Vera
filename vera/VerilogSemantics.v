@@ -41,8 +41,8 @@ Module CombinationalOnly(VType: DecidableType).
       }
   .
 
-  Definition set_reg {n} (name : string) (value : BV.bitvector n) (st : VerilogState) : VerilogState :=
-    {| regState := StrMap.add name (_ ; value) (regState st)
+  Definition set_reg (name : string) (value : BV.some_bitvector) (st : VerilogState) : VerilogState :=
+    {| regState := StrMap.add name value (regState st)
     ; pendingProcesses := pendingProcesses st
     |}
   .
@@ -68,6 +68,19 @@ Module CombinationalOnly(VType: DecidableType).
   Admit Obligations.
 
   Equations
+    eval_conditional {k n m}
+      (cond : BV.bitvector k)
+      (tBranch : BV.bitvector n)
+      (fBranch : BV.bitvector m)
+    : BV.some_bitvector :=
+    eval_conditional cond lhs rhs with (N.eq_dec n m) := {
+        | left eq_refl => _;
+        | right _ => _ ;
+      };
+  .
+  Admit Obligations.
+
+  Equations
     select_bit {n m}
       (vec : BV.bitvector n)
       (idx : BV.bitvector m)
@@ -79,6 +92,7 @@ Module CombinationalOnly(VType: DecidableType).
   .
   Admit Obligations.
 
+
   Equations
     eval_expr : VerilogState -> Verilog.expression -> option BV.some_bitvector :=
     eval_expr st (Verilog.BinaryOp _ op lhs rhs) :=
@@ -89,11 +103,7 @@ Module CombinationalOnly(VType: DecidableType).
       '(cond__size ; cond__val) <- eval_expr st cond ;;
       '(tBranch__size ; tBranch__val) <- eval_expr st tBranch ;;
       '(fBranch__size ; fBranch__val) <- eval_expr st fBranch ;;
-      match (N.eq_dec tBranch__size fBranch__size), (BV.bv_eq cond__val (BV.zeros cond__size)) with
-      | left eq_refl, true => ret ( _ ; fBranch__val )
-      | left eq_refl, false => ret ( _ ; tBranch__val )
-      | right _, _ => None
-      end;
+      ret (eval_conditional cond__val tBranch__val fBranch__val) ;
     eval_expr st (Verilog.BitSelect vec idx) :=
       '(vec__size ; vec__val) <- eval_expr st vec ;;
       '(idx__size ; idx__val) <- eval_expr st idx ;;
@@ -107,8 +117,8 @@ Module CombinationalOnly(VType: DecidableType).
     exec_statement (st : VerilogState) (stmt : Verilog.statement) : option VerilogState by struct :=
     exec_statement st (Verilog.Block stmts) := exec_statements st stmts ;
     exec_statement st (Verilog.If cond trueBranch falseBranch) :=
-      condVal <- eval_expr st cond ;;
-      if (to_nat condVal) =? 0
+      '(_ ; cond__val) <- eval_expr st cond ;;
+      if BV.is_zero cond__val
       then exec_statement st falseBranch
       else exec_statement st trueBranch
     ;
@@ -140,15 +150,12 @@ Module CombinationalOnly(VType: DecidableType).
       inversion H1; clear H1.
       reflexivity.
     - inversion H1; destruct (eval_expr st cond); try discriminate; clear H1.
-      destruct (to_nat b =? 0); auto.
+      destruct s as [? cond__val]. destruct (BV.is_zero cond__val); eauto.
     - inversion H. reflexivity.
     - inversion H1; clear H1.
       destruct (exec_statement st hd) eqn:E; try discriminate.
       transitivity (pendingProcesses v); eauto.
   Qed.
-
-  Definition least_element {A} (m : NameMap.t A) : option (name * A) :=
-    List.hd_error (NameMap.elements m).
 
   Equations
     exec_module_item : VerilogState -> Verilog.module_item -> option VerilogState :=
