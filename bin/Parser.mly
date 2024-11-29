@@ -11,6 +11,7 @@
 %token ASSIGN
 %token ALWAYS
 %token ALWAYS_FF
+%token ALWAYS_COMB
 %token INITIAL
 %token POSEDGE
 %token NEGEDGE
@@ -173,6 +174,8 @@ let module_item :=
     { RawVerilog.ContinuousAssign (lhs, rhs) }
   | always_ff; clocking = clocking; body = statement;
     { RawVerilog.AlwaysFF (clocking, body) }
+  | ALWAYS_COMB; body = statement;
+    { RawVerilog.AlwaysComb (body) }
   | INITIAL; body = statement;
     { RawVerilog.Initial body }
 

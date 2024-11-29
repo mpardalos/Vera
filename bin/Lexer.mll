@@ -19,6 +19,7 @@ let token_fmt fmt = function
     | ASSIGN -> fprintf fmt "ASSIGN"
     | ALWAYS -> fprintf fmt "ALWAYS"
     | ALWAYS_FF -> fprintf fmt "ALWAYS_FF"
+    | ALWAYS_COMB -> fprintf fmt "ALWAYS_COMB"
     | INITIAL -> fprintf fmt "INITIAL"
     | POSEDGE -> fprintf fmt "POSEDGE"
     | NEGEDGE -> fprintf fmt "NEGEDGE"
@@ -107,6 +108,7 @@ rule read = parse
     | "assign" { ASSIGN }
     | "always" { ALWAYS }
     | "always_ff" { ALWAYS_FF }
+    | "always_comb" { ALWAYS_COMB }
     | "initial" { INITIAL }
     | "output" { OUTPUT }
     | "posedge" { POSEDGE }
