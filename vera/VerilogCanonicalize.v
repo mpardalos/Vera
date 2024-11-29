@@ -14,7 +14,9 @@ From ExtLib Require Import Structures.MonadState.
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Programming.Show.
-From nbits Require Import NBits.
+
+From SMTCoq Require Import BVList.
+Import BITVECTOR_LIST (bitvector).
 
 From vera Require Import Verilog.
 From vera Require Import Common.
@@ -25,7 +27,6 @@ Import CommonNotations.
 Import MonadNotation.
 Import FunctorNotation.
 Local Open Scope monad_scope.
-Local Open Scope bits_scope.
 
 Module StrEnvStack := EnvStack.M(StrMap).
 
@@ -132,15 +133,14 @@ Program Definition merge_if
 
   mapT (
       fun  (it : (string * (option TypedVerilog.expression * option (option TypedVerilog.expression * option TypedVerilog.expression)))) =>
-        st <- get ;;
         let '(n, (default, branches )) := it in
         match branches with
         | Some (trueBranch, falseBranch) =>
             match trueBranch, falseBranch with
             | Some t, Some f =>
-                width_ok <- decide_or_fail
-                             (eq_dec (TypedVerilog.expr_type t) (TypedVerilog.expr_type f))
-                             "Incompatible widths in conditional";;
+                (* width_ok <- decide_or_fail *)
+                (*              (eq_dec (TypedVerilog.expr_type t) (TypedVerilog.expr_type f)) *)
+                (*              "Incompatible widths in conditional";; *)
                 setter n (TypedVerilog.Conditional cond t f)
             | Some t, None =>
                 let def := opt_or_else default (TypedVerilog.NamedExpression (TypedVerilog.expr_type t) n) in

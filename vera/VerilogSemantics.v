@@ -1,4 +1,4 @@
-From Coq Require Import BinPos.
+From Coq Require Import BinNat.
 From Coq Require Import String.
 From Coq Require Import Nat.
 From Coq Require FMaps.
@@ -12,9 +12,9 @@ From Coq Require Import Structures.Equalities.
 
 From vera Require Verilog.
 From vera Require Import Common.
+From vera Require Import Bitvector.
+Import (notations) Bitvector.BV.
 
-From nbits Require Import NBits.
-From mathcomp Require Import seq.
 From Equations Require Import Equations.
 
 From ExtLib Require Import Structures.Monads.
@@ -23,8 +23,9 @@ From ExtLib Require Import Data.Monads.OptionMonad.
 
 Import ListNotations.
 Import MonadNotation.
-Local Open Scope bits_scope.
+Import SigTNotations.
 Local Open Scope monad_scope.
+Local Open Scope bv_scope.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -35,13 +36,13 @@ Module CombinationalOnly(VType: DecidableType).
 
   Record VerilogState :=
     MkVerilogState
-      { regState : StrMap.t bits
+      { regState : StrMap.t BV.some_bitvector
       ; pendingProcesses : list Process
       }
   .
 
-  Definition set_reg (name : string) (value : bits) (st : VerilogState) : VerilogState :=
-    {| regState := StrMap.add name value (regState st)
+  Definition set_reg {n} (name : string) (value : BV.bitvector n) (st : VerilogState) : VerilogState :=
+    {| regState := StrMap.add name (_ ; value) (regState st)
     ; pendingProcesses := pendingProcesses st
     |}
   .
@@ -53,36 +54,52 @@ Module CombinationalOnly(VType: DecidableType).
   .
 
   Equations
-    eval_op (op : Verilog.op) (lhs rhs : bits) (width_match : size lhs = size rhs) : bits :=
-    eval_op Verilog.BinaryPlus lhs rhs prf := lhs +# rhs;
-    eval_op _ lhs rhs prf := _
+    eval_op {n m}
+      (op : Verilog.op)
+      (lhs : BV.bitvector n)
+      (rhs : BV.bitvector m)
+    : BV.some_bitvector :=
+    eval_op Verilog.BinaryPlus lhs rhs with (N.eq_dec n m) := {
+        | left eq_refl => ( _ ; BV.bv_add lhs rhs );
+        | right _ => _ ;
+      };
+    eval_op _ lhs rhs := _
   .
   Admit Obligations.
 
   Equations
-    eval_expr : VerilogState -> Verilog.expression -> option bits :=
+    select_bit {n m}
+      (vec : BV.bitvector n)
+      (idx : BV.bitvector m)
+    : BV.bitvector 1 :=
+    select_bit vec idx with (N.eq_dec n m) := {
+        | left eq_refl => # [(BV.bv_shr vec idx) @ 0] |;
+        | right _ => _ ;
+      }
+  .
+  Admit Obligations.
+
+  Equations
+    eval_expr : VerilogState -> Verilog.expression -> option BV.some_bitvector :=
     eval_expr st (Verilog.BinaryOp _ op lhs rhs) :=
-      lhs__val <- eval_expr st lhs ;;
-      rhs__val <- eval_expr st rhs ;;
-      match eq_dec (size lhs__val) (size rhs__val) with
-      | left prf => ret (eval_op op lhs__val rhs__val _)
-      | right _ => None
-      end;
+      '(lhs__size ; lhs__val) <- eval_expr st lhs ;;
+      '(rhs__size ; rhs__val) <- eval_expr st rhs ;;
+      ret (eval_op op lhs__val rhs__val) ;
     eval_expr st (Verilog.Conditional cond tBranch fBranch) :=
-      cond__val <- eval_expr st cond ;;
-      tBranch__val <- eval_expr st tBranch ;;
-      fBranch__val <- eval_expr st fBranch ;;
-      match (eq_dec (size tBranch__val) (size fBranch__val)), (eq_dec cond__val ((size cond__val)-bits of 0)) with
-      | left size_ok, left cond_zero => ret fBranch__val
-      | left size_ok, right cond_not_zero => ret tBranch__val
+      '(cond__size ; cond__val) <- eval_expr st cond ;;
+      '(tBranch__size ; tBranch__val) <- eval_expr st tBranch ;;
+      '(fBranch__size ; fBranch__val) <- eval_expr st fBranch ;;
+      match (N.eq_dec tBranch__size fBranch__size), (BV.bv_eq cond__val (BV.zeros cond__size)) with
+      | left eq_refl, true => ret ( _ ; fBranch__val )
+      | left eq_refl, false => ret ( _ ; tBranch__val )
       | right _, _ => None
       end;
     eval_expr st (Verilog.BitSelect vec idx) :=
-      vec__val <- eval_expr st vec ;;
-      idx__val <- eval_expr st idx ;;
-      ret [ nth false vec__val (to_nat idx__val) ];
+      '(vec__size ; vec__val) <- eval_expr st vec ;;
+      '(idx__size ; idx__val) <- eval_expr st idx ;;
+      ret ( _ ; select_bit vec__val idx__val);
     eval_expr st (Verilog.Annotation _ expr) := eval_expr st expr ;
-    eval_expr st (Verilog.IntegerLiteral val) := Some val;
+    eval_expr st (@Verilog.IntegerLiteral n val) := Some ( n ; val );
     eval_expr st (Verilog.NamedExpression _ name) := StrMap.find name (regState st)
   .
 

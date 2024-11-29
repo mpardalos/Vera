@@ -38,8 +38,6 @@ Definition is_port_out dir :=
   end
 .
 
-Definition name := positive.
-
 Definition opt_or {A} (l r : option A) : option A :=
   match l with
   | Some x => Some x
@@ -79,12 +77,6 @@ Module MapExtras(M: FMapInterface.WS).
       l r.
 End MapExtras.
 
-Module NameMap.
-  Include PositiveMap.
-  Include FMapFacts.Facts.
-  Include MapExtras.
-End NameMap.
-
 Module StrMap.
   Include FMapList.Make(String_as_OT).
   Include FMapFacts.Facts.
@@ -100,47 +92,3 @@ End StrSet.
 Equations opt_or_else : forall {A}, option A -> A -> A :=
   opt_or_else (Some x) _ := x;
   opt_or_else None o := o.
-
-Instance NameMap_Map (V : Type) : Map name V (NameMap.t V) :=
-  {| empty := NameMap.empty V
-  ; add k v m := NameMap.add k v m
-  ; remove := @NameMap.remove V
-  ; lookup := @NameMap.find V
-  ; union := NameMap.map2 (fun l r =>
-                             match l, r with
-                             | Some x, _ => Some x
-                             | None, Some x => Some x
-                             | None, None => None
-                             end
-               )
-  |}.
-
-Instance NameMap_MapOk {V : Type} `{Map name V (NameMap.t V) } : MapOk (@eq name) (NameMap_Map V).
-Proof.
-  refine {| mapsto := (@NameMap.MapsTo V) |}; intros; simpl.
-  - eapply NameMap.empty_1.
-  - unfold NameMap.MapsTo. reflexivity.
-  - NameMap.map_iff. intuition.
-  - NameMap.map_iff. intuition.
-  - NameMap.map_iff. intuition.
-  - NameMap.map_iff. intuition.
-Qed.
-
-Equations traverse_namemap {A B : Type} {F : Type -> Type} `{AppF : Applicative F}
-  (f : A -> F B) (m : NameMap.t A) : F (NameMap.t B) := {
-  | f, (NameMap.Leaf _) => pure (NameMap.empty B)
-  | f, NameMap.Node l None r =>
-      @NameMap.Node B <$> traverse_namemap f l <*> @pure F AppF (option B) None <*> traverse_namemap f r
-  | f, NameMap.Node l (Some x) r =>
-      @NameMap.Node B <$> traverse_namemap f l <*> (Some <$> f x) <*> traverse_namemap f r
-  }
-.
-
-Program Instance NameMap_Traversable : Traversable NameMap.t :=
-  {|
-    mapT _ _ _ _ := traverse_namemap
-  |}.
-
-Definition traverse_namemap_with_key {A B : Type} {F : Type -> Type} `{AppF : Applicative F}
-  (f : NameMap.key -> A -> F B) (m : NameMap.t A) : F (NameMap.t B) :=
-  sequence (NameMap.mapi f m).

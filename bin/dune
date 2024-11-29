@@ -1,7 +1,7 @@
 (coq.extraction
  (prelude Extraction)
  (extracted_modules Vera)
- (theories vera ExtLib Equations nbits mathcomp))
+ (theories vera ExtLib Equations SMTCoq))
 
 (ocamllex Lexer)
 (menhir (modules Parser))

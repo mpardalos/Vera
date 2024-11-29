@@ -13,8 +13,9 @@ From ExtLib Require Import Data.Monads.StateMonad.
 From ExtLib Require Import Data.Monads.EitherMonad.
 From ExtLib Require Import Data.List.
 From Equations Require Import Equations.
-From nbits Require Import NBits.
-From mathcomp Require Import seq.
+
+From SMTCoq Require Import BVList.
+Import BITVECTOR_LIST (bitvector).
 
 From vera Require Import Verilog.
 From vera Require Import Common.
@@ -38,10 +39,10 @@ Definition TC := sum string.
 
 Equations expr_type : TypedVerilog.expression -> Verilog.vtype :=
   expr_type (TypedVerilog.BinaryOp t _ _ _) := t;
-  expr_type (TypedVerilog.BitSelect _ _) := 0;
+  expr_type (TypedVerilog.BitSelect _ _) := 0%N;
   expr_type (TypedVerilog.Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
   expr_type (TypedVerilog.Conversion _ t _) := t;
-  expr_type (TypedVerilog.IntegerLiteral v) := size v;
+  expr_type (@TypedVerilog.IntegerLiteral n _) := n;
   expr_type (TypedVerilog.NamedExpression t _) := t.
 
 Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=

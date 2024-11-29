@@ -20,7 +20,9 @@ From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.Monoid.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Programming.Show.
-From nbits Require Import NBits.
+
+From SMTCoq Require Import BVList.
+Import BITVECTOR_LIST (bitvector).
 
 From vera Require Import Verilog.
 From vera Require Import SMT.
@@ -32,12 +34,11 @@ Import CommonNotations.
 Import MonadNotation.
 Import FunctorNotation.
 Local Open Scope monad_scope.
-Local Open Scope bits_scope.
 
 Definition transf := sum string.
 
-Definition cast_from_to {N} (from to: nat) (expr : SMT.qfbv N) : SMT.qfbv N :=
-  match Nat.compare to from with
+Definition cast_from_to {name} (from to: N) (expr : SMT.qfbv name) : SMT.qfbv name :=
+  match N.compare to from with
   | Lt => SMT.BVExtract (to - 1) 0 expr
   | Gt => SMT.BVZeroExtend (to - from) expr
   | Eq => expr
@@ -60,7 +61,7 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
   expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryShiftLeft lhs rhs) :=
     let t__lhs := TypedVerilog.expr_type lhs in
     let t__rhs := TypedVerilog.expr_type rhs in
-    let t__shift := max t__lhs t__rhs in
+    let t__shift := N.max t__lhs t__rhs in
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     ret (cast_from_to t__shift t__lhs
@@ -70,7 +71,7 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
   expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryShiftLeftArithmetic lhs rhs) :=
     let t__lhs := TypedVerilog.expr_type lhs in
     let t__rhs := TypedVerilog.expr_type rhs in
-    let t__shift := max t__lhs t__rhs in
+    let t__shift := N.max t__lhs t__rhs in
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     ret (cast_from_to t__shift t__lhs
@@ -80,7 +81,7 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
   expr_to_smt (TypedVerilog.BinaryOp _ Verilog.BinaryShiftRight lhs rhs) :=
     let t__lhs := TypedVerilog.expr_type lhs in
     let t__rhs := TypedVerilog.expr_type rhs in
-    let t__shift := max t__lhs t__rhs in
+    let t__shift := N.max t__lhs t__rhs in
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     ret (cast_from_to t__shift t__lhs
@@ -117,13 +118,13 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
     let cond__smt := SMT.CoreNot
                      (SMT.CoreEq
                         condval__smt
-                        (SMT.BVLit (t__cond-bits of 0)))
+                        (SMT.BVLit (BITVECTOR_LIST.zeros t__cond)))
     in
     ret (SMT.CoreITE cond__smt ifT__smt ifF__smt);
   expr_to_smt (TypedVerilog.BitSelect vec idx) :=
     let t__vec := TypedVerilog.expr_type vec in
     let t__idx := TypedVerilog.expr_type idx in
-    let t__shift := max t__vec t__idx in
+    let t__shift := N.max t__vec t__idx in
     vec__smt <- expr_to_smt vec ;;
     idx__smt <- expr_to_smt idx ;;
     ret (SMT.BVExtract 0 0

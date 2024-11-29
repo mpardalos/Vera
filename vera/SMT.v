@@ -2,12 +2,10 @@ From Coq Require Import ZArith.
 From Coq Require Import BinNums.
 From Coq Require Import String.
 
-From nbits Require Import NBits.
-From mathcomp Require Import seq.
+From SMTCoq Require Import BVList.
+Import BITVECTOR_LIST (bitvector).
 
 From vera Require Import Common (port_direction).
-
-Local Open Scope bits_scope.
 
 Module SMT.
   Inductive qfbv {T} :=
@@ -16,10 +14,10 @@ Module SMT.
   | BVNeg : qfbv -> qfbv
   | BVShl : qfbv -> qfbv -> qfbv
   | BVLShr : qfbv -> qfbv -> qfbv
-  | BVLit : bits -> qfbv
+  | BVLit {n : N} : bitvector n -> qfbv
   | BVVar : T -> qfbv
-  | BVZeroExtend : nat -> qfbv -> qfbv
-  | BVExtract : nat -> nat -> qfbv -> qfbv
+  | BVZeroExtend : N -> qfbv -> qfbv
+  | BVExtract : N -> N -> qfbv -> qfbv
   | CoreEq : qfbv -> qfbv -> qfbv
   | CoreNot : qfbv -> qfbv
   | CoreITE : qfbv -> qfbv -> qfbv -> qfbv

@@ -11,8 +11,6 @@ From Coq Require Import extraction.ExtrOcamlString.
 From Coq Require Import extraction.ExtrOcamlZInt.
 From Coq Require Import BinInt.
 
-From nbits Require NBits.
-
 Extraction Language OCaml.
 
 Extract Inlined Constant List.flat_map => "List.concat_map".

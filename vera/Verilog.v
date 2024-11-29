@@ -2,9 +2,10 @@ From Coq Require Import String.
 From Coq Require Import ZArith.
 From Coq Require Import BinNums.
 
-From nbits Require Import NBits.
-From mathcomp Require Import seq.
 From ExtLib Require Import Programming.Show.
+
+From SMTCoq Require Import BVList.
+Import BITVECTOR_LIST (bitvector).
 
 From vera Require Import Common.
 
@@ -94,7 +95,7 @@ Module MkVerilog(VType : DecidableType).
   | BinaryOp : VType.t -> op -> expression -> expression -> expression
   | Conditional : expression -> expression -> expression -> expression
   | BitSelect : expression -> expression -> expression
-  | IntegerLiteral : bits -> expression
+  | IntegerLiteral {n} : bitvector n -> expression
   | NamedExpression : VType.t -> string -> expression
   | Annotation : VType.t -> expression -> expression
   .
@@ -167,14 +168,14 @@ Module MkVerilog(VType : DecidableType).
 End MkVerilog.
 
 Module TypedVerilog.
-  Include MkVerilog(Arith.PeanoNat.Nat).
+  Include MkVerilog(N).
 
   Equations expr_type : expression -> vtype :=
     expr_type (BinaryOp t _ _ _) := t;
-    expr_type (BitSelect _ _) := 1;
+    expr_type (BitSelect _ _) := 1%N;
     expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
     expr_type (Annotation t _) := t;
-    expr_type (IntegerLiteral v) := size v;
+    expr_type (@TypedVerilog.IntegerLiteral n _) := n;
     expr_type (NamedExpression t _) := t.
 End TypedVerilog.
 
