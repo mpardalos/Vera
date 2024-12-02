@@ -5,11 +5,11 @@ let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"
 
 let vtype fmt t =
-  fprintf fmt "<%d>" (int_from_nat t)
+  fprintf fmt "<%d>" t
 
 let vector_declaration fmt t =
   match t with
-  | Verilog.Vector (high, low) -> fprintf fmt "[%d:%d]" (int_from_nat high) (int_from_nat low)
+  | Verilog.Vector (high, low) -> fprintf fmt "[%d:%d]" high low
   | Verilog.Scalar -> ()
 
 let port (fmt : formatter) (p : Verilog.port) =
@@ -56,14 +56,16 @@ let operator fmt = function
 let rec expression fmt e =
   Format.fprintf fmt "@[";
   (match e with
-  | Verilog.IntegerLiteral v -> fprintf fmt "%d'd%d" (int_from_nat (size v)) (bits_to_int v)
-  | Verilog.BitSelect (target, index) ->
-      fprintf fmt "%a[%a]" expression target expression index
-  | Verilog.Conditional (cond, t, f) ->
-      fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression f
-  | Verilog.BinaryOp (op, l, r) ->
-      fprintf fmt "( %a@ %a@ %a )" expression l operator op expression r
-  | Verilog.NamedExpression name -> fprintf fmt "%s" (Util.lst_to_string name));
+   | Verilog.IntegerLiteral (w, v) ->
+       fprintf fmt "%d'd%d" w (bits_to_int v)
+   | Verilog.BitSelect (target, index) ->
+       fprintf fmt "%a[%a]" expression target expression index
+   | Verilog.Conditional (cond, t, f) ->
+       fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression f
+   | Verilog.BinaryOp (_, op, l, r) ->
+       fprintf fmt "( %a@ %a@ %a )" expression l operator op expression r
+   | Verilog.NamedExpression (_, name) -> fprintf fmt "%s" (Util.lst_to_string name)
+   | Verilog.Annotation (_, e) -> expression fmt e);
   Format.fprintf fmt "@]"
 
 let rec statement (fmt : formatter) (s : Verilog.statement) =
@@ -110,24 +112,3 @@ let optionally (f : formatter -> 'a -> unit) (fmt : formatter) (v : 'a option) =
 
 let optionally_space (f : formatter -> 'a -> unit) (fmt : formatter) (v : 'a option) =
   match v with Some x -> fprintf fmt "%a " f x | None -> ()
-
-let raw_declaration (fmt : formatter) (decl : Verilog.raw_declaration) =
-  fprintf fmt "%a%a %a%s"
-    (optionally_space direction) decl.rawDeclPortDeclaration
-    net_type decl.rawDeclStorageType
-    (optionally_space vtype) decl.rawDeclType
-    (Util.lst_to_string decl.rawDeclName)
-
-let raw_mod_item (fmt : formatter)
-    (m : (Verilog.module_item, Verilog.raw_declaration) sum) =
-  match m with
-  | Inl item -> mod_item fmt item
-  | Inr decl -> raw_declaration fmt decl
-
-let raw_vmodule (fmt : formatter) (m : Verilog.raw_vmodule) =
-  fprintf fmt "module %s();@." (Util.lst_to_string m.rawModName);
-  (* fprintf fmt "   @[<v>"; *)
-  fprintf fmt "@,    @[<v>%a@]@,"
-    (pp_print_list raw_mod_item ~pp_sep:Util.colon_sep)
-    m.rawModBody;
-  fprintf fmt "@]@.endmodule"

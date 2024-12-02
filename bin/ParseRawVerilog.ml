@@ -4,11 +4,11 @@ let translate_direction = function
 
 let type_to_vector_declaration = function
   | RawVerilog.Logic (hi, lo) ->
-      Vera.Verilog.Vector (Vera.int_to_nat hi, Vera.int_to_nat lo)
+      Vera.Verilog.Vector (hi, lo)
   | RawVerilog.Reg (hi, lo) ->
-      Vera.Verilog.Vector (Vera.int_to_nat hi, Vera.int_to_nat lo)
+      Vera.Verilog.Vector (hi, lo)
   | RawVerilog.Wire (hi, lo) ->
-      Vera.Verilog.Vector (Vera.int_to_nat hi, Vera.int_to_nat lo)
+      Vera.Verilog.Vector (hi, lo)
 
 let type_to_storage_type = function
   | RawVerilog.Logic _ -> Vera.Verilog.Reg
@@ -112,7 +112,8 @@ let rec translate_stmt = function
 and translate_expr = function
   | RawVerilog.BinaryOp { operator; lhs; rhs } ->
       Vera.Verilog.BinaryOp
-        ( translate_binary_operator operator,
+        ( (),
+          translate_binary_operator operator,
           translate_expr lhs,
           translate_expr rhs )
   | RawVerilog.Conditional { condition; true_branch; false_branch } ->
@@ -123,9 +124,9 @@ and translate_expr = function
   | RawVerilog.BitSelect { target; index } ->
       Vera.Verilog.BitSelect (translate_expr target, translate_expr index)
   | RawVerilog.Identifier name ->
-      Vera.Verilog.NamedExpression (Util.string_to_lst name)
+      Vera.Verilog.NamedExpression ((), Util.string_to_lst name)
   | RawVerilog.Literal { width; value } ->
-      Vera.Verilog.IntegerLiteral (Vera.bits_from_int width value)
+      Vera.Verilog.IntegerLiteral (width, (Vera.bits_from_int width value))
   | e ->
       Format.eprintf "Unsupported expression: %a" RawVerilog.pp_expression e;
       raise (Failure "")

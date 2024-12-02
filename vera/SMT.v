@@ -2,10 +2,8 @@ From Coq Require Import ZArith.
 From Coq Require Import BinNums.
 From Coq Require Import String.
 
-From SMTCoq Require Import BVList.
-Import BITVECTOR_LIST (bitvector).
-
 From vera Require Import Common (port_direction).
+From vera Require Import Bitvector.
 
 Module SMT.
   Inductive qfbv {T} :=
@@ -14,7 +12,7 @@ Module SMT.
   | BVNeg : qfbv -> qfbv
   | BVShl : qfbv -> qfbv -> qfbv
   | BVLShr : qfbv -> qfbv -> qfbv
-  | BVLit {n : N} : bitvector n -> qfbv
+  | BVLit {n : N} : BV.t n -> qfbv
   | BVVar : T -> qfbv
   | BVZeroExtend : N -> qfbv -> qfbv
   | BVExtract : N -> N -> qfbv -> qfbv

@@ -36,4 +36,20 @@ Module BV.
   Definition of_N_fixed (width : N) (value : N) : bitvector width :=
     let '(width_full ; value) := of_N_full value in
     bv_extr 0 width value.
+
+  Fixpoint to_positive (bs : list bool) : positive :=
+    match bs with
+    | [] => xH (** wrong! *)
+    | b :: bs =>
+        if b
+        then if negb (fold_left orb bs false)
+             then xH
+             else (to_positive bs)~1
+        else (to_positive bs)~0
+    end.
+
+  Definition to_N {w} (val : bitvector w) : N :=
+    if negb (fold_left orb (bits val) false)
+    then N0
+    else Npos (to_positive (bits val)).
 End BV.
