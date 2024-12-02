@@ -3,6 +3,7 @@ From vera Require Verilog.
 From vera Require VerilogEquivalence.
 From vera Require VerilogToSMT.
 From vera Require Common.
+From vera Require Bitvector.
 
 From Coq Require Extraction.
 From Coq Require Import BinNat.
@@ -18,10 +19,10 @@ Extract Inlined Constant List.flat_map => "List.concat_map".
 Definition int_from_nat := N.of_nat.
 Definition int_to_nat := N.to_nat.
 
-Definition bits_from_nat := NBitsDef.from_nat.
-Definition bits_to_nat := NBitsDef.to_nat.
-Definition bits_from_int sz n := NBitsDef.from_nat (int_to_nat sz) (int_to_nat n).
+Definition bits_from_int := Bitvector.BV.of_N_fixed.
 Definition bits_to_int b := int_from_nat (bits_to_nat b).
+Definition bits_from_nat := BV.from_nat.
+Definition bits_to_nat := NBitsDef.to_nat.
 
 Extraction "Vera.ml"
   bits_from_nat

@@ -91,7 +91,7 @@ Definition pop_block : transf (StrMap.t TypedVerilog.expression * StrMap.t Typed
   end
 .
 
-Definition add_initial_statements (statements : list TypedVerilog.Statement) : transf () :=
+Definition add_initial_statements (statements : list TypedVerilog.statement) : transf () :=
   modify (fun s =>
             {| substitutionsBlocking := StrEnvStack.push (substitutionsBlocking s)
             ; substitutionsNonblocking := StrEnvStack.push (substitutionsNonblocking s)
@@ -160,7 +160,7 @@ Program Definition merge_if
   Translated from the following
 https://github.com/CakeML/hardware/blob/8264e60f0f9d503c9d971991cf181012276f0c9b/compiler/RTLCompilerScript.sml#L233-L295
 *)
-Equations transfer_statement : TypedVerilog.Statement -> transf () :=
+Equations transfer_statement : TypedVerilog.statement -> transf () :=
 | TypedVerilog.Block body =>
     mapT transfer_statement body ;;
     ret ()
@@ -208,7 +208,7 @@ Definition transfer_all_always_comb (items : list TypedVerilog.module_item) : tr
   ret ()
 .
 
-Definition collect_initial_statements (items : list TypedVerilog.module_item) : list TypedVerilog.Statement :=
+Definition collect_initial_statements (items : list TypedVerilog.module_item) : list TypedVerilog.statement :=
   let stmts := map
     (fun it =>
        match it with
@@ -227,9 +227,9 @@ Definition substitutions_from_state (st : state) : list substitution :=
 .
 
 Definition substitutions_to_assignments
-  (assignment : TypedVerilog.expression -> TypedVerilog.expression -> TypedVerilog.Statement)
+  (assignment : TypedVerilog.expression -> TypedVerilog.expression -> TypedVerilog.statement)
   (subs : list substitution)
-  : list TypedVerilog.Statement :=
+  : list TypedVerilog.statement :=
   map (fun '(lhs, rhs) =>
          assignment
            (* TODO: Keep the original type, rather than getting it from rhs *)

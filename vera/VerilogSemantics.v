@@ -182,7 +182,6 @@ Module CombinationalOnly(VType: DecidableType).
     unfold final, blocked.
     intros [reg procs] Hprocs.
     simpl in *; subst.
-    simp step.
-    trivial.
+    simp step; auto.
   Qed.
 End CombinationalOnly.

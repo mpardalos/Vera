@@ -131,14 +131,14 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
            (SMT.BVLShr
               (cast_from_to t__vec t__shift vec__smt)
               (cast_from_to t__idx t__shift idx__smt)));
-  expr_to_smt (TypedVerilog.Conversion from to expr) :=
+  expr_to_smt (TypedVerilog.Annotation to expr) :=
+    let from := TypedVerilog.expr_type expr in
     expr__smt <- expr_to_smt expr ;;
     ret (cast_from_to from to expr__smt);
   expr_to_smt (TypedVerilog.IntegerLiteral val) :=
     ret (SMT.BVLit val);
   expr_to_smt (TypedVerilog.NamedExpression t n) :=
     ret (SMT.BVVar n).
-
 
 Definition transfer_ports (ports : list Verilog.port) : list (string * port_direction) :=
   map (fun '(Verilog.MkPort dir name) => (name, dir)) ports.
@@ -150,7 +150,7 @@ Definition transfer_vars (vars : list Verilog.variable) : list (SMT.formula stri
          (SMT.SBitVector (Verilog.vector_declaration_width vec)))
     vars.
 
-Equations transfer_initial (stmt : TypedVerilog.Statement) : transf (list (SMT.formula string)) :=
+Equations transfer_initial (stmt : TypedVerilog.statement) : transf (list (SMT.formula string)) :=
   transfer_initial (TypedVerilog.Block stmts) =>
     lists <- mapT transfer_initial stmts ;;
     ret (concat lists) ;
@@ -161,14 +161,14 @@ Equations transfer_initial (stmt : TypedVerilog.Statement) : transf (list (SMT.f
     ret [] ;
   transfer_initial (TypedVerilog.BlockingAssign
                       (TypedVerilog.NamedExpression _ n)
-                      (TypedVerilog.Conversion _ _ (TypedVerilog.IntegerLiteral val))) =>
+                      (TypedVerilog.Annotation _ (TypedVerilog.IntegerLiteral val))) =>
     (* raise "VerilogToSMT: initial block blegh"%string; *)
     ret [] ;
   transfer_initial _ =>
     raise "VerilogToSMT: Invalid expression in initial block"%string
 .
 
-Equations transfer_comb_assignments (_ : TypedVerilog.Statement) : transf (list (SMT.formula string)) :=
+Equations transfer_comb_assignments (_ : TypedVerilog.statement) : transf (list (SMT.formula string)) :=
   transfer_comb_assignments (TypedVerilog.Block stmts) =>
     lists <- mapT transfer_comb_assignments stmts ;;
     ret (concat lists) ;

@@ -16,12 +16,7 @@ From Coq Require Import Structures.Equalities.
 From Coq Require Arith.PeanoNat.
 From Equations Require Import Equations.
 
-(* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
-Module MkVerilog(VType : DecidableType).
-  Definition vtype := VType.t.
-
-  Variant StorageType := Reg | Wire.
-
+Module VerilogCommon.
   Variant op :=
     | BinaryPlus (* '+' *)
     | BinaryMinus (* '-' *)
@@ -91,22 +86,15 @@ Module MkVerilog(VType : DecidableType).
       }.
   End op_show.
 
-  Inductive expression :=
-  | BinaryOp : VType.t -> op -> expression -> expression -> expression
-  | Conditional : expression -> expression -> expression -> expression
-  | BitSelect : expression -> expression -> expression
-  | IntegerLiteral {n} : bitvector n -> expression
-  | NamedExpression : VType.t -> string -> expression
-  | Annotation : VType.t -> expression -> expression
-  .
-
   Variant vector_declaration :=
     | Scalar
-    | Vector (msb : nat) (lsb : nat).
+    | Vector (msb : N) (lsb : N).
 
-  Equations vector_declaration_width : vector_declaration -> nat :=
-    vector_declaration_width Scalar := 1 ;
-    vector_declaration_width (Vector hi lo) := 1 + (max hi lo) - (min hi lo).
+  Equations vector_declaration_width : vector_declaration -> N :=
+    vector_declaration_width Scalar := 1%N ;
+    vector_declaration_width (Vector hi lo) := 1%N + (N.max hi lo) - (N.min hi lo).
+
+  Variant StorageType := Reg | Wire.
 
   Record variable :=
     MkVariable
@@ -120,6 +108,22 @@ Module MkVerilog(VType : DecidableType).
       { portDirection : port_direction
       ; portName : string
       }.
+End VerilogCommon.
+
+(* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
+Module MkVerilog(VType : DecidableType).
+  Include VerilogCommon.
+
+  Definition vtype := VType.t.
+
+  Inductive expression :=
+  | BinaryOp : VType.t -> op -> expression -> expression -> expression
+  | Conditional : expression -> expression -> expression -> expression
+  | BitSelect : expression -> expression -> expression
+  | IntegerLiteral {n} : bitvector n -> expression
+  | NamedExpression : VType.t -> string -> expression
+  | Annotation : VType.t -> expression -> expression
+  .
 
   Inductive statement :=
   | Block (body : list statement)
@@ -143,23 +147,6 @@ Module MkVerilog(VType : DecidableType).
       ; modBody : list module_item
       }.
 
-  Record raw_declaration :=
-    MkRawDeclaration
-      { rawDeclStorageType : StorageType
-      ; rawDeclPortDeclaration : option port_direction
-      ; rawDeclName : string
-      ; rawDeclType : option vtype
-      }
-  .
-
-  (** Verilog modules (as parsed) *)
-  Record raw_vmodule :=
-    MkRawModule
-      { rawModName : string
-      ; rawModPorts : list port
-      ; rawModBody : list (module_item + raw_declaration)
-      }
-  .
   Module Notations.
     Notation "[ hi .: lo ]" :=
       (Vector hi lo)

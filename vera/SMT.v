@@ -26,7 +26,7 @@ Module SMT.
   Arguments qfbv : clear implicits.
 
   Inductive sort :=
-  | SBitVector : nat -> sort
+  | SBitVector : N -> sort
   .
 
   Inductive formula {T} :=
@@ -37,11 +37,11 @@ Module SMT.
 
   Arguments formula : clear implicits.
 
-  Record smt_netlist {N : Type} : Type :=
+  Record smt_netlist {name : Type} : Type :=
     SMTNetlist
       { smtnlName : string
-      ; smtnlPorts : list (N * port_direction)
-      ; smtnlFormulas : list (formula N)
+      ; smtnlPorts : list (name * port_direction)
+      ; smtnlFormulas : list (formula name)
       }.
 
   Arguments smt_netlist : clear implicits.
