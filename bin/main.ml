@@ -19,6 +19,19 @@ let ( >=> ) (f : 'a -> ('err, 'b) Vera.sum) (g : 'b -> ('err, 'c) Vera.sum)
   let* y = f x in
   g y
 
+let usage_and_exit () =
+  eprintf "Usage: %s <command> [args]\n" Sys.argv.(0);
+  eprintf "\n";
+  eprintf "Commands:\n";
+  eprintf "  compare <verafile> <filename1> <filename2>\n";
+  eprintf "  lower <level> <filename>\n";
+  eprintf "  parse_custom <filename>\n";
+  eprintf "  parse_slang <filename>\n";
+  eprintf "\n";
+  eprintf "Arguments:\n";
+  eprintf "  level: parsed|typed|netlist|smt_netlist|smt\n";
+  exit 1
+
 let read_verafile filename : (string * string) list * (string * string) list =
   let channel = open_in filename in
   let rec read_verafile_lines acc_in acc_out =
@@ -34,39 +47,21 @@ let read_verafile filename : (string * string) list * (string * string) list =
   in
   read_verafile_lines [] []
 
-let () =
-  let usage_and_exit () =
-    eprintf "Usage: %s <command> [args]\n" Sys.argv.(0);
-    eprintf "\n";
-    eprintf "Commands:\n";
-    eprintf "  parse_raw <parse_raw_type> <filename>\n";
-    eprintf "  compare <verafile> <filename1> <filename2>\n";
-    eprintf "  lex <filename>\n";
-    eprintf "  lower <level> <filename>\n";
-    eprintf "\n";
-    eprintf "Arguments:\n";
-    eprintf "  parse_raw_type: expression|statement|module_item|module\n";
-    eprintf "  level: parsed|typed|netlist|smt_netlist|smt\n";
-    exit 1
-  in
+module VerilogParser (P : sig
+  val parse_file : string -> Vera.Verilog.vmodule
+end) =
+struct
+  include P
 
-  let lex = function
+  let run_parser_command = function
     | [ filename ] ->
-        let channel = open_in filename in
-        let lexbuf = Lexing.from_channel channel in
-        let rec print_tokens () : unit =
-          let token = Lexer.read lexbuf in
-          printf "%a " Lexer.token_fmt token;
-          match token with Parser.EOF -> () | _ -> print_tokens ()
-        in
-        print_tokens ();
-        printf "\n\n";
-        close_in channel
-    | [] -> eprintf "Missing filename\n"
-    | _ -> eprintf "Too many arguments\n"
-  in
+        let m = P.parse_file filename in
+        printf "%a\n" VerilogPP.vmodule m
+    | _ -> usage_and_exit ()
+end
 
-  let parse_file parse_func filename =
+module MyVerilogParser = VerilogParser (struct
+  let parse_file filename =
     let print_position outx (lexbuf : Lexing.lexbuf) =
       let pos = lexbuf.lex_curr_p in
       fprintf outx "%s:%d:%d" pos.pos_fname pos.pos_lnum
@@ -74,39 +69,23 @@ let () =
     in
     let lexbuf = Lexing.from_channel (open_in filename) in
     Lexing.set_filename lexbuf filename;
-    try parse_func Lexer.read lexbuf with
+    try
+      ParseRawVerilog.parse_raw_verilog (Parser.vmodule_only Lexer.read lexbuf)
+    with
     | Lexer.SyntaxError msg ->
         printf "%a: %s\n" print_position lexbuf msg;
         exit (-1)
     | Parser.Error ->
         printf "%a: syntax error\n" print_position lexbuf;
         exit (-1)
-  in
+end)
 
-  let parse_raw = function
-    | [ parse_type; filename ] -> (
-        let test_parse parse_func pp =
-          printf "%a\n" pp (parse_file parse_func filename)
-        in
+module SlangVerilogParser = VerilogParser (struct
+  let parse_file = ParseSlang.parse_verilog_file
+end)
 
-        match parse_type with
-        | "expression" ->
-            test_parse Parser.expression_only RawVerilog.pp_expression
-        | "statement" ->
-            test_parse Parser.statement_only RawVerilog.pp_statement
-        | "module_item" ->
-            test_parse Parser.module_item_only RawVerilog.pp_module_item
-        | "module" -> test_parse Parser.vmodule_only RawVerilog.pp_vmodule
-        | _ ->
-            printf "Unknown parse type: %s\n" parse_type;
-            usage_and_exit ())
-    | _ -> usage_and_exit ()
-  in
-
-  let module_of_file (filename : string) : Vera.Verilog.vmodule =
-    ParseRawVerilog.parse_raw_verilog (parse_file Parser.vmodule_only filename)
-  in
-
+let () =
+  let module_of_file = SlangVerilogParser.parse_file in
   let typed_module_of_file f = Vera.tc_vmodule (module_of_file f) in
   let canonical_module_of_file =
     typed_module_of_file >=> Vera.canonicalize_verilog
@@ -194,8 +173,7 @@ let () =
 
   printf "\n\n";
   match Array.to_list Sys.argv with
-  | _prog :: "parse_raw" :: rest -> parse_raw rest
-  | _prog :: "lex" :: rest -> lex rest
+  | _prog :: "parse_custom" :: rest -> MyVerilogParser.run_parser_command rest
   | _prog :: "compare" :: rest -> compare rest
   | _prog :: "lower" :: rest -> lower rest
   | _prog :: cmd :: _ ->

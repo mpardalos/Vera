@@ -31,8 +31,10 @@
               coq.ocamlPackages.menhir
               coq.ocamlPackages.ppx_deriving
               coq.ocamlPackages.ppxlib
+              coq.ocamlPackages.yojson
 
               pkgs.sv-lang
+              pkgs.slang
               pkgs.verible
               pkgs.surelog
               pkgs.z3
