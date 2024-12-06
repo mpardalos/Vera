@@ -4,10 +4,9 @@ From Coq Require Import BinNums.
 
 From ExtLib Require Import Programming.Show.
 
-From SMTCoq Require Import BVList.
-Import BITVECTOR_LIST (bitvector).
-
 From vera Require Import Common.
+From vera Require Import Bitvector.
+Import (notations) Bitvector.BV.
 
 Require Import List.
 Import ListNotations.
@@ -110,19 +109,16 @@ Module VerilogCommon.
       }.
 End VerilogCommon.
 
-(* This module will be Verilog.Verilog. Redundant, but it is needed for extraction. See Extraction.v *)
-Module MkVerilog(VType : DecidableType).
+Module MkVerilog(Annotation : DecidableType).
   Include VerilogCommon.
 
-  Definition vtype := VType.t.
-
   Inductive expression :=
-  | BinaryOp : VType.t -> op -> expression -> expression -> expression
+  | BinaryOp : op -> expression -> expression -> expression
   | Conditional : expression -> expression -> expression -> expression
   | BitSelect : expression -> expression -> expression
-  | IntegerLiteral {n} : bitvector n -> expression
-  | NamedExpression : VType.t -> string -> expression
-  | Annotation : VType.t -> expression -> expression
+  | IntegerLiteral : BV.t -> expression
+  | NamedExpression : Annotation.t -> string -> expression
+  | Resize : N -> expression -> expression
   .
 
   Inductive statement :=
@@ -157,12 +153,14 @@ End MkVerilog.
 Module TypedVerilog.
   Include MkVerilog(N).
 
-  Equations expr_type : expression -> vtype :=
-    expr_type (BinaryOp t _ _ _) := t;
+  Definition vtype := N.
+
+  Equations expr_type : expression -> N :=
+    expr_type (BinaryOp _ lhs _) := expr_type lhs;
     expr_type (BitSelect _ _) := 1%N;
     expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
-    expr_type (Annotation t _) := t;
-    expr_type (@TypedVerilog.IntegerLiteral n _) := n;
+    expr_type (Resize t _) := t;
+    expr_type (TypedVerilog.IntegerLiteral v) := BV.size v;
     expr_type (NamedExpression t _) := t.
 End TypedVerilog.
 

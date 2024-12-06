@@ -23,10 +23,10 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
       Z3.BitVector.mk_lshr z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
         (qfbv_formula_to_z3 var_ctx z3_ctx r)
-  | Vera.SMT.BVLit (w, v) ->
+  | Vera.SMT.BVLit v ->
       Z3.BitVector.mk_numeral z3_ctx
         (sprintf "%d" (Vera.bits_to_int v))
-        w
+        (Vera.BV.size v)
   | Vera.SMT.BVVar n -> Hashtbl.find var_ctx n
   | Vera.SMT.BVZeroExtend (num, f) ->
       Z3.BitVector.mk_zero_ext z3_ctx num

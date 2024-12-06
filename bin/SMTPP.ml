@@ -16,7 +16,7 @@ module SMT (Name : Formattable) = struct
     | Vera.SMT.BVNeg f -> fprintf fmt "(bvneg %a)" qfbv f
     | Vera.SMT.BVShl (l, r) -> fprintf fmt "(bvshl %a %a)" qfbv l qfbv r
     | Vera.SMT.BVLShr (l, r) -> fprintf fmt "(bvlshr %a %a)" qfbv l qfbv r
-    | Vera.SMT.BVLit (w, v) -> fprintf fmt "(_ bv%d %d)" (bits_to_int v) w
+    | Vera.SMT.BVLit v -> fprintf fmt "(_ bv%d %d)" (bits_to_int v) (Vera.BV.size v)
     | Vera.SMT.BVVar n -> Name.format fmt n
     | Vera.SMT.BVZeroExtend (num, f) ->
         fprintf fmt "((_ zero_extend %d) %a)" num qfbv f

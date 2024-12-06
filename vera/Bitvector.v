@@ -12,30 +12,30 @@ Local Open Scope bv_scope.
 Local Open Scope positive_scope.
 
 Module BV.
-  Include BITVECTOR_LIST.
+  Include RAWBITVECTOR_LIST.
   Notation t := bitvector.
-  Definition some_bitvector := {n : _ & bitvector n}.
-  Definition is_zero {n} (a : bitvector n) :=
-    bv_eq a (zeros n).
+  (* Definition some_bitvector := {n : _ & bitvector n}. *)
+  Definition is_zero (a : bitvector) :=
+    bv_eq a (zeros (size a)).
 
-  Equations of_pos_full (value : positive) : some_bitvector := {
-    | xH => (_ ; #b|1|)
-    | (p~1) => let '( _ ; head ) := of_pos_full p in (_ ; bv_concat head #b|1|)
-    | (p~0) => let '( _ ; head ) := of_pos_full p in (_ ; bv_concat head #b|0|)
+  Equations of_pos_full (value : positive) : bitvector := {
+    | xH => [true]
+    | (p~1) => bv_concat (of_pos_full p) [true]
+    | (p~0) => bv_concat (of_pos_full p) [false]
   }.
 
-  Equations of_N_full (value : N) : some_bitvector := {
-    | N0 => (_ ; #b|0|)
+  Equations of_N_full (value : N) : bitvector := {
+    | N0 => [false]
     | Npos p => of_pos_full p
   }.
 
-  Definition of_pos_fixed (width : N) (value : positive) : bitvector width :=
-    let '(width_full ; value) := of_pos_full value in
-    bv_extr 0 width value.
+  Definition of_pos_fixed (width : N) (value : positive) : bitvector :=
+    let bv := of_pos_full value in
+    bv_extr 0 width (size bv) bv.
 
-  Definition of_N_fixed (width : N) (value : N) : bitvector width :=
-    let '(width_full ; value) := of_N_full value in
-    bv_extr 0 width value.
+  Definition of_N_fixed (width : N) (value : N) : bitvector :=
+    let bv := of_N_full value in
+    bv_extr 0 width (size bv) bv.
 
   Fixpoint to_positive (bs : list bool) : positive :=
     match bs with
@@ -48,7 +48,7 @@ Module BV.
         else (to_positive bs)~0
     end.
 
-  Definition to_N {w} (val : bitvector w) : N :=
+  Definition to_N (val : bitvector) : N :=
     if negb (fold_left orb (bits val) false)
     then N0
     else Npos (to_positive (bits val)).

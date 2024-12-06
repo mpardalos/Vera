@@ -56,16 +56,17 @@ let operator fmt = function
 let rec expression fmt e =
   Format.fprintf fmt "@[";
   (match e with
-   | Verilog.IntegerLiteral (w, v) ->
-       fprintf fmt "%d'd%d" w (bits_to_int v)
+   | Verilog.IntegerLiteral v ->
+       fprintf fmt "%d'd%d" (Vera.BV.size v) (bits_to_int v)
    | Verilog.BitSelect (target, index) ->
        fprintf fmt "%a[%a]" expression target expression index
    | Verilog.Conditional (cond, t, f) ->
        fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression f
-   | Verilog.BinaryOp (_, op, l, r) ->
+   | Verilog.BinaryOp (op, l, r) ->
        fprintf fmt "( %a@ %a@ %a )" expression l operator op expression r
    | Verilog.NamedExpression (_, name) -> fprintf fmt "%s" (Util.lst_to_string name)
-   | Verilog.Annotation (_, e) -> expression fmt e);
+   | Verilog.Resize (n, e) ->
+       fprintf fmt "( %a@ as@ %a )" expression e vtype n);
   Format.fprintf fmt "@]"
 
 let rec statement (fmt : formatter) (s : Verilog.statement) =

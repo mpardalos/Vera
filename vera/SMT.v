@@ -12,7 +12,7 @@ Module SMT.
   | BVNeg : qfbv -> qfbv
   | BVShl : qfbv -> qfbv -> qfbv
   | BVLShr : qfbv -> qfbv -> qfbv
-  | BVLit {n : N} : BV.t n -> qfbv
+  | BVLit : BV.t -> qfbv
   | BVVar : T -> qfbv
   | BVZeroExtend : N -> qfbv -> qfbv
   | BVExtract : N -> N -> qfbv -> qfbv

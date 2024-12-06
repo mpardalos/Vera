@@ -7,11 +7,11 @@ let direction fmt d =
 let rec expression fmt e =
   Format.fprintf fmt "@[";
   (match e with
-   | TypedVerilog.IntegerLiteral (w, v) ->
-       fprintf fmt "%d'd%d" w (bits_to_int v)
-   | TypedVerilog.Annotation (t, e) ->
+   | TypedVerilog.IntegerLiteral v ->
+       fprintf fmt "%d'd%d" (Vera.BV.size v) (bits_to_int v)
+   | TypedVerilog.Resize (t, e) ->
        fprintf fmt "( %a@ as@ %a )" expression e VerilogPP.vtype t
-   | TypedVerilog.BinaryOp (_, op, l, r) ->
+   | TypedVerilog.BinaryOp (op, l, r) ->
        fprintf fmt "( %a@ %a@ %a )" expression l VerilogPP.operator op
          expression r
    | TypedVerilog.BitSelect (target, index) ->

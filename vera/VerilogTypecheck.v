@@ -36,14 +36,14 @@ Definition TCContext := TypedVerilog.vtype.
 Definition TC := sum string.
 
 Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=
-  tc_lvalue Γ (Verilog.BinaryOp _ _ _ _) :=
+  tc_lvalue Γ (Verilog.BinaryOp _ _ _) :=
     raise "Binary operator not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.Conditional _ _ _) :=
     raise "Conditional not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.IntegerLiteral _) :=
     raise "Constant not permitted as lvalue"%string;
-  tc_lvalue Γ (Verilog.Annotation _ e) :=
-    tc_lvalue Γ (e);
+  tc_lvalue Γ (Verilog.Resize _ e) :=
+    raise "Resize not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.BitSelect _ _) :=
     raise "BitSelect lvalues not implemented"%string;
   tc_lvalue Γ (Verilog.NamedExpression tt n) :=
@@ -52,68 +52,14 @@ Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expres
     | Some t => ret (TypedVerilog.NamedExpression t n)
     end.
 
-Definition dec_value_matches_type {n} (v: BV.t n) (t: TypedVerilog.vtype) : { n = t } + { n <> t } :=
-  N.eq_dec n t.
+Definition dec_value_matches_type (v: BV.t) (t: TypedVerilog.vtype) : { BV.size v = t } + { BV.size v <> t } :=
+  N.eq_dec (BV.size v) t.
 
 Equations tc_expr : option TCContext -> TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=
-  tc_expr ctx Γ (Verilog.BinaryOp _ op l r) :=
-    match op with
-    | Verilog.BinaryPlus (* '+' *)
-    | Verilog.BinaryMinus (* '-' *)
-    | Verilog.BinaryStar (* '*' *)
-    | Verilog.BinarySlash (* '/' *)
-    | Verilog.BinaryPercent (* '%' *)
-      =>
-        typed_l <- tc_expr ctx Γ l ;;
-        typed_r <- tc_expr ctx Γ r ;;
-        ret (TypedVerilog.BinaryOp (N.max (TypedVerilog.expr_type typed_l) (TypedVerilog.expr_type typed_r)) op typed_l typed_r)
-    | Verilog.BinaryShiftRight (* '>>' *)
-    | Verilog.BinaryShiftLeft (* '<<' *)
-    | Verilog.BinaryShiftRightArithmetic (* '>>>' *)
-    | Verilog.BinaryShiftLeftArithmetic (* '<<<' *)
-      =>
-        typed_l <- tc_expr ctx Γ l ;;
-        typed_r <- tc_expr None Γ r ;;
-        ret (TypedVerilog.BinaryOp (TypedVerilog.expr_type typed_l) op typed_l typed_r)
-    | Verilog.BinaryLessThan (* '<' *)
-    | Verilog.BinaryLessThanEqual (* '<=' *)
-    | Verilog.BinaryGreaterThan (* '>' *)
-    | Verilog.BinaryGreaterThanEqual (* '>=' *)
-    | Verilog.BinaryEqualsEquals (* '==' *)
-    | Verilog.BinaryNotEquals (* '!=' *)
-    | Verilog.BinaryEqualsEqualsEquals (* '===' *)
-    | Verilog.BinaryNotEqualsEquals (* '!==' *)
-    | Verilog.BinaryWildcardEqual (* '==?' *)
-    | Verilog.BinaryWildcardNotEqual (* '!=?' *)
-      =>
-        typed_l <- tc_expr None Γ l ;;
-        typed_r <- tc_expr None Γ r ;;
-        (* TODO: Make sure we are doing zero-extension here *)
-        match N.compare (TypedVerilog.expr_type typed_l) (TypedVerilog.expr_type typed_r) with
-        | Lt => 
-            typed_l_final <- tc_expr (Some (TypedVerilog.expr_type typed_r)) Γ l ;;
-            ret (TypedVerilog.BinaryOp (TypedVerilog.expr_type typed_r) op typed_l_final typed_r)
-        | Gt => 
-            typed_r_final <- tc_expr (Some (TypedVerilog.expr_type typed_l)) Γ r ;;
-            ret (TypedVerilog.BinaryOp (TypedVerilog.expr_type typed_l) op typed_l typed_r_final)
-        | Eq => ret (TypedVerilog.BinaryOp 1 op typed_l typed_r)
-        end
-    | Verilog.BinaryLogicalAnd (* '&&' *)
-    | Verilog.BinaryLogicalOr (* '||' *)
-    | Verilog.BinaryLogicalImplication (* '->' *)
-    | Verilog.BinaryLogicalEquivalence (* '<->' *)
-      =>
-        typed_l <- tc_expr None Γ l ;;
-        typed_r <- tc_expr None Γ r ;;
-        ret (TypedVerilog.BinaryOp 1 op typed_l typed_r)
-    | Verilog.BinaryBitwiseAnd (* '&' *)
-    | Verilog.BinaryBitwiseOr (* '|' *)
-    | Verilog.BinaryBitwiseXor (* '^' *)
-    | Verilog.BinaryXNor (* '^~', '~^' *)
-      => raise "bitwise operators missing"%string
-    | Verilog.BinaryExponent (* '**' *)
-      => raise "Exponent operator missing"%string
-    end;
+  tc_expr ctx Γ (Verilog.BinaryOp op l r) :=
+    typed_l <- tc_expr ctx Γ l ;;
+    typed_r <- tc_expr ctx Γ r ;;
+    ret (TypedVerilog.BinaryOp op typed_l typed_r);
   tc_expr ctx Γ (Verilog.BitSelect target index) :=
     typed_target <- tc_expr ctx Γ target ;;
     (* TODO: Unclear from the standard if this is context- or self-determined *)
@@ -130,13 +76,8 @@ Equations tc_expr : option TCContext -> TCBindings -> Verilog.expression -> TC T
       raise "Conditional branches do not match"%string ;
   tc_expr None Γ (Verilog.IntegerLiteral value) :=
     ret (TypedVerilog.IntegerLiteral value) ;
-  tc_expr (Some ctx) Γ (@Verilog.IntegerLiteral width value) :=
-    if N.eq_dec width ctx then
-      ret (TypedVerilog.IntegerLiteral value)
-    else
-      ret (TypedVerilog.Annotation
-             ctx
-             (TypedVerilog.IntegerLiteral value));
+  tc_expr (Some ctx) Γ (Verilog.IntegerLiteral value) :=
+    ret (TypedVerilog.IntegerLiteral value);
   tc_expr None Γ (Verilog.NamedExpression _ n) :=
     match StrMap.find n Γ with
     | None =>
@@ -149,12 +90,9 @@ Equations tc_expr : option TCContext -> TCBindings -> Verilog.expression -> TC T
     | None =>
         raise "Name not in context"%string
     | Some t =>
-        if N.eq_dec t ctx then
-          ret (TypedVerilog.NamedExpression t n)
-        else
-          ret (TypedVerilog.Annotation ctx (TypedVerilog.NamedExpression t n))
+        ret (TypedVerilog.NamedExpression t n)
     end;
-  tc_expr ctx Γ (Verilog.Annotation _ e) := tc_expr ctx Γ e
+  tc_expr ctx Γ (Verilog.Resize _ e) := tc_expr ctx Γ e
 .
 
 Equations tc_stmt : TCBindings -> Verilog.statement -> TC TypedVerilog.statement :=
@@ -174,8 +112,6 @@ Equations tc_stmt : TCBindings -> Verilog.statement -> TC TypedVerilog.statement
     typed_falseBranch <- tc_stmt Γ falseBranch ;;
     ret (TypedVerilog.If typed_condition typed_trueBranch typed_falseBranch)
 .
-Admit Obligations.
-
 
 Equations tc_module_item : TCBindings -> Verilog.module_item -> TC TypedVerilog.module_item :=
 | Γ, (Verilog.AlwaysComb body) =>
