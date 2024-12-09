@@ -32,8 +32,8 @@ Module StrEnvStack := EnvStack.M(StrMap).
 
 Record state :=
   TransfState
-    { substitutionsBlocking : StrEnvStack.t TypedVerilog.expression
-    ; substitutionsNonblocking : StrEnvStack.t TypedVerilog.expression
+    { substitutionsBlocking : StrEnvStack.t Verilog.expression
+    ; substitutionsNonblocking : StrEnvStack.t Verilog.expression
     }.
 
 Definition empty_state :=
@@ -51,7 +51,7 @@ Definition exec_transf {T} (a : transf T) : sum string state := execStateT a emp
 
 Definition eval_transf {T} (a : transf T) : sum string T := evalStateT a empty_state.
 
-Definition set_substitution_blocking (lhs : string) (rhs : TypedVerilog.expression) : transf () :=
+Definition set_substitution_blocking (lhs : string) (rhs : Verilog.expression) : transf () :=
   modify (fun s =>
             {| substitutionsBlocking := StrEnvStack.add lhs rhs (substitutionsBlocking s)
             ; substitutionsNonblocking := substitutionsNonblocking s
@@ -59,7 +59,7 @@ Definition set_substitution_blocking (lhs : string) (rhs : TypedVerilog.expressi
   ret ()
 .
 
-Definition set_substitution_nonblocking (lhs : string) (rhs : TypedVerilog.expression) : transf () :=
+Definition set_substitution_nonblocking (lhs : string) (rhs : Verilog.expression) : transf () :=
   modify (fun s =>
             {| substitutionsBlocking := substitutionsBlocking s
             ; substitutionsNonblocking := StrEnvStack.add lhs rhs (substitutionsNonblocking s)
@@ -75,7 +75,7 @@ Definition push_block : transf () :=
   ret ()
 .
 
-Definition pop_block : transf (StrMap.t TypedVerilog.expression * StrMap.t TypedVerilog.expression) :=
+Definition pop_block : transf (StrMap.t Verilog.expression * StrMap.t Verilog.expression) :=
   s <- get ;;
   let (mBlockingEnv, substitutionsBlocking') := StrEnvStack.pop (substitutionsBlocking s) in
   let (mNonblockingEnv, substitutionsNonblocking') := StrEnvStack.pop (substitutionsNonblocking s) in
@@ -91,7 +91,7 @@ Definition pop_block : transf (StrMap.t TypedVerilog.expression * StrMap.t Typed
   end
 .
 
-Definition add_initial_statements (statements : list TypedVerilog.statement) : transf () :=
+Definition add_initial_statements (statements : list Verilog.statement) : transf () :=
   modify (fun s =>
             {| substitutionsBlocking := StrEnvStack.push (substitutionsBlocking s)
             ; substitutionsNonblocking := StrEnvStack.push (substitutionsNonblocking s)
@@ -99,19 +99,19 @@ Definition add_initial_statements (statements : list TypedVerilog.statement) : t
   ret ()
 .
 
-Definition transfer_scoped {A} (f : transf A) : transf (A * (StrMap.t TypedVerilog.expression * StrMap.t TypedVerilog.expression)) :=
+Definition transfer_scoped {A} (f : transf A) : transf (A * (StrMap.t Verilog.expression * StrMap.t Verilog.expression)) :=
   push_block ;;
   result <- f ;;
   assigns <- pop_block ;;
   ret (result, assigns)
 .
 
-Equations transfer_expression : TypedVerilog.expression -> transf TypedVerilog.expression :=
-| TypedVerilog.NamedExpression t n =>
+Equations transfer_expression : Verilog.expression -> transf Verilog.expression :=
+| Verilog.NamedExpression t n =>
     st <- get ;;
     match StrEnvStack.lookup n (substitutionsBlocking st) with
     | Some e => ret e
-    | None => ret (TypedVerilog.NamedExpression t n)
+    | None => ret (Verilog.NamedExpression t n)
     end
 | e => ret e
 .
@@ -124,30 +124,30 @@ Definition decide_or_fail {P : Prop} (dec : { P } + { ~ P }) (msg : string) : tr
 .
 
 Program Definition merge_if
-  (setter : string -> TypedVerilog.expression -> transf ())
-  (cond : TypedVerilog.expression)
-  (defaults substitutionsTrue substitutionsFalse : StrMap.t TypedVerilog.expression)
+  (setter : string -> Verilog.expression -> transf ())
+  (cond : Verilog.expression)
+  (defaults substitutionsTrue substitutionsFalse : StrMap.t Verilog.expression)
   : transf () :=
   let substitutions_combined :=
     StrMap.elements (StrMap.union_both defaults (StrMap.union_both substitutionsTrue substitutionsFalse)) in
 
   mapT (
-      fun  (it : (string * (option TypedVerilog.expression * option (option TypedVerilog.expression * option TypedVerilog.expression)))) =>
+      fun  (it : (string * (option Verilog.expression * option (option Verilog.expression * option Verilog.expression)))) =>
         let '(n, (default, branches )) := it in
         match branches with
         | Some (trueBranch, falseBranch) =>
             match trueBranch, falseBranch with
             | Some t, Some f =>
                 (* width_ok <- decide_or_fail *)
-                (*              (eq_dec (TypedVerilog.expr_type t) (TypedVerilog.expr_type f)) *)
+                (*              (eq_dec (Verilog.expr_type t) (Verilog.expr_type f)) *)
                 (*              "Incompatible widths in conditional";; *)
-                setter n (TypedVerilog.Conditional cond t f)
+                setter n (Verilog.Conditional cond t f)
             | Some t, None =>
-                let def := opt_or_else default (TypedVerilog.NamedExpression (TypedVerilog.expr_type t) n) in
-                setter n (TypedVerilog.Conditional cond t def)
+                let def := opt_or_else default (Verilog.NamedExpression (Verilog.expr_type t) n) in
+                setter n (Verilog.Conditional cond t def)
             | None, Some f =>
-                let def := opt_or_else default (TypedVerilog.NamedExpression (TypedVerilog.expr_type f) n) in
-                setter n (TypedVerilog.Conditional cond def f)
+                let def := opt_or_else default (Verilog.NamedExpression (Verilog.expr_type f) n) in
+                setter n (Verilog.Conditional cond def f)
             | None, None => raise "Invalid state in merge_if"%string
             end
         | None => ret ()
@@ -160,21 +160,21 @@ Program Definition merge_if
   Translated from the following
 https://github.com/CakeML/hardware/blob/8264e60f0f9d503c9d971991cf181012276f0c9b/compiler/RTLCompilerScript.sml#L233-L295
 *)
-Equations transfer_statement : TypedVerilog.statement -> transf () :=
-| TypedVerilog.Block body =>
+Equations transfer_statement : Verilog.statement -> transf () :=
+| Verilog.Block body =>
     mapT transfer_statement body ;;
     ret ()
-| TypedVerilog.NonBlockingAssign (TypedVerilog.NamedExpression t__lhs name__lhs) rhs =>
+| Verilog.NonBlockingAssign (Verilog.NamedExpression t__lhs name__lhs) rhs =>
     input__rhs <- transfer_expression rhs ;;
     set_substitution_nonblocking name__lhs input__rhs
-| TypedVerilog.NonBlockingAssign lhs rhs =>
+| Verilog.NonBlockingAssign lhs rhs =>
     raise "Invalid lhs for non-blocking assignment"%string
-| TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression t__lhs name__lhs) rhs =>
+| Verilog.BlockingAssign (Verilog.NamedExpression t__lhs name__lhs) rhs =>
     input__rhs <- transfer_expression rhs ;;
     set_substitution_blocking name__lhs input__rhs
-| TypedVerilog.BlockingAssign lhs rhs =>
+| Verilog.BlockingAssign lhs rhs =>
     raise "Invalid lhs for blocking assignment"%string
-| TypedVerilog.If condition trueBranch falseBranch =>
+| Verilog.If condition trueBranch falseBranch =>
     st <- get ;;
     let defaults := StrEnvStack.flatten (substitutionsBlocking st) in
     condInput <- transfer_expression condition ;;
@@ -185,35 +185,35 @@ Equations transfer_statement : TypedVerilog.statement -> transf () :=
     ret ()
 .
 
-Definition substitution : Type := string * TypedVerilog.expression.
+Definition substitution : Type := string * Verilog.expression.
 
 
-Definition transfer_all_always_ff (items : list TypedVerilog.module_item) : transf () :=
+Definition transfer_all_always_ff (items : list Verilog.module_item) : transf () :=
   mapT
     (fun it =>
        match it with
-       | TypedVerilog.AlwaysFF body => transfer_statement body
+       | Verilog.AlwaysFF body => transfer_statement body
        | _ => ret ()
        end) items ;;
   ret ()
 .
 
-Definition transfer_all_always_comb (items : list TypedVerilog.module_item) : transf () :=
+Definition transfer_all_always_comb (items : list Verilog.module_item) : transf () :=
   mapT
     (fun it =>
        match it with
-       | TypedVerilog.AlwaysComb body => transfer_statement body
+       | Verilog.AlwaysComb body => transfer_statement body
        | _ => ret ()
        end) items ;;
   ret ()
 .
 
-Definition collect_initial_statements (items : list TypedVerilog.module_item) : list TypedVerilog.statement :=
+Definition collect_initial_statements (items : list Verilog.module_item) : list Verilog.statement :=
   let stmts := map
     (fun it =>
        match it with
-       | TypedVerilog.Initial (TypedVerilog.Block stmts) => stmts
-       | TypedVerilog.Initial stmt => [stmt]
+       | Verilog.Initial (Verilog.Block stmts) => stmts
+       | Verilog.Initial stmt => [stmt]
        | _ => []
        end) items in
   concat stmts
@@ -227,37 +227,37 @@ Definition substitutions_from_state (st : state) : list substitution :=
 .
 
 Definition substitutions_to_assignments
-  (assignment : TypedVerilog.expression -> TypedVerilog.expression -> TypedVerilog.statement)
+  (assignment : Verilog.expression -> Verilog.expression -> Verilog.statement)
   (subs : list substitution)
-  : list TypedVerilog.statement :=
+  : list Verilog.statement :=
   map (fun '(lhs, rhs) =>
          assignment
            (* TODO: Keep the original type, rather than getting it from rhs *)
-           (TypedVerilog.NamedExpression (TypedVerilog.expr_type rhs) lhs)
+           (Verilog.NamedExpression (Verilog.expr_type rhs) lhs)
            rhs) subs.
 
-Definition canonicalize_module (vmodule : TypedVerilog.vmodule) : sum string TypedVerilog.vmodule :=
-  let initial_body := collect_initial_statements (TypedVerilog.modBody vmodule) in
+Definition canonicalize_module (vmodule : Verilog.vmodule) : sum string Verilog.vmodule :=
+  let initial_body := collect_initial_statements (Verilog.modBody vmodule) in
 
-  always_ff_final_state <- exec_transf (transfer_all_always_ff (TypedVerilog.modBody vmodule)) ;;
+  always_ff_final_state <- exec_transf (transfer_all_always_ff (Verilog.modBody vmodule)) ;;
   let always_ff_subs := substitutions_from_state always_ff_final_state in
-  let always_ff_body := substitutions_to_assignments TypedVerilog.NonBlockingAssign always_ff_subs in
+  let always_ff_body := substitutions_to_assignments Verilog.NonBlockingAssign always_ff_subs in
 
-  always_comb_final_state <- exec_transf (transfer_all_always_comb (TypedVerilog.modBody vmodule)) ;;
+  always_comb_final_state <- exec_transf (transfer_all_always_comb (Verilog.modBody vmodule)) ;;
   let always_comb_subs := substitutions_from_state always_comb_final_state in
-  let always_comb_body := substitutions_to_assignments TypedVerilog.BlockingAssign always_comb_subs in
+  let always_comb_body := substitutions_to_assignments Verilog.BlockingAssign always_comb_subs in
 
   let body := [
-      TypedVerilog.Initial (TypedVerilog.Block initial_body);
-      TypedVerilog.AlwaysFF (TypedVerilog.Block always_ff_body);
-      TypedVerilog.AlwaysComb (TypedVerilog.Block always_comb_body)
+      Verilog.Initial (Verilog.Block initial_body);
+      Verilog.AlwaysFF (Verilog.Block always_ff_body);
+      Verilog.AlwaysComb (Verilog.Block always_comb_body)
     ] in
   ret
     {|
-      TypedVerilog.modName := TypedVerilog.modName vmodule;
-      TypedVerilog.modPorts := TypedVerilog.modPorts vmodule;
-      TypedVerilog.modVariables := TypedVerilog.modVariables vmodule;
-      TypedVerilog.modBody := body
+      Verilog.modName := Verilog.modName vmodule;
+      Verilog.modPorts := Verilog.modPorts vmodule;
+      Verilog.modVariables := Verilog.modVariables vmodule;
+      Verilog.modBody := body
     |}
 .
 

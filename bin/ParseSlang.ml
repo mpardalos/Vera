@@ -170,7 +170,8 @@ let rec parse_expression json =
   match json |> member "kind" |> to_string with
   | "NamedValue" ->
       let name = read_name (json |> member "symbol" |> to_string) in
-      Vera.Verilog.NamedExpression ((), Util.string_to_lst name)
+      let name_type = read_type_as_width (json |> member "type" |> to_string) in
+      Vera.Verilog.NamedExpression (name_type, Util.string_to_lst name)
   | "ConditionalOp" ->
       let cond =
         json |> member "conditions" |> to_list |> List.hd |> member "expr"
@@ -197,7 +198,9 @@ let rec parse_expression json =
       let lhs = json |> member "left" |> parse_expression in
       let rhs = json |> member "right" |> parse_expression in
       Vera.Verilog.BinaryOp (op, lhs, rhs)
-  | kind -> Vera.Verilog.NamedExpression ((), Util.string_to_lst kind)
+  | kind ->
+      (* Vera.Verilog.NamedExpression ((), Util.string_to_lst kind) *)
+      raise (SlangUnexpectedValue ("expression kind", kind))
 
 let rec parse_statement json =
   not_null "statement" json;

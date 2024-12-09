@@ -4,29 +4,29 @@ let translate_direction = function
 
 let type_to_vector_declaration = function
   | RawVerilog.Logic (hi, lo) ->
-      Vera.Verilog.Vector (hi, lo)
+      Vera.UntypedVerilog.Vector (hi, lo)
   | RawVerilog.Reg (hi, lo) ->
-      Vera.Verilog.Vector (hi, lo)
+      Vera.UntypedVerilog.Vector (hi, lo)
   | RawVerilog.Wire (hi, lo) ->
-      Vera.Verilog.Vector (hi, lo)
+      Vera.UntypedVerilog.Vector (hi, lo)
 
 let type_to_storage_type = function
-  | RawVerilog.Logic _ -> Vera.Verilog.Reg
-  | RawVerilog.Reg _ -> Vera.Verilog.Reg
-  | RawVerilog.Wire _ -> Vera.Verilog.Wire
+  | RawVerilog.Logic _ -> Vera.UntypedVerilog.Reg
+  | RawVerilog.Reg _ -> Vera.UntypedVerilog.Reg
+  | RawVerilog.Wire _ -> Vera.UntypedVerilog.Wire
 
 let translate_ports (ports : RawVerilog.port_declaration list) :
-    Vera.Verilog.port list * Vera.Verilog.variable list =
+    Vera.UntypedVerilog.port list * Vera.UntypedVerilog.variable list =
   ports
   |> List.map (fun (p : RawVerilog.port_declaration) ->
          ( {
-             Vera.Verilog.portDirection = translate_direction p.direction;
-             Vera.Verilog.portName = Util.string_to_lst p.name;
+             Vera.UntypedVerilog.portDirection = translate_direction p.direction;
+             Vera.UntypedVerilog.portName = Util.string_to_lst p.name;
            },
            {
-             Vera.Verilog.varVectorDeclaration = type_to_vector_declaration p.net_type;
-             Vera.Verilog.varStorageType = type_to_storage_type p.net_type;
-             Vera.Verilog.varName = Util.string_to_lst p.name;
+             Vera.UntypedVerilog.varVectorDeclaration = type_to_vector_declaration p.net_type;
+             Vera.UntypedVerilog.varStorageType = type_to_storage_type p.net_type;
+             Vera.UntypedVerilog.varName = Util.string_to_lst p.name;
            } ))
   |> List.split
 
@@ -38,13 +38,13 @@ let collect_ports (body : RawVerilog.module_item list) =
            List.map
              (fun (d : RawVerilog.declaration) ->
                ( {
-                   Vera.Verilog.portDirection = translate_direction dir;
-                   Vera.Verilog.portName = Util.string_to_lst d.name;
+                   Vera.UntypedVerilog.portDirection = translate_direction dir;
+                   Vera.UntypedVerilog.portName = Util.string_to_lst d.name;
                  },
                  {
-                   Vera.Verilog.varVectorDeclaration = type_to_vector_declaration net_type;
-                   Vera.Verilog.varStorageType = type_to_storage_type net_type;
-                   Vera.Verilog.varName = Util.string_to_lst d.name;
+                   Vera.UntypedVerilog.varVectorDeclaration = type_to_vector_declaration net_type;
+                   Vera.UntypedVerilog.varStorageType = type_to_storage_type net_type;
+                   Vera.UntypedVerilog.varName = Util.string_to_lst d.name;
                  } ))
              declarations
        | _ -> [])
@@ -57,75 +57,75 @@ let collect_variables (body : RawVerilog.module_item list) =
            List.map
              (fun (d : RawVerilog.declaration) ->
                {
-                 Vera.Verilog.varVectorDeclaration = type_to_vector_declaration net_type;
-                 Vera.Verilog.varStorageType = type_to_storage_type net_type;
-                 Vera.Verilog.varName = Util.string_to_lst d.name;
+                 Vera.UntypedVerilog.varVectorDeclaration = type_to_vector_declaration net_type;
+                 Vera.UntypedVerilog.varStorageType = type_to_storage_type net_type;
+                 Vera.UntypedVerilog.varName = Util.string_to_lst d.name;
                })
              declarations
        | _ -> [])
 
 let translate_binary_operator = function
-  | RawVerilog.BinaryPlus -> Vera.Verilog.BinaryPlus
-  | RawVerilog.BinaryMinus -> Vera.Verilog.BinaryMinus
-  | RawVerilog.BinaryStar -> Vera.Verilog.BinaryStar
-  | RawVerilog.BinarySlash -> Vera.Verilog.BinarySlash
-  | RawVerilog.BinaryPercent -> Vera.Verilog.BinaryPercent
-  | RawVerilog.BinaryEqualsEquals -> Vera.Verilog.BinaryEqualsEquals
-  | RawVerilog.BinaryNotEquals -> Vera.Verilog.BinaryNotEquals
-  | RawVerilog.BinaryEqualsEqualsEquals -> Vera.Verilog.BinaryEqualsEqualsEquals
-  | RawVerilog.BinaryNotEqualsEquals -> Vera.Verilog.BinaryNotEqualsEquals
-  | RawVerilog.BinaryWildcardEqual -> Vera.Verilog.BinaryWildcardEqual
-  | RawVerilog.BinaryWildcardNotEqual -> Vera.Verilog.BinaryWildcardNotEqual
-  | RawVerilog.BinaryLogicalAnd -> Vera.Verilog.BinaryLogicalAnd
-  | RawVerilog.BinaryLogicalOr -> Vera.Verilog.BinaryLogicalOr
-  | RawVerilog.BinaryExponent -> Vera.Verilog.BinaryExponent
-  | RawVerilog.BinaryLessThan -> Vera.Verilog.BinaryLessThan
-  | RawVerilog.BinaryLessThanEqual -> Vera.Verilog.BinaryLessThanEqual
-  | RawVerilog.BinaryGreaterThan -> Vera.Verilog.BinaryGreaterThan
-  | RawVerilog.BinaryGreaterThanEqual -> Vera.Verilog.BinaryGreaterThanEqual
-  | RawVerilog.BinaryBitwiseAnd -> Vera.Verilog.BinaryBitwiseAnd
-  | RawVerilog.BinaryBitwiseOr -> Vera.Verilog.BinaryBitwiseOr
-  | RawVerilog.BinaryBitwiseXor -> Vera.Verilog.BinaryBitwiseXor
-  | RawVerilog.BinaryXNor -> Vera.Verilog.BinaryXNor
-  | RawVerilog.BinaryShiftRight -> Vera.Verilog.BinaryShiftRight
-  | RawVerilog.BinaryShiftLeft -> Vera.Verilog.BinaryShiftLeft
+  | RawVerilog.BinaryPlus -> Vera.UntypedVerilog.BinaryPlus
+  | RawVerilog.BinaryMinus -> Vera.UntypedVerilog.BinaryMinus
+  | RawVerilog.BinaryStar -> Vera.UntypedVerilog.BinaryStar
+  | RawVerilog.BinarySlash -> Vera.UntypedVerilog.BinarySlash
+  | RawVerilog.BinaryPercent -> Vera.UntypedVerilog.BinaryPercent
+  | RawVerilog.BinaryEqualsEquals -> Vera.UntypedVerilog.BinaryEqualsEquals
+  | RawVerilog.BinaryNotEquals -> Vera.UntypedVerilog.BinaryNotEquals
+  | RawVerilog.BinaryEqualsEqualsEquals -> Vera.UntypedVerilog.BinaryEqualsEqualsEquals
+  | RawVerilog.BinaryNotEqualsEquals -> Vera.UntypedVerilog.BinaryNotEqualsEquals
+  | RawVerilog.BinaryWildcardEqual -> Vera.UntypedVerilog.BinaryWildcardEqual
+  | RawVerilog.BinaryWildcardNotEqual -> Vera.UntypedVerilog.BinaryWildcardNotEqual
+  | RawVerilog.BinaryLogicalAnd -> Vera.UntypedVerilog.BinaryLogicalAnd
+  | RawVerilog.BinaryLogicalOr -> Vera.UntypedVerilog.BinaryLogicalOr
+  | RawVerilog.BinaryExponent -> Vera.UntypedVerilog.BinaryExponent
+  | RawVerilog.BinaryLessThan -> Vera.UntypedVerilog.BinaryLessThan
+  | RawVerilog.BinaryLessThanEqual -> Vera.UntypedVerilog.BinaryLessThanEqual
+  | RawVerilog.BinaryGreaterThan -> Vera.UntypedVerilog.BinaryGreaterThan
+  | RawVerilog.BinaryGreaterThanEqual -> Vera.UntypedVerilog.BinaryGreaterThanEqual
+  | RawVerilog.BinaryBitwiseAnd -> Vera.UntypedVerilog.BinaryBitwiseAnd
+  | RawVerilog.BinaryBitwiseOr -> Vera.UntypedVerilog.BinaryBitwiseOr
+  | RawVerilog.BinaryBitwiseXor -> Vera.UntypedVerilog.BinaryBitwiseXor
+  | RawVerilog.BinaryXNor -> Vera.UntypedVerilog.BinaryXNor
+  | RawVerilog.BinaryShiftRight -> Vera.UntypedVerilog.BinaryShiftRight
+  | RawVerilog.BinaryShiftLeft -> Vera.UntypedVerilog.BinaryShiftLeft
   | RawVerilog.BinaryShiftRightArithmetic ->
-      Vera.Verilog.BinaryShiftRightArithmetic
+      Vera.UntypedVerilog.BinaryShiftRightArithmetic
   | RawVerilog.BinaryShiftLeftArithmetic ->
-      Vera.Verilog.BinaryShiftLeftArithmetic
-  | RawVerilog.BinaryLogicalImplication -> Vera.Verilog.BinaryLogicalImplication
-  | RawVerilog.BinaryLogicalEquivalence -> Vera.Verilog.BinaryLogicalEquivalence
+      Vera.UntypedVerilog.BinaryShiftLeftArithmetic
+  | RawVerilog.BinaryLogicalImplication -> Vera.UntypedVerilog.BinaryLogicalImplication
+  | RawVerilog.BinaryLogicalEquivalence -> Vera.UntypedVerilog.BinaryLogicalEquivalence
 
 let rec translate_stmt = function
-  | RawVerilog.Block body -> Vera.Verilog.Block (List.map translate_stmt body)
+  | RawVerilog.Block body -> Vera.UntypedVerilog.Block (List.map translate_stmt body)
   | RawVerilog.Assign { assignment_type = RawVerilog.Blocking; lhs; rhs } ->
-      Vera.Verilog.BlockingAssign (translate_expr lhs, translate_expr rhs)
+      Vera.UntypedVerilog.BlockingAssign (translate_expr lhs, translate_expr rhs)
   | RawVerilog.Assign { assignment_type = RawVerilog.NonBlocking; lhs; rhs } ->
-      Vera.Verilog.NonBlockingAssign (translate_expr lhs, translate_expr rhs)
+      Vera.UntypedVerilog.NonBlockingAssign (translate_expr lhs, translate_expr rhs)
   | RawVerilog.If { condition; if_branch; else_branch } ->
-      Vera.Verilog.If
+      Vera.UntypedVerilog.If
         ( translate_expr condition,
           translate_stmt if_branch,
-          Option.fold ~none:(Vera.Verilog.Block []) ~some:translate_stmt
+          Option.fold ~none:(Vera.UntypedVerilog.Block []) ~some:translate_stmt
             else_branch )
 
 and translate_expr = function
   | RawVerilog.BinaryOp { operator; lhs; rhs } ->
-      Vera.Verilog.BinaryOp
+      Vera.UntypedVerilog.BinaryOp
         ( translate_binary_operator operator,
           translate_expr lhs,
           translate_expr rhs )
   | RawVerilog.Conditional { condition; true_branch; false_branch } ->
-      Vera.Verilog.Conditional
+      Vera.UntypedVerilog.Conditional
         ( translate_expr condition,
           translate_expr true_branch,
           translate_expr false_branch )
   | RawVerilog.BitSelect { target; index } ->
-      Vera.Verilog.BitSelect (translate_expr target, translate_expr index)
+      Vera.UntypedVerilog.BitSelect (translate_expr target, translate_expr index)
   | RawVerilog.Identifier name ->
-      Vera.Verilog.NamedExpression ((), Util.string_to_lst name)
+      Vera.UntypedVerilog.NamedExpression ((), Util.string_to_lst name)
   | RawVerilog.Literal { width; value } ->
-      Vera.Verilog.IntegerLiteral (Vera.bits_from_int width value)
+      Vera.UntypedVerilog.IntegerLiteral (Vera.bits_from_int width value)
   | e ->
       Format.eprintf "Unsupported expression: %a" RawVerilog.pp_expression e;
       raise (Failure "")
@@ -141,19 +141,19 @@ let translate_body (body : RawVerilog.module_item list) =
        | RawVerilog.NetDeclaration _ -> None
        | RawVerilog.AlwaysFF (clocking, stmt) ->
            if check_clocking clocking then
-             Some (Vera.Verilog.AlwaysFF (translate_stmt stmt))
+             Some (Vera.UntypedVerilog.AlwaysFF (translate_stmt stmt))
            else raise (Failure "Unsupported clocking declaration")
        | RawVerilog.AlwaysComb stmt ->
-           Some (Vera.Verilog.AlwaysComb (translate_stmt stmt))
+           Some (Vera.UntypedVerilog.AlwaysComb (translate_stmt stmt))
        | RawVerilog.ContinuousAssign (lhs, rhs) ->
            Some
-             (Vera.Verilog.AlwaysComb
-                (Vera.Verilog.BlockingAssign
+             (Vera.UntypedVerilog.AlwaysComb
+                (Vera.UntypedVerilog.BlockingAssign
                    (translate_expr lhs, translate_expr rhs)))
        | RawVerilog.Initial stmt ->
-           Some (Vera.Verilog.Initial (translate_stmt stmt)))
+           Some (Vera.UntypedVerilog.Initial (translate_stmt stmt)))
 
-let parse_raw_verilog (rv : RawVerilog.vmodule) : Vera.Verilog.vmodule =
+let parse_raw_verilog (rv : RawVerilog.vmodule) : Vera.UntypedVerilog.vmodule =
   let signature_ports, signature_vars = translate_ports rv.ports in
   let body_ports, body_port_vars = collect_ports rv.body in
   let modName = Util.string_to_lst rv.name in

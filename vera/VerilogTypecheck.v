@@ -29,13 +29,22 @@ Import ListNotations.
 Import SigTNotations.
 Open Scope monad_scope.
 
-Definition TCBindings := StrMap.t TypedVerilog.vtype.
+Definition TCBindings := StrMap.t Verilog.vtype.
 
-Definition TCContext := TypedVerilog.vtype.
+Definition TCContext := Verilog.vtype.
 
 Definition TC := sum string.
 
-Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=
+Definition tc_name (Γ : TCBindings) (t_expr : Verilog.vtype) (name : string) : TC unit :=
+    match StrMap.find name Γ with
+    | None => raise "Name not in context"%string
+    | Some t_env =>
+        if N.eq_dec t_env t_expr
+        then ret tt
+        else raise "Different type in env vs expression"%string
+    end.
+
+Equations tc_lvalue : TCBindings -> Verilog.expression -> TC Verilog.expression :=
   tc_lvalue Γ (Verilog.BinaryOp _ _ _) :=
     raise "Binary operator not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.Conditional _ _ _) :=
@@ -46,96 +55,85 @@ Equations tc_lvalue : TCBindings -> Verilog.expression -> TC TypedVerilog.expres
     raise "Resize not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.BitSelect _ _) :=
     raise "BitSelect lvalues not implemented"%string;
-  tc_lvalue Γ (Verilog.NamedExpression tt n) :=
-    match StrMap.find n Γ with
-    | None => raise "Name not in context"%string
-    | Some t => ret (TypedVerilog.NamedExpression t n)
-    end.
+  tc_lvalue Γ (Verilog.NamedExpression t_expr n) :=
+    tc_name Γ t_expr n ;;
+    ret (Verilog.NamedExpression t_expr n) .
 
-Definition dec_value_matches_type (v: BV.t) (t: TypedVerilog.vtype) : { BV.size v = t } + { BV.size v <> t } :=
+Definition dec_value_matches_type (v: BV.t) (t: Verilog.vtype) : { BV.size v = t } + { BV.size v <> t } :=
   N.eq_dec (BV.size v) t.
 
-Equations tc_expr : option TCContext -> TCBindings -> Verilog.expression -> TC TypedVerilog.expression :=
+Equations tc_expr : option TCContext -> TCBindings -> Verilog.expression -> TC Verilog.expression :=
   tc_expr ctx Γ (Verilog.BinaryOp op l r) :=
     typed_l <- tc_expr ctx Γ l ;;
     typed_r <- tc_expr ctx Γ r ;;
-    ret (TypedVerilog.BinaryOp op typed_l typed_r);
+    ret (Verilog.BinaryOp op typed_l typed_r);
   tc_expr ctx Γ (Verilog.BitSelect target index) :=
     typed_target <- tc_expr ctx Γ target ;;
     (* TODO: Unclear from the standard if this is context- or self-determined *)
     typed_index <- tc_expr None Γ index ;; 
-    ret (TypedVerilog.BitSelect typed_target typed_index) ;
+    ret (Verilog.BitSelect typed_target typed_index) ;
   tc_expr ctx Γ (Verilog.Conditional cond tBranch fBranch) :=
     typed_cond <- tc_expr ctx Γ cond ;;
     typed_tBranch <- tc_expr ctx Γ tBranch ;;
     typed_fBranch <- tc_expr ctx Γ fBranch ;;
-    if (N.eq_dec (TypedVerilog.expr_type typed_tBranch) (TypedVerilog.expr_type typed_fBranch)) then
-      ret (TypedVerilog.Conditional typed_cond typed_tBranch typed_fBranch)
+    if (N.eq_dec (Verilog.expr_type typed_tBranch) (Verilog.expr_type typed_fBranch)) then
+      ret (Verilog.Conditional typed_cond typed_tBranch typed_fBranch)
     else
       (**  TODO: Should probably upcast, *)
       raise "Conditional branches do not match"%string ;
   tc_expr None Γ (Verilog.IntegerLiteral value) :=
-    ret (TypedVerilog.IntegerLiteral value) ;
+    ret (Verilog.IntegerLiteral value) ;
   tc_expr (Some ctx) Γ (Verilog.IntegerLiteral value) :=
-    ret (TypedVerilog.IntegerLiteral value);
-  tc_expr None Γ (Verilog.NamedExpression _ n) :=
-    match StrMap.find n Γ with
-    | None =>
-        raise "Name not in context"%string
-    | Some t =>
-        ret (TypedVerilog.NamedExpression t n)
-    end ;
-  tc_expr (Some ctx) Γ (Verilog.NamedExpression _ n) :=
-    match StrMap.find n Γ with
-    | None =>
-        raise "Name not in context"%string
-    | Some t =>
-        ret (TypedVerilog.NamedExpression t n)
-    end;
-  tc_expr ctx Γ (Verilog.Resize _ e) := tc_expr ctx Γ e
+    ret (Verilog.IntegerLiteral value);
+  tc_expr ctx Γ (Verilog.NamedExpression t_expr n) :=
+    tc_name Γ t_expr n ;;
+    ret (Verilog.NamedExpression t_expr n) ;
+  tc_expr ctx Γ (Verilog.Resize t e) :=
+    e' <- tc_expr ctx Γ e ;;
+    ret (Verilog.Resize t e')
 .
 
-Equations tc_stmt : TCBindings -> Verilog.statement -> TC TypedVerilog.statement :=
+Equations tc_stmt : TCBindings -> Verilog.statement -> TC Verilog.statement :=
   tc_stmt Γ (Verilog.Block body) :=
-    TypedVerilog.Block <$> mapT (tc_stmt Γ) body;
+    Verilog.Block <$> mapT (tc_stmt Γ) body;
   tc_stmt Γ (Verilog.BlockingAssign lhs rhs) :=
     typed_lhs <- tc_lvalue Γ lhs ;;
-    typed_rhs <- tc_expr (Some (TypedVerilog.expr_type typed_lhs)) Γ rhs ;;
-    ret (TypedVerilog.BlockingAssign typed_lhs typed_rhs);
+    typed_rhs <- tc_expr (Some (Verilog.expr_type typed_lhs)) Γ rhs ;;
+    ret (Verilog.BlockingAssign typed_lhs typed_rhs);
   tc_stmt Γ (Verilog.NonBlockingAssign lhs rhs) :=
     typed_lhs <- tc_lvalue Γ lhs ;;
-    typed_rhs <- tc_expr (Some (TypedVerilog.expr_type typed_lhs)) Γ rhs ;;
-    ret (TypedVerilog.NonBlockingAssign typed_lhs typed_rhs);
+    typed_rhs <- tc_expr (Some (Verilog.expr_type typed_lhs)) Γ rhs ;;
+    ret (Verilog.NonBlockingAssign typed_lhs typed_rhs);
   tc_stmt Γ (Verilog.If condition trueBranch falseBranch) :=
     typed_condition <- tc_expr None Γ condition ;;
     typed_trueBranch <- tc_stmt Γ trueBranch ;;
     typed_falseBranch <- tc_stmt Γ falseBranch ;;
-    ret (TypedVerilog.If typed_condition typed_trueBranch typed_falseBranch)
+    ret (Verilog.If typed_condition typed_trueBranch typed_falseBranch)
 .
 
-Equations tc_module_item : TCBindings -> Verilog.module_item -> TC TypedVerilog.module_item :=
+Equations tc_module_item : TCBindings -> Verilog.module_item -> TC Verilog.module_item :=
 | Γ, (Verilog.AlwaysComb body) =>
-    TypedVerilog.AlwaysComb <$> tc_stmt Γ body
+    Verilog.AlwaysComb <$> tc_stmt Γ body
 | Γ, (Verilog.AlwaysFF body) =>
-    TypedVerilog.AlwaysFF <$> tc_stmt Γ body
+    Verilog.AlwaysFF <$> tc_stmt Γ body
 | Γ, (Verilog.Initial body) =>
-    TypedVerilog.Initial <$> tc_stmt Γ body
+    Verilog.Initial <$> tc_stmt Γ body
 .
 
 Equations variables_to_bindings : list Verilog.variable -> TCBindings :=
   variables_to_bindings [] :=
-    StrMap.empty TypedVerilog.vtype;
+    StrMap.empty Verilog.vtype;
   variables_to_bindings ((Verilog.MkVariable vecDecl _st n) :: tl) :=
     StrMap.add n (Verilog.vector_declaration_width vecDecl) (variables_to_bindings tl).
 
-Definition tc_vmodule (m : Verilog.vmodule) : TC TypedVerilog.vmodule :=
+Definition tc_vmodule (m : Verilog.vmodule) : TC Verilog.vmodule :=
   let Γ := variables_to_bindings (Verilog.modVariables m) in
   modBody <- mapT (tc_module_item Γ) (Verilog.modBody m) ;;
   ret
     {|
-      TypedVerilog.modName := Verilog.modName m;
-      TypedVerilog.modPorts := Verilog.modPorts m;
-      TypedVerilog.modVariables := Verilog.modVariables m;
-      TypedVerilog.modBody := modBody;
+      Verilog.modName := Verilog.modName m;
+      Verilog.modPorts := Verilog.modPorts m;
+      Verilog.modVariables := Verilog.modVariables m;
+      Verilog.modBody := modBody;
     |}
 .

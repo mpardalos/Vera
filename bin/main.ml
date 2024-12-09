@@ -48,7 +48,10 @@ let read_verafile filename : (string * string) list * (string * string) list =
   read_verafile_lines [] []
 
 module VerilogParser (P : sig
-  val parse_file : string -> Vera.Verilog.vmodule
+  type parsed
+
+  val pp : formatter -> parsed -> unit
+  val parse_file : string -> parsed
 end) =
 struct
   include P
@@ -56,11 +59,15 @@ struct
   let run_parser_command = function
     | [ filename ] ->
         let m = P.parse_file filename in
-        printf "%a\n" VerilogPP.vmodule m
+        printf "%a\n" P.pp m
     | _ -> usage_and_exit ()
 end
 
 module MyVerilogParser = VerilogParser (struct
+  type parsed = Vera.UntypedVerilog.vmodule
+
+  let pp = VerilogPP.Untyped.vmodule
+
   let parse_file filename =
     let print_position outx (lexbuf : Lexing.lexbuf) =
       let pos = lexbuf.lex_curr_p in
@@ -81,6 +88,9 @@ module MyVerilogParser = VerilogParser (struct
 end)
 
 module SlangVerilogParser = VerilogParser (struct
+  type parsed = Vera.Verilog.vmodule
+
+  let pp = VerilogPP.Typed.vmodule
   let parse_file = ParseSlang.parse_verilog_file
 end)
 
@@ -103,11 +113,11 @@ let () =
     in
     function
     | [ "parsed"; filename ] ->
-        display_or_error VerilogPP.vmodule (Vera.Inr (module_of_file filename))
+        display_or_error VerilogPP.Typed.vmodule (Vera.Inr (module_of_file filename))
     | [ "typed"; filename ] ->
-        display_or_error TypedVerilogPP.vmodule (typed_module_of_file filename)
+        display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename)
     | [ "canonical"; filename ] ->
-        display_or_error TypedVerilogPP.vmodule
+        display_or_error VerilogPP.Typed.vmodule
           (canonical_module_of_file filename)
     | [ "smt_netlist"; filename ] ->
         display_or_error SMTPP.StrSMT.smt_netlist (smt_netlist_of_file filename)
@@ -117,11 +127,11 @@ let () =
           (smt_formulas_of_file filename)
     | [ "all"; filename ] ->
         printf "\n-- parsed -- \n";
-        display_or_error VerilogPP.vmodule (Vera.Inr (module_of_file filename));
+        display_or_error VerilogPP.Typed.vmodule (Vera.Inr (module_of_file filename));
         printf "\n-- typed --\n";
-        display_or_error TypedVerilogPP.vmodule (typed_module_of_file filename);
+        display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename);
         printf "\n-- canonical --\n";
-        display_or_error TypedVerilogPP.vmodule
+        display_or_error VerilogPP.Typed.vmodule
           (canonical_module_of_file filename);
         printf "\n-- smt_netlist --\n";
         display_or_error SMTPP.StrSMT.smt_netlist (smt_netlist_of_file filename);

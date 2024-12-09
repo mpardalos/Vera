@@ -43,22 +43,22 @@ Definition cast_from_to {name} (from to: N) (expr : SMT.qfbv name) : SMT.qfbv na
   end
 .
 
-Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryPlus lhs rhs) :=
+Equations expr_to_smt : Verilog.expression -> transf (SMT.qfbv string) :=
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryPlus lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     ret (SMT.BVAdd lhs__smt rhs__smt);
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryMinus lhs rhs) :=
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryMinus lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     ret (SMT.BVAdd lhs__smt (SMT.BVNeg rhs__smt));
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryStar lhs rhs) :=
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryStar lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     ret (SMT.BVMul lhs__smt rhs__smt);
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryShiftLeft lhs rhs) :=
-    let t__lhs := TypedVerilog.expr_type lhs in
-    let t__rhs := TypedVerilog.expr_type rhs in
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryShiftLeft lhs rhs) :=
+    let t__lhs := Verilog.expr_type lhs in
+    let t__rhs := Verilog.expr_type rhs in
     let t__shift := N.max t__lhs t__rhs in
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
@@ -66,9 +66,9 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
            (SMT.BVShl
               (cast_from_to t__lhs t__shift lhs__smt)
               (cast_from_to t__rhs t__shift rhs__smt)));
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryShiftLeftArithmetic lhs rhs) :=
-    let t__lhs := TypedVerilog.expr_type lhs in
-    let t__rhs := TypedVerilog.expr_type rhs in
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryShiftLeftArithmetic lhs rhs) :=
+    let t__lhs := Verilog.expr_type lhs in
+    let t__rhs := Verilog.expr_type rhs in
     let t__shift := N.max t__lhs t__rhs in
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
@@ -76,9 +76,9 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
            (SMT.BVShl
               (cast_from_to t__lhs t__shift lhs__smt)
               (cast_from_to t__rhs t__shift rhs__smt)));
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryShiftRight lhs rhs) :=
-    let t__lhs := TypedVerilog.expr_type lhs in
-    let t__rhs := TypedVerilog.expr_type rhs in
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryShiftRight lhs rhs) :=
+    let t__lhs := Verilog.expr_type lhs in
+    let t__rhs := Verilog.expr_type rhs in
     let t__shift := N.max t__lhs t__rhs in
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
@@ -86,30 +86,30 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
            (SMT.BVLShr
               (cast_from_to t__lhs t__shift lhs__smt)
               (cast_from_to t__rhs t__shift rhs__smt)));
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryGreaterThan lhs rhs) :=
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryGreaterThan lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     raise "todo"%string;
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryLessThan lhs rhs) :=
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryLessThan lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     raise "todo"%string;
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryLessThanEqual lhs rhs) :=
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryLessThanEqual lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     raise "todo"%string;
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryEqualsEquals lhs rhs) :=
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryEqualsEquals lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     raise "todo"%string;
-  expr_to_smt (TypedVerilog.BinaryOp Verilog.BinaryLogicalAnd lhs rhs) :=
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryLogicalAnd lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
     raise "todo"%string;
-  expr_to_smt (TypedVerilog.BinaryOp op _ _) :=
+  expr_to_smt (Verilog.BinaryOp op _ _) :=
     raise ("Unsupported operator in SMT: " ++ to_string op)%string;
-  expr_to_smt (TypedVerilog.Conditional cond ifT ifF) :=
-    let t__cond := TypedVerilog.expr_type cond in
+  expr_to_smt (Verilog.Conditional cond ifT ifF) :=
+    let t__cond := Verilog.expr_type cond in
     condval__smt <- expr_to_smt cond ;;
     ifT__smt <- expr_to_smt ifT ;;
     ifF__smt <- expr_to_smt ifF ;;
@@ -119,9 +119,9 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
                         (SMT.BVLit (BV.zeros t__cond)))
     in
     ret (SMT.CoreITE cond__smt ifT__smt ifF__smt);
-  expr_to_smt (TypedVerilog.BitSelect vec idx) :=
-    let t__vec := TypedVerilog.expr_type vec in
-    let t__idx := TypedVerilog.expr_type idx in
+  expr_to_smt (Verilog.BitSelect vec idx) :=
+    let t__vec := Verilog.expr_type vec in
+    let t__idx := Verilog.expr_type idx in
     let t__shift := N.max t__vec t__idx in
     vec__smt <- expr_to_smt vec ;;
     idx__smt <- expr_to_smt idx ;;
@@ -129,13 +129,13 @@ Equations expr_to_smt : TypedVerilog.expression -> transf (SMT.qfbv string) :=
            (SMT.BVLShr
               (cast_from_to t__vec t__shift vec__smt)
               (cast_from_to t__idx t__shift idx__smt)));
-  expr_to_smt (TypedVerilog.Resize to expr) :=
-    let from := TypedVerilog.expr_type expr in
+  expr_to_smt (Verilog.Resize to expr) :=
+    let from := Verilog.expr_type expr in
     expr__smt <- expr_to_smt expr ;;
     ret (cast_from_to from to expr__smt);
-  expr_to_smt (TypedVerilog.IntegerLiteral val) :=
+  expr_to_smt (Verilog.IntegerLiteral val) :=
     ret (SMT.BVLit val);
-  expr_to_smt (TypedVerilog.NamedExpression t n) :=
+  expr_to_smt (Verilog.NamedExpression t n) :=
     ret (SMT.BVVar n).
 
 Definition transfer_ports (ports : list Verilog.port) : list (string * port_direction) :=
@@ -148,53 +148,53 @@ Definition transfer_vars (vars : list Verilog.variable) : list (SMT.formula stri
          (SMT.SBitVector (Verilog.vector_declaration_width vec)))
     vars.
 
-Equations transfer_initial (stmt : TypedVerilog.statement) : transf (list (SMT.formula string)) :=
-  transfer_initial (TypedVerilog.Block stmts) =>
+Equations transfer_initial (stmt : Verilog.statement) : transf (list (SMT.formula string)) :=
+  transfer_initial (Verilog.Block stmts) =>
     lists <- mapT transfer_initial stmts ;;
     ret (concat lists) ;
-  transfer_initial (TypedVerilog.BlockingAssign
-                      (TypedVerilog.NamedExpression _ n)
-                      (TypedVerilog.IntegerLiteral val)) =>
+  transfer_initial (Verilog.BlockingAssign
+                      (Verilog.NamedExpression _ n)
+                      (Verilog.IntegerLiteral val)) =>
     (* raise "VerilogToSMT: initial block blegh"%string; *)
     ret [] ;
-  transfer_initial (TypedVerilog.BlockingAssign
-                      (TypedVerilog.NamedExpression _ n)
-                      (TypedVerilog.Resize _ (TypedVerilog.IntegerLiteral val))) =>
+  transfer_initial (Verilog.BlockingAssign
+                      (Verilog.NamedExpression _ n)
+                      (Verilog.Resize _ (Verilog.IntegerLiteral val))) =>
     (* raise "VerilogToSMT: initial block blegh"%string; *)
     ret [] ;
   transfer_initial _ =>
     raise "VerilogToSMT: Invalid expression in initial block"%string
 .
 
-Equations transfer_comb_assignments : TypedVerilog.statement -> transf (list (SMT.formula string)) :=
-  transfer_comb_assignments (TypedVerilog.Block stmts) =>
+Equations transfer_comb_assignments : Verilog.statement -> transf (list (SMT.formula string)) :=
+  transfer_comb_assignments (Verilog.Block stmts) =>
     lists <- mapT transfer_comb_assignments stmts ;;
     ret (concat lists) ;
-  transfer_comb_assignments (TypedVerilog.BlockingAssign (TypedVerilog.NamedExpression _ name) rhs) =>
+  transfer_comb_assignments (Verilog.BlockingAssign (Verilog.NamedExpression _ name) rhs) =>
     rhs__smt <- expr_to_smt rhs ;;
     ret [SMT.CEqual (SMT.BVVar name) rhs__smt] ;
   transfer_comb_assignments _ =>
     raise "VerilogToSMT: Invalid expression in always_comb block"%string
 .
 
-Definition verilog_to_smt (vmodule : TypedVerilog.vmodule) : transf (SMT.smt_netlist string) :=
-  match TypedVerilog.modBody vmodule with
-  | [ TypedVerilog.Initial initial_body;
-      TypedVerilog.AlwaysFF (TypedVerilog.Block []);
-      TypedVerilog.AlwaysComb always_comb_body
+Definition verilog_to_smt (vmodule : Verilog.vmodule) : transf (SMT.smt_netlist string) :=
+  match Verilog.modBody vmodule with
+  | [ Verilog.Initial initial_body;
+      Verilog.AlwaysFF (Verilog.Block []);
+      Verilog.AlwaysComb always_comb_body
     ] =>
-      let ports := transfer_ports (TypedVerilog.modPorts vmodule) in
-      let var_decls := transfer_vars (TypedVerilog.modVariables vmodule) in
+      let ports := transfer_ports (Verilog.modPorts vmodule) in
+      let var_decls := transfer_vars (Verilog.modVariables vmodule) in
       initial_smt <- transfer_initial initial_body ;;
       always_comb_smt <- transfer_comb_assignments always_comb_body ;;
       ret {|
-          SMT.smtnlName := TypedVerilog.modName vmodule ;
+          SMT.smtnlName := Verilog.modName vmodule ;
           SMT.smtnlPorts := ports ;
           SMT.smtnlFormulas := var_decls ++ initial_smt ++ always_comb_smt
         |}
-  | [ TypedVerilog.Initial _;
-      TypedVerilog.AlwaysFF _;
-      TypedVerilog.AlwaysComb _
+  | [ Verilog.Initial _;
+      Verilog.AlwaysFF _;
+      Verilog.AlwaysComb _
     ] => raise "always_ff not yet supported"%string
   | _ => raise "Non-canonical verilog passed to verilog_to_smt"%string
   end

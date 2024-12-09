@@ -150,7 +150,7 @@ Module MkVerilog(Annotation : DecidableType).
   End Notations.
 End MkVerilog.
 
-Module TypedVerilog.
+Module Verilog.
   Include MkVerilog(N).
 
   Definition vtype := N.
@@ -160,9 +160,9 @@ Module TypedVerilog.
     expr_type (BitSelect _ _) := 1%N;
     expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
     expr_type (Resize t _) := t;
-    expr_type (TypedVerilog.IntegerLiteral v) := BV.size v;
+    expr_type (IntegerLiteral v) := BV.size v;
     expr_type (NamedExpression t _) := t.
-End TypedVerilog.
+End Verilog.
 
 Module Unit_as_MDT <: MiniDecidableType.
   Definition t := unit.
@@ -174,4 +174,5 @@ End Unit_as_MDT.
 
 Module Unit_as_DT := Make_UDT(Unit_as_MDT).
 
-Module Verilog := MkVerilog(Unit_as_DT).
+(* Not used at the moment *)
+Module UntypedVerilog := MkVerilog(Unit_as_DT).
