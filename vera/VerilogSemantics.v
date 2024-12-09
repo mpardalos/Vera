@@ -11,7 +11,7 @@ From Coq Require Import Relations.
 From Coq Require Import Structures.Equalities.
 From Coq Require Import Psatz.
 
-From vera Require Verilog.
+From vera Require Import Verilog.
 From vera Require Import Common.
 From vera Require Import Bitvector.
 Import (notations) Bitvector.BV.
@@ -30,9 +30,7 @@ Local Open Scope bv_scope.
 
 Set Bullet Behavior "Strict Subproofs".
 
-Module CombinationalOnly(VType: DecidableType).
-  Module Verilog := Verilog.MkVerilog(VType).
-
+Module CombinationalOnly.
   Definition Process := Verilog.module_item.
 
   Record VerilogState :=
@@ -53,6 +51,18 @@ Module CombinationalOnly(VType: DecidableType).
     ; pendingProcesses := tail (pendingProcesses st)
     |}
   .
+
+  Definition is_always_comb (it : Verilog.module_item) : bool :=
+    match it with
+    | Verilog.AlwaysComb _ => true
+    | _ => false
+    end.
+
+  Definition initial_state (m : Verilog.vmodule) : VerilogState :=
+    {|
+      regState := StrMap.empty _;
+      pendingProcesses := List.filter is_always_comb (Verilog.modBody m)
+    |}.
 
   Equations
     eval_op
@@ -148,22 +158,27 @@ Module CombinationalOnly(VType: DecidableType).
   Equations
     exec_module_item : VerilogState -> Verilog.module_item -> option VerilogState :=
     exec_module_item st (Verilog.Initial _) :=
-      Some st;
+      None; (* initial blocks are not part of the semantics *)
     exec_module_item st (Verilog.AlwaysFF stmt) :=
       None; (* always_ff is not allowed *)
     exec_module_item st (Verilog.AlwaysComb stmt ) :=
       exec_statement st stmt;
   .
 
-  Equations step : VerilogState -> option VerilogState :=
-    step (MkVerilogState reg []) := None;
-    step (MkVerilogState reg (p :: ps)) := exec_module_item (MkVerilogState reg ps) p.
+  Equations run_step : VerilogState -> option VerilogState :=
+    run_step (MkVerilogState reg []) := None;
+    run_step (MkVerilogState reg (p :: ps)) := exec_module_item (MkVerilogState reg ps) p.
 
-  Definition blocked (st : VerilogState) : Prop :=
-    step st = None.
+  Definition step (st1 st2 : VerilogState) : Prop := run_step st1 = Some st2.
+
+  Definition multistep := clos_trans VerilogState step.
+
+  Definition blocked (st : VerilogState) : Prop := run_step st = None.
 
   Definition final (st : VerilogState) : Prop :=
     pendingProcesses st = [].
+
+  Definition multistep_eval st1 st2 := multistep st1 st2 /\ blocked st2.
 
   Lemma final_is_blocked : forall st, final st -> blocked st.
   Proof.
