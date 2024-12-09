@@ -96,11 +96,11 @@ Definition equivalence_query
   (verilog1 verilog2 : Verilog.vmodule)
   : sum string (list (SMT.formula string)) :=
 
-  typed_verilog1 <- VerilogTypecheck.tc_vmodule verilog1 ;;
-  typed_verilog2 <- VerilogTypecheck.tc_vmodule verilog2 ;;
+  VerilogTypecheck.tc_vmodule verilog1 ;;
+  VerilogTypecheck.tc_vmodule verilog2 ;;
 
-  canonical_verilog1 <- VerilogCanonicalize.canonicalize_verilog typed_verilog1 ;;
-  canonical_verilog2 <- VerilogCanonicalize.canonicalize_verilog typed_verilog2 ;;
+  canonical_verilog1 <- VerilogCanonicalize.canonicalize_verilog verilog1 ;;
+  canonical_verilog2 <- VerilogCanonicalize.canonicalize_verilog verilog2 ;;
 
   unsafe_smt_netlist1 <- VerilogToSMT.verilog_to_smt canonical_verilog1 ;;
   unsafe_smt_netlist2 <- VerilogToSMT.verilog_to_smt canonical_verilog2 ;;

@@ -96,7 +96,11 @@ end)
 
 let () =
   let module_of_file = SlangVerilogParser.parse_file in
-  let typed_module_of_file f = Vera.tc_vmodule (module_of_file f) in
+  let typed_module_of_file f =
+    let m = module_of_file f in
+    let* () = Vera.tc_vmodule m in
+    ret m
+  in
   let canonical_module_of_file =
     typed_module_of_file >=> Vera.canonicalize_verilog
   in
@@ -113,7 +117,8 @@ let () =
     in
     function
     | [ "parsed"; filename ] ->
-        display_or_error VerilogPP.Typed.vmodule (Vera.Inr (module_of_file filename))
+        display_or_error VerilogPP.Typed.vmodule
+          (Vera.Inr (module_of_file filename))
     | [ "typed"; filename ] ->
         display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename)
     | [ "canonical"; filename ] ->
@@ -127,7 +132,8 @@ let () =
           (smt_formulas_of_file filename)
     | [ "all"; filename ] ->
         printf "\n-- parsed -- \n";
-        display_or_error VerilogPP.Typed.vmodule (Vera.Inr (module_of_file filename));
+        display_or_error VerilogPP.Typed.vmodule
+          (Vera.Inr (module_of_file filename));
         printf "\n-- typed --\n";
         display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename);
         printf "\n-- canonical --\n";
