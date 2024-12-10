@@ -12,34 +12,59 @@
         pkgs = import nixpkgs { inherit system; };
         coq = pkgs.coq_8_19;
         coqPackages = pkgs.coqPackages_8_19;
+        deps = [
+          coq
+          coqPackages.ExtLib
+          coqPackages.equations
+          coqPackages.smtcoq
+
+          coq.ocaml
+          coq.ocamlPackages.findlib
+          coq.ocamlPackages.ocaml-lsp
+          coq.ocamlPackages.dune_3
+          coq.ocamlPackages.utop
+          coq.ocamlPackages.ocamlformat
+          coq.ocamlPackages.z3
+          coq.ocamlPackages.menhir
+          coq.ocamlPackages.ppx_deriving
+          coq.ocamlPackages.ppxlib
+          coq.ocamlPackages.yojson
+
+          pkgs.sv-lang
+          pkgs.z3
+
+        ];
       in {
-        devShells.default = pkgs.mkShell {
-          packages =
-            [
-              coq
-              coqPackages.ExtLib
-              coqPackages.equations
-              coqPackages.smtcoq
+        packages.default = pkgs.stdenv.mkDerivation {
+          pname = "vera";
+          version = "0.1.0"; # Replace with your actual version
 
-              coq.ocaml
-              coq.ocamlPackages.findlib
-              coq.ocamlPackages.ocaml-lsp
-              coq.ocamlPackages.dune_3
-              coq.ocamlPackages.utop
-              coq.ocamlPackages.ocamlformat
-              coq.ocamlPackages.z3
-              coq.ocamlPackages.menhir
-              coq.ocamlPackages.ppx_deriving
-              coq.ocamlPackages.ppxlib
-              coq.ocamlPackages.yojson
+          src = self; # This assumes the source is in the current directory
 
-              pkgs.sv-lang
-              pkgs.slang
-              pkgs.verible
-              pkgs.surelog
-              pkgs.z3
-            ];
+          buildInputs = deps ++ [ pkgs.makeWrapper ];
+
+          buildPhase = ''
+            dune build
+          '';
+
+          installPhase = ''
+            mkdir -p $out/bin
+            cp _build/default/bin/main.exe $out/bin/vera
+
+            # Wrap the binary to add slang to PATH
+            wrapProgram $out/bin/vera \
+              --prefix PATH : ${pkgs.sv-lang}/bin \
+              --prefix PATH : ${pkgs.z3}/bin
+          '';
+
+          meta = with pkgs.lib; {
+            description = "Verified Verilog Equivalence Checker";
+            homepage = ""; # Add your project homepage if available
+            license = licenses.mit; # Replace with your actual license
+            platforms = platforms.unix;
+          };
         };
+
       }
     );
 }
