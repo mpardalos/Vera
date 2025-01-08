@@ -13,11 +13,29 @@
         coq = pkgs.coq_8_19;
         coqPackages = pkgs.coqPackages_8_19;
 
+        smtcoq-api = coqPackages.mkCoqDerivation {
+          pname = "smtcoq-api";
+          repo = "smtcoq-api";
+          owner = "smtcoq";
+          branch = "interp";
+
+          version = "2022-12-11";
+          release = {
+            "2022-12-11" = {
+              rev = "1368e5d443677723f1ede70caedd392d0800c6a6";
+              sha256 = "sha256-rZcxUwtf8i70QNYuXctGufhI5+53yFBxRz2k6uA4gxo=";
+            };
+          };
+
+          nativeBuildInputs = [ coq.ocaml coqPackages.smtcoq ];
+        };
+
         deps = [
           coq
           coqPackages.ExtLib
           coqPackages.equations
           coqPackages.smtcoq
+          smtcoq-api
 
           coq.ocaml
           coq.ocamlPackages.findlib
