@@ -1,6 +1,5 @@
 {
   description = "A verified verilog equivalence checker (minimum viable product)";
-
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
@@ -10,6 +9,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+
         coq = pkgs.coq_8_19;
         coqPackages = pkgs.coqPackages_8_19;
         deps = [
@@ -32,7 +32,6 @@
 
           pkgs.sv-lang
           pkgs.z3
-
         ];
       in {
         packages.default = pkgs.stdenv.mkDerivation {
@@ -64,7 +63,6 @@
             platforms = platforms.unix;
           };
         };
-
       }
     );
 }
