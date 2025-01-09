@@ -12,6 +12,7 @@
 
         coq = pkgs.coq_8_19;
         coqPackages = pkgs.coqPackages_8_19;
+
         deps = [
           coq
           coqPackages.ExtLib
@@ -33,7 +34,21 @@
           pkgs.sv-lang
           pkgs.z3
         ];
+
+        dev-deps = [
+          pkgs.abc-verifier
+          pkgs.bitwuzla
+          pkgs.cvc4
+          pkgs.cvc5
+          pkgs.yosys
+          pkgs.iverilog
+          (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
+        ];
       in {
+        devShells.default = pkgs.mkShell {
+          packages = deps ++ dev-deps;
+        };
+
         packages.default = pkgs.stdenv.mkDerivation {
           pname = "vera";
           version = "0.1.0"; # Replace with your actual version
