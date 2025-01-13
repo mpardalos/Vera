@@ -37,11 +37,13 @@ let read_verafile filename : (string * string) list * (string * string) list =
   let rec read_verafile_lines acc_in acc_out =
     try
       let line = input_line channel in
-      match String.split_on_char ' ' line with
+      match String.split_on_char ' ' (String.trim line) with
       | [ "IN"; l; r ] ->
           read_verafile_lines (List.append acc_in [ (l, r) ]) acc_out
       | [ "OUT"; l; r ] ->
           read_verafile_lines acc_in (List.append acc_out [ (l, r) ])
+      | [ ] |  [ "" ] ->
+          read_verafile_lines acc_in acc_out
       | _ -> raise (Failure (String.cat "Invalid line in .vera file: " line))
     with End_of_file -> (acc_in, acc_out)
   in
