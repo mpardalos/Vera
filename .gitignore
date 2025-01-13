@@ -1,3 +1,4 @@
 /.direnv/
 /_build/
 .lia.cache
+/test/out/
