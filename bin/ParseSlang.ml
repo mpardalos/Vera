@@ -161,7 +161,14 @@ let read_binary_op = function
   | "GreaterThan" -> Vera.Verilog.BinaryGreaterThan
   | "Equality" -> Vera.Verilog.BinaryEqualsEquals
   | "LogicalAnd" -> Vera.Verilog.BinaryLogicalAnd
+  | "BinaryAnd" -> Vera.Verilog.BinaryBitwiseAnd
+  | "BinaryOr" -> Vera.Verilog.BinaryBitwiseOr
+  | "LogicalShiftRight" -> Vera.Verilog.BinaryShiftRight
   | str -> raise (SlangUnexpectedValue ("binary operator", str))
+
+let read_unary_op = function
+  | "BitwiseNot" -> Vera.Verilog.UnaryNegation
+  | str -> raise (SlangUnexpectedValue ("unary operator", str))
 
 let read_name str = Scanf.sscanf str "%d %s" (fun _ n -> n)
 
@@ -193,11 +200,18 @@ let rec parse_expression json =
       in
       let operand = json |> member "operand" |> parse_expression in
       Vera.Verilog.Resize (conversion_type, operand)
+  | "Concatenation" ->
+      let exprs = json |> member "operands" |> to_list |> List.map parse_expression in
+      Vera.Verilog.Concatenation exprs
   | "BinaryOp" ->
       let op = json |> member "op" |> to_string |> read_binary_op in
       let lhs = json |> member "left" |> parse_expression in
       let rhs = json |> member "right" |> parse_expression in
       Vera.Verilog.BinaryOp (op, lhs, rhs)
+  | "UnaryOp" ->
+      let op = json |> member "op" |> to_string |> read_unary_op in
+      let operand = json |> member "operand" |> parse_expression in
+      Vera.Verilog.UnaryOp (op, operand)
   | kind ->
       (* Vera.Verilog.NamedExpression ((), Util.string_to_lst kind) *)
       raise (SlangUnexpectedValue ("expression kind", kind))

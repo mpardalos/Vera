@@ -7,15 +7,19 @@ From vera Require Import Bitvector.
 
 Module SMT.
   Inductive qfbv {T} :=
+  | BVOr : qfbv -> qfbv -> qfbv
+  | BVAnd : qfbv -> qfbv -> qfbv
   | BVAdd : qfbv -> qfbv -> qfbv
   | BVMul : qfbv -> qfbv -> qfbv
   | BVNeg : qfbv -> qfbv
+  | BVNot : qfbv -> qfbv
   | BVShl : qfbv -> qfbv -> qfbv
   | BVLShr : qfbv -> qfbv -> qfbv
   | BVLit : BV.t -> qfbv
   | BVVar : T -> qfbv
   | BVZeroExtend : N -> qfbv -> qfbv
   | BVExtract : N -> N -> qfbv -> qfbv
+  | BVConcat : qfbv -> qfbv -> qfbv
   | CoreEq : qfbv -> qfbv -> qfbv
   | CoreNot : qfbv -> qfbv
   | CoreITE : qfbv -> qfbv -> qfbv -> qfbv

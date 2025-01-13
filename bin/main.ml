@@ -42,8 +42,7 @@ let read_verafile filename : (string * string) list * (string * string) list =
           read_verafile_lines (List.append acc_in [ (l, r) ]) acc_out
       | [ "OUT"; l; r ] ->
           read_verafile_lines acc_in (List.append acc_out [ (l, r) ])
-      | [ ] |  [ "" ] ->
-          read_verafile_lines acc_in acc_out
+      | [] | [ "" ] -> read_verafile_lines acc_in acc_out
       | _ -> raise (Failure (String.cat "Invalid line in .vera file: " line))
     with End_of_file -> (acc_in, acc_out)
   in
@@ -173,8 +172,8 @@ let () =
         in
         match queryResult with
         | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
-        | Vera.Inr query ->
-            (match SMT_Z3.run_query query with
+        | Vera.Inr query -> (
+            match SMT_Z3.run_query query with
             | SMT_Z3.UNSAT -> printf "Equivalent (UNSAT)\n"
             | SMT_Z3.SAT model_opt -> (
                 printf "Non-equivalent (SAT)\n";
@@ -182,14 +181,10 @@ let () =
                 | None -> printf "No counterexample provided.\n"
                 | Some model ->
                     printf "Model:\n---\n%a\n---\n" SMT_Z3.z3_model_fmt model)
-            | SMT_Z3.UNKNOWN -> printf "Unknown\n");
-            printf
-              "\n==========================================================\n\n"
-        )
+            | SMT_Z3.UNKNOWN -> printf "Unknown\n"))
     | _ -> usage_and_exit ()
   in
 
-  printf "\n\n";
   match Array.to_list Sys.argv with
   | _prog :: "parse_custom" :: rest -> MyVerilogParser.run_parser_command rest
   | _prog :: "compare" :: rest -> compare rest

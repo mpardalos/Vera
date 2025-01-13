@@ -1,7 +1,7 @@
 open Format
 open Vera
 
-let operator fmt = function
+let binop fmt = function
   | Verilog.BinaryPlus -> fprintf fmt "+"
   | Verilog.BinaryMinus -> fprintf fmt "-"
   | Verilog.BinaryStar -> fprintf fmt "*"
@@ -30,6 +30,11 @@ let operator fmt = function
   | Verilog.BinaryShiftLeftArithmetic -> fprintf fmt "<<<"
   | Verilog.BinaryLogicalImplication -> fprintf fmt "->"
   | Verilog.BinaryLogicalEquivalence -> fprintf fmt "<->"
+
+let unaryop fmt = function
+  | Verilog.UnaryPlus -> fprintf fmt "+"
+  | Verilog.UnaryMinus -> fprintf fmt "-"
+  | Verilog.UnaryNegation -> fprintf fmt "!"
 
 let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"
@@ -62,11 +67,15 @@ module Untyped = struct
         fprintf fmt "%d'd%d" (Vera.BV.size v) (bits_to_int v)
     | UntypedVerilog.BitSelect (target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
+    | UntypedVerilog.Concatenation exprs ->
+        fprintf fmt "{%a}" (pp_print_list expression ~pp_sep:Util.comma_sep) exprs
     | UntypedVerilog.Conditional (cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f
     | UntypedVerilog.BinaryOp (op, l, r) ->
-        fprintf fmt "( %a@ %a@ %a )" expression l operator op expression r
+        fprintf fmt "( %a@ %a@ %a )" expression l binop op expression r
+    | UntypedVerilog.UnaryOp (op, e) ->
+        fprintf fmt "( %a@ %a )" unaryop op expression e
     | UntypedVerilog.NamedExpression (_, name) ->
         fprintf fmt "%s" (Util.lst_to_string name)
     | UntypedVerilog.Resize (n, e) ->
@@ -135,9 +144,13 @@ module Typed = struct
     | Verilog.Resize (t, e) ->
         fprintf fmt "( %a@ as@ %a )" expression e vtype t
     | Verilog.BinaryOp (op, l, r) ->
-        fprintf fmt "( %a@ %a@ %a )" expression l operator op expression r
+        fprintf fmt "( %a@ %a@ %a )" expression l binop op expression r
+    | Verilog.UnaryOp (op, e) ->
+        fprintf fmt "( %a@ %a )" unaryop op expression e
     | Verilog.BitSelect (target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
+    | Verilog.Concatenation exprs ->
+        fprintf fmt "{%a}" (pp_print_list expression ~pp_sep:Util.comma_sep) exprs
     | Verilog.Conditional (cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f

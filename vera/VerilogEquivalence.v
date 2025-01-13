@@ -23,14 +23,18 @@ Section prefixing.
 
   Equations prefix_names_qfbv : SMT.qfbv string -> SMT.qfbv string := {
     | SMT.BVVar n => SMT.BVVar (prefix_name n)
+    | SMT.BVOr l r => SMT.BVOr (prefix_names_qfbv l) (prefix_names_qfbv r)
+    | SMT.BVAnd l r => SMT.BVAnd (prefix_names_qfbv l) (prefix_names_qfbv r)
     | SMT.BVAdd l r => SMT.BVAdd (prefix_names_qfbv l) (prefix_names_qfbv r)
     | SMT.BVMul l r => SMT.BVMul (prefix_names_qfbv l) (prefix_names_qfbv r)
     | SMT.BVNeg e => SMT.BVNeg (prefix_names_qfbv e)
+    | SMT.BVNot e => SMT.BVNot (prefix_names_qfbv e)
     | SMT.BVShl l r => SMT.BVShl (prefix_names_qfbv l) (prefix_names_qfbv r)
     | SMT.BVLShr l r => SMT.BVLShr (prefix_names_qfbv l) (prefix_names_qfbv r)
     | SMT.BVLit val => SMT.BVLit val
     | SMT.BVZeroExtend count e => SMT.BVZeroExtend count (prefix_names_qfbv e)
     | SMT.BVExtract lo hi e => SMT.BVExtract lo hi (prefix_names_qfbv e)
+    | SMT.BVConcat l r => SMT.BVConcat (prefix_names_qfbv l) (prefix_names_qfbv r)
     | SMT.CoreEq l r => SMT.CoreEq (prefix_names_qfbv l) (prefix_names_qfbv r)
     | SMT.CoreNot e => SMT.CoreNot (prefix_names_qfbv e)
     | SMT.CoreITE cond ifT ifF => SMT.CoreITE (prefix_names_qfbv cond) (prefix_names_qfbv ifT) (prefix_names_qfbv ifF)
@@ -105,8 +109,11 @@ Definition equivalence_query
   unsafe_smt_netlist1 <- VerilogToSMT.verilog_to_smt canonical_verilog1 ;;
   unsafe_smt_netlist2 <- VerilogToSMT.verilog_to_smt canonical_verilog2 ;;
 
-  let prefix1 := SMT.smtnlName unsafe_smt_netlist1 in
-  let prefix2 := SMT.smtnlName unsafe_smt_netlist2 in
+  let (prefix1, prefix2) :=
+    if (SMT.smtnlName unsafe_smt_netlist1 =? SMT.smtnlName unsafe_smt_netlist2)%string
+    then (SMT.smtnlName unsafe_smt_netlist1 ++ "_1", SMT.smtnlName unsafe_smt_netlist2 ++ "_2")%string
+    else (SMT.smtnlName unsafe_smt_netlist1, SMT.smtnlName unsafe_smt_netlist2)
+  in
 
   let prefixed_smt_netlist1 := prefix_names_smt_netlist prefix1 unsafe_smt_netlist1 in
   let prefixed_smt_netlist2 := prefix_names_smt_netlist prefix2 unsafe_smt_netlist2 in

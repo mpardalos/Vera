@@ -16,7 +16,7 @@ From Coq Require Arith.PeanoNat.
 From Equations Require Import Equations.
 
 Module VerilogCommon.
-  Variant op :=
+  Variant binop :=
     | BinaryPlus (* '+' *)
     | BinaryMinus (* '-' *)
     | BinaryStar (* '*' *)
@@ -47,10 +47,28 @@ Module VerilogCommon.
     | BinaryLogicalEquivalence (* '<->' *)
   .
 
+
+  Variant unaryop :=
+    | UnaryPlus (* +  *)
+    | UnaryMinus (* -  *)
+    | UnaryNegation (* !  *)
+    (* TODO: reduction operators *)
+    (*
+    | UnaryReduce... (* ~  *)
+    | UnaryReduce... (* &  *)
+    | UnaryReduce... (* ~& *)
+    | UnaryReduce... (* |  *)
+    | UnaryReduce... (* ~| *)
+    | UnaryReduce... (* ^  *)
+    | UnaryReduce... (* ~^ *)
+    | UnaryReduce... (* ^~ *)
+     *)
+  .
+
   Section op_show.
     Local Open Scope string.
     Import ShowNotation.
-    Global Instance op_Show : Show op :=
+    Global Instance binop_Show : Show binop :=
       { show u :=
           match u with
           | BinaryPlus => "+"
@@ -83,6 +101,14 @@ Module VerilogCommon.
           | BinaryLogicalEquivalence => "<->"
           end
       }.
+    Global Instance unaryop_Show : Show unaryop :=
+      { show u :=
+          match u with
+          | UnaryPlus => "+"
+          | UnaryMinus => "-"
+          | UnaryNegation => "!"
+          end
+      }.
   End op_show.
 
   Variant vector_declaration :=
@@ -113,9 +139,11 @@ Module MkVerilog(Annotation : DecidableType).
   Include VerilogCommon.
 
   Inductive expression :=
-  | BinaryOp : op -> expression -> expression -> expression
+  | BinaryOp : binop -> expression -> expression -> expression
+  | UnaryOp : unaryop -> expression -> expression
   | Conditional : expression -> expression -> expression -> expression
   | BitSelect : expression -> expression -> expression
+  | Concatenation : list expression -> expression
   | IntegerLiteral : BV.t -> expression
   | NamedExpression : Annotation.t -> string -> expression
   | Resize : N -> expression -> expression
@@ -157,7 +185,10 @@ Module Verilog.
 
   Equations expr_type : expression -> N :=
     expr_type (BinaryOp _ lhs _) := expr_type lhs;
+    (* TODO: Unary operators might change expression type *)
+    expr_type (UnaryOp _ operand):= expr_type operand;
     expr_type (BitSelect _ _) := 1%N;
+    expr_type (Concatenation exprs) := fold_left N.add (map expr_type exprs) 0%N;
     expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
     expr_type (Resize t _) := t;
     expr_type (IntegerLiteral v) := BV.size v;

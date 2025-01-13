@@ -19,8 +19,10 @@ Import (notations) Bitvector.BV.
 From Equations Require Import Equations.
 
 From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Data.Monads.OptionMonad.
+From ExtLib Require Import Data.List.
 
 Import ListNotations.
 Import MonadNotation.
@@ -65,15 +67,25 @@ Module CombinationalOnly.
     |}.
 
   Equations
-    eval_op
-      (op : Verilog.op)
+    eval_binop
+      (op : Verilog.binop)
       (lhs : BV.t)
       (rhs : BV.t)
     : BV.t :=
-    eval_op Verilog.BinaryPlus lhs rhs := BV.bv_add lhs rhs;
-    eval_op _ lhs rhs := _
+    eval_binop Verilog.BinaryPlus lhs rhs := BV.bv_add lhs rhs;
+    eval_binop _ lhs rhs := _
   .
   Admit Obligations.
+
+  Equations
+    eval_unaryop
+      (operator : Verilog.unaryop)
+      (operand : BV.t)
+    : BV.t :=
+    eval_unaryop _ operand := _
+  .
+  Admit Obligations.
+
 
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
   (* Notation with_rewrite e := (eq_rect_r _ e _). *)
@@ -89,10 +101,13 @@ Module CombinationalOnly.
 
   Equations
     eval_expr : VerilogState -> Verilog.expression -> option BV.t :=
+    eval_expr st (Verilog.UnaryOp op operand) :=
+      operand__val <- eval_expr st operand ;;
+      ret (eval_unaryop op operand__val) ;
     eval_expr st (Verilog.BinaryOp op lhs rhs) :=
       lhs__val <- eval_expr st lhs ;;
       rhs__val <- eval_expr st rhs ;;
-      ret (eval_op op lhs__val rhs__val) ;
+      ret (eval_binop op lhs__val rhs__val) ;
     eval_expr st (Verilog.Conditional cond tBranch fBranch) :=
       cond__val <- eval_expr st cond ;;
       tBranch__val <- eval_expr st tBranch ;;
@@ -107,6 +122,9 @@ Module CombinationalOnly.
     eval_expr st (Verilog.Resize t expr) :=
       val <- eval_expr st expr ;;
       ret (convert t val);
+    eval_expr st (Verilog.Concatenation exprs) :=
+      vals <- mapT (eval_expr st) exprs ;;
+      ret (concat vals);
     eval_expr st (Verilog.IntegerLiteral val) := ret val ;
     eval_expr st (Verilog.NamedExpression _ name) := StrMap.find name (regState st)
   .
@@ -143,7 +161,7 @@ Module CombinationalOnly.
     refine (fst (exec_statement_elim
                    (fun st1 stmt mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
                    (fun st1 stmts mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
-                   _ _ _ _ _ _ _ _ _ _ _ )); intros; auto; try discriminate.
+                   _ _ _ _ _ _ _ _ _ _ _ _ _ )); intros; auto; try discriminate.
     - inversion H; destruct (eval_expr st rhs); try discriminate; clear H.
       inversion H1; clear H1.
       reflexivity.

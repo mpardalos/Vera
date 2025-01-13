@@ -12,8 +12,11 @@ end
 module SMT (Name : Formattable) = struct
   let rec qfbv fmt = function
     | Vera.SMT.BVAdd (l, r) -> fprintf fmt "(bvadd %a %a)" qfbv l qfbv r
+    | Vera.SMT.BVAnd (l, r) -> fprintf fmt "(bvand %a %a)" qfbv l qfbv r
+    | Vera.SMT.BVOr (l, r) -> fprintf fmt "(bvor %a %a)" qfbv l qfbv r
     | Vera.SMT.BVMul (l, r) -> fprintf fmt "(bvmult %a %a)" qfbv l qfbv r
     | Vera.SMT.BVNeg f -> fprintf fmt "(bvneg %a)" qfbv f
+    | Vera.SMT.BVNot f -> fprintf fmt "(bvnot %a)" qfbv f
     | Vera.SMT.BVShl (l, r) -> fprintf fmt "(bvshl %a %a)" qfbv l qfbv r
     | Vera.SMT.BVLShr (l, r) -> fprintf fmt "(bvlshr %a %a)" qfbv l qfbv r
     | Vera.SMT.BVLit v -> fprintf fmt "(_ bv%d %d)" (bits_to_int v) (Vera.BV.size v)
@@ -22,6 +25,7 @@ module SMT (Name : Formattable) = struct
         fprintf fmt "((_ zero_extend %d) %a)" num qfbv f
     | Vera.SMT.BVExtract (hi, lo, f) ->
         fprintf fmt "((_ extract %d %d) %a)" hi lo qfbv f
+    | Vera.SMT.BVConcat (l, r) -> fprintf fmt "(concat %a %a)" qfbv l qfbv r
     | Vera.SMT.CoreEq (l, r) ->
         fprintf fmt "(= %a %a)" qfbv l qfbv r
     | Vera.SMT.CoreNot e ->

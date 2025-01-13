@@ -44,6 +44,14 @@ Definition cast_from_to {name} (from to: N) (expr : SMT.qfbv name) : SMT.qfbv na
 .
 
 Equations expr_to_smt : Verilog.expression -> transf (SMT.qfbv string) :=
+  expr_to_smt (Verilog.UnaryOp Verilog.UnaryPlus operand) :=
+    expr_to_smt operand ;
+  expr_to_smt (Verilog.UnaryOp Verilog.UnaryMinus operand) :=
+    operand__smt <- expr_to_smt operand ;;
+    ret (SMT.BVNeg operand__smt);
+  expr_to_smt (Verilog.UnaryOp Verilog.UnaryNegation operand) :=
+    operand__smt <- expr_to_smt operand ;;
+    ret (SMT.BVNot operand__smt);
   expr_to_smt (Verilog.BinaryOp Verilog.BinaryPlus lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
@@ -86,6 +94,14 @@ Equations expr_to_smt : Verilog.expression -> transf (SMT.qfbv string) :=
            (SMT.BVLShr
               (cast_from_to t__lhs t__shift lhs__smt)
               (cast_from_to t__rhs t__shift rhs__smt)));
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryBitwiseOr lhs rhs) :=
+    lhs__smt <- expr_to_smt lhs ;;
+    rhs__smt <- expr_to_smt rhs ;;
+    ret (SMT.BVOr lhs__smt rhs__smt);
+  expr_to_smt (Verilog.BinaryOp Verilog.BinaryBitwiseAnd lhs rhs) :=
+    lhs__smt <- expr_to_smt lhs ;;
+    rhs__smt <- expr_to_smt rhs ;;
+    ret (SMT.BVAnd lhs__smt rhs__smt);
   expr_to_smt (Verilog.BinaryOp Verilog.BinaryGreaterThan lhs rhs) :=
     lhs__smt <- expr_to_smt lhs ;;
     rhs__smt <- expr_to_smt rhs ;;
@@ -108,6 +124,12 @@ Equations expr_to_smt : Verilog.expression -> transf (SMT.qfbv string) :=
     raise "todo"%string;
   expr_to_smt (Verilog.BinaryOp op _ _) :=
     raise ("Unsupported operator in SMT: " ++ to_string op)%string;
+  expr_to_smt (Verilog.Concatenation []) :=
+    raise "Unsupported empty concatenation in SMT"%string;
+  expr_to_smt (Verilog.Concatenation (hd :: tl)) :=
+    hd__smt <- expr_to_smt hd ;;
+    tl__smt <- mapT expr_to_smt tl ;;
+    ret (fold_left SMT.BVConcat tl__smt hd__smt);
   expr_to_smt (Verilog.Conditional cond ifT ifF) :=
     let t__cond := Verilog.expr_type cond in
     condval__smt <- expr_to_smt cond ;;

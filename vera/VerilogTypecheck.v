@@ -45,10 +45,15 @@ Definition tc_name (Γ : TCBindings) (t_expr : Verilog.vtype) (name : string) : 
     end.
 
 Equations tc_lvalue : TCBindings -> Verilog.expression -> TC unit :=
+  tc_lvalue Γ (Verilog.UnaryOp _ _) :=
+    raise "Unary operator not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.BinaryOp _ _ _) :=
     raise "Binary operator not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.Conditional _ _ _) :=
     raise "Conditional not permitted as lvalue"%string;
+  tc_lvalue Γ (Verilog.Concatenation _) :=
+    (* TODO: Allow concatenation as lvalue *)
+    raise "Concatenation not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.IntegerLiteral _) :=
     raise "Constant not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.Resize _ e) :=
@@ -62,6 +67,9 @@ Definition dec_value_matches_type (v: BV.t) (t: Verilog.vtype) : { BV.size v = t
   N.eq_dec (BV.size v) t.
 
 Equations tc_expr : TCBindings -> Verilog.expression -> TC unit :=
+  tc_expr Γ (Verilog.UnaryOp op e) :=
+    typed_e <- tc_expr Γ e ;;
+    ret tt ;
   tc_expr Γ (Verilog.BinaryOp op l r) :=
     typed_l <- tc_expr Γ l ;;
     typed_r <- tc_expr Γ r ;;
@@ -78,6 +86,9 @@ Equations tc_expr : TCBindings -> Verilog.expression -> TC unit :=
       ret tt
     else
       raise "Conditional branches do not match"%string ;
+  tc_expr Γ (Verilog.Concatenation exprs) :=
+    mapT (tc_expr Γ) exprs ;;
+    ret tt ;
   tc_expr Γ (Verilog.IntegerLiteral value) :=
     ret tt;
   tc_expr Γ (Verilog.NamedExpression t_expr n) :=

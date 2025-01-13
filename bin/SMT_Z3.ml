@@ -9,12 +9,22 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
       Z3.BitVector.mk_add z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
         (qfbv_formula_to_z3 var_ctx z3_ctx r)
+  | Vera.SMT.BVAnd (l, r) ->
+      Z3.BitVector.mk_and z3_ctx
+        (qfbv_formula_to_z3 var_ctx z3_ctx l)
+        (qfbv_formula_to_z3 var_ctx z3_ctx r)
+  | Vera.SMT.BVOr (l, r) ->
+      Z3.BitVector.mk_or z3_ctx
+        (qfbv_formula_to_z3 var_ctx z3_ctx l)
+        (qfbv_formula_to_z3 var_ctx z3_ctx r)
   | Vera.SMT.BVMul (l, r) ->
       Z3.BitVector.mk_mul z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
         (qfbv_formula_to_z3 var_ctx z3_ctx r)
   | Vera.SMT.BVNeg f ->
       Z3.BitVector.mk_neg z3_ctx (qfbv_formula_to_z3 var_ctx z3_ctx f)
+  | Vera.SMT.BVNot f ->
+      Z3.BitVector.mk_not z3_ctx (qfbv_formula_to_z3 var_ctx z3_ctx f)
   | Vera.SMT.BVShl (l, r) ->
       Z3.BitVector.mk_shl z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
@@ -34,6 +44,10 @@ let rec qfbv_formula_to_z3 (var_ctx : var_context) (z3_ctx : Z3.context)
   | Vera.SMT.BVExtract (hi, lo, f) ->
       Z3.BitVector.mk_extract z3_ctx hi lo
         (qfbv_formula_to_z3 var_ctx z3_ctx f)
+  | Vera.SMT.BVConcat (l, r) ->
+      Z3.BitVector.mk_concat z3_ctx
+        (qfbv_formula_to_z3 var_ctx z3_ctx l)
+        (qfbv_formula_to_z3 var_ctx z3_ctx r)
   | Vera.SMT.CoreEq (l, r) ->
       Z3.Boolean.mk_eq z3_ctx
         (qfbv_formula_to_z3 var_ctx z3_ctx l)
@@ -95,7 +109,6 @@ type query_result =
   | UNKNOWN
 
 let run_query (query : char list Vera.SMT.formula list) =
-  List.iter (printf "%a\n" SMTPP.StrSMT.smt) query;
   let z3_ctx = Z3.mk_context [] in
   let z3_solver = Z3.Solver.mk_solver z3_ctx None in
   let z3_exprs = smt_to_z3 z3_ctx query in
