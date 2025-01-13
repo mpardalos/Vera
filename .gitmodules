@@ -1,0 +1,3 @@
+[submodule "EPFL-benchmarks"]
+	path = test/EPFL-benchmarks
+	url = git@github.com:lvchenyangAI/EPFL-benchmarks.git
