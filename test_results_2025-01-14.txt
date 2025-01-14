@@ -1,0 +1,20 @@
+[ arbiter    ] FAIL (not equivalent)
+[ cavlc      ] OK
+[ ctrl       ] OK
+[ dec        ] OK
+[ i2c        ] OK
+[ int2float  ] OK
+[ mem_ctrl   ] OK
+[ priority   ] FAIL (not equivalent)
+[ router     ] OK
+[ voter      ] FAIL (not equivalent)
+[ adder      ] OK
+[ bar        ] FAIL (not equivalent)
+[ div        ] FAIL (not equivalent)
+[ hyp        ] TIMEOUT (124)
+[ log2       ] FAIL (not equivalent)
+[ max        ] FAIL (not equivalent)
+[ multiplier ] TIMEOUT (124)
+[ sin        ] OK
+[ sqrt       ] OK
+[ square     ] OK
