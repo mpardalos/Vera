@@ -29,13 +29,20 @@ Module BV.
     | Npos p => of_pos_full p
   }.
 
+  (** We use concat instead of bv_zextn because bv_zextn is broken! It adds
+  zeros at the start instead of the end, effectively shifting the value *)
+  (* TODO: Report issue with zextn *)
   Definition of_pos_fixed (width : N) (value : positive) : bitvector :=
     let bv := of_pos_full value in
-    bv_extr 0 width (size bv) bv.
+    if (N.ltb (size bv) width)
+    then bv_concat (zeros (width - size bv)) bv
+    else bv_extr 0 width (size bv) bv.
 
   Definition of_N_fixed (width : N) (value : N) : bitvector :=
     let bv := of_N_full value in
-    bv_extr 0 width (size bv) bv.
+    if (N.ltb (size bv) width)
+    then bv_concat (zeros (width - size bv)) bv
+    else bv_extr 0 width (size bv) bv.
 
   Fixpoint to_positive (bs : list bool) : positive :=
     match bs with
