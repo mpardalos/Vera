@@ -108,6 +108,23 @@ let parse_net json =
     Vera.Verilog.varVectorDeclaration = vector_declaration;
   }
 
+let rec hex_to_bits width hex : bool list =
+  let r =
+    snd
+      (String.fold_left
+         (fun (w, acc) c ->
+           if w <= 0 then (0, acc)
+           else
+             ( w - 4,
+               List.append
+                 (Vera.bits_from_int 4 (int_of_string ("0x" ^ String.make 1 c)))
+                 acc ))
+         (width, []) hex)
+  in
+  if List.length r < width then
+    List.append r (List.init (width - List.length r) (fun _ -> false))
+  else r
+
 let read_constant const_str =
   let const_str = String.trim const_str in
 
@@ -132,8 +149,8 @@ let read_constant const_str =
       Vera.bits_from_int width value
     else if Str.string_match sized_hex_re const_str 0 then
       let width = int_of_string (Str.matched_group 1 const_str) in
-      let value = int_of_string ("0x" ^ Str.matched_group 2 const_str) in
-      Vera.bits_from_int width value
+      let hex = Str.matched_group 2 const_str in
+      hex_to_bits width hex
     else if Str.string_match unsized_decimal_re const_str 0 then
       let value = int_of_string const_str in
       Vera.bits_from_int 32 value (* Default to 32-bit for unsized decimal *)
@@ -144,8 +161,8 @@ let read_constant const_str =
       let value = int_of_string ("0b" ^ Str.matched_group 1 const_str) in
       Vera.bits_from_int 32 value (* Default to 32-bit for unsized binary *)
     else if Str.string_match unsized_prefixed_hex_re const_str 0 then
-      let value = int_of_string ("0x" ^ Str.matched_group 1 const_str) in
-      Vera.bits_from_int 32 value (* Default to 32-bit for unsized hex *)
+      let hex = Str.matched_group 1 const_str in
+      hex_to_bits 32 hex (* Default to 32-bit for unsized hex *)
     else raise (SlangUnexpectedValue ("constant", const_str))
   with
   | Failure _ -> raise (SlangUnexpectedValue ("constant", const_str))
@@ -201,7 +218,9 @@ let rec parse_expression json =
       let operand = json |> member "operand" |> parse_expression in
       Vera.Verilog.Resize (conversion_type, operand)
   | "Concatenation" ->
-      let exprs = json |> member "operands" |> to_list |> List.map parse_expression in
+      let exprs =
+        json |> member "operands" |> to_list |> List.map parse_expression
+      in
       Vera.Verilog.Concatenation exprs
   | "BinaryOp" ->
       let op = json |> member "op" |> to_string |> read_binary_op in
