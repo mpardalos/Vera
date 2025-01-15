@@ -1,0 +1,66 @@
+[ adder-depth ] (    0s) OK
+[ bar-depth  ] (    0s) OK
+[ div-depth  ] ( 1268s) OK
+[ hyp-depth  ] ( 2851s) FAIL (2)
+[ log2-depth ] (  311s) FAIL (not equivalent)
+[ max-depth  ] (    1s) OK
+[ multiplier-depth ] (  111s) OK
+[ sin-depth  ] ( 3600s) TIMEOUT (124)
+[ sqrt-depth ] (  930s) OK
+[ square-depth ] (   21s) OK
+[ arbiter-depth ] (    7s) OK
+[ cavlc-depth ] (    1s) OK
+[ ctrl-depth ] (    0s) OK
+[ dec-depth  ] (    0s) OK
+[ i2c-depth  ] (    0s) OK
+[ int2float-depth ] (    0s) OK
+[ mem-depth  ] (    0s) FAIL (2)
+error: no such file or directory: '/home/mp5617/vera/test/EPFL-benchmarks/random_control/mem.v'
+error: no such file or directory: '/home/mp5617/vera/test/EPFL-benchmarks/random_control/mem.v'
+error: no such file or directory: '/home/mp5617/vera/test/EPFL-benchmarks/random_control/mem.v'
+[ priority-depth ] (    1s) OK
+[ router-depth ] (    0s) OK
+[ voter-depth ] (   10s) FAIL (not equivalent)
+[ adder-size ] (    0s) OK
+[ bar-size   ] (    1s) OK
+[ div-size   ] (  276s) OK
+[ hyp-size   ] ( 2044s) FAIL (2)
+[ log2-size  ] (  143s) FAIL (not equivalent)
+[ max-size   ] (    1s) OK
+[ multiplier-size ] (   47s) OK
+[ sin-size   ] (    2s) OK
+[ sqrt-size  ] (   36s) OK
+[ square-size ] (   17s) OK
+[ arbiter-size ] (    6s) OK
+[ cavlc-size ] (    0s) OK
+[ ctrl-size  ] (    0s) OK
+[ dec-size   ] (    0s) OK
+[ i2c-size   ] (    0s) OK
+[ int2float-size ] (    0s) OK
+[ mem-size   ] (    0s) FAIL (2)
+error: no such file or directory: '/home/mp5617/vera/test/EPFL-benchmarks/random_control/mem.v'
+error: no such file or directory: '/home/mp5617/vera/test/EPFL-benchmarks/random_control/mem.v'
+error: no such file or directory: '/home/mp5617/vera/test/EPFL-benchmarks/random_control/mem.v'
+[ priority-size ] (    0s) OK
+[ router-size ] (    0s) OK
+[ voter-size ] (   10s) FAIL (not equivalent)
+[ arbiter    ] (   12s) OK
+[ cavlc      ] (    0s) OK
+[ ctrl       ] (    0s) OK
+[ dec        ] (    0s) OK
+[ i2c        ] (    1s) OK
+[ int2float  ] (    0s) OK
+[ mem_ctrl   ] ( 1407s) OK
+[ priority   ] (    0s) FAIL (not equivalent)
+[ router     ] (    0s) OK
+[ voter      ] (   41s) OK
+[ adder      ] (    0s) OK
+[ bar        ] (    1s) OK
+[ div        ] (  527s) OK
+[ hyp        ] ( 3600s) TIMEOUT (124)
+[ log2       ] (  349s) OK
+[ max        ] (    1s) OK
+[ multiplier ] (   82s) OK
+[ sin        ] (    2s) OK
+[ sqrt       ] (   64s) OK
+[ square     ] (   32s) OK
