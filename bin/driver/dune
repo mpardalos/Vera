@@ -1,0 +1,13 @@
+(coq.extraction
+ (prelude Extraction)
+ (extracted_modules Vera)
+ (theories vera ExtLib Equations SMTCoq))
+
+(ocamllex Lexer)
+(menhir (modules Parser))
+
+(library
+ (name driver)
+ (synopsis "Verified verilog equivalence checker - driver module")
+ (libraries unix yojson str)
+ (preprocess (pps ppx_deriving.show)))

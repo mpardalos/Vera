@@ -1,14 +1,5 @@
-(coq.extraction
- (prelude Extraction)
- (extracted_modules Vera)
- (theories vera ExtLib Equations SMTCoq))
-
-(ocamllex Lexer)
-(menhir (modules Parser))
-
 (executable
  (public_name vera)
  (name main)
- (libraries unix yojson str)
- (preprocess
-  (pps ppx_deriving.show)))
+ (libraries driver)
+ (preprocess (pps ppx_deriving.show)))

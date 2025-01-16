@@ -1,4 +1,5 @@
 open Format
+open Driver
 
 let ( >>= ) (x : ('err, 'a) Vera.sum) (f : 'a -> ('err, 'b) Vera.sum) =
   match x with Vera.Inl e -> Vera.Inl e | Vera.Inr x -> f x
