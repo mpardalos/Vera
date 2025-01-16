@@ -62,5 +62,10 @@ end
 module StrSMT = SMT (struct
   type t = char list
 
-  let format fmt n = fprintf fmt "%s" (Util.lst_to_string n)
+  let format fmt n =
+    let raw_string = Util.lst_to_string n in
+    let escaped_string =
+      String.map (function '\\' -> '?' | c -> c) raw_string
+    in
+    fprintf fmt "|%s|" escaped_string
 end)

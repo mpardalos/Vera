@@ -173,15 +173,16 @@ let () =
         match queryResult with
         | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
         | Vera.Inr query -> (
-            match SMT_Z3.run_query query with
-            | SMT_Z3.UNSAT -> printf "Equivalent (UNSAT)\n"
-            | SMT_Z3.SAT model_opt -> (
+            match SMTLIB.run_query_z3 query with
+            | SMTLIB.UNSAT, out ->
+                printf "Equivalent (UNSAT)\n";
+                printf "%s\n" out
+            | SMTLIB.SAT, out ->
                 printf "Non-equivalent (SAT)\n";
-                match model_opt with
-                | None -> printf "No counterexample provided.\n"
-                | Some model ->
-                    printf "Model:\n---\n%a\n---\n" SMT_Z3.z3_model_fmt model)
-            | SMT_Z3.UNKNOWN -> printf "Unknown\n"))
+                printf "%s\n" out
+            | SMTLIB.Error, out ->
+                printf "Error\n";
+                printf "%s\n" out))
     | _ -> usage_and_exit ()
   in
 

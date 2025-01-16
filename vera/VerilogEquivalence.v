@@ -19,7 +19,7 @@ Section prefixing.
   Variable prefix : string.
 
   Definition prefix_name (name : string) : string :=
-    prefix ++ "##" ++ name.
+    prefix ++ "__" ++ name.
 
   Equations prefix_names_qfbv : SMT.qfbv string -> SMT.qfbv string := {
     | SMT.BVVar n => SMT.BVVar (prefix_name n)

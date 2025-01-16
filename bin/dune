@@ -9,6 +9,6 @@
 (executable
  (public_name vera)
  (name main)
- (libraries unix z3 yojson str)
+ (libraries unix yojson str)
  (preprocess
   (pps ppx_deriving.show)))
