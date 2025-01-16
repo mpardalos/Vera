@@ -1,0 +1,3 @@
+(test
+ (name benchtests)
+ (libraries driver fpath alcotest alcotest-lwt))

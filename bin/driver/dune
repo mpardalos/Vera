@@ -9,5 +9,5 @@
 (library
  (name driver)
  (synopsis "Verified verilog equivalence checker - driver module")
- (libraries unix yojson str)
+ (libraries unix yojson str lwt lwt.unix)
  (preprocess (pps ppx_deriving.show)))

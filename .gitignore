@@ -2,3 +2,4 @@
 /_build/
 .lia.cache
 /test/out/
+/tests/results/

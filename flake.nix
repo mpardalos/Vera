@@ -29,6 +29,9 @@
           coq.ocamlPackages.ppx_deriving
           coq.ocamlPackages.ppxlib
           coq.ocamlPackages.yojson
+          coq.ocamlPackages.fpath
+          coq.ocamlPackages.alcotest
+          coq.ocamlPackages.alcotest-lwt
 
           pkgs.sv-lang
           pkgs.z3
