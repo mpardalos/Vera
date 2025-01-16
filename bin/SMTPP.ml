@@ -19,17 +19,16 @@ module SMT (Name : Formattable) = struct
     | Vera.SMT.BVNot f -> fprintf fmt "(bvnot %a)" qfbv f
     | Vera.SMT.BVShl (l, r) -> fprintf fmt "(bvshl %a %a)" qfbv l qfbv r
     | Vera.SMT.BVLShr (l, r) -> fprintf fmt "(bvlshr %a %a)" qfbv l qfbv r
-    | Vera.SMT.BVLit v -> fprintf fmt "#b%s" (Util.lst_to_string (bits_to_binary_string v))
+    | Vera.SMT.BVLit v ->
+        fprintf fmt "#b%s" (Util.lst_to_string (bits_to_binary_string v))
     | Vera.SMT.BVVar n -> Name.format fmt n
     | Vera.SMT.BVZeroExtend (num, f) ->
         fprintf fmt "((_ zero_extend %d) %a)" num qfbv f
     | Vera.SMT.BVExtract (hi, lo, f) ->
         fprintf fmt "((_ extract %d %d) %a)" hi lo qfbv f
     | Vera.SMT.BVConcat (l, r) -> fprintf fmt "(concat %a %a)" qfbv l qfbv r
-    | Vera.SMT.CoreEq (l, r) ->
-        fprintf fmt "(= %a %a)" qfbv l qfbv r
-    | Vera.SMT.CoreNot e ->
-        fprintf fmt "(not %a)" qfbv e
+    | Vera.SMT.CoreEq (l, r) -> fprintf fmt "(= %a %a)" qfbv l qfbv r
+    | Vera.SMT.CoreNot e -> fprintf fmt "(not %a)" qfbv e
     | Vera.SMT.CoreITE (cond, ifT, ifF) ->
         fprintf fmt "(ite %a %a %a)" qfbv cond qfbv ifT qfbv ifF
 
@@ -38,8 +37,7 @@ module SMT (Name : Formattable) = struct
   let smt fmt = function
     | Vera.SMT.CDeclare (n, s) ->
         fprintf fmt "(declare-const %a %a)" Name.format n sort s
-    | Vera.SMT.CEqual (l, r) ->
-        fprintf fmt "(assert (= %a %a))" qfbv l qfbv r
+    | Vera.SMT.CEqual (l, r) -> fprintf fmt "(assert (= %a %a))" qfbv l qfbv r
     | Vera.SMT.CDistinct (l, r) ->
         fprintf fmt "(assert (distinct %a %a))" qfbv l qfbv r
 
