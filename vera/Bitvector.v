@@ -1,6 +1,7 @@
 From Coq Require Import BinNat BinPos.
 From Coq Require Import List.
 From Coq Require Import Psatz.
+From Coq Require Import String.
 
 From SMTCoq Require Import BVList.
 
@@ -59,4 +60,10 @@ Module BV.
     if negb (fold_left orb (bits val) false)
     then N0
     else Npos (to_positive (bits val)).
+
+  Fixpoint to_string (val : bitvector) : string :=
+    match val with
+    | [] => ""
+    | b::bs => to_string bs ++ (if b then "1" else "0")
+    end.
 End BV.

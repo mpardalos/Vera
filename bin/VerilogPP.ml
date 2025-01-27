@@ -64,7 +64,7 @@ module Untyped = struct
     Format.fprintf fmt "@[";
     (match e with
     | UntypedVerilog.IntegerLiteral v ->
-        fprintf fmt "%d'd%d" (Vera.BV.size v) (bits_to_int v)
+        fprintf fmt "%d'b%s" (Vera.BV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
     | UntypedVerilog.BitSelect (target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
     | UntypedVerilog.Concatenation exprs ->
@@ -140,7 +140,7 @@ module Typed = struct
     Format.fprintf fmt "@[";
     (match e with
     | Verilog.IntegerLiteral v ->
-        fprintf fmt "%d'd%d" (Vera.BV.size v) (bits_to_int v)
+        fprintf fmt "%d'b%s" (Vera.BV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
     | Verilog.Resize (t, e) ->
         fprintf fmt "( %a@ as@ %a )" expression e vtype t
     | Verilog.BinaryOp (op, l, r) ->
