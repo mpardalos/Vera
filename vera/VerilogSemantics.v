@@ -48,6 +48,12 @@ Module CombinationalOnly.
     |}
   .
 
+  Fixpoint set_regs (assignments : list (string * BV.t)) (st : VerilogState) : VerilogState :=
+    match assignments with
+    | [] => st
+    | ((n, v) :: nvs) => set_reg n v (set_regs nvs st)
+    end.
+
   Definition pop_pending_process (st : VerilogState) : VerilogState :=
     {| regState := regState st
     ; pendingProcesses := tail (pendingProcesses st)
