@@ -96,12 +96,11 @@ Proof.
   inversion eval1 as [ ? step1 | ? ? step1_1 step1_2 ]; subst;
     repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in *);
     unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
-
-
-    inversion eval2 as [ ? step2 | ? ? step2_1 step2_2 ]; subst;
+  inversion eval2 as [ ? step2 | ? ? step2_1 step2_2 ]; subst;
+    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in *);
+    unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
   inv step1.
   inv step2.
   exists b. simpl.
   now rewrite StrMap.add_eq_o.
-  -
 Qed.
