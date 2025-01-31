@@ -78,8 +78,6 @@ End BV.
 Module XBV.
   Variant bit := X | I | O.
 
-  Definition t := list bit.
-
   Definition bit_to_bool b :=
     match b with
     | I => Some true
@@ -88,12 +86,18 @@ Module XBV.
     end
   .
 
-  Fixpoint exes (count : nat) : t :=
+  Definition t := list bit.
+
+  Definition size (xbv : t) := N.of_nat (length xbv).
+
+  Fixpoint mk_list_exes (count : nat) : t :=
     match count with
     | 0%nat => []
-    | S n => X :: exes n
+    | S n => X :: mk_list_exes n
     end
   .
+
+  Definition exes (count : N) : t := mk_list_exes (nat_of_N count).
 
   Definition bit_eq_dec (b1 b2: bit) : { b1 = b2 } + { b1 <> b2 }.
   Proof. unfold decidable. decide equality. Qed.
@@ -111,8 +115,43 @@ Module XBV.
     | Some l_bv, Some r_bv => from_bv (f l_bv r_bv)
     | _, _ =>
         if (length l) =? (length r)
-        then exes (length l)
+        then exes (size l)
         else nil
     end
   .
+
+  (* Shouldn't this be adding bits at the end? *)
+  Fixpoint extend (xbv : t) (i : nat) (b : bit) :=
+    match i with
+    | 0 => xbv
+    | S n => b :: extend xbv n b
+    end
+  .
+
+  Definition zextn (xbv : t) (i : N) :=
+    extend xbv (nat_of_N i) O.
+
+  Fixpoint extract (x: t) (i j: nat) : t :=
+    match x with
+    | [] => []
+    | bx :: x' =>
+        match i with
+        | 0      =>
+            match j with
+            | 0    => []
+            | S j' => bx :: extract x' i j'
+            end
+        | S i'   =>
+            match j with
+            | 0    => []
+            | S j' => extract x' i' j'
+            end
+        end
+    end.
+
+  Definition extr (xbv : t) (i j : N) : t :=
+    extract xbv (nat_of_N i) (nat_of_N j).
+
+  Definition bitOf (n : nat) (xbv: t): bit := nth n xbv X.
+
 End XBV.
