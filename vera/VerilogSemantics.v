@@ -14,7 +14,7 @@ From Coq Require Import Psatz.
 From vera Require Import Verilog.
 From vera Require Import Common.
 From vera Require Import Bitvector.
-Import (notations) Bitvector.BV.
+Import (notations) Bitvector.XBV.
 
 From Equations Require Import Equations.
 
@@ -37,18 +37,18 @@ Module CombinationalOnly.
 
   Record VerilogState :=
     MkVerilogState
-      { regState : StrMap.t BV.t
+      { regState : StrMap.t XBV.t
       ; pendingProcesses : list Process
       }
   .
 
-  Definition set_reg (name : string) (value : BV.t) (st : VerilogState) : VerilogState :=
+  Definition set_reg (name : string) (value : XBV.t) (st : VerilogState) : VerilogState :=
     {| regState := StrMap.add name value (regState st)
     ; pendingProcesses := pendingProcesses st
     |}
   .
 
-  Fixpoint set_regs (assignments : list (string * BV.t)) (st : VerilogState) : VerilogState :=
+  Fixpoint set_regs (assignments : list (string * XBV.t)) (st : VerilogState) : VerilogState :=
     match assignments with
     | [] => st
     | ((n, v) :: nvs) => set_reg n v (set_regs nvs st)
@@ -75,10 +75,10 @@ Module CombinationalOnly.
   Equations
     eval_binop
       (op : Verilog.binop)
-      (lhs : BV.t)
-      (rhs : BV.t)
-    : BV.t :=
-    eval_binop Verilog.BinaryPlus lhs rhs := BV.bv_add lhs rhs;
+      (lhs : XBV.t)
+      (rhs : XBV.t)
+    : XBV.t :=
+    eval_binop Verilog.BinaryPlus lhs rhs := XBV.x_binop BV.bv_add lhs rhs;
     eval_binop _ lhs rhs := _
   .
   Admit Obligations.
@@ -86,8 +86,8 @@ Module CombinationalOnly.
   Equations
     eval_unaryop
       (operator : Verilog.unaryop)
-      (operand : BV.t)
-    : BV.t :=
+      (operand : XBV.t)
+    : XBV.t :=
     eval_unaryop _ operand := _
   .
   Admit Obligations.
@@ -96,17 +96,17 @@ Module CombinationalOnly.
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
   (* Notation with_rewrite e := (eq_rect_r _ e _). *)
 
-  Definition convert (m : N) (value : BV.t) : BV.t :=
-    match N.compare (BV.size value) m with
-    | Lt => BV.bv_zextn (m - (BV.size value)) (BV.size value) value
-    | Gt => BV.bv_extr 0 m (BV.size value) value
+  Definition convert (m : N) (value : XBV.t) : XBV.t :=
+    match N.compare (XBV.size value) m with
+    | Lt => XBV.zextn value (m - (XBV.size value))%N
+    | Gt => XBV.extr value 0 m
     | Eq => value
     end.
 
-  Definition select_bit (vec : BV.t) (idx : BV.t) : BV.t := [BV.bitOf 0 (BV.bv_shr vec idx)].
+  Definition select_bit (vec : XBV.t) (idx : XBV.t) : XBV.t := [XBV.bitOf 0 (XBV.x_binop BV.bv_shr vec idx)].
 
   Equations
-    eval_expr : VerilogState -> Verilog.expression -> option BV.t :=
+    eval_expr : VerilogState -> Verilog.expression -> option XBV.t :=
     eval_expr st (Verilog.UnaryOp op operand) :=
       operand__val <- eval_expr st operand ;;
       ret (eval_unaryop op operand__val) ;
@@ -118,9 +118,14 @@ Module CombinationalOnly.
       cond__val <- eval_expr st cond ;;
       tBranch__val <- eval_expr st tBranch ;;
       fBranch__val <- eval_expr st fBranch ;;
-      if BV.is_zero cond__val
-      then ret fBranch__val
-      else ret tBranch__val;
+      (* TODO: Check that ?: semantics match with standard *)
+      match XBV.to_bv cond__val with
+      | None => ret (XBV.exes (XBV.size tBranch__val))
+      | Some cond__bv =>
+        if BV.is_zero cond__bv
+        then ret fBranch__val
+        else ret tBranch__val
+      end;
     eval_expr st (Verilog.BitSelect vec idx) :=
       vec__val <- eval_expr st vec ;;
       idx__val <- eval_expr st idx ;;
@@ -131,7 +136,7 @@ Module CombinationalOnly.
     eval_expr st (Verilog.Concatenation exprs) :=
       vals <- mapT (eval_expr st) exprs ;;
       ret (concat vals);
-    eval_expr st (Verilog.IntegerLiteral val) := ret val ;
+    eval_expr st (Verilog.IntegerLiteral val) := ret (XBV.from_bv val) ;
     eval_expr st (Verilog.NamedExpression _ name) := StrMap.find name (regState st)
   .
 
@@ -140,9 +145,21 @@ Module CombinationalOnly.
     exec_statement st (Verilog.Block stmts) := exec_statements st stmts ;
     exec_statement st (Verilog.If cond trueBranch falseBranch) :=
       cond__val <- eval_expr st cond ;;
-      if BV.is_zero cond__val
-      then exec_statement st falseBranch
-      else exec_statement st trueBranch
+      (*
+       * If the cond_predicate expression evaluates to true (that is, has a
+       * nonzero known value), the first statement shall be executed. If it
+       * evaluates to false (that is, has a zero value or the value is x or z), the
+       * first statement shall not execute. If there is an else statement and the
+       * cond_predicate expression is false, the else statement shall be
+       * executed.
+       *)
+      match XBV.to_bv cond__val with
+      | None => exec_statement st falseBranch
+      | Some cond__bv =>
+        if BV.is_zero cond__bv
+        then exec_statement st falseBranch
+        else exec_statement st trueBranch
+      end
     ;
     exec_statement st (Verilog.BlockingAssign (Verilog.NamedExpression _ name) rhs) :=
       rhs__val <- eval_expr st rhs ;;
@@ -171,7 +188,8 @@ Module CombinationalOnly.
     - inversion H; destruct (eval_expr st rhs); try discriminate; clear H.
       inversion H1; clear H1.
       reflexivity.
-    - inversion H1; destruct (eval_expr st cond); try discriminate; clear H1.
+    - inversion H2; destruct (eval_expr st cond); try discriminate; clear H2.
+      destruct (XBV.to_bv _); eauto.
       destruct (BV.is_zero _); eauto.
     - inversion H. reflexivity.
     - inversion H1; clear H1.

@@ -1,16 +1,26 @@
 From Coq Require Import BinNat BinPos.
 From Coq Require Import List.
+From Coq Require Import Nat.
 From Coq Require Import Psatz.
 From Coq Require Import String.
+From Coq Require Import Logic.Decidable.
 
 From SMTCoq Require Import BVList.
+
+From ExtLib Require Import Structures.Traversable.
+From ExtLib Require Import Data.Monads.OptionMonad.
+From ExtLib Require Import Data.List.
+
+From vera Require Import Tactics.
 
 From Equations Require Import Equations.
 
 Import SigTNotations.
 Import ListNotations.
+Local Open Scope nat_scope.
 Local Open Scope bv_scope.
-Local Open Scope positive_scope.
+
+Set Bullet Behavior "Strict Subproofs".
 
 Module BV.
   Include RAWBITVECTOR_LIST.
@@ -21,8 +31,8 @@ Module BV.
 
   Equations of_pos_full (value : positive) : bitvector := {
     | xH => [true]
-    | (p~1) => bv_concat (of_pos_full p) [true]
-    | (p~0) => bv_concat (of_pos_full p) [false]
+    | (p~1)%positive => bv_concat (of_pos_full p) [true]
+    | (p~0)%positive => bv_concat (of_pos_full p) [false]
   }.
 
   Equations of_N_full (value : N) : bitvector := {
@@ -67,3 +77,129 @@ Module BV.
     | b::bs => to_string bs ++ (if b then "1" else "0")
     end.
 End BV.
+
+Module XBV.
+  Variant bit := X | I | O.
+
+  Definition bit_to_bool b :=
+    match b with
+    | I => Some true
+    | O => Some false
+    | X => None
+    end
+  .
+
+  Definition t := list bit.
+
+  Definition size (xbv : t) := N.of_nat (length xbv).
+
+  Fixpoint mk_list_exes (count : nat) : t :=
+    match count with
+    | 0%nat => []
+    | S n => X :: mk_list_exes n
+    end
+  .
+
+  Definition exes (count : N) : t := mk_list_exes (nat_of_N count).
+
+  Definition bit_eq_dec (b1 b2: bit) : { b1 = b2 } + { b1 <> b2 }.
+  Proof. unfold decidable. decide equality. Qed.
+
+  Definition from_bv (bv : BV.t) : t :=
+    List.map (fun (b: bool) => if b then I else O) bv
+  .
+
+  Definition to_bv (bv : t) : option BV.t :=
+    mapT bit_to_bool bv
+  .
+
+  Definition has_x (bv : t) : Prop :=
+    List.Exists (fun b => b = X) bv.
+
+  Lemma has_x_to_bv (bv : t) : has_x bv <-> to_bv bv = None.
+  Proof.
+    repeat (unfold has_x, to_bv; simpl).
+    induction bv.
+    - split; intros; solve_by_invert.
+    - split.
+      + intros. inv H.
+        * reflexivity.
+        * simpl. destruct (bit_to_bool a); try reflexivity.
+          destruct IHbv as [forward backward].
+          rewrite forward by assumption; reflexivity.
+      + intros.
+        destruct a; simpl in *.
+        * repeat constructor.
+        * destruct (mapT_list bit_to_bool bv); try discriminate.
+          constructor; apply IHbv; trivial.
+        * destruct (mapT_list bit_to_bool bv); try discriminate.
+          constructor; apply IHbv; trivial.
+  Qed.
+
+  Lemma not_has_x_to_bv (bv : t) : ~ (has_x bv) <-> exists v, to_bv bv = Some v.
+  Proof.
+    rewrite has_x_to_bv.
+    destruct (to_bv bv) eqn:E; split; intro H.
+    - eauto.
+    - discriminate.
+    - contradiction.
+    - solve_by_inverts 2.
+  Qed.
+
+  Definition x_binop f l r :=
+    match to_bv l, to_bv r with
+    | Some l_bv, Some r_bv => from_bv (f l_bv r_bv)
+    | _, _ =>
+        if (length l) =? (length r)
+        then exes (size l)
+        else nil
+    end
+  .
+
+  (* Shouldn't this be adding bits at the end? *)
+  Fixpoint extend (xbv : t) (i : nat) (b : bit) :=
+    match i with
+    | 0 => xbv
+    | S n => b :: extend xbv n b
+    end
+  .
+
+  Definition zextn (xbv : t) (i : N) :=
+    extend xbv (nat_of_N i) O.
+
+  Fixpoint extract (x: t) (i j: nat) : t :=
+    match x with
+    | [] => []
+    | bx :: x' =>
+        match i with
+        | 0      =>
+            match j with
+            | 0    => []
+            | S j' => bx :: extract x' i j'
+            end
+        | S i'   =>
+            match j with
+            | 0    => []
+            | S j' => extract x' i' j'
+            end
+        end
+    end.
+
+  Definition extr (xbv : t) (i j : N) : t :=
+    extract xbv (nat_of_N i) (nat_of_N j).
+
+  Definition bitOf (n : nat) (xbv: t): bit := nth n xbv X.
+
+  (*
+   * Matches this Verilog operation:
+   * bv1 === bv2
+   *)
+  Definition triple_equal (bv1 bv2 : t) := bv1 = bv2.
+
+  (*
+   * Matches this Verilog operation:
+   * (bv1 == bv2) === 1
+   *)
+  Definition definite_equal (bv1 bv2 : t) :=
+    exists v, to_bv bv1 = Some v /\ to_bv bv2 = Some v.
+End XBV.
