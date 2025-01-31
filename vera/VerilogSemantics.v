@@ -137,7 +137,11 @@ Module CombinationalOnly.
       vals <- mapT (eval_expr st) exprs ;;
       ret (concat vals);
     eval_expr st (Verilog.IntegerLiteral val) := ret (XBV.from_bv val) ;
-    eval_expr st (Verilog.NamedExpression _ name) := StrMap.find name (regState st)
+    eval_expr st (Verilog.NamedExpression t name) :=
+      match StrMap.find name (regState st) with
+      | None => Some (XBV.exes t)
+      | Some v => ret v
+      end
   .
 
   Equations

@@ -146,5 +146,9 @@ Proof.
     unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
   inv step2_2'.
   eexists. simpl.
-  now rewrite StrMap.add_eq_o.
-Qed.
+  repeat progress (
+      try rewrite StrMap.add_eq_o;
+      try rewrite StrMap.add_neq_o;
+      try intuition (try discriminate; try f_equal; auto)
+    ).
+Admitted.
