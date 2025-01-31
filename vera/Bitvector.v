@@ -1,16 +1,23 @@
 From Coq Require Import BinNat BinPos.
 From Coq Require Import List.
+From Coq Require Import Nat.
 From Coq Require Import Psatz.
 From Coq Require Import String.
+From Coq Require Import Logic.Decidable.
 
 From SMTCoq Require Import BVList.
+
+From ExtLib Require Import Structures.Traversable.
+From ExtLib Require Import Data.Monads.OptionMonad.
+From ExtLib Require Import Data.List.
+
 
 From Equations Require Import Equations.
 
 Import SigTNotations.
 Import ListNotations.
+Local Open Scope nat_scope.
 Local Open Scope bv_scope.
-Local Open Scope positive_scope.
 
 Module BV.
   Include RAWBITVECTOR_LIST.
@@ -21,8 +28,8 @@ Module BV.
 
   Equations of_pos_full (value : positive) : bitvector := {
     | xH => [true]
-    | (p~1) => bv_concat (of_pos_full p) [true]
-    | (p~0) => bv_concat (of_pos_full p) [false]
+    | (p~1)%positive => bv_concat (of_pos_full p) [true]
+    | (p~0)%positive => bv_concat (of_pos_full p) [false]
   }.
 
   Equations of_N_full (value : N) : bitvector := {
@@ -67,3 +74,45 @@ Module BV.
     | b::bs => to_string bs ++ (if b then "1" else "0")
     end.
 End BV.
+
+Module XBV.
+  Variant bit := X | I | O.
+
+  Definition t := list bit.
+
+  Definition bit_to_bool b :=
+    match b with
+    | I => Some true
+    | O => Some false
+    | X => None
+    end
+  .
+
+  Fixpoint exes (count : nat) : t :=
+    match count with
+    | 0%nat => []
+    | S n => X :: exes n
+    end
+  .
+
+  Definition bit_eq_dec (b1 b2: bit) : { b1 = b2 } + { b1 <> b2 }.
+  Proof. unfold decidable. decide equality. Qed.
+
+  Definition from_bv (bv : BV.t) : t :=
+    List.map (fun (b: bool) => if b then I else O) bv
+  .
+
+  Definition to_bv (bv : t) : option BV.t :=
+    mapT bit_to_bool bv
+  .
+
+  Definition x_binop f l r :=
+    match to_bv l, to_bv r with
+    | Some l_bv, Some r_bv => from_bv (f l_bv r_bv)
+    | _, _ =>
+        if (length l) =? (length r)
+        then exes (length l)
+        else nil
+    end
+  .
+End XBV.
