@@ -1,10 +1,7 @@
 From Coq Require Import BinNat.
 From Coq Require Import String.
 From Coq Require Import Nat.
-From Coq Require FMaps.
-From Coq Require MSets.
 From Coq Require Import Structures.OrderedTypeEx.
-From Coq Require FMapFacts.
 From Coq Require Import List.
 From Coq Require Import ssreflect.
 From Coq Require Import Relations.
@@ -37,13 +34,13 @@ Module CombinationalOnly.
 
   Record VerilogState :=
     MkVerilogState
-      { regState : StrMap.t XBV.t
+      { regState : string -> option XBV.t
       ; pendingProcesses : list Process
       }
   .
 
   Definition set_reg (name : string) (value : XBV.t) (st : VerilogState) : VerilogState :=
-    {| regState := StrMap.add name value (regState st)
+    {| regState := fun n => if (n =? name)%string then Some value else (regState st n)
     ; pendingProcesses := pendingProcesses st
     |}
   .
@@ -68,7 +65,7 @@ Module CombinationalOnly.
 
   Definition initial_state (m : Verilog.vmodule) : VerilogState :=
     {|
-      regState := StrMap.empty _;
+      regState := fun _ => None;
       pendingProcesses := List.filter is_always_comb (Verilog.modBody m)
     |}.
 
@@ -138,7 +135,7 @@ Module CombinationalOnly.
       ret (concat vals);
     eval_expr st (Verilog.IntegerLiteral val) := ret (XBV.from_bv val) ;
     eval_expr st (Verilog.NamedExpression t name) :=
-      match StrMap.find name (regState st) with
+      match regState st name with
       | None => Some (XBV.exes t)
       | Some v => ret v
       end
