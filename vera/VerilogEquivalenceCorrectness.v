@@ -50,7 +50,7 @@ Definition equivalent
       set_regs (List.map
                   (fun '((_, n), v) => (n, v))
                   (List.combine inputs input_vals))
-        (initial_state v1)
+        (initial_state v2)
     in
     multistep_eval init1 final1 ->
     multistep_eval init2 final2 ->
