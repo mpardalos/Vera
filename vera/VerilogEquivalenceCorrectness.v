@@ -27,11 +27,11 @@ Definition match_on_regs
   (v1 v2 : VerilogState)
   : Prop :=
   List.Forall
-    (fun '(n1, n2) => exists v,
-         StrMap.find n1 (regState v1) = Some v /\
-           StrMap.find n2 (regState v2) = Some v
-    )
-    regs.
+    (fun '(n1, n2) =>
+       exists v, regState v1 n1 = Some v
+            /\ regState v2 n2 = Some v
+            /\ ~ XBV.has_x v
+    ) regs.
 
 Definition equivalent
   (inputs outputs : list (string * string))
@@ -39,6 +39,7 @@ Definition equivalent
   : Prop :=
   forall (input_vals : list XBV.t)
     (input_len_ok : length input_vals = length inputs)
+    (input_vals_defined : Forall (fun bv => ~ XBV.has_x bv) input_vals)
     (final1 final2 : VerilogState),
     let init1 :=
       set_regs (List.map
@@ -101,9 +102,10 @@ End V.
 Example assign_out_equivalent : equivalent [("in", "in")] [("out", "out")] assign_out assign_out.
 Proof.
   unfold equivalent, match_on_regs.
-  intros * ? * [eval1 blocked1] [eval2 blocked2].
+  intros * ? ? * [eval1 blocked1] [eval2 blocked2].
   simpl in input_len_ok.
   repeat (destruct input_vals; try solve [simpl in *; discriminate]).
+  repeat (destruct input_vals_defined; try solve [simpl in *; discriminate]).
   simpl in *.
   unfold assign_out, set_reg in eval1; simpl in eval1.
   unfold assign_out, set_reg in eval2; simpl in eval2.
@@ -118,19 +120,18 @@ Proof.
     unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
   inv step1.
   inv step2.
-  eexists. simpl.
-  now rewrite StrMap.add_eq_o.
+  eexists. intuition.
 Qed.
 
 Example assign_out_twostep_equivalent : equivalent [("in", "in")] [("out", "out")] assign_out assign_out_twostep.
 Proof.
   unfold equivalent, match_on_regs.
-  intros * ? * [eval1 blocked1] [eval2 blocked2].
+  intros * ? ? * [eval1 blocked1] [eval2 blocked2].
   simpl in input_len_ok.
-  repeat (destruct input_vals; try solve [simpl in *; discriminate]).
+  repeat (destruct input_vals_defined; try solve [simpl in *; discriminate]).
   simpl in *.
-  unfold assign_out, set_reg in eval1; simpl in eval1.
-  unfold assign_out, set_reg in eval2; simpl in eval2.
+  (* unfold assign_out, set_reg in eval1; simpl in eval1. *)
+  (* unfold assign_out, set_reg in eval2; simpl in eval2. *)
   repeat constructor.
   unfold multistep_eval, multistep in *.
   eapply clos_trans_t1n in eval1; inversion eval1 as [ ? step1 | ? ? step1_1 step1_2 ]; subst;
@@ -146,9 +147,5 @@ Proof.
     unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
   inv step2_2'.
   eexists. simpl.
-  repeat progress (
-      try rewrite StrMap.add_eq_o;
-      try rewrite StrMap.add_neq_o;
-      try intuition (try discriminate; try f_equal; auto)
-    ).
+  intuition. f_equal.
 Admitted.
