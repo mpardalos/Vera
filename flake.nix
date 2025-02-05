@@ -17,15 +17,20 @@
           pname = "smtcoq-api";
           repo = "smtcoq-api";
           owner = "smtcoq";
-          branch = "interp";
+          branch = "correctness";
 
-          version = "2022-12-11";
+          version = "2024-12-12-correctness";
           release = {
             "2022-12-11" = {
               rev = "1368e5d443677723f1ede70caedd392d0800c6a6";
               sha256 = "sha256-rZcxUwtf8i70QNYuXctGufhI5+53yFBxRz2k6uA4gxo=";
             };
+            "2024-12-12-correctness" = {
+              rev = "1f2e2169a74539ded2db50ae2161d666768388c5";
+              sha256 = "sha256-1Q/dXVXgYAn0MPJ/MdFRwB8jZkC76bACjmagZN9l08Q=";
+            };
           };
+        };
 
           nativeBuildInputs = [ coq.ocaml coqPackages.smtcoq ];
         };
