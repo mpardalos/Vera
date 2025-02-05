@@ -5,6 +5,8 @@ From Coq Require Import String.
 From vera Require Import Common (port_direction).
 From vera Require Import Bitvector.
 
+From SMTCoqApi Require SMTLib.
+
 Module SMT.
   Inductive qfbv {T} :=
   | BVOr : qfbv -> qfbv -> qfbv
@@ -47,4 +49,14 @@ Module SMT.
       }.
 
   Arguments smt_netlist : clear implicits.
+
+  Record smtlib_query :=
+    MkSMTLibQuery
+      { declarations : list (nat * SMTLib.sort);
+        assertions : list SMTLib.term
+      }.
+
+  Definition max_var (q : smtlib_query) : nat :=
+    List.list_max (List.map fst (declarations q)).
+
 End SMT.

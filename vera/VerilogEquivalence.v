@@ -5,15 +5,29 @@ From vera Require VerilogTypecheck.
 From vera Require VerilogCanonicalize.
 From vera Require VerilogToSMT.
 
-From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Data.List.
 From ExtLib Require Import Data.Monads.EitherMonad.
-Import MonadNotation.
-Open Scope monad_scope.
+From ExtLib Require Import Data.Monads.StateMonad.
+From ExtLib Require Import Data.String.
+From ExtLib Require Import Structures.Applicative.
+From ExtLib Require Import Structures.Functor.
+From ExtLib Require Import Structures.MonadExc.
+From ExtLib Require Import Structures.MonadState.
+From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Structures.Monoid.
+From ExtLib Require Import Structures.Traversable.
+From ExtLib Require Import Programming.Show.
+
 Require Import ZArith.
 Require Import String.
 Require Import List.
+
 Import ListNotations.
-Import EqNotations.
+Import CommonNotations.
+Import MonadNotation.
+Import FunctorNotation.
+Local Open Scope monad_scope.
+Local Open Scope string.
 
 Section prefixing.
   Variable prefix : string.
@@ -56,49 +70,45 @@ Section prefixing.
     |}.
 End prefixing.
 
-
 Definition prefix_pair (prefix_left prefix_right : string): (string * string) -> (string * string) :=
   fun '(n1, n2) => (prefix_name prefix_left n1, prefix_name prefix_right n2).
 
 Definition mk_equivalence_formulas
   (input_pairs output_pairs : list (string * string))
-  (smtnl1 smtnl2 : SMT.smt_netlist string)
-  : sum string (list (SMT.formula string)) :=
-
-  let port_map1 := StrMap.from_list (SMT.smtnlPorts smtnl1) in
-  let port_map2 := StrMap.from_list (SMT.smtnlPorts smtnl2) in
-  let input_pairs_ok :=
-    List.fold_right andb true
-      (List.map
-         (fun '(name1, name2) =>
-            match StrMap.find name1 port_map1, StrMap.find name2 port_map2 with
-            | Some PortIn, Some PortIn => true
-            | _, _ => false
-            end) input_pairs)
-  in
-  let output_pairs_ok :=
-    List.fold_right andb true
-      (List.map
-         (fun '(name1, name2) =>
-            match StrMap.find name1 port_map1, StrMap.find name2 port_map2 with
-            | Some PortOut, Some PortOut => true
-            | _, _ => false
-            end) output_pairs)
-  in
-
-  if (input_pairs_ok && output_pairs_ok)%bool
-  then
-    let inputs_same := map (fun '(in1, in2) => SMT.CEqual (SMT.BVVar in1) (SMT.BVVar in2)) input_pairs in
-    let outputs_different := map (fun '(in1, in2) => SMT.CDistinct (SMT.BVVar in1) (SMT.BVVar in2)) output_pairs in
-    inr (inputs_same ++ outputs_different)
-  else
-    inl "Could not match ports"%string
+  (namemap1 namemap2 : StrFunMap.t (nat * SMTLib.sort))
+  : sum string (list SMTLib.term) :=
+  inputs_same <-
+    mapT (fun '(n1, n2) =>
+            match namemap1 n1, namemap2 n2 return sum string SMTLib.term with
+            | Some (smt_name1, SMTLib.Sort_BitVec size1),
+              Some (smt_name2, SMTLib.Sort_BitVec size2) =>
+                if (size1 =? size2)%N
+                then inr (SMTLib.Term_Eq
+                            (SMTLib.Term_Fun (smt_name1, ([], SMTLib.Sort_BitVec size1)) [])
+                            (SMTLib.Term_Fun (smt_name2, ([], SMTLib.Sort_BitVec size2)) []))
+                else inl "err"%string
+            | _, _ => inl "err"%string
+            end) input_pairs;;
+  outputs_different <-
+    mapT (
+        fun '(n1, n2) =>
+          match namemap1 n1, namemap2 n2 return sum string SMTLib.term with
+          | Some (smt_name1, SMTLib.Sort_BitVec size1),
+            Some (smt_name2, SMTLib.Sort_BitVec size2) =>
+              if (size1 =? size2)%N
+              then inr (SMTLib.Term_Not (SMTLib.Term_Eq
+                                           (SMTLib.Term_Fun (smt_name1, ([], SMTLib.Sort_BitVec size1)) [])
+                                           (SMTLib.Term_Fun (smt_name2, ([], SMTLib.Sort_BitVec size2)) [])))
+              else inl "err"%string
+          | _, _ => inl "err"%string
+          end) output_pairs;;
+  ret (app inputs_same outputs_different)
 .
 
 Definition equivalence_query
   (input_pairs output_pairs : list (string * string))
   (verilog1 verilog2 : Verilog.vmodule)
-  : sum string (list (SMT.formula string)) :=
+  : sum string SMT.smtlib_query :=
 
   VerilogTypecheck.tc_vmodule verilog1 ;;
   VerilogTypecheck.tc_vmodule verilog2 ;;
@@ -106,25 +116,12 @@ Definition equivalence_query
   canonical_verilog1 <- VerilogCanonicalize.canonicalize_verilog verilog1 ;;
   canonical_verilog2 <- VerilogCanonicalize.canonicalize_verilog verilog2 ;;
 
-  unsafe_smt_netlist1 <- VerilogToSMT.verilog_to_smt canonical_verilog1 ;;
-  unsafe_smt_netlist2 <- VerilogToSMT.verilog_to_smt canonical_verilog2 ;;
+  '(query1_map, query1) <- VerilogToSMT.verilog_to_smt 0 canonical_verilog1 ;;
+  '(query2_map, query2) <- VerilogToSMT.verilog_to_smt (1 + SMT.max_var query1) canonical_verilog2 ;;
+  equivalence_formulas <- mk_equivalence_formulas input_pairs output_pairs query1_map query2_map ;;
 
-  let (prefix1, prefix2) :=
-    if (SMT.smtnlName unsafe_smt_netlist1 =? SMT.smtnlName unsafe_smt_netlist2)%string
-    then (SMT.smtnlName unsafe_smt_netlist1 ++ "_1", SMT.smtnlName unsafe_smt_netlist2 ++ "_2")%string
-    else (SMT.smtnlName unsafe_smt_netlist1, SMT.smtnlName unsafe_smt_netlist2)
-  in
-
-  let prefixed_smt_netlist1 := prefix_names_smt_netlist prefix1 unsafe_smt_netlist1 in
-  let prefixed_smt_netlist2 := prefix_names_smt_netlist prefix2 unsafe_smt_netlist2 in
-
-  let formulas1 := SMT.smtnlFormulas prefixed_smt_netlist1 in
-  let formulas2 := SMT.smtnlFormulas prefixed_smt_netlist2 in
-
-  let input_pairs_prefixed := List.map (prefix_pair prefix1 prefix2) input_pairs in
-  let output_pairs_prefixed := List.map (prefix_pair prefix1 prefix2) output_pairs in
-
-  equivalence_formulas <- mk_equivalence_formulas input_pairs_prefixed output_pairs_prefixed prefixed_smt_netlist1 prefixed_smt_netlist2 ;;
-  (** Add equivalence queries *)
-  ret (formulas1 ++ formulas2 ++ equivalence_formulas)
+  ret {|
+      SMT.declarations := SMT.declarations query1 ++ SMT.declarations query2;
+      SMT.assertions := SMT.assertions query1 ++ SMT.assertions query2 ++ equivalence_formulas
+    |}
 .

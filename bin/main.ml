@@ -106,7 +106,7 @@ let () =
   let canonical_module_of_file =
     typed_module_of_file >=> Vera.canonicalize_verilog
   in
-  let smt_netlist_of_file = canonical_module_of_file >=> Vera.verilog_to_smt in
+  let smt_netlist_of_file = canonical_module_of_file >=> Vera.verilog_to_smt 0 in
   let smt_formulas_of_file filename =
     Vera.SMT.smtnlFormulas <$> smt_netlist_of_file filename
   in

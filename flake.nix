@@ -38,11 +38,11 @@
           owner = "mpardalos";
           branch = "bitvectors";
 
-          version = "2025-01-05-bitvectors";
+          version = "bitvectors";
           release = {
-            "2025-01-05-bitvectors" = {
-              rev = "1f2e2169a74539ded2db50ae2161d666768388c5";
-              sha256 = "sha256-1Q/dXVXgYAn0MPJ/MdFRwB8jZkC76bACjmagZN9l08Q=";
+            "bitvectors" = {
+              rev = "b76748beffde557fcc95a9ad5e966a01167b496b";
+              sha256 = "sha256-W2aJUCdUuJwUdZ1IHmVnMkoixb/ZZjxR8Z1mK8PiL/Q=";
             };
           };
           nativeBuildInputs = [ coq.ocaml coqPackages.smtcoq ];

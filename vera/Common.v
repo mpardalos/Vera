@@ -6,6 +6,8 @@ Require Import FMapPositive.
 Require Import List.
 Require Import FMaps.
 Require Import FSets.
+Require Import Structures.Equalities.
+
 From ExtLib Require Import Structures.Maps.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Structures.Applicative.
@@ -92,3 +94,30 @@ End StrSet.
 Equations opt_or_else : forall {A}, option A -> A -> A :=
   opt_or_else (Some x) _ := x;
   opt_or_else None o := o.
+
+Module MkFunMap(Key: BooleanEqualityType').
+  Import (notations) Key.
+
+  Definition t A := Key.t -> option A.
+
+  Definition empty {A} : t A := fun _ => None.
+
+  Definition insert {A} (k: Key.t) (v: A) (m: t A) : t A :=
+    fun k' => if k =? k' then Some v else m k'.
+
+  Definition remove {A} (k: Key.t) (m: t A) : t A :=
+    fun k' => if k =? k' then None else m k'.
+
+  Definition of_list {A} (elems : list (Key.t * A)) : t A :=
+    List.fold_left (fun acc '(k, v) => insert k v acc) elems empty.
+End MkFunMap.
+
+Module StringUsualBoolEq <: UsualBoolEq.
+  Import String.
+  Definition t := String.string.
+  Definition eq (s1 s2 : String.string) := s1 = s2.
+  Definition eqb := String.eqb.
+  Definition eqb_eq := String.eqb_eq.
+End StringUsualBoolEq.
+Module StringAsDT := Make_UDTF(StringUsualBoolEq).
+Module StrFunMap := MkFunMap(StringAsDT).
