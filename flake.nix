@@ -32,6 +32,19 @@
           };
         };
 
+        smtcoq-api-bitvectors = coqPackages.mkCoqDerivation {
+          pname = "smtcoq-api";
+          repo = "smtcoq-api";
+          owner = "mpardalos";
+          branch = "bitvectors";
+
+          version = "2025-01-05-bitvectors";
+          release = {
+            "2025-01-05-bitvectors" = {
+              rev = "1f2e2169a74539ded2db50ae2161d666768388c5";
+              sha256 = "sha256-1Q/dXVXgYAn0MPJ/MdFRwB8jZkC76bACjmagZN9l08Q=";
+            };
+          };
           nativeBuildInputs = [ coq.ocaml coqPackages.smtcoq ];
         };
 
@@ -40,7 +53,8 @@
           coqPackages.ExtLib
           coqPackages.equations
           coqPackages.smtcoq
-          smtcoq-api
+          # smtcoq-api
+          smtcoq-api-bitvectors
 
           coq.ocaml
           coq.ocamlPackages.findlib
