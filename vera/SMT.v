@@ -58,7 +58,24 @@ Module SMT.
         assertions : list SMTLib.term
       }.
 
+  Definition model interp_sort_sym :=
+    forall (n : nat) (dom : list SMTLib.sort) (codom : SMTLib.sort), SMTLib.interp_fun_type interp_sort_sym dom codom.
+
+  Definition no_uninterp_sorts : nat -> Type := fun _ => False.
+
   Definition max_var (q : smtlib_query) : nat :=
     List.list_max (List.map fst (declarations q)).
 
+  Definition satisfied_by
+    (query : smtlib_query)
+    (interp_sort_sym : nat -> Type)
+    (interp_fun_sym : model interp_sort_sym) :=
+    List.Forall
+      (fun term => SMTLib.interp_term interp_sort_sym interp_fun_sym term =
+                  Some (existT _ SMTLib.Sort_Bool true))
+      (assertions query).
+
+  Definition sat (query : smtlib_query) : Prop := exists interp_sort_sym interp_fun_sym, satisfied_by query interp_sort_sym interp_fun_sym.
+
+  Definition unsat (query : smtlib_query) : Prop := forall interp_sort_sym interp_fun_sym, ~ (satisfied_by query interp_sort_sym interp_fun_sym).
 End SMT.
