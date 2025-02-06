@@ -5,8 +5,10 @@ From vera Require Import Bitvector.
 From vera Require VerilogTypecheck.
 From vera Require VerilogCanonicalize.
 From vera Require VerilogToSMT.
+From vera Require Import VerilogEquivalence.
 From vera Require VerilogSemantics.
 From vera Require Import Tactics.
+
 Import VerilogSemantics.CombinationalOnly.
 
 From Coq Require Import Relations.
@@ -18,7 +20,8 @@ Import MonadNotation.
 Open Scope monad_scope.
 Require Import ZArith.
 Require Import String.
-Require Import List.
+
+From Coq Require Import List.
 Import ListNotations.
 Import EqNotations.
 
@@ -148,4 +151,91 @@ Proof.
   inv step2_2'.
   eexists. simpl.
   intuition. f_equal.
+Admitted.
+
+Definition inputs (v : Verilog.vmodule) : list string :=
+  map_opt (fun p => match p with
+                 | {|
+                     Verilog.portDirection := PortIn;
+                     Verilog.portName := name
+                   |} => Some name
+                 | _ => None
+                 end)
+    (Verilog.modPorts v).
+
+Definition outputs (v : Verilog.vmodule) : list string :=
+  map_opt (fun p => match p with
+                 | {|
+                     Verilog.portDirection := PortOut;
+                     Verilog.portName := name
+                   |} => Some name
+                 | _ => None
+                 end)
+    (Verilog.modPorts v).
+
+Theorem canonicalize_correct v v' :
+  VerilogCanonicalize.canonicalize_verilog v = inr v' ->
+  equivalent (List.map dupe (inputs v)) (List.map dupe (outputs v)) v v'.
+Admitted.
+
+Compute SMTLib.interp_fun_type SMT.no_uninterp_sorts [] (SMTLib.Sort_BitVec 5).
+
+Definition match_on_regs_smt
+  (regs : list string)
+  (nameMap : StrFunMap.t (nat * SMTLib.sort))
+  (v : VerilogState)
+  (m : SMT.model SMT.no_uninterp_sorts)
+  : Prop :=
+  List.Forall
+    (fun regName =>
+       exists (varName : nat) (bv : BV.t),
+         regState v regName = Some (XBV.from_bv bv) /\
+           nameMap regName = Some (varName, SMTLib.Sort_BitVec (BV.size bv)) /\
+           m varName [] (SMTLib.Sort_BitVec (BV.size bv)) = BVList.BITVECTOR_LIST.of_bits bv
+    ) regs.
+
+Definition match_verilog_model
+  (nameMap : StrFunMap.t (nat * SMTLib.sort))
+  (v : Verilog.vmodule)
+  (m : SMT.model SMT.no_uninterp_sorts)
+  : Prop :=
+  forall (input_vals : list XBV.t)
+    (input_len_ok : length input_vals = length (inputs v))
+    (input_vals_defined : Forall (fun bv => ~ XBV.has_x bv) input_vals)
+    (final : VerilogState),
+    let init := set_regs (List.combine (inputs v) input_vals) (initial_state v) in
+    multistep_eval init final ->
+    match_on_regs_smt (inputs v) nameMap init m ->
+    match_on_regs_smt (outputs v) nameMap final m
+.
+
+Theorem verilog_to_smt_correct start v q :
+  VerilogToSMT.verilog_to_smt start v = inr q ->
+  forall model,
+  SMT.satisfied_by q (fun _ => False) model ->
+  match_verilog_model (SMT.nameVerilogToSMT q) v model.
+Admitted.
+
+Theorem equivalence_query_correct input_pairs output_pairs verilog1 verilog2 query :
+  equivalence_query input_pairs output_pairs verilog1 verilog2 = inr query ->
+  SMT.unsat query ->
+  equivalent input_pairs output_pairs verilog1 verilog2.
+Proof.
+  intros Hquery Hunsat.
+  unfold equivalence_query in *.
+  inv Hquery.
+  repeat
+    match goal with
+    | [ H : (match ?m with _ => _ end) = _ |- _ ] =>
+        destruct m eqn:?; try discriminate
+    end.
+  repeat match goal with
+         | [ H : VerilogCanonicalize.canonicalize_verilog _ = inr _ |- _ ] =>
+             apply canonicalize_correct in H
+         end.
+  repeat match goal with
+         | [ H : VerilogToSMT.verilog_to_smt _ _ = inr _ |- _ ] =>
+             pose proof (verilog_to_smt_correct _ _ _ H); clear H
+         end.
+  (* Owl goes here *)
 Admitted.
