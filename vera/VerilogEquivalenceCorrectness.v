@@ -112,11 +112,11 @@ Proof.
   repeat constructor.
   unfold multistep_eval, multistep in *.
   eapply clos_trans_t1n in eval1; inversion eval1 as [ ? step1 | ? ? step1_1 step1_2 ]; subst;
-    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in *);
+    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in * );
     unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
   eapply clos_trans_t1n in eval2.
   inversion eval2 as [ ? step2 | ? ? step2_1 step2_2 ]; subst;
-    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in *);
+    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in * );
     unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
   inv step1.
   inv step2.
@@ -135,15 +135,15 @@ Proof.
   repeat constructor.
   unfold multistep_eval, multistep in *.
   eapply clos_trans_t1n in eval1; inversion eval1 as [ ? step1 | ? ? step1_1 step1_2 ]; subst;
-    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in *);
+    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in * );
     unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
   inv step1.
   eapply clos_trans_t1n in eval2; inversion eval2 as [ ? step2 | ? ? step2_1 step2_2 ]; subst;
-    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in *);
+    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in * );
     unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
   inv step2_1.
   inversion step2_2 as [ ? step2_2' | ? ? step2_2' step2_3 ]; subst;
-    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in *);
+    repeat (unfold step in *; simp run_step exec_module_item exec_statement eval_expr in *; simpl in * );
     unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
   inv step2_2'.
   eexists. simpl.
