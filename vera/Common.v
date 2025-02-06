@@ -110,6 +110,12 @@ Module MkFunMap(Key: BooleanEqualityType').
 
   Definition of_list {A} (elems : list (Key.t * A)) : t A :=
     List.fold_left (fun acc '(k, v) => insert k v acc) elems empty.
+
+  Definition combine {A} (l r : t A) : t A :=
+    fun k => match l k with
+          | Some x => Some x
+          | None => r k
+          end.
 End MkFunMap.
 
 Module StringUsualBoolEq <: UsualBoolEq.
@@ -121,3 +127,5 @@ Module StringUsualBoolEq <: UsualBoolEq.
 End StringUsualBoolEq.
 Module StringAsDT := Make_UDTF(StringUsualBoolEq).
 Module StrFunMap := MkFunMap(StringAsDT).
+
+Module NatFunMap := MkFunMap(Nat).

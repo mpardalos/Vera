@@ -8,7 +8,7 @@ let run_query_z3 q =
   let smt_fmt = Format.formatter_of_out_channel smt_channel in
 
   Format.fprintf smt_fmt "(set-info :smt-lib-version 2.6)\n";
-  List.iter (fun expr -> Format.fprintf smt_fmt "%a\n" SMTPP.StrSMT.smt expr) q;
+  SMTLib.query smt_fmt q;
   Format.fprintf smt_fmt "(check-sat)\n";
   close_out smt_channel;
 

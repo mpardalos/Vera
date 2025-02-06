@@ -2,7 +2,7 @@ From Coq Require Import ZArith.
 From Coq Require Import BinNums.
 From Coq Require Import String.
 
-From vera Require Import Common (port_direction).
+From vera Require Import Common.
 From vera Require Import Bitvector.
 
 From SMTCoqApi Require SMTLib.
@@ -52,7 +52,9 @@ Module SMT.
 
   Record smtlib_query :=
     MkSMTLibQuery
-      { declarations : list (nat * SMTLib.sort);
+      { nameSMTToVerilog : NatFunMap.t string;
+        nameVerilogToSMT : StrFunMap.t (nat * SMTLib.sort);
+        declarations : list (nat * SMTLib.sort);
         assertions : list SMTLib.term
       }.
 

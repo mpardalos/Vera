@@ -116,11 +116,14 @@ Definition equivalence_query
   canonical_verilog1 <- VerilogCanonicalize.canonicalize_verilog verilog1 ;;
   canonical_verilog2 <- VerilogCanonicalize.canonicalize_verilog verilog2 ;;
 
-  '(query1_map, query1) <- VerilogToSMT.verilog_to_smt 0 canonical_verilog1 ;;
-  '(query2_map, query2) <- VerilogToSMT.verilog_to_smt (1 + SMT.max_var query1) canonical_verilog2 ;;
-  equivalence_formulas <- mk_equivalence_formulas input_pairs output_pairs query1_map query2_map ;;
+  query1 <- VerilogToSMT.verilog_to_smt 0 canonical_verilog1 ;;
+  query2 <- VerilogToSMT.verilog_to_smt (1 + SMT.max_var query1) canonical_verilog2 ;;
+  equivalence_formulas <- mk_equivalence_formulas input_pairs output_pairs
+                           (SMT.nameVerilogToSMT query1) (SMT.nameVerilogToSMT query2) ;;
 
   ret {|
+      SMT.nameSMTToVerilog := NatFunMap.combine (SMT.nameSMTToVerilog query1) (SMT.nameSMTToVerilog query2);
+      SMT.nameVerilogToSMT := StrFunMap.combine (SMT.nameVerilogToSMT query1)  (SMT.nameVerilogToSMT query2);
       SMT.declarations := SMT.declarations query1 ++ SMT.declarations query2;
       SMT.assertions := SMT.assertions query1 ++ SMT.assertions query2 ++ equivalence_formulas
     |}

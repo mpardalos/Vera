@@ -206,10 +206,15 @@ Fixpoint transfer_vars (start : nat) (vars : list Verilog.variable) : list (stri
 Definition declarations_of_vars : list (string * nat * SMTLib.sort) -> list (nat * SMTLib.sort) :=
   List.map (fun '(_, n, s) => (n, s)).
 
-Definition names_of_vars (vars : list (string * nat * SMTLib.sort)) : StrFunMap.t (nat * SMTLib.sort) :=
+Definition var_verilog_to_smt (vars : list (string * nat * SMTLib.sort)) : StrFunMap.t (nat * SMTLib.sort) :=
   List.fold_left
     (fun acc '(verilog__name, smt__name, sort) => StrFunMap.insert verilog__name (smt__name, sort) acc)
     vars StrFunMap.empty.
+
+Definition var_smt_to_verilog (vars : list (string * nat * SMTLib.sort)) : NatFunMap.t string :=
+  List.fold_left
+    (fun acc '(verilog__name, smt__name, sort) => NatFunMap.insert smt__name verilog__name acc)
+    vars NatFunMap.empty.
 
 Equations transfer_initial (stmt : Verilog.statement) : transf (list SMTLib.term) :=
   transfer_initial (Verilog.Block stmts) =>
@@ -229,7 +234,7 @@ Equations transfer_initial (stmt : Verilog.statement) : transf (list SMTLib.term
     raise "VerilogToSMT: Invalid expression in initial block"%string
 .
 
-Definition verilog_to_smt (var_start : nat) (vmodule : Verilog.vmodule) : transf (StrFunMap.t (nat * SMTLib.sort) * SMT.smtlib_query) :=
+Definition verilog_to_smt (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smtlib_query :=
   match Verilog.modBody vmodule with
   | [ Verilog.Initial initial_body;
       Verilog.AlwaysFF (Verilog.Block []);
@@ -237,13 +242,15 @@ Definition verilog_to_smt (var_start : nat) (vmodule : Verilog.vmodule) : transf
     ] =>
       let ports := transfer_ports (Verilog.modPorts vmodule) in
       let var_decls := transfer_vars var_start (Verilog.modVariables vmodule) in
-      let var_map := names_of_vars var_decls in
+      let var_map := var_verilog_to_smt var_decls in
       initial_smt <- transfer_initial initial_body ;;
       always_comb_smt <- transfer_comb_assignments var_map always_comb_body ;;
-      ret (var_map, {|
+      ret {|
+          SMT.nameSMTToVerilog := var_smt_to_verilog var_decls;
+          SMT.nameVerilogToSMT := var_verilog_to_smt var_decls;
           SMT.declarations := declarations_of_vars var_decls;
           SMT.assertions := initial_smt ++ always_comb_smt
-        |})
+        |}
   | [ Verilog.Initial _;
       Verilog.AlwaysFF _;
       Verilog.AlwaysComb _

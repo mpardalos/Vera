@@ -106,9 +106,8 @@ let () =
   let canonical_module_of_file =
     typed_module_of_file >=> Vera.canonicalize_verilog
   in
-  let smt_netlist_of_file = canonical_module_of_file >=> Vera.verilog_to_smt 0 in
-  let smt_formulas_of_file filename =
-    Vera.SMT.smtnlFormulas <$> smt_netlist_of_file filename
+  let smt_of_file filename =
+    Vera.verilog_to_smt (Vera.int_to_nat 0) =<< canonical_module_of_file filename
   in
 
   let lower =
@@ -126,12 +125,10 @@ let () =
     | [ "canonical"; filename ] ->
         display_or_error VerilogPP.Typed.vmodule
           (canonical_module_of_file filename)
-    | [ "smt_netlist"; filename ] ->
-        display_or_error SMTPP.StrSMT.smt_netlist (smt_netlist_of_file filename)
     | [ "smt"; filename ] ->
         display_or_error
-          (pp_print_list SMTPP.StrSMT.smt ~pp_sep:Util.newline_sep)
-          (smt_formulas_of_file filename)
+          SMTPP.SMTLib.query
+          (smt_of_file filename)
     | [ "all"; filename ] ->
         printf "\n-- parsed -- \n";
         display_or_error VerilogPP.Typed.vmodule
@@ -141,12 +138,10 @@ let () =
         printf "\n-- canonical --\n";
         display_or_error VerilogPP.Typed.vmodule
           (canonical_module_of_file filename);
-        printf "\n-- smt_netlist --\n";
-        display_or_error SMTPP.StrSMT.smt_netlist (smt_netlist_of_file filename);
-        printf "\n-- smt_formulas --\n";
+        printf "\n-- smt --\n";
         display_or_error
-          (pp_print_list SMTPP.StrSMT.smt ~pp_sep:Util.newline_sep)
-          (smt_formulas_of_file filename)
+          SMTPP.SMTLib.query
+          (smt_of_file filename)
     | [ stage; _filename ] ->
         eprintf "Unknown stage: %s\n" stage;
         usage_and_exit ()

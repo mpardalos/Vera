@@ -6,6 +6,7 @@ From vera Require Common.
 From vera Require Bitvector.
 
 From SMTCoq Require Import BVList.
+From SMTCoqApi Require SMTLib.
 
 From Coq Require Extraction.
 From Coq Require Import BinNat.
