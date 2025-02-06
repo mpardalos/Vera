@@ -19,6 +19,8 @@ From Equations Require Import Equations.
 From Coq Require Import Psatz.
 From Coq Require Import ssreflect.
 
+Import ListNotations.
+
 Module CommonNotations.
   Notation "{! x }" := (@exist _ _ x _).
   Notation "{! x | p }" := (@exist _ _ x p).
@@ -46,6 +48,18 @@ Definition opt_or {A} (l r : option A) : option A :=
   | None => r
   end
 .
+
+Fixpoint map_opt {A B} (f : A -> option B) (lst : list A) : list B :=
+  match lst with
+  | [] => []
+  | (x :: xs) => match f x with
+               | None => map_opt f xs
+               | Some x' => x' :: map_opt f xs
+               end
+  end
+.
+
+Definition dupe {A} (x : A) := (x, x).
 
 Module MapExtras(M: FMapInterface.WS).
   Import ListNotations.
