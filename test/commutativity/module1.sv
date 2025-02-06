@@ -1,7 +1,6 @@
-module Mult(input in1, input in2, output out);
-   wire [31:0] in1;
-   wire [31:0] in2;
-   wire [31:0] out;
-
+module Mult(input wire [31:0]  in1,
+            input wire [31:0]  in2,
+            output wire [31:0] out
+            );
    assign out = in1 + (0 + in2);
-endmodule // Shift
+endmodule : Mult
