@@ -122,8 +122,14 @@ Definition equivalence_query
                            (SMT.nameVerilogToSMT query1) (SMT.nameVerilogToSMT query2) ;;
 
   ret {|
-      SMT.nameSMTToVerilog := NatFunMap.combine (SMT.nameSMTToVerilog query1) (SMT.nameSMTToVerilog query2);
-      SMT.nameVerilogToSMT := StrFunMap.combine (SMT.nameVerilogToSMT query1)  (SMT.nameVerilogToSMT query2);
+      SMT.nameSMTToVerilog :=
+        NatFunMap.combine
+          (NatFunMap.map (fun s => "left__" ++ s) (SMT.nameSMTToVerilog query1))
+          (NatFunMap.map (fun s => "right__" ++ s) (SMT.nameSMTToVerilog query2));
+      SMT.nameVerilogToSMT :=
+        StrFunMap.combine
+          (SMT.nameVerilogToSMT query1)
+          (SMT.nameVerilogToSMT query2);
       SMT.declarations := SMT.declarations query1 ++ SMT.declarations query2;
       SMT.assertions := SMT.assertions query1 ++ SMT.assertions query2 ++ equivalence_formulas
     |}

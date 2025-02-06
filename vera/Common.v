@@ -116,6 +116,9 @@ Module MkFunMap(Key: BooleanEqualityType').
           | Some x => Some x
           | None => r k
           end.
+
+  Definition map {A B} (f : A -> B) (m : t A) : t B :=
+    fun k => match m k with | Some x => Some (f x) | None => None end.
 End MkFunMap.
 
 Module StringUsualBoolEq <: UsualBoolEq.

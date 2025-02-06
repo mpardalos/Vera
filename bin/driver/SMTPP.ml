@@ -4,8 +4,8 @@ open Vera
 module SMTLib = struct
  let var (nameMap : (char list) NatFunMap.t) fmt nameIdx =
     match nameMap nameIdx with
-    | Some n -> fprintf fmt "%s" (Util.lst_to_string n)
-    | None -> fprintf fmt "v%d" (int_from_nat nameIdx)
+    | Some n -> fprintf fmt "|%s|" (Util.lst_to_string n)
+    | None -> fprintf fmt "|v%d|" (int_from_nat nameIdx)
 
   let bitvector fmt bits =
     fprintf fmt "#b%s"
@@ -18,18 +18,18 @@ module SMTLib = struct
     | Sort_Uninterpreted s -> fprintf fmt "s%d" (int_from_nat s)
 
   let unaryOp fmt = function
-    | BVNot -> fprintf fmt "bv_not"
-    | BVNeg -> fprintf fmt "bv_neg"
+    | BVNot -> fprintf fmt "bvnot"
+    | BVNeg -> fprintf fmt "bvneg"
 
   let binaryOp fmt = function
-    | BVAnd -> fprintf fmt "bv_and"
-    | BVOr -> fprintf fmt "bv_or"
-    | BVAdd -> fprintf fmt "bv_add"
-    | BVMul -> fprintf fmt "bv_mul"
-    | BVUDiv -> fprintf fmt "bv_udiv"
-    | BVURem -> fprintf fmt "bv_urem"
-    | BVShl -> fprintf fmt "bv_shl"
-    | BVShr -> fprintf fmt "bv_shr"
+    | BVAnd -> fprintf fmt "bvand"
+    | BVOr -> fprintf fmt "bvor"
+    | BVAdd -> fprintf fmt "bvadd"
+    | BVMul -> fprintf fmt "bvmul"
+    | BVUDiv -> fprintf fmt "bvudiv"
+    | BVURem -> fprintf fmt "bvurem"
+    | BVShl -> fprintf fmt "bvshl"
+    | BVShr -> fprintf fmt "bvlshr"
 
   let rec term varNames fmt = function
     | Term_Fun ((name, _), []) -> var varNames fmt name
@@ -50,9 +50,9 @@ module SMTLib = struct
           (term varNames) t3
     | Term_BVLit bv -> bitvector fmt bv
     | Term_BVConcat (l, r) ->
-        fprintf fmt "(bv_concat %a %a)" (term varNames) l (term varNames) r
+        fprintf fmt "(concat %a %a)" (term varNames) l (term varNames) r
     | Term_BVExtract (lo, hi, t) ->
-        fprintf fmt "(bv_extract %d %d %a)" (int_from_nat lo) (int_from_nat hi)
+        fprintf fmt "((_ extract %d %d) %a)" (int_from_nat lo) (int_from_nat hi)
           (term varNames) t
     | Term_BVUnaryOp (op, t) ->
         fprintf fmt "(%a %a)" unaryOp op (term varNames) t
@@ -60,7 +60,7 @@ module SMTLib = struct
         fprintf fmt "(%a %a %a)" binaryOp op (term varNames) t1 (term varNames)
           t2
     | Term_BVUlt (t1, t2) ->
-        fprintf fmt "(bv_ult %a %a)" (term varNames) t1 (term varNames) t2
+        fprintf fmt "(bvult %a %a)" (term varNames) t1 (term varNames) t2
 
   let declaration varNames fmt (name, s) =
     fprintf fmt "(declare-const %a %a)" (var varNames) name sort s
