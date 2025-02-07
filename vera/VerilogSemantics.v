@@ -212,14 +212,13 @@ Module CombinationalOnly.
     run_step (MkVerilogState reg []) := None;
     run_step (MkVerilogState reg (p :: ps)) := exec_module_item (MkVerilogState reg ps) p.
 
-  Definition step (st1 st2 : VerilogState) : Prop := run_step st1 = Some st2.
+  Definition step (st1 st2 : VerilogState) := run_step st1 = Some st2.
 
   Definition multistep := clos_trans VerilogState step.
 
-  Definition blocked (st : VerilogState) : Prop := run_step st = None.
+  Definition blocked (st : VerilogState) := run_step st = None.
 
-  Definition final (st : VerilogState) : Prop :=
-    pendingProcesses st = [].
+  Definition final (st : VerilogState) := pendingProcesses st = [].
 
   Definition multistep_eval st1 st2 := multistep st1 st2 /\ blocked st2.
 

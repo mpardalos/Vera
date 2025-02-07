@@ -176,6 +176,26 @@ Module MkVerilog(Annotation : DecidableType).
       (Vector hi lo)
         (format "[ hi '.:' lo ]").
   End Notations.
+
+  Definition inputs (v : vmodule) : list string :=
+    map_opt (fun p => match p with
+                   | {|
+                       portDirection := PortIn;
+                       portName := name
+                     |} => Some name
+                   | _ => None
+                   end)
+      (modPorts v).
+
+  Definition outputs (v : vmodule) : list string :=
+    map_opt (fun p => match p with
+                   | {|
+                       portDirection := PortOut;
+                       portName := name
+                     |} => Some name
+                   | _ => None
+                   end)
+      (modPorts v).
 End MkVerilog.
 
 Module Verilog.
