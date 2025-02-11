@@ -31,8 +31,8 @@ Module BV.
 
   Equations of_pos_full (value : positive) : bitvector := {
     | xH => [true]
-    | (p~1)%positive => bv_concat (of_pos_full p) [true]
-    | (p~0)%positive => bv_concat (of_pos_full p) [false]
+    | (p~1)%positive => bv_concat [true] (of_pos_full p)
+    | (p~0)%positive => bv_concat [false] (of_pos_full p)
   }.
 
   Equations of_N_full (value : N) : bitvector := {
@@ -46,13 +46,13 @@ Module BV.
   Definition of_pos_fixed (width : N) (value : positive) : bitvector :=
     let bv := of_pos_full value in
     if (N.ltb (size bv) width)
-    then bv_concat (zeros (width - size bv)) bv
+    then bv_concat bv (zeros (width - size bv))
     else bv_extr 0 width (size bv) bv.
 
   Definition of_N_fixed (width : N) (value : N) : bitvector :=
     let bv := of_N_full value in
     if (N.ltb (size bv) width)
-    then bv_concat (zeros (width - size bv)) bv
+    then bv_concat bv (zeros (width - size bv))
     else bv_extr 0 width (size bv) bv.
 
   Fixpoint to_positive (bs : list bool) : positive :=
