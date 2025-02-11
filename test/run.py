@@ -73,8 +73,8 @@ def veratest(name, verilog, blif):
         debug(name, "Yosys processing")
         ret = run_command(name, f"yosys --commands 'read_blif {blif}; write_verilog {blif_as_verilog}'", YOSYS_TIMEOUT, test_out).returncode
         if ret != 0:
-            error(name, "FAIL (yosys error)")
-            return
+            error(name, f"FAIL (yosys error {ret})")
+            return (name, 0, f'FAIL (yosys error {ret})')
 
         debug(name, "Slang-parse blif-as-verilog")
         run_command(name, f"slang -q --ast-json {blif_as_verilog}.json {blif_as_verilog}", None, test_out)
@@ -89,14 +89,22 @@ def veratest(name, verilog, blif):
             runtime_sec = int(time.time() - start_time)
             if 'Equivalent (UNSAT)' in result.stdout:
                 msg(name, f"OK ({runtime_sec}s) (ret {result.returncode})")
+                return (name, runtime_sec, 'OK')
             elif 'Non-equivalent (SAT)' in result.stdout:
-                error(name, f"FAIL (not equivalent)")
+                message = f"FAIL (not equivalent)"
+                error(name, message)
+                return (name, runtime_sec, message)
             else:
-                error(name, f"FAIL ('{result.stdout.splitlines()[0]}')")
+                message = f"FAIL ('{result.stdout.splitlines()[0]}')"
+                error(name, message)
+                return (name, runtime_sec, message)
         except subprocess.TimeoutExpired:
             error(name, "TIMEOUT")
+            return (name, VERA_TIMEOUT, "TIMEOUT")
         except subprocess.CalledProcessError as e:
-            error(name, f"FAIL ({e.returncode})")
+            message = f"FAIL ({e.returncode})"
+            error(name, message)
+            return (name, 0, message)
     finally:
         with running_tests_lock:
             running_tests.remove(name)
@@ -164,6 +172,12 @@ test_cases += [
 
 with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TESTS) as executor:
     futures = {executor.submit(veratest, *args): args[0] for args in test_cases}
+    results = []
     for future in as_completed(futures):
         if exc := future.exception():
             print(exc)
+        else:
+            results.append(future.result())
+
+for name, runtime_sec, message in results:
+    print(f'{name},{runtime_sec},{message}')
