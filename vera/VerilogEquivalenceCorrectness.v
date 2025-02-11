@@ -16,7 +16,11 @@ From Coq Require Import Sorting.Permutation.
 
 From Equations Require Import Equations.
 From ExtLib Require Import Structures.Monads.
-From ExtLib Require Import Data.Monads.EitherMonad.
+From ExtLib Require Import Structures.Traversable.
+From ExtLib Require Import Structures.MonadExc.
+From ExtLib Require Import Data.Monads.OptionMonad.
+From ExtLib Require Import Data.List.
+
 Import MonadNotation.
 Open Scope monad_scope.
 Require Import ZArith.
@@ -178,6 +182,17 @@ Theorem verilog_to_smt_correct start v q :
   match_verilog_model (SMT.nameVerilogToSMT q) v model.
 Admitted.
 
+Lemma mapT_list_sum_in {A B E} (f : A -> sum E B) (l : list A) (l' : list B) :
+  List.mapT_list f l = inr l' ->
+  forall x, In x l -> exists y, f x = inr y /\ In y l'.
+Proof.
+  generalize dependent f. generalize dependent l'.
+  induction l; intros * H * Hin; simpl in *.
+  - contradiction.
+  - destruct (f a) eqn:Hfa; try discriminate.
+    destruct (mapT_list f l) as [|tl] eqn:Heq; try discriminate.
+Admitted.
+
 Theorem equivalence_query_canonical_correct verilog1 verilog2 query :
   equivalence_query_canonical verilog1 verilog2 = inr query ->
   SMT.unsat query ->
@@ -193,12 +208,16 @@ Proof.
           destruct m eqn:?; try discriminate
       | [ H : inr _ = inr _ |- _ ] => inv H
       | [ H : assert_dec _ _ = inr _ |- _ ] => clear H
-      | [ H : Verilog.inputs _ = Verilog.inputs _ |- _ ] => rewrite H in *
-      | [ H : Verilog.outputs _ = Verilog.outputs _ |- _ ] => rewrite H in *
       | [ H : VerilogToSMT.verilog_to_smt _ _ = inr _ |- _ ] =>
           pose proof (verilog_to_smt_correct _ _ _ H); clear H
+      | [ H : mapT_list _ _ = inr _ |- _ ] =>
+          learn (mapT_list_sum_in _ _ _ H)
       end; simpl in *
     ).
+  repeat match goal with
+         | [ L : Learnt _ |- _ ] => clear L
+         end.
+
   constructor.
   - congruence.
   - congruence.
@@ -207,6 +226,20 @@ Proof.
   - simpl. intros.
     unfold match_on_regs.
     apply List.Forall_forall; intros outreg Houtreg.
+    move Hunsat at bottom.
+    unfold SMT.unsat in Hunsat.
+    move H1 at bottom.
+    destruct (H1 outreg ltac:(assumption)) as [? [ ? ? ]].
+    repeat match goal with
+           | [ H : context[match ?d with _ => _ end] |- _] =>
+               destruct d eqn:?; subst; try discriminate
+           | [ H : inr _ = inr _ |- _] => inv H
+           end.
+    destruct (regState final1 outreg) as [v|].
+    + exists v. intuition.
+        admit.
+      * admit.
+    + admit.
 Admitted.
 
 Lemma match_on_regs_trans :
