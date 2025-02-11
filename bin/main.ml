@@ -24,7 +24,7 @@ let usage_and_exit () =
   eprintf "Usage: %s <command> [args]\n" Sys.argv.(0);
   eprintf "\n";
   eprintf "Commands:\n";
-  eprintf "  compare <verafile> <filename1> <filename2>\n";
+  eprintf "  compare <filename1> <filename2>\n";
   eprintf "  lower <level> <filename>\n";
   eprintf "  parse_custom <filename>\n";
   eprintf "  parse_slang <filename>\n";
@@ -32,22 +32,6 @@ let usage_and_exit () =
   eprintf "Arguments:\n";
   eprintf "  level: parsed|typed|netlist|smt_netlist|smt\n";
   exit 1
-
-let read_verafile filename : (string * string) list * (string * string) list =
-  let channel = open_in filename in
-  let rec read_verafile_lines acc_in acc_out =
-    try
-      let line = input_line channel in
-      match String.split_on_char ' ' (String.trim line) with
-      | [ "IN"; l; r ] ->
-          read_verafile_lines (List.append acc_in [ (l, r) ]) acc_out
-      | [ "OUT"; l; r ] ->
-          read_verafile_lines acc_in (List.append acc_out [ (l, r) ])
-      | [] | [ "" ] -> read_verafile_lines acc_in acc_out
-      | _ -> raise (Failure (String.cat "Invalid line in .vera file: " line))
-    with End_of_file -> (acc_in, acc_out)
-  in
-  read_verafile_lines [] []
 
 module VerilogParser (P : sig
   type parsed
@@ -149,22 +133,9 @@ let () =
   in
 
   let compare = function
-    | [ verafile_filename; filename1; filename2 ] -> (
-        let in_matches_str, out_matches_str = read_verafile verafile_filename in
-        let in_matches =
-          List.map
-            (fun (l, r) -> (Util.string_to_lst l, Util.string_to_lst r))
-            in_matches_str
-        in
-        let out_matches =
-          List.map
-            (fun (l, r) -> (Util.string_to_lst l, Util.string_to_lst r))
-            out_matches_str
-        in
-
+    | [ filename1; filename2 ] -> (
         let queryResult =
-          Vera.equivalence_query in_matches out_matches
-            (module_of_file filename1) (module_of_file filename2)
+          Vera.equivalence_query (module_of_file filename1) (module_of_file filename2)
         in
         match queryResult with
         | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
