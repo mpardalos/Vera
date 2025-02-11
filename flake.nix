@@ -41,8 +41,8 @@
           version = "bitvectors";
           release = {
             "bitvectors" = {
-              rev = "b76748beffde557fcc95a9ad5e966a01167b496b";
-              sha256 = "sha256-W2aJUCdUuJwUdZ1IHmVnMkoixb/ZZjxR8Z1mK8PiL/Q=";
+              rev = "4418f6391f6492d74372a32335906c294d40d32c";
+              sha256 = "sha256-yXzKBqLIOtUYPz1NVlE8ZMp+eO3Ajl7kvNF0Bsj08n0=";
             };
           };
           nativeBuildInputs = [ coq.ocaml coqPackages.smtcoq ];
