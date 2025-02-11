@@ -117,8 +117,8 @@ let rec hex_to_bits width hex : bool list =
            else
              ( w - 4,
                List.append
-                 (Vera.bits_from_int 4 (int_of_string ("0x" ^ String.make 1 c)))
-                 acc ))
+                 acc
+                 (Vera.bits_from_int 4 (int_of_string ("0x" ^ String.make 1 c)))))
          (width, []) hex)
   in
   if List.length r < width then
