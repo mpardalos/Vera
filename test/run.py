@@ -52,7 +52,7 @@ def run_command(test_name, cmd, timeout, cwd):
         cmd,
         shell=True, cwd=cwd, text=True, timeout=timeout,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    ).returncode
+    )
 
 def veratest(name, verilog, blif):
     if not testfilter.match(name):
@@ -71,7 +71,7 @@ def veratest(name, verilog, blif):
         run_command(name, f"slang -q --ast-json {test_out}/{Path(verilog).name}.json {verilog}", None, test_out)
 
         debug(name, "Yosys processing")
-        ret = run_command(name, f"yosys --commands 'read_blif {blif}; write_verilog {blif_as_verilog}'", YOSYS_TIMEOUT, test_out)
+        ret = run_command(name, f"yosys --commands 'read_blif {blif}; write_verilog {blif_as_verilog}'", YOSYS_TIMEOUT, test_out).returncode
         if ret != 0:
             error(name, "FAIL (yosys error)")
             return
@@ -83,15 +83,20 @@ def veratest(name, verilog, blif):
         debug(name, "Vera compare")
         timed_out = False
         try:
-            run_command(name, f"vera compare {verilog} {blif_as_verilog}", VERA_TIMEOUT, test_out)
+            result = run_command(name, f"vera compare {verilog} {blif_as_verilog}", VERA_TIMEOUT, test_out)
+            (test_out / 'vera_stdout').write_text(result.stdout)
+            (test_out / 'vera_stderr').write_text(result.stderr)
             runtime_sec = int(time.time() - start_time)
-            msg(name, f"OK ({runtime_sec}s)")
+            if 'Equivalent (UNSAT)' in result.stdout:
+                msg(name, f"OK ({runtime_sec}s) (ret {result.returncode})")
+            elif 'Non-equivalent (SAT)' in result.stdout:
+                error(name, f"FAIL (not equivalent)")
+            else:
+                error(name, f"FAIL ('{result.stdout.splitlines()[0]}')")
         except subprocess.TimeoutExpired:
             error(name, "TIMEOUT")
         except subprocess.CalledProcessError as e:
             error(name, f"FAIL ({e.returncode})")
-        except e:
-            print(e)
     finally:
         with running_tests_lock:
             running_tests.remove(name)
@@ -161,4 +166,4 @@ with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TESTS) as executor:
     futures = {executor.submit(veratest, *args): args[0] for args in test_cases}
     for future in as_completed(futures):
         if exc := future.exception():
-            print("==> ERROR <==")
+            print(exc)
