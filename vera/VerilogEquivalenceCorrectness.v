@@ -182,6 +182,31 @@ Theorem equivalence_query_canonical_correct verilog1 verilog2 query :
   equivalence_query_canonical verilog1 verilog2 = inr query ->
   SMT.unsat query ->
   equivalent verilog1 verilog2.
+Proof.
+  intros Hquery Hunsat.
+  unfold equivalence_query_canonical in *.
+  inv Hquery.
+  unfold mk_equivalence_formulas in *.
+  repeat (
+      match goal with
+      | [ H : (match ?m with _ => _ end) = _ |- _ ] =>
+          destruct m eqn:?; try discriminate
+      | [ H : inr _ = inr _ |- _ ] => inv H
+      | [ H : assert_dec _ _ = inr _ |- _ ] => clear H
+      | [ H : Verilog.inputs _ = Verilog.inputs _ |- _ ] => rewrite H in *
+      | [ H : Verilog.outputs _ = Verilog.outputs _ |- _ ] => rewrite H in *
+      | [ H : VerilogToSMT.verilog_to_smt _ _ = inr _ |- _ ] =>
+          pose proof (verilog_to_smt_correct _ _ _ H); clear H
+      end; simpl in *
+    ).
+  constructor.
+  - congruence.
+  - congruence.
+  - admit. (* no_errors verilog1 *)
+  - admit. (* no_errors verilog2 *)
+  - simpl. intros.
+    unfold match_on_regs.
+    apply List.Forall_forall; intros outreg Houtreg.
 Admitted.
 
 Lemma match_on_regs_trans :
