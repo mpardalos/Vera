@@ -8,7 +8,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
-DEBUG = True
+DEBUG = False
 VERA_TIMEOUT = 300  # 5m
 YOSYS_TIMEOUT = 60  # 1m
 MAX_CONCURRENT_TESTS = 16  # Configurable concurrency limit
