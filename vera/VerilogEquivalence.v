@@ -46,6 +46,7 @@ Definition mk_equivalence_formulas
                 else inl "err"%string
             | _, _ => inl "err"%string
             end) inputs;;
+
   outputs_different <-
     mapT (
         fun n =>
@@ -59,7 +60,14 @@ Definition mk_equivalence_formulas
               else inl "err"%string
           | _, _ => inl "err"%string
           end) outputs;;
-  ret (app inputs_same outputs_different)
+
+  let outputs_different_any :=
+    List.fold_left
+      (fun acc q => SMTLib.Term_Or acc q)
+      outputs_different
+      SMTLib.Term_False
+  in
+  ret (app inputs_same [outputs_different_any])
 .
 
 Axiom dec_permutation : forall (l1 l2 : list string), { Permutation l1 l2 } + { ~ Permutation l1 l2 }.
