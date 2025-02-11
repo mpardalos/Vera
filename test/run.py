@@ -114,6 +114,8 @@ for metric in ["depth", "size"]:
             blif_file = best_results / metric / f"{name}_{metric}_2022.blif"
             if blif_file.exists():
                 test_cases.append((f"{name}-{metric}", verilog_file, blif_file))
+            else:
+                print(f"Skipping {name}-{metric}")
 
 with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TESTS) as executor:
     futures = {executor.submit(veratest, *args): args[0] for args in test_cases}
