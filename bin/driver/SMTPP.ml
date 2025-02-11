@@ -44,10 +44,14 @@ module SMTLib = struct
         fprintf fmt "(= %a %a)" (term varNames) l (term varNames) r
     | Term_And (l, r) ->
         fprintf fmt "(and %a %a)" (term varNames) l (term varNames) r
+    | Term_Or (l, r) ->
+        fprintf fmt "(or %a %a)" (term varNames) l (term varNames) r
     | Term_Not t -> fprintf fmt "(not %a)" (term varNames) t
     | Term_ITE (t1, t2, t3) ->
         fprintf fmt "(ite %a %a %a)" (term varNames) t1 (term varNames) t2
           (term varNames) t3
+    | Term_True -> fprintf fmt "true"
+    | Term_False -> fprintf fmt "false"
     | Term_BVLit bv -> bitvector fmt bv
     | Term_BVConcat (l, r) ->
         fprintf fmt "(concat %a %a)" (term varNames) l (term varNames) r
