@@ -49,6 +49,7 @@ def setup():
     out.mkdir(parents=True, exist_ok=True)
 
 def run_command(test_name, cmd, timeout, cwd):
+    debug(test_name, cmd)
     return subprocess.run(
         cmd,
         shell=True, cwd=cwd, text=True, timeout=timeout,
@@ -68,20 +69,16 @@ def veratest(name, verilog, blif):
         test_out.mkdir(parents=True, exist_ok=True)
 
         blif_as_verilog = test_out / f"{Path(blif).stem}.v"
-        debug(name, "Slang-parse verilog")
         run_command(name, f"slang -q --ast-json {test_out}/{Path(verilog).name}.json {verilog}", None, test_out)
 
-        debug(name, "Yosys processing")
         ret = run_command(name, f"yosys --commands 'read_blif {blif}; write_verilog {blif_as_verilog}'", YOSYS_TIMEOUT, test_out).returncode
         if ret != 0:
             error(name, f"FAIL (yosys error {ret})")
             return (name, 0, f'FAIL (yosys error {ret})')
 
-        debug(name, "Slang-parse blif-as-verilog")
         run_command(name, f"slang -q --ast-json {blif_as_verilog}.json {blif_as_verilog}", None, test_out)
 
         start_time = time.time()
-        debug(name, "Vera compare")
         timed_out = False
         try:
             result = run_command(name, f"vera compare {verilog} {blif_as_verilog}", VERA_TIMEOUT, test_out)
