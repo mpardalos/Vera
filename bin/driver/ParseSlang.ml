@@ -309,6 +309,13 @@ let collect_instance_member (ports : Vera.Verilog.port list ref)
       raise
         (Failure (Format.sprintf "Unexpected instance member kind: %s" kind))
 
+let compare_ports (p1 : Vera.Verilog.port) (p2 : Vera.Verilog.port) =
+  let open Vera in
+  match p1.portDirection, p2.portDirection with
+  | PortIn, PortOut -> -1
+  | PortOut, PortIn -> 1
+  | _, _ -> compare p1.portName p2.portName
+
 let parse_instance_body (json : Yojson.Safe.t) : Vera.Verilog.vmodule =
   expect_kind "InstanceBody" json;
   let name = json |> member "name" |> to_string in
@@ -318,9 +325,10 @@ let parse_instance_body (json : Yojson.Safe.t) : Vera.Verilog.vmodule =
   List.iter
     (collect_instance_member ports_ref variables_ref body_ref)
     (json |> member "members" |> to_list);
+  let sorted_ports = List.sort compare_ports !ports_ref in
   {
     modName = Util.string_to_lst name;
-    modPorts = !ports_ref;
+    modPorts = sorted_ports;
     modVariables = !variables_ref;
     modBody = !body_ref;
   }
