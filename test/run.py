@@ -95,7 +95,7 @@ def replace_ports(test_name, verilog, blif):
     blif_path.write_text(blif_text)
     mapping_file.write_text("".join(mapping_entries))
 
-def veratest(name, verilog, blif):
+def veratest(name, verilog, blif, rename_interface=True):
     if not testfilter.match(name):
         return
 
@@ -116,7 +116,8 @@ def veratest(name, verilog, blif):
         if ret != 0:
             error(name, f"FAIL (yosys error {ret})")
             return (name, 0, f'FAIL (yosys error {ret})')
-        replace_ports(name, verilog, blif_as_verilog)
+        if rename_interface:
+            replace_ports(name, verilog, blif_as_verilog)
 
         run_command(name, f"slang -q --ast-json {blif_as_verilog}.json {blif_as_verilog}", None, test_out)
 
@@ -162,7 +163,7 @@ test_cases = []
 for category in ["random_control", "arithmetic"]:
     for verilog_file in (epfl / category).glob("*.v"):
         name = verilog_file.stem
-        test_cases.append((name, verilog_file, epfl / category / f"{name}.blif"))
+        test_cases.append((name, verilog_file, epfl / category / f"{name}.blif", False))
 
 depth = epfl / "best_results" / "depth"
 size = epfl / "best_results" / "size"
