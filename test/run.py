@@ -96,7 +96,7 @@ def replace_ports(test_name, verilog, blif):
     mapping_file.write_text("".join(mapping_entries))
 
 def veratest(name, verilog, blif, rename_interface=True):
-    if not testfilter.match(name):
+    if not testfilter.search(name):
         return
 
     with running_tests_lock:
@@ -221,8 +221,8 @@ with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TESTS) as executor:
     for future in as_completed(futures):
         if exc := future.exception():
             traceback.print_exception(exc)
-        else:
-            results.append(future.result())
+        elif result := future.result():
+            results.append(result)
 
 for name, runtime_sec, message in results:
     print(f'{name},{runtime_sec},{message}')
