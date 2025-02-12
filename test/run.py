@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import time
 import traceback
+import shutil
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
@@ -68,7 +69,9 @@ def veratest(name, verilog, blif):
         test_out = out / name
         test_out.mkdir(parents=True, exist_ok=True)
 
-        blif_as_verilog = test_out / f"{Path(blif).stem}.v"
+        shutil.copy(verilog, test_out / verilog.name)
+
+        blif_as_verilog = test_out / f"{Path(blif).name}.v"
         run_command(name, f"slang -q --ast-json {test_out}/{Path(verilog).name}.json {verilog}", None, test_out)
 
         ret = run_command(name, f"yosys --commands 'read_blif {blif}; write_verilog {blif_as_verilog}'", YOSYS_TIMEOUT, test_out).returncode
