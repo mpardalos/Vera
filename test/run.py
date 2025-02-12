@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import time
+import traceback
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
@@ -95,7 +96,11 @@ def veratest(name, verilog, blif):
                 error(name, message)
                 return (name, runtime_sec, message)
             else:
-                message = f"FAIL ('{result.stdout.splitlines()[0]}')"
+                output = result.stdout.splitlines()
+                if len(output) >= 1:
+                    message = f"FAIL ('{output}')"
+                else:
+                    message = "FAIL"
                 error(name, message)
                 return (name, runtime_sec, message)
         except subprocess.TimeoutExpired:
@@ -175,7 +180,7 @@ with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TESTS) as executor:
     results = []
     for future in as_completed(futures):
         if exc := future.exception():
-            print(exc)
+            traceback.print_exception(exc)
         else:
             results.append(future.result())
 
