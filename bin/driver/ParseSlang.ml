@@ -122,7 +122,7 @@ let rec hex_to_bits width hex : bool list =
          (width, []) hex)
   in
   if List.length r < width then
-    List.append r (List.init (width - List.length r) (fun _ -> false))
+    List.append (List.init (width - List.length r) (fun _ -> false)) r
   else r
 
 let read_constant const_str =
