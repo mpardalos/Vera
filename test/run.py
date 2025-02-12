@@ -6,6 +6,7 @@ import subprocess
 import time
 import traceback
 import shutil
+import json
 import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -58,6 +59,42 @@ def run_command(test_name, cmd, timeout, cwd):
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
 
+def get_ports(verilog_file, direction):
+    """Extract input or output ports from a Verilog file using slang."""
+    result = subprocess.run(["slang", "-q", "--ast-json", "-", verilog_file],
+                            capture_output=True, text=True, check=True)
+    ast = json.loads(result.stdout)
+    return [
+        member["name"]
+        for member in ast["members"][1]["body"]["members"]
+        if member["kind"] == "Port" and member["direction"] == direction
+    ]
+
+def replace_ports(test_name, verilog, blif):
+    """Replace input/output names in the BLIF file to match the Verilog file."""
+    debug(test_name, f"replace_ports({verilog}, {blif})")
+    blif_path = Path(blif)
+    mapping_file = blif_path.parent / f"{blif_path.name}_mapping.csv"
+
+    inputs_verilog = get_ports(verilog, "In")
+    inputs_blif = get_ports(blif, "In")
+    outputs_verilog = get_ports(verilog, "Out")
+    outputs_blif = get_ports(blif, "Out")
+
+    mapping_entries = []
+    blif_text = blif_path.read_text()
+
+    for in_verilog, in_blif in zip(inputs_verilog, inputs_blif):
+        blif_text = re.sub(rf'\b{re.escape(in_blif)}\b', f'\\\\{in_verilog} ', blif_text)
+        mapping_entries.append(f"{in_blif},{in_verilog}\n")
+
+    for out_verilog, out_blif in zip(outputs_verilog, outputs_blif):
+        blif_text = re.sub(rf'\b{re.escape(out_blif)}\b', f'\\\\{out_verilog} ', blif_text)
+        mapping_entries.append(f"{out_blif},{out_verilog}\n")
+
+    blif_path.write_text(blif_text)
+    mapping_file.write_text("".join(mapping_entries))
+
 def veratest(name, verilog, blif):
     if not testfilter.match(name):
         return
@@ -72,13 +109,14 @@ def veratest(name, verilog, blif):
 
         shutil.copy(verilog, test_out / verilog.name)
 
-        blif_as_verilog = test_out / f"{Path(blif).name}.v"
         run_command(name, f"slang -q --ast-json {test_out}/{Path(verilog).name}.json {verilog}", None, test_out)
 
+        blif_as_verilog = test_out / f"{Path(blif).name}.v"
         ret = run_command(name, f"yosys --commands 'read_blif {blif}; write_verilog {blif_as_verilog}'", YOSYS_TIMEOUT, test_out).returncode
         if ret != 0:
             error(name, f"FAIL (yosys error {ret})")
             return (name, 0, f'FAIL (yosys error {ret})')
+        replace_ports(name, verilog, blif_as_verilog)
 
         run_command(name, f"slang -q --ast-json {blif_as_verilog}.json {blif_as_verilog}", None, test_out)
 
