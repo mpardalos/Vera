@@ -91,7 +91,9 @@ let () =
     typed_module_of_file >=> Vera.canonicalize_verilog
   in
   let smt_of_file filename =
-    Vera.verilog_to_smt (Vera.int_to_nat 0) =<< canonical_module_of_file filename
+    (* Need to tag it as left or right, doesn't matter here because we only
+       translate one module *)
+    Vera.verilog_to_smt VerilogLeft (Vera.int_to_nat 0) =<< canonical_module_of_file filename
   in
 
   let lower =

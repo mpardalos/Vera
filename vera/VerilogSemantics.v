@@ -32,9 +32,11 @@ Set Bullet Behavior "Strict Subproofs".
 Module CombinationalOnly.
   Definition Process := Verilog.module_item.
 
+  Definition RegisterState := StrFunMap.t XBV.t.
+
   Record VerilogState :=
     MkVerilogState
-      { regState : string -> option XBV.t
+      { regState : RegisterState
       ; pendingProcesses : list Process
       }
   .
@@ -44,12 +46,6 @@ Module CombinationalOnly.
     ; pendingProcesses := pendingProcesses st
     |}
   .
-
-  Fixpoint set_regs (assignments : list (string * XBV.t)) (st : VerilogState) : VerilogState :=
-    match assignments with
-    | [] => st
-    | ((n, v) :: nvs) => set_reg n v (set_regs nvs st)
-    end.
 
   Definition pop_pending_process (st : VerilogState) : VerilogState :=
     {| regState := regState st
@@ -63,32 +59,20 @@ Module CombinationalOnly.
     | _ => false
     end.
 
-  Definition initial_state (m : Verilog.vmodule) : VerilogState :=
+  Definition input_valid (v : Verilog.vmodule) (input : list XBV.t) :=
+    List.length input = List.length (Verilog.inputs v).
+
+  Definition initial_state (m : Verilog.vmodule) (input : list XBV.t) : VerilogState :=
     {|
-      regState := fun _ => None;
+      regState := StrFunMap.of_list (List.combine (Verilog.inputs m) input);
       pendingProcesses := List.filter is_always_comb (Verilog.modBody m)
     |}.
 
-  Equations
-    eval_binop
-      (op : Verilog.binop)
-      (lhs : XBV.t)
-      (rhs : XBV.t)
-    : XBV.t :=
-    eval_binop Verilog.BinaryPlus lhs rhs := XBV.x_binop BV.bv_add lhs rhs;
-    eval_binop _ lhs rhs := _
-  .
-  Admit Obligations.
+  Definition eval_binop (op : Verilog.binop) (lhs : XBV.t) (rhs : XBV.t) : XBV.t.
+  Admitted.
 
-  Equations
-    eval_unaryop
-      (operator : Verilog.unaryop)
-      (operand : XBV.t)
-    : XBV.t :=
-    eval_unaryop _ operand := _
-  .
-  Admit Obligations.
-
+  Definition eval_unaryop (operator : Verilog.unaryop) (operand : XBV.t) : XBV.t.
+  Admitted.
 
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
   (* Notation with_rewrite e := (eq_rect_r _ e _). *)
@@ -208,19 +192,54 @@ Module CombinationalOnly.
       exec_statement st stmt;
   .
 
+  Lemma exec_module_item_procs : forall st1 mi st2,
+      exec_module_item st1 mi = Some st2 ->
+      pendingProcesses st1 = pendingProcesses st2
+  .
+  Proof.
+    intros st [] st2 H; simp exec_module_item in H.
+    - eapply exec_statement_procs. eassumption.
+    - discriminate.
+    - discriminate.
+  Qed.
+
   Equations run_step : VerilogState -> option VerilogState :=
     run_step (MkVerilogState reg []) := None;
     run_step (MkVerilogState reg (p :: ps)) := exec_module_item (MkVerilogState reg ps) p.
 
-  Definition step (st1 st2 : VerilogState) := run_step st1 = Some st2.
+  Equations run_multistep (st : VerilogState) : option VerilogState by wf (length (pendingProcesses st)) :=
+    run_multistep st =>
+      (match run_step st as n' return run_step st = n' -> _ with
+      | Some next => fun _ => match pendingProcesses next with
+                          | [] => Some next
+                          | (_::_) => run_multistep next
+                          end
+      | None => fun _ => None
+      end) eq_refl
+  .
+  Next Obligation.
+    clear run_multistep.
+    revert next e.
+    destruct st as [nextReg nextProcs].
+    induction nextProcs; intros; simp run_step in *; simpl in *.
+    - discriminate.
+    - match type of e with
+      | exec_module_item ?a ?b = _ =>
+          funelim (exec_module_item a b);
+          simp exec_module_item in *;
+          try discriminate
+      end.
+      apply exec_statement_procs in e. simpl in e. subst.
+      lia.
+  Qed.
 
-  Definition multistep := clos_trans VerilogState step.
+  Definition step (st1 st2 : VerilogState) := run_step st1 = Some st2.
 
   Definition blocked (st : VerilogState) := run_step st = None.
 
   Definition final (st : VerilogState) := pendingProcesses st = [].
 
-  Definition multistep_eval st1 st2 := multistep st1 st2 /\ blocked st2.
+  Import Tactics.
 
   Lemma final_is_blocked : forall st, final st -> blocked st.
   Proof.
@@ -229,4 +248,86 @@ Module CombinationalOnly.
     simpl in *; subst.
     simp step; auto.
   Qed.
+
+  Lemma multistep_final : forall (st st' : VerilogState),
+    run_multistep st = Some st' -> final st'.
+  Proof.
+    intros [regs procs]. revert regs.
+    unfold final.
+    induction procs; intros.
+    - simp run_multistep in H. simp run_step in H. discriminate.
+    - simp run_multistep in H.
+      simp run_step in H.
+      destruct (exec_module_item {| regState := regs; pendingProcesses := procs |} a) eqn:E;
+        try discriminate.
+      apply exec_module_item_procs in E. simpl in E. rewrite <- E in *.
+      destruct procs.
+      + inv H. congruence.
+      + destruct v; simpl in *.
+        rewrite <- E in *.
+        eapply IHprocs.
+        eassumption.
+  Qed.
+
+  Lemma multistep_blocked : forall (st st' : VerilogState),
+      run_multistep st = Some st' -> blocked st'.
+  Proof. eauto using final_is_blocked, multistep_final. Qed.
+
+  Definition variable_widths vars : list (string * N):=
+    map (fun var =>
+           (Verilog.varName var,
+             Verilog.vector_declaration_width (Verilog.varVectorDeclaration var)))
+      vars.
+
+  Definition variable_names vars : list string :=
+    map (fun var => Verilog.varName var) vars.
+
+  Lemma variable_widths_names n w l:
+    In (n, w) (variable_widths l) -> In n (variable_names l).
+  Proof.
+    revert n w.
+    induction l; intros; simpl in *.
+    - contradiction.
+    - destruct H.
+      + inversion H. subst.
+        eauto.
+      + right. eauto.
+  Qed.
+
+  Lemma variable_names_widths n l:
+    In n (variable_names l) -> exists w, In (n, w) (variable_widths l).
+  Proof.
+    revert n.
+    induction l; intros; simpl in *.
+    - contradiction.
+    - destruct H.
+      + subst. eauto.
+      + destruct (IHl _ H).
+        eexists. eauto.
+  Qed.
+
+
+  (** The values of the final state of the execution of module *)
+  Definition execution := string -> option XBV.t.
+
+  Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
+    exists input final,
+      input_valid v input
+      /\ run_multistep (initial_state v input) = Some final
+      /\ regState final = e.
+
+  Definition complete_execution (v : Verilog.vmodule) (e : execution) :=
+    forall name,
+      In name (variable_names (Verilog.modVariables v))
+         <-> exists bv, e name = Some bv.
+
+  Lemma valid_execution_complete : forall v e,
+      valid_execution v e -> complete_execution v e.
+  Admitted.
+
+  Definition no_errors (v : Verilog.vmodule) :=
+    forall (input : list XBV.t)
+      (input_wf : input_valid v input)
+      (input_defined : Forall (fun bv => ~ XBV.has_x bv) input),
+    exists final, run_multistep (initial_state v input) = Some final.
 End CombinationalOnly.

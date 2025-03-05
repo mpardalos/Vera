@@ -28,12 +28,17 @@ From vera Require Import Common.
 From vera Require EnvStack.
 From vera Require Import Bitvector.
 From vera Require Import SMT.
+From vera Require Import Decidable.
+From vera Require Import Tactics.
 
 Import ListNotations.
 Import CommonNotations.
 Import MonadNotation.
 Import FunctorNotation.
 Local Open Scope monad_scope.
+
+Local Definition smtname := nat.
+Local Definition width := N.
 
 Definition transf := sum string.
 
@@ -46,19 +51,15 @@ Definition cast_from_to (from to: N) (expr : SMTLib.term) : SMTLib.term :=
 .
 
 Section expr_to_smt.
-  Variable var_verilog_to_smt : StrFunMap.t (nat * SMTLib.sort).
+  Variable var_verilog_to_smt : StrFunMap.t (smtname * width).
 
   Definition term_for_name (t : Verilog.vtype) (name : string) : transf SMTLib.term :=
     match var_verilog_to_smt name with
     | None => raise ("Name not declared: " ++ name)%string
-    | Some (n__smt, sort) =>
-        match sort with
-        | SMTLib.Sort_BitVec sort_len =>
-            if (sort_len =? t)%N
-            then ret (SMTLib.Term_Fun (n__smt, ([], sort)) [])
-            else raise ("Incorrect sort for " ++ name)%string
-        | _ => raise ("Incorrect sort for " ++ name)%string
-        end
+    | Some (n__smt, width) =>
+        if (width =? t)%N
+        then ret (SMTLib.Term_Const n__smt)
+        else raise ("Incorrect sort for " ++ name)%string
     end.
 
 
@@ -196,22 +197,19 @@ End expr_to_smt.
 Definition transfer_ports (ports : list Verilog.port) : list (string * port_direction) :=
   map (fun '(Verilog.MkPort dir name) => (name, dir)) ports.
 
-Fixpoint transfer_vars (start : nat) (vars : list Verilog.variable) : list (string * nat * SMTLib.sort) :=
+Fixpoint transfer_vars (start : nat) (vars : list Verilog.variable) : list (string * nat * N) :=
   match vars with
   | (Verilog.MkVariable vec storage name) :: rest =>
-      (name, start, (SMTLib.Sort_BitVec (Verilog.vector_declaration_width vec))) :: (transfer_vars (1 + start) rest)
+      (name, start, (Verilog.vector_declaration_width vec)) :: (transfer_vars (1 + start) rest)
   | nil => nil
   end.
 
-Definition declarations_of_vars : list (string * nat * SMTLib.sort) -> list (nat * SMTLib.sort) :=
-  List.map (fun '(_, n, s) => (n, s)).
-
-Definition var_verilog_to_smt (vars : list (string * nat * SMTLib.sort)) : StrFunMap.t (nat * SMTLib.sort) :=
+Definition var_verilog_to_smt (vars : list (string * smtname * width)) : StrFunMap.t (smtname * width) :=
   List.fold_left
     (fun acc '(verilog__name, smt__name, sort) => StrFunMap.insert verilog__name (smt__name, sort) acc)
     vars StrFunMap.empty.
 
-Definition var_smt_to_verilog (vars : list (string * nat * SMTLib.sort)) : NatFunMap.t string :=
+Definition var_smt_to_verilog (vars : list (string * smtname * width)) : NatFunMap.t string :=
   List.fold_left
     (fun acc '(verilog__name, smt__name, sort) => NatFunMap.insert smt__name verilog__name acc)
     vars NatFunMap.empty.
@@ -234,27 +232,73 @@ Equations transfer_initial (stmt : Verilog.statement) : transf (list SMTLib.term
     raise "VerilogToSMT: Invalid expression in initial block"%string
 .
 
-Definition verilog_to_smt (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smtlib_query :=
-  match Verilog.modBody vmodule with
-  | [ Verilog.Initial initial_body;
-      Verilog.AlwaysFF (Verilog.Block []);
-      Verilog.AlwaysComb always_comb_body
-    ] =>
-      let ports := transfer_ports (Verilog.modPorts vmodule) in
-      let var_decls := transfer_vars var_start (Verilog.modVariables vmodule) in
-      let var_map := var_verilog_to_smt var_decls in
-      initial_smt <- transfer_initial initial_body ;;
-      always_comb_smt <- transfer_comb_assignments var_map always_comb_body ;;
-      ret {|
-          SMT.nameSMTToVerilog := var_smt_to_verilog var_decls;
-          SMT.nameVerilogToSMT := var_verilog_to_smt var_decls;
-          SMT.declarations := declarations_of_vars var_decls;
-          SMT.assertions := initial_smt ++ always_comb_smt
-        |}
-  | [ Verilog.Initial _;
-      Verilog.AlwaysFF _;
-      Verilog.AlwaysComb _
-    ] => raise "always_ff not yet supported"%string
-  | _ => raise "Non-canonical verilog passed to verilog_to_smt"%string
-  end
-.
+Equations verilog_to_smt (name_tag : TaggedName.Tag) (var_start : nat) (vmodule : Verilog.vmodule)
+  : transf SMT.smt_with_namemap :=
+  verilog_to_smt name_tag var_start vmodule with Verilog.modBody vmodule := {
+    | [ Verilog.Initial initial_body;
+        Verilog.AlwaysFF (Verilog.Block []);
+        Verilog.AlwaysComb always_comb_body
+      ] =>
+        let ports := transfer_ports (Verilog.modPorts vmodule) in
+        let var_decls := transfer_vars var_start (Verilog.modVariables vmodule) in
+        let var_map := var_verilog_to_smt var_decls in
+        let var_pairs := map (fun '(vname, smtname, _) => (name_tag, vname, smtname)) var_decls in
+        match transfer_initial initial_body, transfer_comb_assignments var_map always_comb_body with
+        | inr initial_smt, inr always_comb_smt =>
+            nodup_left <- assert_dec (NoDup (map fst var_pairs)) "Duplicate verilog name in var_pairs"%string ;;
+            nodup_right <- assert_dec (NoDup (map snd var_pairs)) "Duplicate smt name in var_decls"%string ;;
+            inr {|
+                SMT.nameMap := VerilogSMTBijection.from_pairs var_pairs nodup_left nodup_right;
+                SMT.widths := List.map (fun '(_, smtname, width) => (smtname, width)) var_decls;
+                SMT.query := initial_smt ++ always_comb_smt;
+              |}
+        | inl e, _ => inl e
+        | inr _, inl e => inl e
+        end
+    | [ Verilog.Initial _;
+        Verilog.AlwaysFF _;
+        Verilog.AlwaysComb _
+      ] => raise "always_ff not yet supported"%string
+    | _ => raise "Non-canonical verilog passed to verilog_to_smt"%string
+    }.
+
+Lemma verilog_to_smt_map_match tag start v smt :
+  verilog_to_smt tag start v = inr smt ->
+  SMT.match_map_verilog tag (SMT.nameMap smt) v.
+Proof.
+  unfold SMT.match_map_verilog.
+  intros.
+  funelim (verilog_to_smt tag start v);
+    simp verilog_to_smt in *;
+    try rewrite Heq in *;
+    simpl in *;
+    try discriminate.
+  autodestruct_eqn E.
+  simpl.
+  Set Nested Proofs Allowed.
+  Lemma ind : forall vars tag var_start verilogName,
+             (exists smtName : nat,
+                 VerilogSMTBijection.lookup_left
+                   (map (fun '(vname, smtname, _) => (tag, vname, smtname))
+                      (transfer_vars var_start vars))
+                   (tag, verilogName) = Some smtName) <->
+               In verilogName
+                 (VerilogSemantics.CombinationalOnly.variable_names vars).
+  Proof.
+    induction vars;
+      intros; simpl in *;
+      [ firstorder; discriminate | ].
+    destruct a; simpl in *.
+    destruct (TaggedName.dec_eq_tag tag tag); try contradiction.
+    destruct (dec_eq_string verilogName varName);
+      simpl in *; subst;
+      firstorder.
+    - eauto.
+    - eauto.
+    - right. rewrite <- IHvars. eauto.
+    - subst. contradiction.
+    - rewrite IHvars. assumption.
+  Qed.
+  Unset Nested Proofs Allowed.
+  apply ind.
+Qed.

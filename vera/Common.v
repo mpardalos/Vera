@@ -18,6 +18,10 @@ Import FunctorNotation.
 From Equations Require Import Equations.
 From Coq Require Import Psatz.
 From Coq Require Import ssreflect.
+From Coq Require Import String.
+
+From vera Require Import Tactics.
+From vera Require Import Decidable.
 
 Import ListNotations.
 
@@ -122,8 +126,12 @@ Module MkFunMap(Key: BooleanEqualityType').
   Definition remove {A} (k: Key.t) (m: t A) : t A :=
     fun k' => if k =? k' then None else m k'.
 
-  Definition of_list {A} (elems : list (Key.t * A)) : t A :=
-    List.fold_left (fun acc '(k, v) => insert k v acc) elems empty.
+  Fixpoint of_list {A} (elems : list (Key.t * A)) : t A :=
+    match elems with
+    | [] => fun _ => None
+    | (k, v) :: tl => insert k v (of_list tl)
+    end
+  .
 
   Definition combine {A} (l r : t A) : t A :=
     fun k => match l k with
@@ -142,7 +150,208 @@ Module StringUsualBoolEq <: UsualBoolEq.
   Definition eqb := String.eqb.
   Definition eqb_eq := String.eqb_eq.
 End StringUsualBoolEq.
-Module StringAsDT := Make_UDTF(StringUsualBoolEq).
-Module StrFunMap := MkFunMap(StringAsDT).
+Module StringAsUDT := Make_UDTF(StringUsualBoolEq).
+Module StrFunMap := MkFunMap(StringAsUDT).
 
+Module NatAsUDT := Make_UDTF(Nat).
 Module NatFunMap := MkFunMap(Nat).
+
+Module PartialBijection(A: UsualDecidableType)(B: UsualDecidableType).
+  Structure t :=
+    MkPartialBijection {
+      bij_apply :> A.t -> option B.t;
+      bij_inverse : B.t -> option A.t;
+      bij_wf : forall a b, bij_apply a = Some b <-> bij_inverse b = Some a
+    }.
+
+  Fixpoint lookup_left (pairs : list (A.t * B.t)) (a : A.t) :=
+    match pairs with
+    | [] => None
+    | ((a0, b0) :: tl) =>
+        match A.eq_dec a a0 with
+        | left _ => Some b0
+        | right _ => lookup_left tl a
+        end
+    end.
+
+  Lemma lookup_left_in pairs :
+    forall a b, lookup_left pairs a = Some b -> In (a, b) pairs.
+  Proof.
+    induction pairs as [ | [a0 b0] tl ]; intros.
+    - inv H.
+    - simpl in *.
+      destruct (A.eq_dec a a0).
+      + left. inv H. reflexivity.
+      + right. apply IHtl. apply H.
+  Qed.
+
+  Fixpoint lookup_right (pairs : list (A.t * B.t)) (b : B.t) :=
+    match pairs with
+    | [] => None
+    | ((a0, b0) :: tl) =>
+        match B.eq_dec b b0 with
+        | left _ => Some a0
+        | right _ => lookup_right tl b
+        end
+    end.
+
+  Lemma lookup_right_in pairs :
+    forall a b, lookup_right pairs b = Some a -> In (a, b) pairs.
+  Proof.
+    induction pairs as [ | [a0 b0] tl ]; intros.
+    - inv H.
+    - simpl in *.
+      destruct (B.eq_dec b b0).
+      + left. inv H. reflexivity.
+      + right. apply IHtl. apply H.
+  Qed.
+
+  Program Definition from_pairs
+    (pairs : list (A.t * B.t))
+    (nodup_left : NoDup (List.map fst pairs))
+    (nodup_right : NoDup (List.map snd pairs))
+    : t :=
+    {|
+      bij_apply := lookup_left pairs;
+      bij_inverse := lookup_right pairs;
+    |}.
+  Next Obligation.
+    generalize dependent b.
+    generalize dependent a.
+    induction pairs as [ | [a0 b0] tl ]; intros.
+    - simpl in *. split; discriminate.
+    - simpl in *.
+      inversion nodup_left as [ | ? ? left1 left2 ]; subst; clear nodup_left.
+      inversion nodup_right as [ | ? ? right1 right2 ]; subst; clear nodup_right.
+      specialize (IHtl left2 right2).
+      destruct (A.eq_dec a a0); destruct (B.eq_dec b b0); subst.
+      + split; reflexivity.
+      + split.
+        * congruence.
+        * intros.
+          exfalso.
+          apply left1.
+          apply IHtl in H.
+          apply lookup_left_in in H.
+          eapply in_map_iff.
+          eexists. split; try eassumption; reflexivity.
+      + split.
+        * intros.
+          exfalso.
+          apply right1.
+          apply lookup_left_in in H.
+          eapply in_map_iff.
+          eexists. split; try eassumption; reflexivity.
+        * congruence.
+      + eauto.
+  Qed.
+
+  Program Definition combine
+    (l r : t)
+    (no_overlap : forall a b, bij_apply l a = Some b -> r a = None)
+    (no_overlap_inverse : forall a b, bij_inverse l b = Some a -> bij_inverse r b = None)
+    : t :=
+    {|
+      bij_apply a := match bij_apply l a with
+                     | Some b => Some b
+                     | None => bij_apply r a
+                     end;
+      bij_inverse b := match bij_inverse r b with
+                       | Some a => Some a
+                       | None => bij_inverse l b
+                       end
+    |}.
+  Next Obligation.
+    destruct (bij_apply l a) eqn:Ela;
+      destruct (bij_inverse l b) eqn:Elb;
+      destruct (bij_apply r a) eqn:Era;
+      destruct (bij_inverse r b) eqn:Erb;
+      split; intros H; inv H;
+      (match goal with
+       | [ H: _ |- _] => apply bij_wf in H; congruence
+       | [ H: _ |- _] => apply no_overlap in H; congruence
+       | [ H: _ |- _] => apply no_overlap_inverse in H; congruence
+       end).
+  Qed.
+End PartialBijection.
+
+Module StrNatBijection := PartialBijection(StringAsUDT)(NatAsUDT).
+
+Lemma map_injective {A B} : forall (f : A -> B) (l1 l2 : list A),
+    (forall x y, f x = f y -> x = y) ->
+    map f l1 = map f l2 ->
+    l1 = l2.
+Proof.
+  intros *. generalize dependent l1.
+  induction l2; intros * Hinj Hmap.
+  - simpl in *.
+    eauto using map_eq_nil.
+  - destruct l1; simpl in *; try discriminate.
+    inv Hmap.
+    f_equal.
+    + eapply Hinj. assumption.
+    + eapply IHl2; assumption.
+Qed.
+
+Module TaggedName.
+  Inductive Tag :=
+  | VerilogLeft
+  | VerilogRight
+  .
+
+  #[global] Instance dec_eq_tag (a b : TaggedName.Tag) : DecProp (a = b) :=
+    mk_dec_eq.
+
+  Definition t := (Tag * string)%type.
+
+  Definition eq (l r : t) := l = r.
+
+  Definition eq_equiv : Equivalence eq := eq_equivalence.
+
+  Definition eq_dec (x y : t) : { eq x y } + { ~ eq x y } :=
+    dec _.
+End TaggedName.
+
+Module VerilogSMTBijection.
+  Include PartialBijection(TaggedName)(NatAsUDT).
+
+  Definition only_tag t m := forall tag smtName,
+      option_map fst (bij_inverse m smtName) = Some tag ->
+      tag = t.
+
+  Lemma combine_different_tag_left (m1 m2 : t) (t1 t2 : TaggedName.Tag) prf1 prf2:
+    (t1 <> t2) ->
+    only_tag t1 m1 ->
+    only_tag t2 m2 ->
+    forall n, combine m1 m2 prf1 prf2 (t1, n) = m1 (t1, n).
+  Proof.
+    intros.
+    unfold combine. simpl.
+    destruct (m1 (t1, n)) eqn:E1; try reflexivity.
+    destruct (m2 (t1, n)) eqn:E2; try reflexivity.
+    exfalso.
+    apply bij_wf in E2.
+    erewrite (H1 t1) in H. contradiction.
+    now erewrite E2.
+  Qed.
+
+  Lemma combine_different_tag_right (m1 m2 : VerilogSMTBijection.t) (t1 t2 : TaggedName.Tag) prf1 prf2:
+    (t1 <> t2) ->
+    only_tag t1 m1 ->
+    only_tag t2 m2 ->
+    forall n, VerilogSMTBijection.combine m1 m2 prf1 prf2 (t2, n) = m2 (t2, n).
+  Proof.
+    intros.
+    unfold VerilogSMTBijection.combine. simpl.
+    destruct (m1 (t2, n)) eqn:E1; try reflexivity.
+    destruct (m2 (t2, n)) eqn:E2; try reflexivity.
+    - exfalso.
+      apply VerilogSMTBijection.bij_wf in E1.
+      erewrite (H0 t2) in H. contradiction.
+      now erewrite E1.
+    - exfalso.
+      apply VerilogSMTBijection.bij_wf in E1.
+      erewrite (H0 t2) in H. contradiction.
+      now erewrite E1.
+  Qed.
+End VerilogSMTBijection.

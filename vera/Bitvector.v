@@ -12,6 +12,8 @@ From ExtLib Require Import Data.Monads.OptionMonad.
 From ExtLib Require Import Data.List.
 
 From vera Require Import Tactics.
+From vera Require Import Common.
+From vera Require Import Decidable.
 
 From Equations Require Import Equations.
 
@@ -105,6 +107,9 @@ Module XBV.
   Definition bit_eq_dec (b1 b2: bit) : { b1 = b2 } + { b1 <> b2 }.
   Proof. unfold decidable. decide equality. Qed.
 
+  Definition eq_dec (bv1 bv2: t) : { bv1 = bv2 } + { bv1 <> bv2 }.
+  Proof. decide equality. apply bit_eq_dec. Qed.
+
   Definition from_bv (bv : BV.t) : t :=
     List.map (fun (b: bool) => if b then I else O) bv
   .
@@ -144,6 +149,43 @@ Module XBV.
     - discriminate.
     - contradiction.
     - solve_by_inverts 2.
+  Qed.
+
+  Lemma from_bv_injective : forall bv1 bv2,
+    from_bv bv1 = from_bv bv2 ->
+    bv1 = bv2.
+  Proof.
+    unfold from_bv.
+    intros bv1 bv2.
+    apply map_injective.
+    intros x y.
+    destruct x; destruct y; intuition discriminate.
+  Qed.
+
+  Lemma bit_to_bool_injective : forall x1 x2 y,
+      bit_to_bool x1 = Some y ->
+      bit_to_bool x2 = Some y ->
+      x1 = x2.
+  Proof. destruct x1, x2; intros; simpl in *; congruence. Qed.
+
+  Lemma to_bv_injective : forall xbv1 xbv2 bv,
+    to_bv xbv1 = Some bv ->
+    to_bv xbv2 = Some bv ->
+    xbv1 = xbv2.
+  Proof.
+    unfold to_bv, mapT in *; simpl in *.
+    induction xbv1; intros * H1 H2; simpl in *.
+    - inv H1.
+      destruct xbv2; trivial.
+      inv H2.
+      autodestruct_eqn E. discriminate.
+    - autodestruct_eqn E.
+      destruct xbv2; simpl in *; try discriminate.
+      autodestruct_eqn E.
+      inv H0.
+      f_equal.
+      + eapply bit_to_bool_injective; eassumption.
+      + eapply IHxbv1; eauto.
   Qed.
 
   Definition x_binop f l r :=
@@ -190,6 +232,26 @@ Module XBV.
 
   Definition bitOf (n : nat) (xbv: t): bit := nth n xbv X.
 
+  Lemma xbv_bv_inverse : forall bv,
+      XBV.to_bv (XBV.from_bv bv) = Some bv.
+  Proof.
+    intros bv. induction bv.
+    - reflexivity.
+    - simpl in *.
+      destruct a.
+      + unfold XBV.to_bv in *. simpl.
+        replace (List.mapT_list XBV.bit_to_bool (XBV.from_bv bv)) with (Some bv).
+        reflexivity.
+      + unfold XBV.to_bv in *. simpl.
+        replace (List.mapT_list XBV.bit_to_bool (XBV.from_bv bv)) with (Some bv).
+        reflexivity.
+  Qed.
+
+  Lemma bv_xbv_inverse : forall xbv bv,
+      XBV.to_bv xbv = Some bv ->
+      XBV.from_bv bv = xbv.
+  Proof. Admitted.
+
   (*
    * Matches this Verilog operation:
    * bv1 === bv2
@@ -202,4 +264,15 @@ Module XBV.
    *)
   Definition definite_equal (bv1 bv2 : t) :=
     exists v, to_bv bv1 = Some v /\ to_bv bv2 = Some v.
+
+  #[global]
+  Instance dec_eq_bit (b1 b2 : XBV.bit) : DecProp (b1 = b2) :=
+    mk_dec_eq.
+
+  #[global]
+  Instance dec_eq_xbv (xbv1 xbv2 : XBV.t) : DecProp (xbv1 = xbv2) :=
+    mk_dec_eq.
+
+  #[global]
+  Instance dec_has_x xbv : DecProp (XBV.has_x xbv) := _.
 End XBV.

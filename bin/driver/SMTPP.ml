@@ -2,20 +2,15 @@ open Format
 open Vera
 
 module SMTLib = struct
- let var (nameMap : (char list) NatFunMap.t) fmt nameIdx =
-    match nameMap nameIdx with
-    | Some n -> fprintf fmt "|%s|" (Util.lst_to_string n)
+ let var (nameMap : VerilogSMTBijection.t) fmt nameIdx =
+    match nameMap.bij_inverse nameIdx with
+    | Some (VerilogLeft, n) -> fprintf fmt "|l_%s|" (Util.lst_to_string n)
+    | Some (VerilogRight, n) -> fprintf fmt "|r_%s|" (Util.lst_to_string n)
     | None -> fprintf fmt "|v%d|" (int_from_nat nameIdx)
 
   let bitvector fmt bits =
     fprintf fmt "#b%s"
       (Util.lst_to_string (map (function true -> '1' | false -> '0') bits))
-
-  let sort fmt = function
-    | Sort_Bool -> fprintf fmt "bool"
-    | Sort_Int -> fprintf fmt "int"
-    | Sort_BitVec m -> fprintf fmt "(_ BitVec %d)" m
-    | Sort_Uninterpreted s -> fprintf fmt "s%d" (int_from_nat s)
 
   let unaryOp fmt = function
     | BVNot -> fprintf fmt "bvnot"
@@ -32,11 +27,7 @@ module SMTLib = struct
     | BVShr -> fprintf fmt "bvlshr"
 
   let rec term varNames fmt = function
-    | Term_Fun ((name, _), []) -> var varNames fmt name
-    | Term_Fun ((name, _), args) ->
-        fprintf fmt "(%a %a)" (var varNames) name
-          (pp_print_list (term varNames))
-          args
+    | Term_Const name -> var varNames fmt name
     | Term_Int n -> fprintf fmt "%d" n
     | Term_Geq (l, r) ->
         fprintf fmt "(geq %a %a)" (term varNames) l (term varNames) r
@@ -66,15 +57,15 @@ module SMTLib = struct
     | Term_BVUlt (t1, t2) ->
         fprintf fmt "(bvult %a %a)" (term varNames) t1 (term varNames) t2
 
-  let declaration varNames fmt (name, s) =
-    fprintf fmt "(declare-const %a %a)" (var varNames) name sort s
+  let declaration varNames fmt (name, w) =
+    fprintf fmt "(declare-const %a (_ BitVec %d))" (var varNames) name w
 
-  let assertion varNames fmt t = fprintf fmt "(assert %a)" (term varNames) t
+  let assertion varNames fmt t =
+    fprintf fmt "(assert %a)" (term varNames) t
 
-  let rec query fmt (query : SMT.smtlib_query) =
-    fprintf fmt "%a\n%a"
-      (pp_print_list (declaration query.nameSMTToVerilog))
-      query.declarations
-      (pp_print_list (assertion query.nameSMTToVerilog))
-      query.assertions
+  let rec query fmt (query : SMT.smt_with_namemap) =
+    pp_print_list (declaration query.nameMap) fmt query.widths ~pp_sep:pp_force_newline;
+    pp_force_newline fmt ();
+    pp_force_newline fmt ();
+    pp_print_list (assertion query.nameMap) fmt query.query ~pp_sep:pp_force_newline
 end
