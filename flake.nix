@@ -78,6 +78,7 @@
           pkgs.cvc5
           pkgs.yosys
           pkgs.iverilog
+          (pkgs.callPackage nix/eqy.nix {})
           (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
         ];
       in {
