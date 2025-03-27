@@ -95,7 +95,8 @@ def replace_ports(test_name, verilog, blif):
     blif_path.write_text(blif_text)
     mapping_file.write_text("".join(mapping_entries))
 
-def veratest(name, verilog, blif, rename_interface=True):
+def veratest(testname, verilog, blif, rename_interface=True):
+    name = f'vera-{testname}'
     if not testfilter.search(name):
         return
 
@@ -135,6 +136,75 @@ def veratest(name, verilog, blif, rename_interface=True):
                 message = f"FAIL (not equivalent)"
                 error(name, message)
                 return (name, runtime_sec, message)
+            else:
+                output = result.stdout.splitlines()
+                if len(output) >= 1:
+                    message = f"FAIL ('{output}')"
+                else:
+                    message = "FAIL"
+                error(name, message)
+                return (name, runtime_sec, message)
+        except subprocess.TimeoutExpired:
+            error(name, "TIMEOUT")
+            return (name, VERA_TIMEOUT, "TIMEOUT")
+        except subprocess.CalledProcessError as e:
+            message = f"FAIL ({e.returncode})"
+            error(name, message)
+            return (name, 0, message)
+    finally:
+        with running_tests_lock:
+            running_tests.remove(name)
+
+def eqytest(testname, verilog, blif, rename_interface=True):
+    name = f'eqy-{testname}'
+    if not testfilter.search(name):
+        return
+
+    with running_tests_lock:
+        running_tests.add(name)
+
+    try:
+        info(name, "Begin")
+        test_out = out / name
+        test_out.mkdir(parents=True, exist_ok=True)
+
+        shutil.copy(verilog, test_out / verilog.name)
+
+        run_command(name, f"slang -q --ast-json {test_out}/{Path(verilog).name}.json {verilog}", None, test_out)
+
+        blif_as_verilog = test_out / f"{Path(blif).name}.v"
+        ret = run_command(name, f"yosys --commands 'read_blif {blif}; write_verilog {blif_as_verilog}'", YOSYS_TIMEOUT, test_out).returncode
+        if ret != 0:
+            error(name, f"FAIL (yosys error {ret})")
+            return (name, 0, f'FAIL (yosys error {ret})')
+        if rename_interface:
+            replace_ports(name, verilog, blif_as_verilog)
+
+        start_time = time.time()
+        timed_out = False
+        try:
+            (test_out / 'compare.eqy').write_text(f"""
+[gold]
+read_verilog {verilog}
+prep -auto-top
+rename -top top
+
+[gate]
+read_verilog {blif_as_verilog}
+prep -auto-top
+rename -top top
+
+[strategy sby]
+use sby
+engine smtbmc z3
+""")
+            result = run_command(name, "eqy -f compare.eqy", VERA_TIMEOUT, test_out)
+            (test_out / 'eqy_stdout').write_text(result.stdout)
+            (test_out / 'eqy_stderr').write_text(result.stderr)
+            runtime_sec = int(time.time() - start_time)
+            if 'Successfully proved designs equivalent' in result.stdout:
+                msg(name, f"OK ({runtime_sec}s) (ret {result.returncode})")
+                return (name, runtime_sec, 'OK')
             else:
                 output = result.stdout.splitlines()
                 if len(output) >= 1:
@@ -215,9 +285,19 @@ test_cases += [
     ("voter-size",       random_control/"voter.v",     size/"voter_size_2022.blif"),
 ]
 
+results = []
+# Vera
 with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TESTS) as executor:
     futures = {executor.submit(veratest, *args): args[0] for args in test_cases}
-    results = []
+    for future in as_completed(futures):
+        if exc := future.exception():
+            traceback.print_exception(exc)
+        elif result := future.result():
+            results.append(result)
+ 
+# EQY
+with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TESTS) as executor:
+    futures = {executor.submit(eqytest, *args): args[0] for args in test_cases}
     for future in as_completed(futures):
         if exc := future.exception():
             traceback.print_exception(exc)
