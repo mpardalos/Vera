@@ -66,9 +66,9 @@
           coq.ocamlPackages.ppx_deriving
           coq.ocamlPackages.ppxlib
           coq.ocamlPackages.yojson
+          coq.ocamlPackages.cmdliner
 
           pkgs.sv-lang
-          pkgs.z3
         ];
 
         dev-deps = [
@@ -79,6 +79,8 @@
           pkgs.yosys
           pkgs.iverilog
           (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
+          pkgs.z3
+          pkgs.cvc5
         ];
       in {
         devShells.default = pkgs.mkShell {
@@ -103,8 +105,7 @@
 
             # Wrap the binary to add slang to PATH
             wrapProgram $out/bin/vera \
-              --prefix PATH : ${pkgs.sv-lang}/bin \
-              --prefix PATH : ${pkgs.z3}/bin
+              --prefix PATH : ${pkgs.sv-lang}/bin
           '';
 
           meta = with pkgs.lib; {
