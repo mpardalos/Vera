@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERA_TIMEOUT=1h
+VERA_TIMEOUT=5m
 YOSYS_TIMEOUT=1m
 
 set -euo pipefail
@@ -24,24 +24,6 @@ assert_dir() {
         echo "$testdir does not exist or is not a directory!"
         exit 1
     fi
-}
-
-get_inputs() {
-    slang -q --ast-json - "$1" \
-        | jq -r '.members[1].body.members[] | select(.kind == "Port" and .direction == "In") | .name' \
-        | sort
-}
-
-get_outputs() {
-    slang -q --ast-json - "$1" \
-        | jq -r '.members[1].body.members[] | select(.kind == "Port" and .direction == "Out") | .name' \
-        | sort
-}
-
-gen_verafile() {
-    paste -d' ' <(get_inputs $1) <(get_inputs $2) | sed 's/^/IN /'
-    echo
-    paste -d' ' <(get_outputs $1) <(get_outputs $2) | sed 's/^/OUT /'
 }
 
 out="$testdir/out/"
@@ -72,11 +54,9 @@ veratest() {
                 2> ./yosys_stderr
 	    info "Slang-parse blif-as-verilog"
             slang -q --ast-json $blif_as_verilog.json $blif_as_verilog
-	    info "gen-verafile"
-            gen_verafile "$verilog" "$blif_as_verilog" > "$verafile"
 	    info "vera compare"
             start=$(date +%s)
-            timeout $VERA_TIMEOUT vera compare "$verafile" "$verilog" "$blif_as_verilog" \
+            timeout $VERA_TIMEOUT vera compare "$verilog" "$blif_as_verilog" \
                 > ./vera_stdout \
                 2> ./vera_stderr
             ret=$?
@@ -106,6 +86,16 @@ epfl="$testdir/EPFL-benchmarks"
 assert_dir "$epfl"
 
 setup
+
+for f in $epfl/random_control/*.v; do
+    name=$(basename $f .v)
+    veratest "$name" "$epfl/random_control/$name.v" "$epfl/random_control/$name.blif"
+done
+
+for f in $epfl/arithmetic/*.v; do
+    name=$(basename $f .v)
+    veratest "$name" "$epfl/arithmetic/$name.v" "$epfl/arithmetic/$name.blif"
+done
 
 veratest adder-depth       "$epfl/arithmetic/adder.v"         "$epfl/best_results/depth/adder_depth_2021.blif"
 veratest bar-depth         "$epfl/arithmetic/bar.v"           "$epfl/best_results/depth/bar_depth_2015.blif"
@@ -149,14 +139,3 @@ veratest mem_ctrl-size    "$epfl/random_control/mem_ctrl.v"  "$epfl/best_results
 veratest priority-size    "$epfl/random_control/priority.v"  "$epfl/best_results/size/priority_size_2021.blif"
 veratest router-size      "$epfl/random_control/router.v"    "$epfl/best_results/size/router_size_2018.blif"
 veratest voter-size       "$epfl/random_control/voter.v"     "$epfl/best_results/size/voter_size_2022.blif"
-
-for f in $epfl/random_control/*.v; do
-    name=$(basename $f .v)
-    veratest "$name" "$epfl/random_control/$name.v" "$epfl/random_control/$name.blif"
-done
-
-for f in $epfl/arithmetic/*.v; do
-    name=$(basename $f .v)
-    veratest "$name" "$epfl/arithmetic/$name.v" "$epfl/arithmetic/$name.blif"
-done
-
