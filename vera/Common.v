@@ -185,6 +185,19 @@ Module PartialBijection(A: UsualDecidableType)(B: UsualDecidableType).
       + right. apply IHtl. apply H.
   Qed.
 
+  Lemma lookup_left_some_iff p ps x y :
+      lookup_left (p :: ps) x = Some y <->
+        ((fst p = x /\ snd p = y) \/ (fst p <> x /\ lookup_left ps x = Some y)).
+  Proof.
+    simpl.
+    destruct p as [a b].
+    destruct (A.eq_dec x a); subst; simpl; split; intros.
+    - inv H. eauto.
+    - inv H; inv H0; congruence.
+    - firstorder.
+    - inv H; inv H0; congruence.
+  Qed.
+
   Fixpoint lookup_right (pairs : list (A.t * B.t)) (b : B.t) :=
     match pairs with
     | [] => None
