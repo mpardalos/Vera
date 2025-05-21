@@ -7,6 +7,7 @@ From vera Require Import Bitvector.
 From vera Require VerilogTypecheck.
 From vera Require VerilogCanonicalize.
 From vera Require VerilogToSMT.
+From vera Require Import VerilogToSMTCorrect.
 From vera Require Import VerilogEquivalence.
 From vera Require VerilogSemantics.
 From vera Require Import Tactics.
@@ -221,24 +222,12 @@ Theorem canonicalize_correct v v' :
   equivalent v v'.
 Admitted.
 
-Theorem verilog_to_smt_correct tag start v smt :
-  VerilogToSMT.verilog_to_smt tag start v = inr smt ->
-  SMTLibFacts.smt_reflect
-    (SMT.query smt)
-    (fun ρ => valid_execution v (SMT.execution_of_valuation tag (SMT.nameMap smt) ρ)).
-Admitted.
-
 Lemma FIXME_no_errors v : no_errors v.
 Admitted.
 
 Remark FIXME_verilog_outputs_in_variables name v:
   In name (Verilog.outputs v) ->
   In name (variable_names (Verilog.modVariables v)).
-Admitted.
-
-Lemma verilog_to_smt_only_tag t n v s :
-  VerilogToSMT.verilog_to_smt t n v = inr s ->
-  VerilogSMTBijection.only_tag t (SMT.nameMap s).
 Admitted.
 
 (** This depends on typechecking pass (module does not write to its inputs) *)
