@@ -106,13 +106,19 @@ Proof.
   eauto using mk_bijection_smt_map_match.
 Qed.
 
-
 Theorem verilog_to_smt_correct tag start v smt :
   verilog_to_smt tag start v = inr smt ->
   SMTLibFacts.smt_reflect
     (SMT.query smt)
     (fun ρ => valid_execution v (SMT.execution_of_valuation tag (SMT.nameMap smt) ρ)).
 Proof.
+  funelim (verilog_to_smt tag start v);
+    simp verilog_to_smt in *;
+    try rewrite Heq in *;
+    simpl in *;
+    try discriminate.
+  autodestruct_eqn E. cbn.
+  intros H. inv H. cbn in *.
 Admitted.
 
 Lemma mk_bijection_only_tag tag vars m :
