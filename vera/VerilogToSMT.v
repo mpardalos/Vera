@@ -224,45 +224,6 @@ Equations assign_vars (start : smtname) (vars : list Verilog.variable) : list (V
   assign_vars start nil :=
     nil.
 
-Import VerilogSemantics.CombinationalOnly.
-
-Lemma assign_vars_vars start vars :
-  map fst (assign_vars start vars) = vars.
-Proof.
-  revert start.
-  induction vars; intros;
-    simp assign_vars in *; cbn in *.
-  - reflexivity.
-  - rewrite IHvars. reflexivity.
-Qed.
-
-Lemma assign_vars_smtname_start start vars :
-  Forall (fun n => n >= start) (map snd (assign_vars start vars)).
-Proof.
-  revert start.
-  induction vars;
-    intros; simp assign_vars in *; cbn in *;
-    constructor.
-  - lia.
-  - specialize (IHvars (S start)).
-    revert IHvars.
-    eapply Forall_impl.
-    lia.
-Qed.
-
-Lemma assign_vars_smtname_nodup start vars :
-  NoDup (map snd (assign_vars start vars)).
-Proof.
-  revert start.
-  induction vars; intros; simp assign_vars in *; cbn in *;
-    constructor.
-  - intro contra.
-    pose proof (assign_vars_smtname_start (S start) vars).
-    eapply Forall_forall in H; try eassumption.
-    lia.
-  - eapply IHvars.
-Qed.
-
 Definition mk_var_map (vars : list (Verilog.variable * smtname)) : StrFunMap.t (smtname * width) :=
   List.fold_right
     (fun '(var, smt__name) acc => StrFunMap.insert (Verilog.varName var) (smt__name, Verilog.varWidth var) acc)
@@ -271,59 +232,10 @@ Definition mk_var_map (vars : list (Verilog.variable * smtname)) : StrFunMap.t (
 Equations mk_bijection (tag : TaggedName.Tag) (vars : list (Verilog.variable * smtname)) : transf VerilogSMTBijection.t :=
   mk_bijection tag ((var, name__smt) :: xs) :=
     tail_bijection <- mk_bijection tag xs ;;
-    prf1 <- assert_dec (tail_bijection (tag, Verilog.varName var) = None) ;;
-    prf2 <- assert_dec (VerilogSMTBijection.bij_inverse tail_bijection name__smt = None) ;;
+    prf1 <- assert_dec (tail_bijection (tag, Verilog.varName var) = None) "Duplicate variable name"%string ;;
+    prf2 <- assert_dec (VerilogSMTBijection.bij_inverse tail_bijection name__smt = None) "Duplicate smt name"%string ;;
     ret (VerilogSMTBijection.insert (tag, Verilog.varName var) name__smt tail_bijection _ _);
   mk_bijection tag [] := ret VerilogSMTBijection.empty.
-  (* mk_bijection tag ((var, name__smt) :: xs) := *)
-  (* let var_pairs := (map (fun '(var, smt__name) => ((tag, Verilog.varName var), smt__name)) vars) in *)
-  (* nodup_left <- assert_dec (NoDup (map fst var_pairs)) "Duplicate verilog name in var_pairs"%string ;; *)
-  (* nodup_right <- assert_dec (NoDup (map snd var_pairs)) "Duplicate smt name in var_decls"%string ;; *)
-  (* ret (VerilogSMTBijection.from_pairs var_pairs nodup_left nodup_right). *)
-
-Lemma mk_bijection_cons tag x xs m m':
-  mk_bijection tag (x :: xs) = inr m ->
-  mk_bijection tag xs = inr m' ->
-  m' = VerilogSMTBijection.insert (fst x) (snd x) m.
-
-Lemma mk_bijection_smt_map_match tag start v m :
-  mk_bijection tag (assign_vars start (Verilog.modVariables v)) = inr m ->
-  SMT.match_map_verilog tag m v.
-Proof.
-  Opaque VerilogSMTBijection.lookup_left.
-  unfold SMT.match_map_verilog.
-  replace (variable_names (Verilog.modVariables v)) with (variable_names (map fst (assign_vars start (Verilog.modVariables v))))
-    by now rewrite assign_vars_vars.
-  remember (assign_vars start (Verilog.modVariables v)) as assignment.
-  (* epose proof (assign_vars_smtname_start _ _) as Hstart; *)
-  (*   rewrite <- Heqassignment in Hstart. *)
-  epose proof (assign_vars_smtname_nodup _ _) as Hnodup;
-    rewrite <- Heqassignment in Hnodup.
-  clear v start Heqassignment.
-  generalize dependent Hnodup.
-  generalize dependent m.
-  induction assignment; intros * ? Hbijection.
-  - unfold mk_bijection in Hbijection; inv Hbijection; autodestruct.
-    split; intros H; cbn in *; solve_by_inverts 2%nat.
-  - unfold variable_names.
-    unfold mk_bijection in Hbijection; inv Hbijection; autodestruct.
-    intros.
-    split; intros H.
-    + destruct H as [smtName H].
-      erewrite VerilogSMTBijection.from_pairs_cons in H.
-      cbn in H.
-      destruct
-        (dec_eq_string verilogName (Verilog.varName v)),
-        (TaggedName.dec_eq_tag tag tag);
-        cbn in H; cbn;
-        try contradiction.
-      * eauto.
-      * right. unfold variable_names in IHassignment.
-        eapply IHassignment.
-        -- now inv Hnodup.
-        --
-
-    rewrite map_map, map_cons.
 
 Equations verilog_to_smt (name_tag : TaggedName.Tag) (var_start : nat) (vmodule : Verilog.vmodule)
   : transf SMT.smt_with_namemap :=
@@ -332,57 +244,15 @@ Equations verilog_to_smt (name_tag : TaggedName.Tag) (var_start : nat) (vmodule 
         Verilog.AlwaysFF (Verilog.Block []);
         Verilog.AlwaysComb always_comb_body
       ] =>
-        let smt_var_list := transfer_vars var_start (Verilog.modVariables vmodule) in
-        let var_map := mk_var_map smt_var_list in
-        nameMap <- mk_bijection name_tag smt_var_list ;;
+        let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
+        let var_map := mk_var_map var_assignment in
+        nameMap <- mk_bijection name_tag var_assignment ;;
         initial_smt <- transfer_initial initial_body ;;
         always_comb_smt <- transfer_comb_assignments var_map always_comb_body ;;
         inr {|
             SMT.nameMap := nameMap;
-            SMT.widths := List.map (fun '(_, smtname, width) => (smtname, width)) smt_var_list;
+            SMT.widths := List.map (fun '(var, smtname) => (smtname, Verilog.varWidth var)) var_assignment;
             SMT.query := initial_smt ++ always_comb_smt;
           |}
     | _ => raise "Non-canonical verilog passed to verilog_to_smt"%string
     }.
-
-
-Lemma verilog_to_smt_map_match tag start v smt :
-  verilog_to_smt tag start v = inr smt ->
-  SMT.match_map_verilog tag (SMT.nameMap smt) v.
-Proof.
-  unfold SMT.match_map_verilog.
-  intros.
-  funelim (verilog_to_smt tag start v);
-    simp verilog_to_smt in *;
-    try rewrite Heq in *;
-    simpl in *;
-    try discriminate.
-  autodestruct_eqn E.
-  simpl.
-  Set Nested Proofs Allowed.
-  Lemma ind : forall vars tag var_start verilogName,
-             (exists smtName : nat,
-                 VerilogSMTBijection.lookup_left
-                   (map (fun '(vname, smtname, _) => (tag, vname, smtname))
-                      (transfer_vars var_start vars))
-                   (tag, verilogName) = Some smtName) <->
-               In verilogName
-                 (VerilogSemantics.CombinationalOnly.variable_names vars).
-  Proof.
-    induction vars;
-      intros; simpl in *;
-      [ firstorder; discriminate | ].
-    destruct a; simpl in *.
-    destruct (TaggedName.dec_eq_tag tag tag); try contradiction.
-    destruct (dec_eq_string verilogName varName);
-      simpl in *; subst;
-      firstorder.
-    - eauto.
-    - eauto.
-    - right. rewrite <- IHvars. eauto.
-    - subst. contradiction.
-    - rewrite IHvars. assumption.
-  Qed.
-  Unset Nested Proofs Allowed.
-  apply ind.
-Qed.

@@ -7,7 +7,7 @@ From vera Require Import Bitvector.
 From vera Require VerilogTypecheck.
 From vera Require VerilogCanonicalize.
 From vera Require VerilogToSMT.
-From vera Require Import VerilogToSMTCorrect.
+From vera Require VerilogToSMTCorrect.
 From vera Require Import VerilogEquivalence.
 From vera Require VerilogSemantics.
 From vera Require Import Tactics.
@@ -901,9 +901,9 @@ Proof.
       replace m_combined.
       eapply VerilogSMTBijection.combine_different_tag_left with (t2 := TaggedName.VerilogRight).
       + discriminate.
-      + eapply verilog_to_smt_only_tag; eassumption.
-      + eapply verilog_to_smt_only_tag; eassumption.
-    - eapply verilog_to_smt_correct; eassumption.
+      + eapply VerilogToSMTCorrect.verilog_to_smt_only_tag; eassumption.
+      + eapply VerilogToSMTCorrect.verilog_to_smt_only_tag; eassumption.
+    - eapply VerilogToSMTCorrect.verilog_to_smt_correct; eassumption.
   }
   apply SMTLibFacts.concat_conj. {
     eapply SMTLibFacts.smt_reflect_rewrite with
@@ -913,9 +913,9 @@ Proof.
       replace m_combined.
       eapply VerilogSMTBijection.combine_different_tag_right with (t1 := TaggedName.VerilogLeft).
       + discriminate.
-      + eapply verilog_to_smt_only_tag; eassumption.
-      + eapply verilog_to_smt_only_tag; eassumption.
-    - eapply verilog_to_smt_correct; eassumption.
+      + eapply VerilogToSMTCorrect.verilog_to_smt_only_tag; eassumption.
+      + eapply VerilogToSMTCorrect.verilog_to_smt_only_tag; eassumption.
+    - eapply VerilogToSMTCorrect.verilog_to_smt_correct; eassumption.
   }
   fold ([t] ++ [t0])%list.
   apply SMTLibFacts.concat_conj.
@@ -1173,15 +1173,15 @@ Proof.
         eapply match_map_verilog_tag_equal with (m1 := (SMT.nameMap s)).
         -- intros.
            erewrite VerilogSMTBijection.combine_different_tag_left with (t2 := TaggedName.VerilogRight);
-             try discriminate; eauto using verilog_to_smt_only_tag.
-        -- eapply VerilogToSMT.verilog_to_smt_map_match; eauto.
+             try discriminate; eauto using VerilogToSMTCorrect.verilog_to_smt_only_tag.
+        -- eapply VerilogToSMTCorrect.verilog_to_smt_map_match; eauto.
       * unfold equivalence_query_canonical in Hquery; inv Hquery; autodestruct_eqn E.
         simpl.
         eapply match_map_verilog_tag_equal with (m1 := (SMT.nameMap s0)).
         -- intros.
            erewrite VerilogSMTBijection.combine_different_tag_right with (t1 := TaggedName.VerilogLeft);
-             try discriminate; eauto using verilog_to_smt_only_tag.
-        -- eapply VerilogToSMT.verilog_to_smt_map_match; eauto.
+             try discriminate; eauto using VerilogToSMTCorrect.verilog_to_smt_only_tag.
+        -- eapply VerilogToSMTCorrect.verilog_to_smt_map_match; eauto.
       * eassumption.
 Qed.
 
