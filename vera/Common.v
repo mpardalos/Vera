@@ -19,6 +19,7 @@ From Equations Require Import Equations.
 From Coq Require Import Psatz.
 From Coq Require Import ssreflect.
 From Coq Require Import String.
+From Coq Require Import Logic.ProofIrrelevance.
 
 From vera Require Import Tactics.
 From vera Require Import Decidable.
@@ -164,6 +165,30 @@ Module PartialBijection(A: UsualDecidableType)(B: UsualDecidableType).
       bij_wf : forall a b, bij_apply a = Some b <-> bij_inverse b = Some a
     }.
 
+  Lemma extensional_equality (m1 m2 : t) :
+    (forall a, m1 a = m2 a) ->
+    (forall b, bij_inverse m1 b = bij_inverse m2 b) ->
+    @eq t m1 m2.
+  Proof.
+    intros Ha Hb.
+    apply functional_extensionality in Ha.
+    apply functional_extensionality in Hb.
+    destruct m1, m2; cbn in *.
+    generalize dependent bij_wf0.
+    generalize dependent bij_wf1.
+    rewrite Ha. rewrite Hb.
+    intros.
+    f_equal.
+    apply proof_irrelevance.
+  Qed.
+
+  Program Definition empty : t :=
+    {|
+      bij_apply _ := None;
+      bij_inverse _ := None
+    |}.
+  Next Obligation. firstorder solve_by_invert. Qed.
+
   Fixpoint lookup_left (pairs : list (A.t * B.t)) (a : A.t) :=
     match pairs with
     | [] => None
@@ -219,6 +244,28 @@ Module PartialBijection(A: UsualDecidableType)(B: UsualDecidableType).
       + right. apply IHtl. apply H.
   Qed.
 
+  Program Definition insert
+    (a : A.t) (b : B.t) (m : t)
+    (not_a : bij_apply m a = None)
+    (not_b : bij_inverse m b = None)
+    :=
+    {|
+      bij_apply a':=
+        match A.eq_dec a' a with
+        | left _ => Some b
+        | right _ => m a'
+        end;
+      bij_inverse b' :=
+        match B.eq_dec b' b with
+        | left _ => Some a
+        | right _ => bij_inverse m b'
+        end;
+    |}.
+  Next Obligation.
+    destruct (A.eq_dec a0 a), (B.eq_dec b0 b); subst;
+      firstorder (try apply_somewhere bij_wf; congruence).
+  Qed.
+
   Program Definition from_pairs
     (pairs : list (A.t * B.t))
     (nodup_left : NoDup (List.map fst pairs))
@@ -257,6 +304,22 @@ Module PartialBijection(A: UsualDecidableType)(B: UsualDecidableType).
           eexists. split; try eassumption; reflexivity.
         * congruence.
       + eauto.
+  Qed.
+
+  Definition from_pairs_cons p ps : forall H1 H2 H3 H4 H5 H6,
+    from_pairs (p :: ps) H1 H2 = insert (fst p) (snd p) (from_pairs ps H3 H4) H5 H6.
+  Proof.
+    destruct p as [hd_a hd_b].
+    revert hd_a hd_b.
+    induction ps; intros; apply extensional_equality.
+    - intros a'. cbn.
+      destruct (A.eq_dec _ _); eauto.
+    - intros b'. cbn.
+      destruct (B.eq_dec _ _); eauto.
+    - cbn in *. intros a'.
+      destruct (A.eq_dec a' _); eauto.
+    - cbn in *. intros b'.
+      destruct (B.eq_dec b' _); eauto.
   Qed.
 
   Program Definition combine

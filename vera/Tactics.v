@@ -79,3 +79,8 @@ Ltac reductio_ad_absurdum :=
   match goal with
   | [ |- ?g ] => destruct (dec g); try assumption; exfalso
   end.
+
+Ltac apply_somewhere f :=
+  multimatch goal with
+  | [ H : _ |- _] => apply f in H
+  end.

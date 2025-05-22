@@ -128,6 +128,9 @@ Module VerilogCommon.
       ; varName : string
       }.
 
+  Equations varWidth : variable -> N :=
+    varWidth v := vector_declaration_width (varVectorDeclaration v).
+
   Record port :=
     MkPort
       { portDirection : port_direction
