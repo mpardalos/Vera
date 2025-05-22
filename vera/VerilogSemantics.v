@@ -274,13 +274,10 @@ Module CombinationalOnly.
   Proof. eauto using final_is_blocked, multistep_final. Qed.
 
   Definition variable_widths vars : list (string * N):=
-    map (fun var =>
-           (Verilog.varName var,
-             Verilog.vector_declaration_width (Verilog.varVectorDeclaration var)))
-      vars.
+    map (fun var => (Verilog.varName var, Verilog.varWidth var)) vars.
 
   Definition variable_names vars : list string :=
-    map (fun var => Verilog.varName var) vars.
+    map Verilog.varName vars.
 
   Lemma variable_widths_names n w l:
     In (n, w) (variable_widths l) -> In n (variable_names l).
