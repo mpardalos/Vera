@@ -8,8 +8,19 @@ From vera Require Import Verilog.
 Import CombinationalOnly.
 
 From Coq Require List.
+From Coq Require String.
+
+From ExtLib Require Import Structures.MonadExc.
+From ExtLib Require Import Structures.MonadState.
+From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Structures.Functor.
 
 From Equations Require Import Equations.
+
+Import List.ListNotations.
+Import CommonNotations.
+Import MonadNotation.
+Import FunctorNotation.
 
 Lemma assign_vars_vars start vars :
   List.map fst (assign_vars start vars) = vars.
@@ -68,33 +79,17 @@ Proof.
   - unfold variable_names.
     destruct a as [var smtName].
     simp mk_bijection in Hbijection; inv Hbijection; autodestruct.
-    intros. split; intros H.
+    split; intros H.
     + destruct H as [smtName' H].
-      cbn.
-      cbn in H.
-      repeat match goal with
-      | [ H: context[sumbool_rec _ _ _  (?d ?a ?b)] |- _ ] =>
-          destruct (d a b); cbn in H; subst; try (congruence || contradiction)
-      | [ |- context[sumbool_rec _ _ _  (?d ?a ?b)] ] =>
-          destruct (d a b); cbn in H; subst; try (congruence || contradiction)
-      end.
-      * eauto.
+      cbn. cbn in H.
+      autodestruct; cbn in *; subst.
+      * left.
+        congruence.
       * right.
-        unfold variable_names in IHassignment.
-        eapply IHassignment.
-        -- now inv Hnodup.
-        -- reflexivity.
-        -- eauto.
-    + cbn.
-      repeat match goal with
-      | [ H: context[sumbool_rec _ _ _  (?d ?a ?b)] |- _ ] =>
-          destruct (d a b); cbn in H; subst; try (congruence || contradiction)
-      | [ |- context[sumbool_rec _ _ _  (?d ?a ?b)] ] =>
-          destruct (d a b); cbn; subst; try (congruence || contradiction)
-      end.
+        eapply IHassignment; eauto; now some_inv.
+    + cbn. autodestruct.
       * eauto.
-      * inv Hnodup. inv H; eapply IHassignment; eauto.
-        cbn in *. contradiction.
+      * eapply IHassignment; eauto; now some_inv.
 Qed.
 
 Lemma verilog_to_smt_map_match tag start v smt :
@@ -120,7 +115,27 @@ Theorem verilog_to_smt_correct tag start v smt :
 Proof.
 Admitted.
 
-Lemma verilog_to_smt_only_tag t n v s :
-  verilog_to_smt t n v = inr s ->
-  VerilogSMTBijection.only_tag t (SMT.nameMap s).
-Admitted.
+Lemma mk_bijection_only_tag tag vars m :
+  mk_bijection tag vars = inr m ->
+  VerilogSMTBijection.only_tag tag m.
+Proof.
+  revert m.
+  funelim (mk_bijection tag vars); intros.
+  - inv H. apply VerilogSMTBijection.only_tag_empty.
+  - simp mk_bijection in H0; inv H0; autodestruct.
+    eauto using VerilogSMTBijection.only_tag_insert.
+Qed.
+
+Lemma verilog_to_smt_only_tag tag start v s :
+  verilog_to_smt tag start v = inr s ->
+  VerilogSMTBijection.only_tag tag (SMT.nameMap s).
+Proof.
+  intros.
+  funelim (verilog_to_smt tag start v);
+    simp verilog_to_smt in *;
+    try rewrite Heq in *;
+    simpl in *;
+    try discriminate.
+  autodestruct_eqn E. cbn.
+  eauto using mk_bijection_only_tag.
+Qed.

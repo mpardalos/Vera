@@ -187,6 +187,7 @@ Module PartialBijection(A: UsualDecidableType)(B: UsualDecidableType).
       bij_apply _ := None;
       bij_inverse _ := None
     |}.
+
   Next Obligation. firstorder solve_by_invert. Qed.
 
   Fixpoint lookup_left (pairs : list (A.t * B.t)) (a : A.t) :=
@@ -394,6 +395,21 @@ Module VerilogSMTBijection.
   Definition only_tag t m := forall tag smtName,
       option_map fst (bij_inverse m smtName) = Some tag ->
       tag = t.
+
+  Lemma only_tag_empty t : only_tag t empty.
+  Proof. cbv. discriminate. Qed.
+
+  Lemma only_tag_insert tag name b m :
+    only_tag tag m ->
+    forall H1 H2,
+      only_tag tag (insert (tag, name) b m H1 H2).
+  Proof.
+    unfold insert, only_tag.
+    intros.
+    unfold option_map in *.
+    repeat (autodestruct_eqn E; cbn in * ); try reflexivity.
+    eapply H. now erewrite E.
+  Qed.
 
   Lemma combine_different_tag_left (m1 m2 : t) (t1 t2 : TaggedName.Tag) prf1 prf2:
     (t1 <> t2) ->

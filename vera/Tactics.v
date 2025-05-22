@@ -37,17 +37,34 @@ Tactic Notation "learn" constr(fact) "as" simple_intropattern(name) := learn_tac
 
 Ltac unfold_rec c := unfold c; fold c.
 
+Ltac inv H := inversion H; subst; clear H.
+
+Ltac some_inv :=
+  multimatch goal with
+  | H : ?T |- _ =>
+      match type of T with
+      | Prop => inv H
+      end
+  end.
+
 Ltac solve_by_inverts n :=
-  match goal with | H : ?T |- _ =>
-    match type of T with Prop =>
-      inversion H;
-      match n with S (S (?n')) => subst; try constructor; try contradiction; try discriminate; solve_by_inverts (S n') end
-    end
+  match goal with
+  | H : ?T |- _ =>
+      match type of T with
+      | Prop =>
+          inversion H;
+          match n with
+          | S (S (?n')) =>
+              subst;
+              try constructor;
+              try easy;
+              try eauto;
+              solve_by_inverts (S n')
+          end
+      end
   end.
 
 Ltac solve_by_invert := solve_by_inverts 1.
-
-Ltac inv H := inversion H; subst; clear H.
 
 Ltac autodestruct :=
   repeat match goal with
@@ -73,6 +90,10 @@ Ltac autodestruct_eqn name :=
         inv H
     | [ H : Some _ = Some _ |- _ ] =>
         inv H
+    | [ H: context[sumbool_rec _ _ _  (?d ?a ?b)] |- _ ] =>
+        destruct (d a b); cbn in H; try (congruence || contradiction || discriminate)
+    | [ |- context[sumbool_rec _ _ _  (?d ?a ?b)] ] =>
+        destruct (d a b); try (congruence || contradiction || discriminate)
     end.
 
 Ltac reductio_ad_absurdum :=
