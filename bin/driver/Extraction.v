@@ -28,14 +28,14 @@ Definition int_to_nat :=
   N.to_nat.
 
 Definition bits_from_int (w : N) (n : N) :=
-  Bitvector.BV.of_N_fixed w n.
+  Bitvector.RawBV.of_N_fixed w n.
 
 (** There is deliberately no bits_to_int. Bitvectors are unbounded where ints
 are 3-bit. We provide bits_to_binary_string as an alternative for
 pretty-printing *)
 
 Definition bits_to_binary_string (v: RAWBITVECTOR_LIST.bitvector) : string :=
-  Bitvector.BV.to_string (Bitvector.BV.of_bits v).
+  Bitvector.RawBV.to_string (Bitvector.RawBV.of_bits v).
 
 Extraction "Vera.ml"
   bits_from_int

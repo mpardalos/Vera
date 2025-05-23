@@ -46,7 +46,7 @@ Definition transf := sum string.
 Definition cast_from_to (from to: N) (expr : SMTLib.term) : SMTLib.term :=
   match N.compare to from with
   | Lt => SMTLib.Term_BVExtract (nat_of_N (to - 1)) 0 expr
-  | Gt => SMTLib.Term_BVConcat (SMTLib.Term_BVLit (BV.zeros (to - from))) expr
+  | Gt => SMTLib.Term_BVConcat (SMTLib.Term_BVLit (RawBV.zeros (to - from))) expr
   | Eq => expr
   end
 .
@@ -161,7 +161,7 @@ Section expr_to_smt.
       let cond__smt := SMTLib.Term_Not
                        (SMTLib.Term_Eq
                           condval__smt
-                          (SMTLib.Term_BVLit (BV.zeros t__cond)))
+                          (SMTLib.Term_BVLit (RawBV.zeros t__cond)))
       in
       ret (SMTLib.Term_ITE cond__smt ifT__smt ifF__smt);
     expr_to_smt (Verilog.BitSelect vec idx) :=

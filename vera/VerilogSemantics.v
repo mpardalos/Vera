@@ -84,7 +84,7 @@ Module CombinationalOnly.
     | Eq => value
     end.
 
-  Definition select_bit (vec : XBV.t) (idx : XBV.t) : XBV.t := [XBV.bitOf 0 (XBV.x_binop BV.bv_shr vec idx)].
+  Definition select_bit (vec : XBV.t) (idx : XBV.t) : XBV.t := [XBV.bitOf 0 (XBV.x_binop RawBV.bv_shr vec idx)].
 
   Equations
     eval_expr : VerilogState -> Verilog.expression -> option XBV.t :=
@@ -103,7 +103,7 @@ Module CombinationalOnly.
       match XBV.to_bv cond__val with
       | None => ret (XBV.exes (XBV.size tBranch__val))
       | Some cond__bv =>
-        if BV.is_zero cond__bv
+        if RawBV.is_zero cond__bv
         then ret fBranch__val
         else ret tBranch__val
       end;
@@ -141,7 +141,7 @@ Module CombinationalOnly.
       match XBV.to_bv cond__val with
       | None => exec_statement st falseBranch
       | Some cond__bv =>
-        if BV.is_zero cond__bv
+        if RawBV.is_zero cond__bv
         then exec_statement st falseBranch
         else exec_statement st trueBranch
       end
@@ -175,7 +175,7 @@ Module CombinationalOnly.
       reflexivity.
     - inversion H2; destruct (eval_expr st cond); try discriminate; clear H2.
       destruct (XBV.to_bv _); eauto.
-      destruct (BV.is_zero _); eauto.
+      destruct (RawBV.is_zero _); eauto.
     - inversion H. reflexivity.
     - inversion H1; clear H1.
       destruct (exec_statement st hd) eqn:E; try discriminate.

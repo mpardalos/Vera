@@ -5,7 +5,7 @@ From vera Require Import VerilogSemantics.
 From vera Require Import VerilogCanonicalize.
 From vera Require Import Common.
 From vera Require Import Bitvector.
-Import (notations) Bitvector.BV.
+Import (notations) Bitvector.RawBV.
 
 Import ListNotations.
 Local Open Scope monad_scope.

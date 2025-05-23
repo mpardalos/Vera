@@ -207,7 +207,7 @@ Module SMT.
     XBV.to_bv xbv = Some bv ->
     m (TaggedName.VerilogLeft, nameVerilog) = Some nameSMT ->
     (valuation_of_executions m e1 e2) nameSMT =
-      Some (SMTLib.Value_BitVec (BV.size bv) (of_bits bv)).
+      Some (SMTLib.Value_BitVec (RawBV.size bv) (of_bits bv)).
   Proof.
     intros Hexec Hexes Hname.
     unfold valuation_of_executions; simpl.
@@ -232,7 +232,7 @@ Module SMT.
     XBV.to_bv xbv = Some bv ->
     m (TaggedName.VerilogRight, nameVerilog) = Some nameSMT ->
     (valuation_of_executions m e1 e2) nameSMT =
-      Some (SMTLib.Value_BitVec (BV.size bv) (of_bits bv)).
+      Some (SMTLib.Value_BitVec (RawBV.size bv) (of_bits bv)).
   Proof.
     intros Hexec Hexes Hname.
     unfold valuation_of_executions; simpl.
@@ -265,7 +265,7 @@ Module SMT.
       XBV.to_bv xbv = Some bv ->
       m (tag, nameVerilog) = Some nameSMT ->
       (valuation_of_execution m e) nameSMT =
-        Some (SMTLib.Value_BitVec (BV.size bv) (of_bits bv)).
+        Some (SMTLib.Value_BitVec (RawBV.size bv) (of_bits bv)).
     Proof.
       intros Hexec Hexes Hname.
       unfold valuation_of_execution; simpl.
