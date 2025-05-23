@@ -77,14 +77,15 @@ Module CombinationalOnly.
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
   (* Notation with_rewrite e := (eq_rect_r _ e _). *)
 
-  Definition convert (m : N) (value : XBV.t) : XBV.t :=
-    match N.compare (XBV.size value) m with
-    | Lt => XBV.zextn value (m - (XBV.size value))%N
-    | Gt => XBV.extr value 0 m
-    | Eq => value
-    end.
+  Equations convert (to : N) (value : XBV.t) : XBV.t :=
+    convert to value with N.compare to (XBV.size value) => {
+      | Lt => XBV.extr value 0 to
+      | Gt => XBV.zextn value (to - (XBV.size value))%N
+      | Eq => value
+      }.
 
-  Definition select_bit (vec : XBV.t) (idx : XBV.t) : XBV.t := [XBV.bitOf 0 (XBV.x_binop RawBV.bv_shr vec idx)].
+  Definition select_bit (vec : XBV.t) (idx : XBV.t) : XBV.t :=
+    [XBV.bitOf 0 (XBV.x_binop RawBV.bv_shr vec idx)].
 
   Equations
     eval_expr : VerilogState -> Verilog.expression -> option XBV.t :=

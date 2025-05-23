@@ -1,4 +1,5 @@
 From vera Require Import Common.
+Import (coercions) VerilogSMTBijection.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require Import VerilogToSMT.
@@ -6,6 +7,7 @@ From vera Require Import SMT.
 From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
 Import CombinationalOnly.
+From vera Require Import Bitvector.
 
 From Coq Require List.
 From Coq Require String.
@@ -106,21 +108,6 @@ Proof.
   eauto using mk_bijection_smt_map_match.
 Qed.
 
-Theorem verilog_to_smt_correct tag start v smt :
-  verilog_to_smt tag start v = inr smt ->
-  SMTLibFacts.smt_reflect
-    (SMT.query smt)
-    (fun ρ => valid_execution v (SMT.execution_of_valuation tag (SMT.nameMap smt) ρ)).
-Proof.
-  funelim (verilog_to_smt tag start v);
-    simp verilog_to_smt in *;
-    try rewrite Heq in *;
-    simpl in *;
-    try discriminate.
-  autodestruct_eqn E. cbn.
-  intros H. inv H. cbn in *.
-Admitted.
-
 Lemma mk_bijection_only_tag tag vars m :
   mk_bijection tag vars = inr m ->
   VerilogSMTBijection.only_tag tag m.
@@ -145,3 +132,116 @@ Proof.
   autodestruct_eqn E. cbn.
   eauto using mk_bijection_only_tag.
 Qed.
+
+Inductive verilog_smt_match_value : XBV.t -> SMTLib.value -> Prop :=
+| verilog_smt_match_value_intro w xbv bv :
+  xbv = XBV.from_bv (BV.bits bv) ->
+  verilog_smt_match_value xbv (SMTLib.Value_BitVec w bv).
+
+Inductive verilog_smt_match_on_names (st : VerilogState) (ρ : SMTLib.valuation) verilogName smtName :=
+| verilog_smt_match_on_names_intro xbv val
+    (Hsmtval : ρ smtName = Some val)
+    (Hverilogval : regState st verilogName = Some xbv)
+    (Hmatchvals : verilog_smt_match_value xbv val).
+
+Definition verilog_smt_match_states
+  (tag : TaggedName.Tag)
+  (m : VerilogSMTBijection.t)
+  (st : VerilogState)
+  (ρ : SMTLib.valuation) :=
+  forall verilogName smtName,
+    m (tag, verilogName) = Some smtName ->
+    verilog_smt_match_on_names st ρ verilogName smtName.
+
+Lemma eval_expr_width_correct st expr xbv :
+  eval_expr st expr = Some xbv ->
+  XBV.size xbv = Verilog.expr_type expr.
+Admitted.
+
+Lemma expr_to_smt_correct vars expr :
+  forall t tag m st ρ xbv bv,
+    expr_to_smt vars expr = inr t ->
+    verilog_smt_match_states tag m st ρ ->
+    eval_expr st expr = Some xbv ->
+    SMTLib.interp_term ρ t = Some bv ->
+    verilog_smt_match_value xbv bv.
+Proof.
+  Ltac expr_begin_tac :=
+    match goal with
+    | [ Heval_expr: eval_expr _ _ = Some _ , Hinterp_term : SMTLib.interp_term _ _ = Some _ |- _ ] =>
+        cbn in Hinterp_term;
+        simp eval_expr in Heval_expr; inv Heval_expr;
+        let E := fresh "E" in
+        autodestruct_eqn E
+    end.
+
+  funelim (expr_to_smt vars expr); intros * Hexpr_to_smt Hmatch_states Heval_expr Hinterp_term;
+    inv Hexpr_to_smt; autodestruct_eqn E;
+    try match type of Heval_expr with
+      | context[Verilog.BinaryOp] => expr_begin_tac
+      | context[Verilog.UnaryOp] => expr_begin_tac
+      end.
+  - admit. (* TODO BinaryPlus *)
+  - admit. (* TODO BinaryMinus *)
+  - admit. (* TODO BinaryStar *)
+  - admit. (* TODO BinaryBitwiseAnd *)
+  - admit. (* TODO BinaryBitwiseOr *)
+  - admit. (* TODO BinaryShiftRight *)
+  - admit. (* TODO BinaryShiftLeft *)
+  - admit. (* TODO BinaryShiftLeftArithmetic *)
+  - admit. (* TODO UnaryPlus *)
+  - admit. (* TODO UnaryMinus *)
+  - admit. (* TODO UnaryNegation *)
+  - (* TODO: Conditional *)
+    expr_begin_tac;
+      try solve [eauto];
+      try rewrite Bool.negb_true_iff in *; try rewrite Bool.negb_false_iff in *.
+    + admit. (* Contradiction 0 <> 0 *)
+    + admit. (* Condition is X *)
+    + admit. (* Contradiction 0 <> 0 *)
+    + admit. (* Condition is X *)
+  - (* TODO: BitSelect *)
+    expr_begin_tac.
+    admit.
+  - (* TODO: Concatenation *)
+    (* The induction principe does not handle the list correctly, we probably
+       need to change the AST a bit *)
+    expr_begin_tac.
+    admit.
+  - (* Verilog.IntegerLiteral *)
+    expr_begin_tac.
+    now constructor.
+  - (* Verilog.NamedExpression *)
+    funelim (term_for_name vars t n); rewrite <- Heqcall in *; try discriminate; clear Heqcall.
+    destruct Hmatch_states with (verilogName := name) (smtName := n__smt).
+    { admit. (* TODO: names in the expression are in the bijection *) }
+    inv H0. (* FIXME: don't reference names *)
+    expr_begin_tac; congruence.
+  - (* TODO: Resize *)
+    expr_begin_tac.
+    simp convert; unfold convert_clause_1.
+    erewrite eval_expr_width_correct by eassumption.
+    funelim (cast_from_to (Verilog.expr_type expr) to t0);
+      rewrite <- Heqcall in *; clear Heqcall;
+      rewrite Heq.
+    + eauto.
+    + cbn in Hinterp_term. autodestruct_eqn E.
+      (* TODO: Truncation implementation matches *) admit.
+    + cbn in Hinterp_term. autodestruct_eqn E.
+      (* TODO: Extension implementation matches *) admit.
+Admitted.
+
+Theorem verilog_to_smt_correct tag start v smt :
+  verilog_to_smt tag start v = inr smt ->
+  SMTLibFacts.smt_reflect
+    (SMT.query smt)
+    (fun ρ => valid_execution v (SMT.execution_of_valuation tag (SMT.nameMap smt) ρ)).
+Proof.
+  funelim (verilog_to_smt tag start v);
+    simp verilog_to_smt in *;
+    try rewrite Heq in *;
+    simpl in *;
+    try discriminate.
+  autodestruct_eqn E. cbn.
+  intros H. inv H. cbn in *.
+Admitted.
