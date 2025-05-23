@@ -43,12 +43,12 @@ Local Definition width := N.
 
 Definition transf := sum string.
 
-Definition cast_from_to (from to: N) (expr : SMTLib.term) : SMTLib.term :=
-  match N.compare to from with
-  | Lt => SMTLib.Term_BVExtract (nat_of_N (to - 1)) 0 expr
-  | Gt => SMTLib.Term_BVConcat (SMTLib.Term_BVLit (RawBV.zeros (to - from))) expr
-  | Eq => expr
-  end
+Equations cast_from_to (from to: N) (t : SMTLib.term) : SMTLib.term :=
+  cast_from_to from to t with N.compare to from => {
+    | Lt => SMTLib.Term_BVExtract (nat_of_N (to - 1)) 0 t
+    | Gt => SMTLib.Term_BVConcat (SMTLib.Term_BVLit (RawBV.zeros (to - from))) t
+    | Eq => t
+    }
 .
 
 Definition smt_var_info : Type := (smtname * width).
@@ -56,15 +56,14 @@ Definition smt_var_info : Type := (smtname * width).
 Section expr_to_smt.
   Variable var_verilog_to_smt : StrFunMap.t smt_var_info.
 
-  Definition term_for_name (t : Verilog.vtype) (name : string) : transf SMTLib.term :=
-    match var_verilog_to_smt name with
-    | None => raise ("Name not declared: " ++ name)%string
-    | Some (n__smt, width) =>
-        if (width =? t)%N
-        then ret (SMTLib.Term_Const n__smt)
-        else raise ("Incorrect sort for " ++ name)%string
-    end.
-
+  Equations term_for_name (t : Verilog.vtype) (name : string) : transf SMTLib.term :=
+    term_for_name t name with var_verilog_to_smt name := {
+      | None => raise ("Name not declared: " ++ name)%string
+      | Some (n__smt, width) with dec (width = t) => {
+        | left E => ret (SMTLib.Term_Const n__smt)
+        | right _ => raise ("Incorrect sort for " ++ name)%string
+        }
+      }.
 
   Equations expr_to_smt : Verilog.expression -> transf SMTLib.term :=
     expr_to_smt (Verilog.UnaryOp Verilog.UnaryPlus operand) :=
