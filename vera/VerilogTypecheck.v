@@ -21,7 +21,7 @@ From vera Require Import Common.
 From vera Require EnvStack.
 From vera Require Import Common.
 From vera Require Import Bitvector.
-Import (notations) Bitvector.BV.
+Import (notations) Bitvector.RawBV.
 
 Import MonadNotation.
 Import FunctorNotation.
@@ -63,8 +63,8 @@ Equations tc_lvalue : TCBindings -> Verilog.expression -> TC unit :=
   tc_lvalue Γ (Verilog.NamedExpression t_expr n) :=
     tc_name Γ t_expr n .
 
-Definition dec_value_matches_type (v: BV.t) (t: Verilog.vtype) : { BV.size v = t } + { BV.size v <> t } :=
-  N.eq_dec (BV.size v) t.
+Definition dec_value_matches_type (v: RawBV.t) (t: Verilog.vtype) : { RawBV.size v = t } + { RawBV.size v <> t } :=
+  N.eq_dec (RawBV.size v) t.
 
 Equations tc_expr : TCBindings -> Verilog.expression -> TC unit :=
   tc_expr Γ (Verilog.UnaryOp op e) :=

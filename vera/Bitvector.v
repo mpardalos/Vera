@@ -24,7 +24,9 @@ Local Open Scope bv_scope.
 
 Set Bullet Behavior "Strict Subproofs".
 
-Module BV.
+Module BV := BITVECTOR_LIST.
+
+Module RawBV.
   Include RAWBITVECTOR_LIST.
   Notation t := bitvector.
   (* Definition some_bitvector := {n : _ & bitvector n}. *)
@@ -78,7 +80,7 @@ Module BV.
     | [] => ""
     | b::bs => to_string bs ++ (if b then "1" else "0")
     end.
-End BV.
+End RawBV.
 
 Module XBV.
   Variant bit := X | I | O.
@@ -110,11 +112,11 @@ Module XBV.
   Definition eq_dec (bv1 bv2: t) : { bv1 = bv2 } + { bv1 <> bv2 }.
   Proof. decide equality. apply bit_eq_dec. Qed.
 
-  Definition from_bv (bv : BV.t) : t :=
+  Definition from_bv (bv : RawBV.t) : t :=
     List.map (fun (b: bool) => if b then I else O) bv
   .
 
-  Definition to_bv (bv : t) : option BV.t :=
+  Definition to_bv (bv : t) : option RawBV.t :=
     mapT bit_to_bool bv
   .
 

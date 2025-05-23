@@ -6,7 +6,7 @@ From ExtLib Require Import Programming.Show.
 
 From vera Require Import Common.
 From vera Require Import Bitvector.
-Import (notations) Bitvector.BV.
+Import (notations) Bitvector.RawBV.
 
 Require Import List.
 Import ListNotations.
@@ -147,7 +147,7 @@ Module MkVerilog(Annotation : DecidableType).
   | Conditional : expression -> expression -> expression -> expression
   | BitSelect : expression -> expression -> expression
   | Concatenation : list expression -> expression
-  | IntegerLiteral : BV.t -> expression
+  | IntegerLiteral : RawBV.t -> expression
   | NamedExpression : Annotation.t -> string -> expression
   | Resize : N -> expression -> expression
   .
@@ -214,7 +214,7 @@ Module Verilog.
     expr_type (Concatenation exprs) := fold_left N.add (map expr_type exprs) 0%N;
     expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
     expr_type (Resize t _) := t;
-    expr_type (IntegerLiteral v) := BV.size v;
+    expr_type (IntegerLiteral v) := RawBV.size v;
     expr_type (NamedExpression t _) := t.
 End Verilog.
 

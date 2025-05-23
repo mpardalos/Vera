@@ -746,7 +746,7 @@ Proof.
   edestruct Hmatch2_bw as [smtName2 HsmtName2]. { eauto. }
   unfold match_map_execution in *.
   exists smtName1. exists smtName2.
-  assert (exists v : BV.t, XBV.to_bv bv = Some v) as Hto_bv. {
+  assert (exists v : RawBV.t, XBV.to_bv bv = Some v) as Hto_bv. {
     apply XBV.not_has_x_to_bv. eauto.
   } destruct Hto_bv.
   erewrite SMT.valuation_of_executions_some_left; eauto.
@@ -780,10 +780,10 @@ Proof.
   edestruct Hmatch2_bw as [smtName2 HsmtName2]. { eauto. }
   unfold match_map_execution in *.
   exists smtName1. exists smtName2.
-  assert (exists bv : BV.t, XBV.to_bv v1 = Some bv) as Hto_bv1. {
+  assert (exists bv : RawBV.t, XBV.to_bv v1 = Some bv) as Hto_bv1. {
     apply XBV.not_has_x_to_bv. eauto.
   } destruct Hto_bv1 as [bv1 Hbv1].
-  assert (exists bv : BV.t, XBV.to_bv v2 = Some bv) as Hto_bv2. {
+  assert (exists bv : RawBV.t, XBV.to_bv v2 = Some bv) as Hto_bv2. {
     apply XBV.not_has_x_to_bv. eauto.
   } destruct Hto_bv2 as [bv2 Hbv2].
   erewrite SMT.valuation_of_executions_some_left; eauto.
@@ -809,7 +809,7 @@ Proof.
   intros name Hname_in [xbv Hxbv].
   destruct Hmatch with (name := name) as [_ [smtName HsmtName]]; eauto.
   exists smtName.
-  assert (exists bv : BV.t, XBV.to_bv xbv = Some bv) as Hto_bv. {
+  assert (exists bv : RawBV.t, XBV.to_bv xbv = Some bv) as Hto_bv. {
     apply XBV.not_has_x_to_bv. eauto.
   } destruct Hto_bv as [bv Hbv].
   erewrite SMT.valuation_of_executions_some_left; eauto.
@@ -828,7 +828,7 @@ Proof.
   intros name Hname_in [xbv Hxbv].
   destruct Hmatch with (name := name) as [_ [smtName HsmtName]]; eauto.
   exists smtName.
-  assert (exists bv : BV.t, XBV.to_bv xbv = Some bv) as Hto_bv. {
+  assert (exists bv : RawBV.t, XBV.to_bv xbv = Some bv) as Hto_bv. {
     apply XBV.not_has_x_to_bv. eauto.
   } destruct Hto_bv as [bv Hbv].
   erewrite SMT.valuation_of_executions_some_right; eauto.
