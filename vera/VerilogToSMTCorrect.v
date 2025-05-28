@@ -11,6 +11,7 @@ From vera Require Import Bitvector.
 
 From Coq Require List.
 From Coq Require String.
+From Coq Require Import Logic.ProofIrrelevance.
 
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.MonadState.
@@ -135,7 +136,7 @@ Qed.
 
 Inductive verilog_smt_match_value : XBV.t -> SMTLib.value -> Prop :=
 | verilog_smt_match_value_intro w xbv bv :
-  xbv = XBV.from_bv (BV.bits bv) ->
+  xbv = XBV.from_sized_bv bv ->
   verilog_smt_match_value xbv (SMTLib.Value_BitVec w bv).
 
 Inductive verilog_smt_match_on_names (st : VerilogState) (ρ : SMTLib.valuation) verilogName smtName :=
@@ -157,6 +158,37 @@ Lemma eval_expr_width_correct st expr xbv :
   eval_expr st expr = Some xbv ->
   XBV.size xbv = Verilog.expr_type expr.
 Admitted.
+
+Lemma to_bv_from_sized_bv_inverse w (bv : BV.bitvector w) bv' :
+  XBV.to_bv (XBV.from_sized_bv bv) = Some bv' ->
+  BV.bits bv = bv'.
+Proof.
+  destruct bv. unfold XBV.from_sized_bv.
+  rewrite XBV.xbv_bv_inverse.
+  intros H. inv H.
+  reflexivity.
+Qed.
+
+Lemma eval_binop_plus_correct w (bv0 bv1 : BV.bitvector w) :
+  verilog_smt_match_value
+    (eval_binop Verilog.BinaryPlus (XBV.from_sized_bv bv0) (XBV.from_sized_bv bv1))
+    (SMTLib.Value_BitVec w (BVList.BITVECTOR_LIST.bv_add (n:=w) bv0 bv1)).
+Proof.
+  funelim (eval_binop Verilog.BinaryPlus (XBV.from_sized_bv bv0) (XBV.from_sized_bv bv1));
+    rewrite <- Heqcall in *; try discriminate; clear Heqcall.
+  - repeat apply_somewhere to_bv_from_sized_bv_inverse. subst.
+    constructor.
+    Opaque XBV.from_bv. unfold BVList.BITVECTOR_LIST.bv_add, XBV.from_sized_bv. cbn.
+    eauto.
+  - admit. (* TODO RHS has x's *)
+  - admit. (* TODO LHS has x's *)
+Admitted.
+
+Lemma eval_binop_minus_correct w (bv0 bv1 : BV.bitvector w) :
+  verilog_smt_match_value
+    (eval_binop Verilog.BinaryMinus (XBV.from_sized_bv bv0) (XBV.from_sized_bv bv1))
+    (SMTLib.Value_BitVec w (BVList.BITVECTOR_LIST.bv_subt bv0 bv1)).
+Proof. Admitted.
 
 Lemma expr_to_smt_correct vars expr :
   forall t tag m st ρ xbv bv,
@@ -181,8 +213,17 @@ Proof.
       | context[Verilog.BinaryOp] => expr_begin_tac
       | context[Verilog.UnaryOp] => expr_begin_tac
       end.
-  - admit. (* TODO BinaryPlus *)
-  - admit. (* TODO BinaryMinus *)
+  - specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
+    inv H. apply_somewhere inj_pair2. subst.
+    specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv1) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
+    inv H0. apply_somewhere inj_pair2. subst.
+    apply eval_binop_plus_correct.
+  - apply_somewhere inj_pair2. subst.
+    specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
+    inv H. apply_somewhere inj_pair2. subst.
+    specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv2) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
+    inv H0. apply_somewhere inj_pair2. subst.
+    apply eval_binop_minus_correct.
   - admit. (* TODO BinaryStar *)
   - admit. (* TODO BinaryBitwiseAnd *)
   - admit. (* TODO BinaryBitwiseOr *)

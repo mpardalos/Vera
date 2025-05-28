@@ -12,6 +12,9 @@ From ExtLib Require Import Structures.Maps.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Structures.Applicative.
 From ExtLib Require Import Structures.Functor.
+(* Just for instances *)
+From ExtLib Require Data.Monads.OptionMonad.
+From ExtLib Require Data.List.
 Import ApplicativeNotation.
 Import FunctorNotation.
 
@@ -20,6 +23,7 @@ From Coq Require Import Psatz.
 From Coq Require Import ssreflect.
 From Coq Require Import String.
 From Coq Require Import Logic.ProofIrrelevance.
+From Coq Require Import Arith.PeanoNat.
 
 From vera Require Import Tactics.
 From vera Require Import Decidable.
@@ -447,3 +451,11 @@ Module VerilogSMTBijection.
       now erewrite E1.
   Qed.
 End VerilogSMTBijection.
+
+Lemma mapT_list_option_length {A B} (f : A -> option B) (l : list A) :
+  forall (l' : list B), mapT f l = Some l' ->
+                   List.length l = List.length l'.
+Proof.
+  induction l; intros; cbn in *; try solve_by_inverts 2%nat.
+  autodestruct_eqn E. cbn. eauto.
+Qed.

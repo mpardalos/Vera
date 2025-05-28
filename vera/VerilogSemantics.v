@@ -12,6 +12,8 @@ From vera Require Import Verilog.
 From vera Require Import Common.
 From vera Require Import Bitvector.
 Import (notations) Bitvector.XBV.
+From vera Require Import Tactics.
+From vera Require Import Decidable.
 
 From Equations Require Import Equations.
 
@@ -68,8 +70,13 @@ Module CombinationalOnly.
       pendingProcesses := List.filter is_always_comb (Verilog.modBody m)
     |}.
 
-  Definition eval_binop (op : Verilog.binop) (lhs : XBV.t) (rhs : XBV.t) : XBV.t.
-  Admitted.
+  Equations eval_binop : Verilog.binop -> XBV.t -> XBV.t -> XBV.t :=
+    eval_binop Verilog.BinaryPlus l r with XBV.to_bv l, XBV.to_bv r => {
+      | Some lbv, Some rbv => XBV.from_bv (RawBV.bv_add lbv rbv)
+      | _, _ => XBV.exes (XBV.size l)
+      };
+    eval_binop op l r := XBV.exes (XBV.size l)
+  .
 
   Definition eval_unaryop (operator : Verilog.unaryop) (operand : XBV.t) : XBV.t.
   Admitted.

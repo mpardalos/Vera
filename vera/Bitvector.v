@@ -120,6 +120,18 @@ Module XBV.
     mapT bit_to_bool bv
   .
 
+  Lemma to_bv_size xbv : forall rbv,
+    to_bv xbv = Some rbv ->
+    RawBV.size rbv = XBV.size xbv.
+  Proof.
+    unfold XBV.size, RawBV.size.
+    induction xbv; cbn; firstorder.
+    - some_inv; reflexivity.
+    - autodestruct_eqn E.
+      apply mapT_list_option_length in E0.
+      cbn. lia.
+  Qed.
+
   Definition has_x (bv : t) : Prop :=
     List.Exists (fun b => b = X) bv.
 
@@ -200,6 +212,29 @@ Module XBV.
     end
   .
 
+  Definition from_sized_bv {w} (bv : BV.bitvector w) : XBV.t :=
+    from_bv (BV.bits bv).
+
+  Definition to_sized_bv (xbv : XBV.t) : option (BV.bitvector (XBV.size xbv)) :=
+    match to_bv xbv as x return _ = x -> _ with
+    | Some bv => fun e => Some {| BV.bv := bv; BV.wf := to_bv_size xbv bv e |}
+    | None => fun e => None
+    end eq_refl.
+
+  Import EqNotations.
+
+  Equations to_bv_same_width (l r : XBV.t) : option (RawBV.t * RawBV.t) :=
+    to_bv_same_width l r with dec (size r = size l), to_bv l, to_bv r => {
+      | left e, Some l_bv, Some r_bv => Some (l_bv, r_bv)
+      | _, _, _ => None
+      }.
+
+  Equations to_sized_bv_same_width (l r : XBV.t) : option (BV.bitvector (size l) * BV.bitvector (size l)) :=
+    to_sized_bv_same_width l r with dec (size r = size l), to_sized_bv l, to_sized_bv r => {
+      | left e, Some l_bv, Some r_bv => Some (l_bv, rew e in r_bv)
+      | _, _, _ => None
+      }.
+
   (* Shouldn't this be adding bits at the end? *)
   Fixpoint extend (xbv : t) (i : nat) (b : bit) :=
     match i with
@@ -235,23 +270,23 @@ Module XBV.
   Definition bitOf (n : nat) (xbv: t): bit := nth n xbv X.
 
   Lemma xbv_bv_inverse : forall bv,
-      XBV.to_bv (XBV.from_bv bv) = Some bv.
+      to_bv (from_bv bv) = Some bv.
   Proof.
     intros bv. induction bv.
     - reflexivity.
     - simpl in *.
       destruct a.
-      + unfold XBV.to_bv in *. simpl.
-        replace (List.mapT_list XBV.bit_to_bool (XBV.from_bv bv)) with (Some bv).
+      + unfold to_bv in *. simpl.
+        replace (List.mapT_list bit_to_bool (from_bv bv)) with (Some bv).
         reflexivity.
-      + unfold XBV.to_bv in *. simpl.
-        replace (List.mapT_list XBV.bit_to_bool (XBV.from_bv bv)) with (Some bv).
+      + unfold to_bv in *. simpl.
+        replace (List.mapT_list bit_to_bool (from_bv bv)) with (Some bv).
         reflexivity.
   Qed.
 
   Lemma bv_xbv_inverse : forall xbv bv,
-      XBV.to_bv xbv = Some bv ->
-      XBV.from_bv bv = xbv.
+      to_bv xbv = Some bv ->
+      from_bv bv = xbv.
   Proof. Admitted.
 
   (*
