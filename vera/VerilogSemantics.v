@@ -70,11 +70,37 @@ Module CombinationalOnly.
       pendingProcesses := List.filter is_always_comb (Verilog.modBody m)
     |}.
 
-  Equations eval_binop : Verilog.binop -> XBV.t -> XBV.t -> XBV.t :=
-    eval_binop Verilog.BinaryPlus l r with XBV.to_bv l, XBV.to_bv r => {
-      | Some lbv, Some rbv => XBV.from_bv (RawBV.bv_add lbv rbv)
+  Equations bv_binop : (RawBV.t -> RawBV.t -> RawBV.t) -> XBV.t -> XBV.t -> XBV.t :=
+    bv_binop f l r with XBV.to_bv l, XBV.to_bv r => {
+      | Some lbv, Some rbv => XBV.from_bv (f lbv rbv)
       | _, _ => XBV.exes (XBV.size l)
-      };
+      }.
+
+  Definition bitwise_binop (f : XBV.bit -> XBV.bit -> XBV.bit) (l r : XBV.t) : XBV.t :=
+    RawBV.map2 f l r.
+
+  Import XBV (X, I, O).
+
+  Equations and_bit : XBV.bit -> XBV.bit -> XBV.bit :=
+    and_bit I I := I;
+    and_bit O _ := O;
+    and_bit _ O := O;
+    and_bit X _ := X;
+    and_bit _ X := X.
+
+  Equations or_bit : XBV.bit -> XBV.bit -> XBV.bit :=
+    or_bit O O := O;
+    or_bit I _ := I;
+    or_bit _ I := I;
+    or_bit X _ := X;
+    or_bit _ X := X.
+
+  Equations eval_binop : Verilog.binop -> XBV.t -> XBV.t -> XBV.t :=
+    eval_binop Verilog.BinaryPlus l r := bv_binop RawBV.bv_add l r;
+    eval_binop Verilog.BinaryMinus l r := bv_binop (fun bvl bvr => RawBV.bv_add bvl (RawBV.bv_neg bvr)) l r;
+    eval_binop Verilog.BinaryStar l r := bv_binop RawBV.bv_mult l r;
+    eval_binop Verilog.BinaryBitwiseAnd l r := bitwise_binop and_bit l r;
+    eval_binop Verilog.BinaryBitwiseOr l r := bitwise_binop or_bit l r;
     eval_binop op l r := XBV.exes (XBV.size l)
   .
 
