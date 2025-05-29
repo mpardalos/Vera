@@ -1185,12 +1185,13 @@ Proof.
       * eassumption.
 Qed.
 
-Theorem equivalence_query_correct verilog1 verilog2 query :
-  equivalence_query verilog1 verilog2 = inr query ->
-  SMTLib.unsatisfiable (SMT.query query) ->
-  equivalent verilog1 verilog2.
+Definition vera_says_equivalent v1 v2 :=
+  exists q, equivalence_query v1 v2 = inr q /\ SMTLib.unsatisfiable (SMT.query q).
+
+Theorem equivalence_query_correct verilog1 verilog2 :
+  vera_says_equivalent verilog1 verilog2 -> equivalent verilog1 verilog2.
 Proof.
-  intros Hquery Hunsat.
+  intros [q [Hquery Hunsat]].
   unfold equivalence_query in *; inv Hquery; autodestruct_eqn E.
   eauto 10 using
     equivalent_trans,
