@@ -169,26 +169,23 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma eval_binop_plus_correct w (bv0 bv1 : BV.bitvector w) :
-  verilog_smt_match_value
-    (eval_binop Verilog.BinaryPlus (XBV.from_sized_bv bv0) (XBV.from_sized_bv bv1))
-    (SMTLib.Value_BitVec w (BVList.BITVECTOR_LIST.bv_add (n:=w) bv0 bv1)).
-Proof.
-  funelim (eval_binop Verilog.BinaryPlus (XBV.from_sized_bv bv0) (XBV.from_sized_bv bv1));
-    rewrite <- Heqcall in *; try discriminate; clear Heqcall.
-  - repeat apply_somewhere to_bv_from_sized_bv_inverse. subst.
-    constructor.
-    Opaque XBV.from_bv. unfold BVList.BITVECTOR_LIST.bv_add, XBV.from_sized_bv. cbn.
-    eauto.
-  - admit. (* TODO RHS has x's *)
-  - admit. (* TODO LHS has x's *)
-Admitted.
-
-Lemma eval_binop_minus_correct w (bv0 bv1 : BV.bitvector w) :
-  verilog_smt_match_value
-    (eval_binop Verilog.BinaryMinus (XBV.from_sized_bv bv0) (XBV.from_sized_bv bv1))
-    (SMTLib.Value_BitVec w (BVList.BITVECTOR_LIST.bv_subt bv0 bv1)).
-Proof. Admitted.
+Ltac bv_binop_tac :=
+  simp eval_binop in *;
+  match goal with
+    [ |- context[bv_binop ?op ?l ?r] ] =>
+      funelim (bv_binop op l r);
+      match goal with
+        [ Heqcall': _ = bv_binop op l r |- _ ] =>
+          rewrite <- Heqcall' in *;
+          clear Heqcall';
+          repeat apply_somewhere to_bv_from_sized_bv_inverse;
+          subst
+      end ;
+      [ idtac
+      | now (unfold XBV.from_sized_bv in *; rewrite XBV.xbv_bv_inverse in * )
+      | now (unfold XBV.from_sized_bv in *; rewrite XBV.xbv_bv_inverse in * )
+      ]
+  end.
 
 Lemma expr_to_smt_correct vars expr :
   forall t tag m st ρ xbv bv,
@@ -213,19 +210,35 @@ Proof.
       | context[Verilog.BinaryOp] => expr_begin_tac
       | context[Verilog.UnaryOp] => expr_begin_tac
       end.
-  - specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
+  - (* BinaryPlus *)
+    specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
     inv H. apply_somewhere inj_pair2. subst.
     specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv1) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
     inv H0. apply_somewhere inj_pair2. subst.
-    apply eval_binop_plus_correct.
-  - apply_somewhere inj_pair2. subst.
+
+    bv_binop_tac. now constructor.
+  - (* BinaryMinus *)
+    apply_somewhere inj_pair2. subst.
     specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
     inv H. apply_somewhere inj_pair2. subst.
     specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv2) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
     inv H0. apply_somewhere inj_pair2. subst.
-    apply eval_binop_minus_correct.
-  - admit. (* TODO BinaryStar *)
-  - admit. (* TODO BinaryBitwiseAnd *)
+
+    bv_binop_tac. now constructor.
+  - (* BinaryStar *)
+    specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
+    inv H. apply_somewhere inj_pair2. subst.
+    specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv1) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
+    inv H0. apply_somewhere inj_pair2. subst.
+
+    bv_binop_tac. now constructor.
+  - (* TODO BinaryBitwiseAnd *)
+    specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
+    inv H. apply_somewhere inj_pair2. subst.
+    specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv1) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
+    inv H0. apply_somewhere inj_pair2. subst.
+    simp eval_binop in *.
+    admit.
   - admit. (* TODO BinaryBitwiseOr *)
   - admit. (* TODO BinaryShiftRight *)
   - admit. (* TODO BinaryShiftLeft *)
