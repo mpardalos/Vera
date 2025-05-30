@@ -105,3 +105,37 @@ Ltac apply_somewhere f :=
   multimatch goal with
   | [ H : _ |- _] => apply f in H
   end.
+
+Ltac insterU' tac H :=
+  repeat match type of H with
+    | forall x : ?T, _ =>
+        match type of T with
+        | Prop => (specialize (H ltac:(solve [tac])) || fail 1)
+        | _ =>
+            let x := fresh "x" in
+            evar (x : T);
+            let x' := eval unfold x in x in
+              clear x; specialize (H x')
+        end
+    end.
+
+(**
+ * "inster" tactics based on CPDT (http://adam.chlipala.net/cpdt/html/Match.html)
+ *)
+
+(** Instantiate the parameters of a hypothesis as far as possible using `tac' to
+    solve goals *)
+Tactic Notation "insterU" hyp(H) "by" tactic(tac) := insterU' tac H.
+
+(** Instantiate the parameters of a hypothesis as far as possible *)
+Tactic Notation "insterU" hyp(H) := insterU' crush H.
+
+Ltac insterKeep' tac H :=
+  let H' := fresh "H'" in
+  generalize H; intro H'; insterU H' by tac.
+
+(** Like insterU, but keep an uninstantiated copy of `H' *)
+Tactic Notation "insterKeep" hyp(H) "by" tactic(tac) := insterKeep' tac H.
+
+(** Like insterU, but keep an uninstantiated copy of `H' *)
+Tactic Notation "insterKeep" hyp(H) := insterKeep' crush H.
