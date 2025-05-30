@@ -459,3 +459,8 @@ Proof.
   induction l; intros; cbn in *; try solve_by_inverts 2%nat.
   autodestruct_eqn E. cbn. eauto.
 Qed.
+
+Equations map2 {A B C} : (A -> B -> C) -> list A -> list B -> list C :=
+  map2 f (hd_a :: tl_a) (hd_b :: tl_b) := f hd_a hd_b :: map2 f tl_a tl_b;
+  map2 f nil _ := nil;
+  map2 f _ nil := nil.

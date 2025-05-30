@@ -12,6 +12,7 @@ From vera Require Import Bitvector.
 From Coq Require List.
 From Coq Require String.
 From Coq Require Import Logic.ProofIrrelevance.
+From Coq Require Import BinNat.
 
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.MonadState.
@@ -169,6 +170,80 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma bitwise_binop_no_exes (f_bit : XBV.bit -> XBV.bit -> XBV.bit) (f_bool : bool -> bool -> bool) :
+  forall l_xbv l_bv r_xbv r_bv,
+    XBV.to_bv l_xbv = Some l_bv ->
+    XBV.to_bv r_xbv = Some r_bv ->
+    (forall (lb rb : bool), (if f_bool lb rb then XBV.I else XBV.O) = f_bit (if lb then XBV.I else XBV.O) (if rb then XBV.I else XBV.O)) ->
+    bitwise_binop f_bit l_xbv r_xbv = XBV.from_bv (RawBV.map2 f_bool l_bv r_bv).
+Proof.
+  intros * Hl Hr Hf.
+  unfold RawBV.bv_and.
+  pose proof (XBV.bv_xbv_inverse _ _ Hl) as Hl_inverse. subst l_xbv.
+  pose proof (XBV.bv_xbv_inverse _ _ Hr) as Hr_inverse. subst r_xbv.
+  unfold bitwise_binop.
+  clear Hl. clear Hr.
+  generalize dependent r_bv.
+  induction l_bv; try now simp map2.
+  intros r_bv.
+  destruct r_bv; try now simp map2.
+  specialize (IHl_bv r_bv).
+  simpl; simp map2.
+  rewrite <- Hf.
+  f_equal; eauto.
+Qed.
+
+Import EqNotations.
+Require Import Program.
+
+Lemma to_sized_bv_to_bv xbv bv :
+  XBV.to_sized_bv xbv = Some bv -> XBV.to_bv xbv = Some (BV.bits bv).
+Proof.
+  (* Dependent types aaaaaaa *)
+Admitted.
+
+Lemma bitwise_and_no_exes :
+  forall w l_xbv r_xbv (l_bv r_bv : BV.bitvector w)
+    (Hsizel : XBV.size l_xbv = w)
+    (Hsizer : XBV.size r_xbv = w),
+    XBV.to_sized_bv l_xbv = Some (rew <- Hsizel in l_bv) ->
+    XBV.to_sized_bv r_xbv = Some (rew <- Hsizer in r_bv) ->
+    bitwise_binop and_bit l_xbv r_xbv = XBV.from_sized_bv (BV.bv_and l_bv r_bv).
+Proof.
+  intros * Hl Hr.
+  unfold BV.bv_and, XBV.from_sized_bv in *.
+  simpl.
+  unfold RawBV.bv_and.
+  do 2 rewrite BVList.BITVECTOR_LIST.wf.
+  rewrite N.eqb_refl.
+  destruct Hsizel, Hsizer.
+  unfold "rew <- [ _ ] _ in _" in *.
+  rewrite <- eq_rect_eq in *.
+
+  apply bitwise_binop_no_exes; try eassumption.
+  - apply to_sized_bv_to_bv. assumption.
+  - apply to_sized_bv_to_bv. assumption.
+  - intros. autodestruct_eqn E; now simp and_bit.
+Qed.
+
+Lemma bitwise_or_no_exes :
+  forall l_xbv l_bv r_xbv r_bv,
+    (XBV.size l_xbv = XBV.size r_xbv) ->
+    XBV.to_bv l_xbv = Some l_bv ->
+    XBV.to_bv r_xbv = Some r_bv ->
+    bitwise_binop or_bit l_xbv r_xbv = XBV.from_bv (RawBV.bv_or l_bv r_bv).
+Proof.
+  intros * Hsize Hl Hr.
+  unfold RawBV.bv_or.
+  erewrite XBV.to_bv_size by eassumption.
+  erewrite XBV.to_bv_size by eassumption.
+  rewrite Hsize.
+  rewrite N.eqb_refl.
+
+  apply bitwise_binop_no_exes; try eassumption.
+  intros. autodestruct_eqn E; now simp and_bit.
+Qed.
+
 Ltac bv_binop_tac :=
   simp eval_binop in *;
   match goal with
@@ -211,34 +286,27 @@ Proof.
       | context[Verilog.UnaryOp] => expr_begin_tac
       end.
   - (* BinaryPlus *)
-    specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
-    inv H. apply_somewhere inj_pair2. subst.
-    specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv1) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
-    inv H0. apply_somewhere inj_pair2. subst.
-
+    insterU H. inv H. apply_somewhere inj_pair2. subst.
+    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
     bv_binop_tac. now constructor.
   - (* BinaryMinus *)
     apply_somewhere inj_pair2. subst.
-    specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
-    inv H. apply_somewhere inj_pair2. subst.
-    specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv2) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
-    inv H0. apply_somewhere inj_pair2. subst.
-
+    insterU H. inv H. apply_somewhere inj_pair2. subst.
+    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
     bv_binop_tac. now constructor.
   - (* BinaryStar *)
-    specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
-    inv H. apply_somewhere inj_pair2. subst.
-    specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv1) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
-    inv H0. apply_somewhere inj_pair2. subst.
-
+    insterU H. inv H. apply_somewhere inj_pair2. subst.
+    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
     bv_binop_tac. now constructor.
-  - (* TODO BinaryBitwiseAnd *)
-    specialize (H t0 tag m st ρ t (SMTLib.Value_BitVec w bv0) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
-    inv H. apply_somewhere inj_pair2. subst.
-    specialize (H0 t0 t1 tag m st ρ t2 (SMTLib.Value_BitVec w bv1) ltac:(reflexivity) ltac:(assumption) ltac:(assumption) ltac:(assumption)).
-    inv H0. apply_somewhere inj_pair2. subst.
-    simp eval_binop in *.
-    admit.
+  - (* BinaryBitwiseAnd *)
+    insterU H. inv H. apply_somewhere inj_pair2. subst.
+    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
+    simp eval_binop.
+    constructor.
+    erewrite bitwise_and_no_exes.
+    + admit.
+    + admit.
+    + admit.
   - admit. (* TODO BinaryBitwiseOr *)
   - admit. (* TODO BinaryShiftRight *)
   - admit. (* TODO BinaryShiftLeft *)

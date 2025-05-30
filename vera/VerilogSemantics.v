@@ -11,7 +11,8 @@ From Coq Require Import Psatz.
 From vera Require Import Verilog.
 From vera Require Import Common.
 From vera Require Import Bitvector.
-Import (notations) Bitvector.XBV.
+Import (notations) XBV.
+Import XBV (X, I, O).
 From vera Require Import Tactics.
 From vera Require Import Decidable.
 
@@ -77,9 +78,7 @@ Module CombinationalOnly.
       }.
 
   Definition bitwise_binop (f : XBV.bit -> XBV.bit -> XBV.bit) (l r : XBV.t) : XBV.t :=
-    RawBV.map2 f l r.
-
-  Import XBV (X, I, O).
+    map2 f l r.
 
   Equations and_bit : XBV.bit -> XBV.bit -> XBV.bit :=
     and_bit I I := I;
