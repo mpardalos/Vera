@@ -203,16 +203,12 @@ Module CombinationalOnly.
                    (fun st1 stmt mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
                    (fun st1 stmts mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
                    _ _ _ _ _ _ _ _ _ _ _ _ _ )); intros; auto; try discriminate.
-    - inversion H; destruct (eval_expr st rhs); try discriminate; clear H.
-      inversion H1; clear H1.
-      reflexivity.
-    - inversion H2; destruct (eval_expr st cond); try discriminate; clear H2.
-      destruct (XBV.to_bv _); eauto.
-      destruct (RawBV.is_zero _); eauto.
-    - inversion H. reflexivity.
-    - inversion H1; clear H1.
-      destruct (exec_statement st hd) eqn:E; try discriminate.
-      transitivity (pendingProcesses v); eauto.
+    - now (some_inv; autodestruct).
+    - now (some_inv; autodestruct; eauto).
+    - now (some_inv; autodestruct; eauto).
+    - inv H1; autodestruct.
+      erewrite H by easy.
+      eauto.
   Qed.
 
   Equations
