@@ -1,6 +1,7 @@
-From Coq Require Import BinNat BinPos.
+From Coq Require Import Arith.
+From Coq Require Import NArith.
+From Coq Require Import ZArith.
 From Coq Require Import List.
-From Coq Require Import Nat.
 From Coq Require Import Psatz.
 From Coq Require Import String.
 From Coq Require Import Logic.Decidable.
@@ -16,6 +17,12 @@ From vera Require Import Common.
 From vera Require Import Decidable.
 
 From Equations Require Import Equations.
+Set Equations With UIP.
+
+(* Import after Equations, conflicting "UIP" *)
+From Coq Require Import Eqdep.
+Import EqdepTheory.
+Import EqNotations.
 
 Import SigTNotations.
 Import ListNotations.
@@ -24,7 +31,23 @@ Local Open Scope bv_scope.
 
 Set Bullet Behavior "Strict Subproofs".
 
-Module BV := BITVECTOR_LIST.
+Module BV.
+  Include BITVECTOR_LIST.
+
+  Lemma of_bits_equal n (bv1 bv2 : bitvector n) :
+    bits bv1 = bits bv2 ->
+    bv1 = bv2.
+  Proof.
+    intros.
+    destruct bv1 as [bits1 wf1], bv2 as [bits2 wf2].
+    simpl in *.
+    apply bv_eq_reflect.
+    unfold bv_eq, RAWBITVECTOR_LIST.bv_eq.
+    simpl. clear wf1 wf2. subst bits2.
+    rewrite N.eqb_refl.
+    apply RAWBITVECTOR_LIST.List_eq_refl.
+  Qed.
+End BV.
 
 Module RawBV.
   Include RAWBITVECTOR_LIST.
@@ -82,7 +105,7 @@ Module RawBV.
     end.
 End RawBV.
 
-Module XBV.
+Module RawXBV.
   Variant bit := X | I | O.
 
   Definition bit_to_bool b :=
@@ -93,38 +116,58 @@ Module XBV.
     end
   .
 
-  Definition t := list bit.
+  Definition xbv := list bit.
 
-  Definition size (xbv : t) := N.of_nat (length xbv).
+  Definition size (xbv : xbv) := N.of_nat (length xbv).
 
-  Fixpoint mk_list_exes (count : nat) : t :=
+  Definition of_bits (bs : list bit) : xbv := bs.
+
+  Arguments size / _.
+
+  Fixpoint mk_list_exes (count : nat) : xbv :=
     match count with
     | 0%nat => []
     | S n => X :: mk_list_exes n
     end
   .
 
-  Definition exes (count : N) : t := mk_list_exes (nat_of_N count).
+  Definition exes (count : N) : xbv := mk_list_exes (nat_of_N count).
+
+  Lemma exes_size {n} : size (exes n) = n.
+  Proof.
+    unfold exes.
+    induction n using N.peano_rect; simpl.
+    - reflexivity.
+    - rewrite Nnat.N2Nat.inj_succ. simpl in *.
+      lia.
+  Qed.
 
   Definition bit_eq_dec (b1 b2: bit) : { b1 = b2 } + { b1 <> b2 }.
   Proof. unfold decidable. decide equality. Qed.
 
-  Definition eq_dec (bv1 bv2: t) : { bv1 = bv2 } + { bv1 <> bv2 }.
+  Definition eq_dec (bv1 bv2: xbv) : { bv1 = bv2 } + { bv1 <> bv2 }.
   Proof. decide equality. apply bit_eq_dec. Qed.
 
-  Definition from_bv (bv : RawBV.t) : t :=
+  Definition from_bv (bv : RawBV.t) : xbv :=
     List.map (fun (b: bool) => if b then I else O) bv
   .
 
-  Definition to_bv (bv : t) : option RawBV.t :=
+  Lemma from_bv_size bv :
+    size (from_bv bv) = RawBV.size bv.
+  Proof.
+    unfold size, RawBV.size.
+    induction bv; simpl; lia.
+  Qed.
+
+  Definition to_bv (bv : xbv) : option RawBV.t :=
     mapT bit_to_bool bv
   .
 
   Lemma to_bv_size xbv : forall rbv,
     to_bv xbv = Some rbv ->
-    RawBV.size rbv = XBV.size xbv.
+    RawBV.size rbv = size xbv.
   Proof.
-    unfold XBV.size, RawBV.size.
+    unfold size, RawBV.size.
     induction xbv; cbn; firstorder.
     - some_inv; reflexivity.
     - autodestruct_eqn E.
@@ -132,10 +175,10 @@ Module XBV.
       cbn. lia.
   Qed.
 
-  Definition has_x (bv : t) : Prop :=
+  Definition has_x (bv : xbv) : Prop :=
     List.Exists (fun b => b = X) bv.
 
-  Lemma has_x_to_bv (bv : t) : has_x bv <-> to_bv bv = None.
+  Lemma has_x_to_bv (bv : xbv) : has_x bv <-> to_bv bv = None.
   Proof.
     repeat (unfold has_x, to_bv; simpl).
     induction bv.
@@ -155,7 +198,7 @@ Module XBV.
           constructor; apply IHbv; trivial.
   Qed.
 
-  Lemma not_has_x_to_bv (bv : t) : ~ (has_x bv) <-> exists v, to_bv bv = Some v.
+  Lemma not_has_x_to_bv (bv : xbv) : ~ (has_x bv) <-> exists v, to_bv bv = Some v.
   Proof.
     rewrite has_x_to_bv.
     destruct (to_bv bv) eqn:E; split; intro H.
@@ -206,68 +249,94 @@ Module XBV.
     match to_bv l, to_bv r with
     | Some l_bv, Some r_bv => from_bv (f l_bv r_bv)
     | _, _ =>
-        if (length l) =? (length r)
+        if Nat.eqb (length l) (length r)
         then exes (size l)
         else nil
     end
   .
 
-  Definition from_sized_bv {w} (bv : BV.bitvector w) : XBV.t :=
-    from_bv (BV.bits bv).
+  (* Definition from_sized_bv {w} (bv : BV.bitvector w) : xbv := *)
+  (*   from_bv (BV.bits bv). *)
 
-  Definition to_sized_bv (xbv : XBV.t) : option (BV.bitvector (XBV.size xbv)) :=
-    match to_bv xbv as x return _ = x -> _ with
-    | Some bv => fun e => Some {| BV.bv := bv; BV.wf := to_bv_size xbv bv e |}
-    | None => fun e => None
-    end eq_refl.
+  (* Definition to_sized_bv (v : xbv) : option (BV.bitvector (size v)) := *)
+  (*   match to_bv v as x return _ = x -> _ with *)
+  (*   | Some bv => fun e => Some {| BV.bv := bv; BV.wf := to_bv_size xbv bv e |} *)
+  (*   | None => fun e => None *)
+  (*   end eq_refl. *)
 
-  Import EqNotations.
+  (* Import EqNotations. *)
 
-  Equations to_bv_same_width (l r : XBV.t) : option (RawBV.t * RawBV.t) :=
+  Equations to_bv_same_width (l r : xbv) : option (RawBV.t * RawBV.t) :=
     to_bv_same_width l r with dec (size r = size l), to_bv l, to_bv r => {
       | left e, Some l_bv, Some r_bv => Some (l_bv, r_bv)
       | _, _, _ => None
       }.
 
-  Equations to_sized_bv_same_width (l r : XBV.t) : option (BV.bitvector (size l) * BV.bitvector (size l)) :=
-    to_sized_bv_same_width l r with dec (size r = size l), to_sized_bv l, to_sized_bv r => {
-      | left e, Some l_bv, Some r_bv => Some (l_bv, rew e in r_bv)
-      | _, _, _ => None
-      }.
+  (* Equations to_sized_bv_same_width (l r : t) : option (BV.bitvector (size l) * BV.bitvector (size l)) := *)
+  (*   to_sized_bv_same_width l r with dec (size r = size l), to_sized_bv l, to_sized_bv r => { *)
+  (*     | left e, Some l_bv, Some r_bv => Some (l_bv, rew e in r_bv) *)
+  (*     | _, _, _ => None *)
+  (*     }. *)
 
   (* Shouldn't this be adding bits at the end? *)
-  Fixpoint extend (xbv : t) (i : nat) (b : bit) :=
-    match i with
-    | 0 => xbv
-    | S n => b :: extend xbv n b
-    end
+  Equations extend_nat (v : xbv) (i : nat) (b : bit) : xbv :=
+    extend_nat v 0 b := v;
+    extend_nat v (S n) b := b :: extend_nat v n b
   .
 
-  Definition zextn (xbv : t) (i : N) :=
-    extend xbv (nat_of_N i) O.
+  Lemma extend_nat_width : forall i v b,
+    length (extend_nat v i b) = (i + length v).
+  Proof.
+    induction i; intros; try easy.
+    specialize (IHi v b).
+    simp extend_nat.
+    simpl. lia.
+  Qed.
 
-  Fixpoint extract (x: t) (i j: nat) : t :=
-    match x with
-    | [] => []
-    | bx :: x' =>
-        match i with
-        | 0      =>
-            match j with
-            | 0    => []
-            | S j' => bx :: extract x' i j'
-            end
-        | S i'   =>
-            match j with
-            | 0    => []
-            | S j' => extract x' i' j'
-            end
-        end
-    end.
+  Definition extend v i b := extend_nat v (N.to_nat i) b.
 
-  Definition extr (xbv : t) (i j : N) : t :=
-    extract xbv (nat_of_N i) (nat_of_N j).
+  Lemma extend_width : forall i v b,
+      size (extend v i b) = (i + size v)%N.
+  Proof.
+    intros.
+    unfold extend, size.
+    rewrite extend_nat_width.
+    lia.
+  Qed.
 
-  Definition bitOf (n : nat) (xbv: t): bit := nth n xbv X.
+  Definition zextn (v : xbv) (i : N) :=
+    extend v i O.
+
+  Equations extract (x: xbv) (i j: nat) : xbv :=
+    extract [] i j := [];
+    extract (bx :: x') 0 0 := [];
+    extract (bx :: x') 0 (S j') := bx :: extract x' 0 j';
+    extract (bx :: x') (S i') j := extract x' i' j.
+
+  Lemma extract_width x i j :
+    j + i <= length x ->
+    length (extract x i j) = j.
+  Proof.
+    funelim (extract x i j);
+      simp extract; simpl in *; try crush.
+  Qed.
+
+  Definition extr (v : xbv) (i j : N) : xbv :=
+    if (j + i <? size v)%N
+    then extract v (nat_of_N i) (nat_of_N j)
+    else exes j.
+
+  Lemma extr_width x i j :
+    size (extr x i j) = j.
+  Proof.
+    unfold extr, size.
+    autodestruct_eqn E.
+    - rewrite N.ltb_lt in E.
+      rewrite extract_width; try crush.
+    - apply exes_size.
+  Qed.
+
+  Definition bitOf (n : nat) (v: xbv): bit := nth n v X.
 
   Lemma xbv_bv_inverse : forall bv,
       to_bv (from_bv bv) = Some bv.
@@ -284,32 +353,252 @@ Module XBV.
         reflexivity.
   Qed.
 
-  Lemma bv_xbv_inverse : forall xbv bv,
-      to_bv xbv = Some bv ->
-      from_bv bv = xbv.
-  Proof. Admitted.
+  Lemma bv_xbv_inverse : forall x bv,
+      to_bv x = Some bv ->
+      from_bv bv = x.
+  Proof.
+    unfold to_bv, from_bv, mapT.
+    induction x; simpl in *; intros.
+    - now some_inv.
+    - autodestruct_eqn E.
+      insterU IHx.
+      simpl. f_equal.
+      + now destruct a, b.
+      + assumption.
+  Qed.
 
   (*
    * Matches this Verilog operation:
    * bv1 === bv2
    *)
-  Definition triple_equal (bv1 bv2 : t) := bv1 = bv2.
+  Definition triple_equal (bv1 bv2 : xbv) := bv1 = bv2.
 
   (*
    * Matches this Verilog operation:
    * (bv1 == bv2) === 1
    *)
-  Definition definite_equal (bv1 bv2 : t) :=
+  Definition definite_equal (bv1 bv2 : xbv) :=
+    exists v, to_bv bv1 = Some v /\ to_bv bv2 = Some v.
+
+  Global Instance dec_eq_bit (b1 b2 : bit) : DecProp (b1 = b2) :=
+    mk_dec_eq.
+
+  Global Instance dec_eq_xbv (xbv1 xbv2 : xbv) : DecProp (xbv1 = xbv2) :=
+    mk_dec_eq.
+
+  Global Instance dec_has_x xbv : DecProp (has_x xbv) := _.
+End RawXBV.
+
+Module XBV.
+  Export RawXBV (bit(..)).
+
+  Record xbv (n : N) :=
+    MkBitvector {
+        bv : RawXBV.xbv;
+        wf : RawXBV.size bv = n
+      }.
+
+  Arguments bv {_} _.
+
+  Definition bits {n} (v : xbv n) :=
+    bv v.
+
+  Definition size {n} (xbv : xbv n) := n.
+
+  Program Definition of_bits (bs : list RawXBV.bit) : xbv (N.of_nat (length bs)) :=
+    {| bv := bs |}.
+
+  Definition exes (count : N) : xbv count :=
+    {| bv := RawXBV.exes count; wf := RawXBV.exes_size |}.
+
+  Program Definition from_bv {n} (bv : BV.bitvector n) : xbv n :=
+    {| bv := RawXBV.from_bv (BV.bits bv); wf := RawXBV.from_bv_size _ |}
+  .
+  Next Obligation. apply BV.wf. Qed.
+
+  Definition raw_to_bv_with_proof (v : RawXBV.xbv) : {bv : RawBV.bitvector & RawXBV.to_bv v = Some bv } + { RawXBV.to_bv v = None } :=
+    match RawXBV.to_bv v as x return _ = x -> _ with
+    | Some bv => fun e => inleft (bv; e)
+    | None => fun e => inright e
+    end eq_refl.
+
+  Import CommonNotations.
+  Import EqNotations.
+
+  Equations to_bv {n} : xbv n -> option (BV.bitvector n) :=
+    to_bv v with (raw_to_bv_with_proof (bits v)) => {
+      | inright prf => None
+      | inleft (bv; e) => Some (rew _ in BV.of_bits bv)
+      }.
+  Next Obligation.
+    fold (RawBV.size bv0).
+    apply RawXBV.to_bv_size in e.
+    erewrite e.
+    apply wf.
+  Qed.
+
+  Lemma xbv_eq_of_bits n (x1 x2 : xbv n) :
+    bits x1 = bits x2 ->
+    x1 = x2.
+  Proof.
+    destruct x1, x2.
+    simpl. intros.
+    generalize dependent wf0.
+    generalize dependent wf1.
+    rewrite H. clear H.
+    intros. f_equal.
+    apply UIP.
+  Qed.
+
+  Lemma to_bv_bits n x (bv : BV.bitvector n) :
+    to_bv x = Some bv ->
+    RawXBV.to_bv (bits x) = Some (BV.bits bv).
+  Proof.
+    intros.
+    funelim (to_bv x); rewrite <- Heqcall in *; clear Heqcall; intros; try congruence.
+    rewrite e.
+    f_equal.
+    inv H.
+    destruct (to_bv_obligations_obligation_1).
+    rewrite <- eq_rect_eq.
+    reflexivity.
+  Qed.
+
+  Lemma to_from_bv_inverse n (x : xbv n) (bv : BV.bitvector n) :
+    to_bv x = Some bv ->
+    x = from_bv bv.
+  Proof.
+    intros.
+    apply to_bv_bits in H.
+    unfold from_bv.
+    destruct x as [x_bits x_wf].
+    simpl in H.
+    apply RawXBV.bv_xbv_inverse in H.
+    apply xbv_eq_of_bits. simpl.
+    auto.
+  Qed.
+  Print Assumptions to_from_bv_inverse.
+
+  Definition has_x {n} (v : xbv n) : Prop :=
+    RawXBV.has_x (bits v).
+
+  Lemma has_x_to_bv {n} (x : xbv n) : has_x x <-> to_bv x = None.
+  Proof.
+    unfold has_x. rewrite RawXBV.has_x_to_bv.
+    funelim (to_bv x); crush.
+  Qed.
+
+  Lemma not_has_x_to_bv {n} (bv : xbv n) : ~ (has_x bv) <-> exists v, to_bv bv = Some v.
+  Proof.
+    rewrite has_x_to_bv.
+    destruct (to_bv bv) eqn:E; split; intro H.
+    - eauto.
+    - discriminate.
+    - contradiction.
+    - solve_by_inverts 2.
+  Qed.
+
+  Lemma from_bv_injective : forall n (bv1 bv2 : BV.bitvector n),
+    from_bv bv1 = from_bv bv2 ->
+    bv1 = bv2.
+  Proof.
+    unfold from_bv.
+    intros n bv1 bv2 H.
+    inv H.
+    apply RawXBV.from_bv_injective in H1.
+    apply BV.bv_eq_reflect.
+    destruct bv1, bv2; simpl in *.
+    unfold BV.bv_eq, RAWBITVECTOR_LIST.bv_eq.
+    simpl. clear wf0 wf1. subst.
+    rewrite N.eqb_refl.
+    apply RAWBITVECTOR_LIST.List_eq_refl.
+  Qed.
+
+  Lemma to_bv_injective : forall n (xbv1 xbv2 : xbv n) (bv : BV.bitvector n),
+    to_bv xbv1 = Some bv ->
+    to_bv xbv2 = Some bv ->
+    xbv1 = xbv2.
+  Proof.
+    intros * H1 H2.
+    apply to_bv_bits in H1.
+    apply to_bv_bits in H2.
+    apply xbv_eq_of_bits.
+    eapply RawXBV.to_bv_injective; eassumption.
+  Qed.
+
+  (* Shouldn't this be adding bits at the end? *)
+  Local Obligation Tactic := intros.
+  Program Definition extend {n} (v : xbv n) (i : N) (b : RawXBV.bit) : xbv (i + n) :=
+    {| bv := RawXBV.extend (bits v) i b |}.
+  Next Obligation.
+    rewrite RawXBV.extend_width.
+    now rewrite wf.
+  Qed.
+
+  Program Definition zextn {n} (v : xbv n) (i : N) : xbv (i + n) :=
+    {| bv := RawXBV.extend (bits v) i O |}.
+  Next Obligation.
+    rewrite RawXBV.extend_width.
+    now rewrite wf.
+  Qed.
+
+  Definition extr {n} (x: xbv n) (i j: N) : xbv j :=
+    {|
+      bv := RawXBV.extr (bits x) i j;
+      wf := RawXBV.extr_width _ _ _
+    |}.
+
+  Definition bitOf {n} (i : nat) (x: xbv n): RawXBV.bit :=
+    RawXBV.bitOf i (bits x).
+
+  Lemma xbv_bv_inverse n (bv : BV.bitvector n) :
+      to_bv (from_bv bv) = Some bv.
+  Proof.
+    funelim (to_bv (from_bv bv)); rewrite <- Heqcall in *; clear Heqcall; clear Heq.
+    - f_equal.
+      destruct (to_bv_obligations_obligation_1 n (from_bv bv1) bv0).
+      simpl in *.
+      apply RawXBV.bv_xbv_inverse in e.
+      apply RawXBV.from_bv_injective in e.
+      destruct bv1 as [bv1 wf1]. simpl in *.
+      subst bv0.
+      now apply BV.of_bits_equal.
+    - simpl in *.
+      now rewrite RawXBV.xbv_bv_inverse in prf.
+  Qed.
+
+  Lemma bv_xbv_inverse : forall n (x : xbv n) (bv : BV.bitvector n),
+      to_bv x = Some bv ->
+      from_bv bv = x.
+  Proof.
+    intros.
+    apply xbv_eq_of_bits.
+    apply RawXBV.bv_xbv_inverse.
+    apply to_bv_bits.
+    assumption.
+  Qed.
+
+  (*
+   * Matches this Verilog operation:
+   * bv1 === bv2
+   *)
+  Definition triple_equal {n} (bv1 bv2 : xbv n) := bv1 = bv2.
+
+  (*
+   * Matches this Verilog operation:
+   * (bv1 == bv2) === 1
+   *)
+  Definition definite_equal {n} (bv1 bv2 : xbv n ) :=
     exists v, to_bv bv1 = Some v /\ to_bv bv2 = Some v.
 
   #[global]
-  Instance dec_eq_bit (b1 b2 : XBV.bit) : DecProp (b1 = b2) :=
-    mk_dec_eq.
+  Instance dec_eq_xbv {n} (xbv1 xbv2 : xbv n) : DecProp (xbv1 = xbv2).
+  Proof.
+    destruct (dec (bits xbv1 = bits xbv2)).
+    - left. now apply xbv_eq_of_bits.
+    - right. crush.
+  Qed.
 
   #[global]
-  Instance dec_eq_xbv (xbv1 xbv2 : XBV.t) : DecProp (xbv1 = xbv2) :=
-    mk_dec_eq.
-
-  #[global]
-  Instance dec_has_x xbv : DecProp (XBV.has_x xbv) := _.
+  Instance dec_has_x {n} (x : xbv n) : DecProp (has_x x) := _.
 End XBV.
