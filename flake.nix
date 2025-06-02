@@ -41,8 +41,8 @@
           version = "extra";
           release = {
             "extra" = {
-              rev = "9c27657d1d52b2c47cfbc53d4b7762e82c44983e";
-              sha256 = "sha256-sgdlkHMVw5xSC/y0LcS4VWgDNVXqMGC5YfovKsCLvUU=";
+              rev = "e768d7a3f61ce4c812531a22df665b8800882910";
+              sha256 = "sha256-cumkEpFeifRo1nzii5ujUJsXq8pMFx4HR5b48CPncxw=";
             };
           };
           nativeBuildInputs = [ coq.ocaml coqPackages.smtcoq ];
