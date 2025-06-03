@@ -36,6 +36,9 @@ Proof. firstorder. Qed.
 Instance dec_iff {P Q} `{DecProp P, DecProp Q} : DecProp ( P <-> Q ).
 Proof. firstorder. Qed.
 
+Instance dec_eq_bool (x y : bool) : DecProp (x = y) :=
+  mk_dec_eq(Bool.bool_dec).
+
 Instance dec_eq_string (x y : string) : DecProp (x = y) :=
   mk_dec_eq(String.string_dec).
 
