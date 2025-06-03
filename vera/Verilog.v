@@ -206,16 +206,50 @@ Module Verilog.
 
   Definition vtype := N.
 
-  Equations expr_type : expression -> N :=
-    expr_type (BinaryOp _ lhs _) := expr_type lhs;
-    (* TODO: Unary operators might change expression type *)
-    expr_type (UnaryOp _ operand):= expr_type operand;
+  Equations binop_width : Verilog.binop -> N -> N :=
+    binop_width BinaryPlus n := n; (* "+" *)
+    binop_width BinaryMinus n := n; (* "-" *)
+    binop_width BinaryStar n := n; (* "*" *)
+    binop_width BinarySlash n := n; (* "/" *)
+    binop_width BinaryPercent n := n; (* "%" *)
+    binop_width BinaryExponent n := n; (* "**" *)
+    binop_width BinaryEqualsEquals n := 1; (* "==" *)
+    binop_width BinaryNotEquals n := 1; (* "!=" *)
+    binop_width BinaryEqualsEqualsEquals n := 1; (* "===" *)
+    binop_width BinaryNotEqualsEquals n := 1; (* "!==" *)
+    binop_width BinaryWildcardEqual n := 1; (* "==?" *)
+    binop_width BinaryWildcardNotEqual n := 1; (* "!=?" *)
+    binop_width BinaryLogicalAnd n := 1; (* "&&" *)
+    binop_width BinaryLogicalOr n := 1; (* "||" *)
+    binop_width BinaryLessThan n := 1; (* "<" *)
+    binop_width BinaryLessThanEqual n := 1; (* "<=" *)
+    binop_width BinaryGreaterThan n := 1; (* ">" *)
+    binop_width BinaryGreaterThanEqual n := 1; (* ">=" *)
+    binop_width BinaryBitwiseAnd n := n; (* "&" *)
+    binop_width BinaryBitwiseOr n := n; (* "|" *)
+    binop_width BinaryBitwiseXor n := n; (* "^" *)
+    binop_width BinaryXNor n := n; (* "^~" *)
+    binop_width BinaryShiftRight n := n; (* ">>" *)
+    binop_width BinaryShiftLeft n := n; (* "<<" *)
+    binop_width BinaryShiftRightArithmetic n := n; (* ">>>" *)
+    binop_width BinaryShiftLeftArithmetic n := n; (* "<<<" *)
+    binop_width BinaryLogicalImplication n := 1; (* "->" *)
+    binop_width BinaryLogicalEquivalence n := 1. (* "<->" *)
+
+  Equations unop_width : Verilog.unaryop -> N -> N :=
+    unop_width _ _ := 0%N.
+
+  Equations expr_type : Verilog.expression -> N :=
+    expr_type (BinaryOp op lhs _) := binop_width op (expr_type lhs);
+    expr_type (UnaryOp op operand):= unop_width op (expr_type operand);
     expr_type (BitSelect _ _) := 1%N;
-    expr_type (Concatenation exprs) := fold_left N.add (map expr_type exprs) 0%N;
+    expr_type (Concatenation exprs) := N_sum (map expr_type exprs);
     expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
     expr_type (Resize t _) := t;
     expr_type (IntegerLiteral w _) := w;
     expr_type (NamedExpression t _) := t.
+
+  Global Transparent binop_width unop_width expr_type.
 End Verilog.
 
 Module Unit_as_MDT <: MiniDecidableType.

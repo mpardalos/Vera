@@ -464,3 +464,6 @@ Equations map2 {A B C} : (A -> B -> C) -> list A -> list B -> list C :=
   map2 f (hd_a :: tl_a) (hd_b :: tl_b) := f hd_a hd_b :: map2 f tl_a tl_b;
   map2 f nil _ := nil;
   map2 f _ nil := nil.
+
+Definition N_sum : list N -> N :=
+  fold_right N.add 0%N.

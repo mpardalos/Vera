@@ -31,24 +31,6 @@ Local Open Scope bv_scope.
 
 Set Bullet Behavior "Strict Subproofs".
 
-Module BV.
-  Include BITVECTOR_LIST.
-
-  Lemma of_bits_equal n (bv1 bv2 : bitvector n) :
-    bits bv1 = bits bv2 ->
-    bv1 = bv2.
-  Proof.
-    intros.
-    destruct bv1 as [bits1 wf1], bv2 as [bits2 wf2].
-    simpl in *.
-    apply bv_eq_reflect.
-    unfold bv_eq, RAWBITVECTOR_LIST.bv_eq.
-    simpl. clear wf1 wf2. subst bits2.
-    rewrite N.eqb_refl.
-    apply RAWBITVECTOR_LIST.List_eq_refl.
-  Qed.
-End BV.
-
 Module RawBV.
   Include RAWBITVECTOR_LIST.
   Notation t := bitvector.
@@ -104,6 +86,30 @@ Module RawBV.
     | b::bs => to_string bs ++ (if b then "1" else "0")
     end.
 End RawBV.
+
+Module BV.
+  Include BITVECTOR_LIST.
+
+  Lemma of_bits_equal n (bv1 bv2 : bitvector n) :
+    bits bv1 = bits bv2 ->
+    bv1 = bv2.
+  Proof.
+    intros.
+    destruct bv1 as [bits1 wf1], bv2 as [bits2 wf2].
+    simpl in *.
+    apply bv_eq_reflect.
+    unfold bv_eq, RAWBITVECTOR_LIST.bv_eq.
+    simpl. clear wf1 wf2. subst bits2.
+    rewrite N.eqb_refl.
+    apply RAWBITVECTOR_LIST.List_eq_refl.
+  Qed.
+
+  Definition is_zero {n} (bv : bitvector n) : bool :=
+    RawBV.is_zero (bits bv).
+
+  Definition to_N {n} (bv : bitvector n) : N :=
+    RawBV.to_N (bits bv).
+End BV.
 
 Module RawXBV.
   Variant bit := X | I | O.
@@ -421,6 +427,14 @@ Module XBV.
     | Some bv => fun e => inleft (bv; e)
     | None => fun e => inright e
     end eq_refl.
+
+  Program Definition concat {n m : N} (l : xbv n) (r : xbv m) : xbv (n + m) :=
+    {| bv := bv l ++ bv r |}.
+  Next Obligation.
+    destruct l, r; simpl in *.
+    rewrite app_length.
+    lia.
+  Qed.
 
   Import CommonNotations.
   Import EqNotations.
