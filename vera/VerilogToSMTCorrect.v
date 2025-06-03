@@ -194,13 +194,6 @@ Proof.
 Qed.
 
 Import EqNotations.
-Require Import Program.
-
-Lemma to_sized_bv_to_bv xbv bv :
-  XBV.to_sized_bv xbv = Some bv -> XBV.to_bv xbv = Some (BV.bits bv).
-Proof.
-  (* Dependent types aaaaaaa *)
-Admitted.
 
 Lemma bitwise_and_no_exes :
   forall w l_xbv r_xbv (l_bv r_bv : BV.bitvector w)

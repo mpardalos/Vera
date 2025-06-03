@@ -147,7 +147,7 @@ Module MkVerilog(Annotation : DecidableType).
   | Conditional : expression -> expression -> expression -> expression
   | BitSelect : expression -> expression -> expression
   | Concatenation : list expression -> expression
-  | IntegerLiteral : RawBV.t -> expression
+  | IntegerLiteral (w : N) : BV.bitvector w -> expression
   | NamedExpression : Annotation.t -> string -> expression
   | Resize : N -> expression -> expression
   .
@@ -214,7 +214,7 @@ Module Verilog.
     expr_type (Concatenation exprs) := fold_left N.add (map expr_type exprs) 0%N;
     expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
     expr_type (Resize t _) := t;
-    expr_type (IntegerLiteral v) := RawBV.size v;
+    expr_type (IntegerLiteral w _) := w;
     expr_type (NamedExpression t _) := t.
 End Verilog.
 

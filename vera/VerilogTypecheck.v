@@ -54,7 +54,7 @@ Equations tc_lvalue : TCBindings -> Verilog.expression -> TC unit :=
   tc_lvalue Γ (Verilog.Concatenation _) :=
     (* TODO: Allow concatenation as lvalue *)
     raise "Concatenation not permitted as lvalue"%string;
-  tc_lvalue Γ (Verilog.IntegerLiteral _) :=
+  tc_lvalue Γ (Verilog.IntegerLiteral _ _) :=
     raise "Constant not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.Resize _ e) :=
     raise "Resize not permitted as lvalue"%string;
@@ -89,7 +89,7 @@ Equations tc_expr : TCBindings -> Verilog.expression -> TC unit :=
   tc_expr Γ (Verilog.Concatenation exprs) :=
     mapT (tc_expr Γ) exprs ;;
     ret tt ;
-  tc_expr Γ (Verilog.IntegerLiteral value) :=
+  tc_expr Γ (Verilog.IntegerLiteral _ value) :=
     ret tt;
   tc_expr Γ (Verilog.NamedExpression t_expr n) :=
     tc_name Γ t_expr n ;

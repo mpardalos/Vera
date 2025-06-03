@@ -46,7 +46,7 @@ Definition transf := sum string.
 Equations cast_from_to (from to: N) (t : SMTLib.term) : SMTLib.term :=
   cast_from_to from to t with N.compare to from => {
     | Lt => SMTLib.Term_BVExtract (nat_of_N (to - 1)) 0 t
-    | Gt => SMTLib.Term_BVConcat (SMTLib.Term_BVLit (RawBV.zeros (to - from))) t
+    | Gt => SMTLib.Term_BVConcat (SMTLib.Term_BVLit _ (BV.zeros (to - from))) t
     | Eq => t
     }
 .
@@ -160,7 +160,7 @@ Section expr_to_smt.
       let cond__smt := SMTLib.Term_Not
                        (SMTLib.Term_Eq
                           condval__smt
-                          (SMTLib.Term_BVLit (RawBV.zeros t__cond)))
+                          (SMTLib.Term_BVLit _ (BV.zeros t__cond)))
       in
       ret (SMTLib.Term_ITE cond__smt ifT__smt ifF__smt);
     expr_to_smt (Verilog.BitSelect vec idx) :=
@@ -177,8 +177,8 @@ Section expr_to_smt.
       let from := Verilog.expr_type expr in
       expr__smt <- expr_to_smt expr ;;
       ret (cast_from_to from to expr__smt);
-    expr_to_smt (Verilog.IntegerLiteral val) :=
-      ret (SMTLib.Term_BVLit val);
+    expr_to_smt (Verilog.IntegerLiteral w val) :=
+      ret (SMTLib.Term_BVLit w val);
     expr_to_smt (Verilog.NamedExpression t n) :=
       term_for_name t n
   .
@@ -205,12 +205,12 @@ Equations transfer_initial (stmt : Verilog.statement) : transf (list SMTLib.term
     ret (concat lists) ;
   transfer_initial (Verilog.BlockingAssign
                       (Verilog.NamedExpression _ n)
-                      (Verilog.IntegerLiteral val)) =>
+                      (Verilog.IntegerLiteral _ val)) =>
     (* raise "VerilogToSMT: initial block blegh"%string; *)
     ret [] ;
   transfer_initial (Verilog.BlockingAssign
                       (Verilog.NamedExpression _ n)
-                      (Verilog.Resize _ (Verilog.IntegerLiteral val))) =>
+                     (Verilog.Resize _ (Verilog.IntegerLiteral _ val))) =>
     (* raise "VerilogToSMT: initial block blegh"%string; *)
     ret [] ;
   transfer_initial _ =>
