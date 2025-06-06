@@ -4,6 +4,7 @@ From Coq Require Import BinNums.
 From Coq Require Import BinNat.
 From Coq Require Import BinInt.
 From Coq Require Import PeanoNat.
+From Coq Require Import Lia.
 
 Class DecProp (P : Prop) := dec : { P } + { ~ P } .
 
@@ -50,6 +51,34 @@ Instance dec_eq_N (x y : N) : DecProp (x = y) :=
 
 Instance dec_eq_Z (x y : Z) : DecProp (x = y) :=
   mk_dec_eq(Z.eq_dec).
+
+Instance dec_lt_N (x y : N) : DecProp (x < y)%N.
+Proof.
+  destruct (x <? y)%N eqn:E.
+  - left. now apply N.ltb_lt in E.
+  - right. now apply N.ltb_nlt in E.
+Defined.
+
+Instance dec_le_N (x y : N) : DecProp (x <= y)%N.
+Proof.
+  destruct (x <=? y)%N eqn:E.
+  - left. now apply N.leb_le in E.
+  - right. now apply N.leb_nle in E.
+Defined.
+
+Instance dec_ge_N (x y : N) : DecProp (x >= y)%N.
+Proof.
+  destruct (x <? y)%N eqn:E.
+  - right. apply N.ltb_lt in E. lia.
+  - left. apply N.ltb_nlt in E. lia.
+Defined.
+
+Instance dec_gt_N (x y : N) : DecProp (x > y)%N.
+Proof.
+  destruct (x <=? y)%N eqn:E.
+  - right. apply N.leb_le in E. lia.
+  - left. apply N.leb_nle in E. lia.
+Defined.
 
 Instance dec_eq_opt {A} `{forall (x y : A), DecProp (x = y)} (x y : option A) : DecProp (x = y) :=
   mk_dec_eq.

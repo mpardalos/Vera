@@ -9,7 +9,6 @@ From Coq Require Import Structures.Equalities.
 From Coq Require Import Psatz.
 
 From vera Require Import Verilog.
-Import Verilog (expr_type).
 From vera Require Import Common.
 From vera Require Import Bitvector.
 Import (notations) XBV.
@@ -97,7 +96,9 @@ Module CombinationalOnly.
     lia.
   Qed.
 
+
   Obligation Tactic := intros.
+
   Program Definition bitwise_binop {n} (f : bit -> bit -> bit) (l r : XBV.xbv n) : XBV.xbv n :=
     {| XBV.bv := bitwise_binop_raw f (XBV.bits l) (XBV.bits r) |}.
   Next Obligation.
@@ -136,15 +137,18 @@ Module CombinationalOnly.
 
   Import EqNotations.
 
-  Definition convert {from} (to : N) (value : XBV.xbv from) : XBV.xbv to.
-    refine (
-        match CompareSpec2Type (N.compare_spec to from) with
-        | (CompLtT _ _ prf) => rew _ in XBV.extr value 0 to
-        | (CompGtT _ _ prf) => rew _ in XBV.zextn value (to - (XBV.size value))%N
-        | (CompEqT _ _ prf) => rew _ in value
-        end
-      ); unfold XBV.size; try crush.
-  Defined.
+  Equations convert {from} (to : N) (value : XBV.xbv from) : XBV.xbv to :=
+    convert to value with dec (from < to)%N := {
+      | left Hlt => rew _ in XBV.zextn value (to - from)%N
+      | right Hge with dec (from > to)%N => {
+        | left Hgr => rew _ in XBV.extr value 0 to;
+        | right Hle => rew _ in value
+        }
+      }.
+  Next Obligation. crush. Qed.
+  Next Obligation. crush. Qed.
+  Next Obligation. crush. Qed.
+  Next Obligation. reflexivity. Defined.
 
   Equations select_bit {w1 w2} (vec : XBV.xbv w1) (idx : XBV.xbv w2) : XBV.xbv 1 :=
     select_bit vec idx with XBV.to_bv idx => {
@@ -153,32 +157,25 @@ Module CombinationalOnly.
       }.
 
   Equations
-    eval_expr (st: VerilogState) (e : Verilog.expression) : option (XBV.xbv (expr_type e)) :=
+    eval_expr {w} (st: VerilogState) (e : Verilog.expression w) : option (XBV.xbv w) :=
     eval_expr st (Verilog.UnaryOp op operand) :=
       let* operand_val := eval_expr st operand in
       Some (eval_unaryop op operand_val);
     eval_expr st (Verilog.BinaryOp op lhs rhs) :=
       let* lhs__val := eval_expr st lhs in
       let* rhs__val := eval_expr st rhs in
-      match dec (expr_type rhs = expr_type lhs) with
-      | left E => Some (eval_binop op lhs__val (rew E in rhs__val))
-      | right _ => None
-      end;
+      Some (eval_binop op lhs__val rhs__val);
     eval_expr st (Verilog.Conditional cond tBranch fBranch) :=
       let* cond__val := eval_expr st cond in
       let* tBranch__val := eval_expr st tBranch in
       let* fBranch__val := eval_expr st fBranch in
       (* TODO: Check that ?: semantics match with standard *)
-      match dec (expr_type fBranch = expr_type tBranch) with
-      | left E =>
-          match XBV.to_bv cond__val with
-          | None => Some (XBV.exes (XBV.size tBranch__val))
-          | Some cond__bv =>
-              if BV.is_zero cond__bv
-              then Some (rew E in fBranch__val)
-              else Some (tBranch__val)
-          end
-      | right _ => None
+      match XBV.to_bv cond__val with
+      | None => Some (XBV.exes (XBV.size tBranch__val))
+      | Some cond__bv =>
+          if BV.is_zero cond__bv
+          then Some fBranch__val
+          else Some tBranch__val
       end;
     eval_expr st (Verilog.BitSelect vec idx) :=
       let* vec__val := eval_expr st vec in
@@ -187,7 +184,10 @@ Module CombinationalOnly.
     eval_expr st (Verilog.Resize t expr) :=
       let* val := eval_expr st expr in
       Some (convert t val);
-    eval_expr st (Verilog.Concatenation exprs) := eval_concat st exprs;
+    eval_expr st (Verilog.Concatenation e1 e2) :=
+      let* val1 := eval_expr st e1 in
+      let* val2 := eval_expr st e2 in
+      Some (XBV.concat val1 val2);
     eval_expr st (Verilog.IntegerLiteral _ val) :=
       Some (XBV.from_bv val) ;
     eval_expr st (Verilog.NamedExpression t name) :=
@@ -195,15 +195,7 @@ Module CombinationalOnly.
       match dec (w = t) with
       | left E => Some (rew E in v)
       | right _ => None
-      end;
-  where
-  (** How TF does this just typecheck??? *)
-  eval_concat (st : VerilogState) (es : list Verilog.expression) : option (XBV.xbv (N_sum (map expr_type es))) :=
-    eval_concat st [] := Some (XBV.of_bits []);
-    eval_concat st (e :: es) :=
-      let* hd := eval_expr st e in
-      let* tl := eval_concat st es in
-      Some (XBV.concat hd tl).
+      end.
 
   Equations
     exec_statement (st : VerilogState) (stmt : Verilog.statement) : option VerilogState by struct :=

@@ -9,11 +9,13 @@ From vera Require Import Bitvector.
 Import (notations) Bitvector.RawBV.
 
 Require Import List.
-Import ListNotations.
 From Coq Require Arith Lia Program.
 From Coq Require Import Structures.Equalities.
 From Coq Require Arith.PeanoNat.
 From Equations Require Import Equations.
+
+Import ListNotations.
+Import SigTNotations.
 
 Module VerilogCommon.
   Variant binop :=
@@ -138,25 +140,65 @@ Module VerilogCommon.
       }.
 End VerilogCommon.
 
-Module MkVerilog(Annotation : DecidableType).
+Module Verilog.
   Include VerilogCommon.
 
-  Inductive expression :=
-  | BinaryOp : binop -> expression -> expression -> expression
-  | UnaryOp : unaryop -> expression -> expression
-  | Conditional : expression -> expression -> expression -> expression
-  | BitSelect : expression -> expression -> expression
-  | Concatenation : list expression -> expression
-  | IntegerLiteral (w : N) : BV.bitvector w -> expression
-  | NamedExpression : Annotation.t -> string -> expression
-  | Resize : N -> expression -> expression
+  Definition vtype := N.
+
+  Equations binop_width : Verilog.binop -> N -> N :=
+    binop_width BinaryPlus n := n; (* "+" *)
+    binop_width BinaryMinus n := n; (* "-" *)
+    binop_width BinaryStar n := n; (* "*" *)
+    binop_width BinarySlash n := n; (* "/" *)
+    binop_width BinaryPercent n := n; (* "%" *)
+    binop_width BinaryExponent n := n; (* "**" *)
+    binop_width BinaryEqualsEquals n := 1; (* "==" *)
+    binop_width BinaryNotEquals n := 1; (* "!=" *)
+    binop_width BinaryEqualsEqualsEquals n := 1; (* "===" *)
+    binop_width BinaryNotEqualsEquals n := 1; (* "!==" *)
+    binop_width BinaryWildcardEqual n := 1; (* "==?" *)
+    binop_width BinaryWildcardNotEqual n := 1; (* "!=?" *)
+    binop_width BinaryLogicalAnd n := 1; (* "&&" *)
+    binop_width BinaryLogicalOr n := 1; (* "||" *)
+    binop_width BinaryLessThan n := 1; (* "<" *)
+    binop_width BinaryLessThanEqual n := 1; (* "<=" *)
+    binop_width BinaryGreaterThan n := 1; (* ">" *)
+    binop_width BinaryGreaterThanEqual n := 1; (* ">=" *)
+    binop_width BinaryBitwiseAnd n := n; (* "&" *)
+    binop_width BinaryBitwiseOr n := n; (* "|" *)
+    binop_width BinaryBitwiseXor n := n; (* "^" *)
+    binop_width BinaryXNor n := n; (* "^~" *)
+    binop_width BinaryShiftRight n := n; (* ">>" *)
+    binop_width BinaryShiftLeft n := n; (* "<<" *)
+    binop_width BinaryShiftRightArithmetic n := n; (* ">>>" *)
+    binop_width BinaryShiftLeftArithmetic n := n; (* "<<<" *)
+    binop_width BinaryLogicalImplication n := 1; (* "->" *)
+    binop_width BinaryLogicalEquivalence n := 1. (* "<->" *)
+
+  Equations unop_width : Verilog.unaryop -> N -> N :=
+    unop_width _ _ := 0%N.
+
+  Global Transparent binop_width unop_width.
+
+  Inductive expression : N -> Type :=
+  | BinaryOp {w} (op : binop) : expression w -> expression w -> expression (binop_width op w)
+  | UnaryOp {w} (op : unaryop) : expression w -> expression (unop_width op w)
+  | Conditional {w_val w_cond : N} : expression w_cond -> expression w_val -> expression w_val -> expression w_val
+  | BitSelect {w_val w_sel} : expression w_val -> expression w_sel -> expression 1
+  (* We break up the concatenation to make the type more convenient *)
+  | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
+  | IntegerLiteral (w : N) : BV.bitvector w -> expression w
+  | NamedExpression (w : N) : string -> expression w
+  | Resize {w_from} (w_to : N) : expression w_from -> expression w_to
   .
+
+  Definition expr_type {w} (e : expression w) := w.
 
   Inductive statement :=
   | Block (body : list statement)
-  | BlockingAssign (lhs rhs : expression)
-  | NonBlockingAssign (lhs rhs : expression)
-  | If (condition : expression) (trueBranch falseBranch : statement)
+  | BlockingAssign {w} (lhs rhs : expression w)
+  | NonBlockingAssign {w} (lhs rhs : expression w)
+  | If {w_cond} (condition : expression w_cond) (trueBranch falseBranch : statement)
   .
 
   Inductive module_item :=
@@ -199,68 +241,4 @@ Module MkVerilog(Annotation : DecidableType).
                    | _ => None
                    end)
       (modPorts v).
-End MkVerilog.
-
-Module Verilog.
-  Include MkVerilog(N).
-
-  Definition vtype := N.
-
-  Equations binop_width : Verilog.binop -> N -> N :=
-    binop_width BinaryPlus n := n; (* "+" *)
-    binop_width BinaryMinus n := n; (* "-" *)
-    binop_width BinaryStar n := n; (* "*" *)
-    binop_width BinarySlash n := n; (* "/" *)
-    binop_width BinaryPercent n := n; (* "%" *)
-    binop_width BinaryExponent n := n; (* "**" *)
-    binop_width BinaryEqualsEquals n := 1; (* "==" *)
-    binop_width BinaryNotEquals n := 1; (* "!=" *)
-    binop_width BinaryEqualsEqualsEquals n := 1; (* "===" *)
-    binop_width BinaryNotEqualsEquals n := 1; (* "!==" *)
-    binop_width BinaryWildcardEqual n := 1; (* "==?" *)
-    binop_width BinaryWildcardNotEqual n := 1; (* "!=?" *)
-    binop_width BinaryLogicalAnd n := 1; (* "&&" *)
-    binop_width BinaryLogicalOr n := 1; (* "||" *)
-    binop_width BinaryLessThan n := 1; (* "<" *)
-    binop_width BinaryLessThanEqual n := 1; (* "<=" *)
-    binop_width BinaryGreaterThan n := 1; (* ">" *)
-    binop_width BinaryGreaterThanEqual n := 1; (* ">=" *)
-    binop_width BinaryBitwiseAnd n := n; (* "&" *)
-    binop_width BinaryBitwiseOr n := n; (* "|" *)
-    binop_width BinaryBitwiseXor n := n; (* "^" *)
-    binop_width BinaryXNor n := n; (* "^~" *)
-    binop_width BinaryShiftRight n := n; (* ">>" *)
-    binop_width BinaryShiftLeft n := n; (* "<<" *)
-    binop_width BinaryShiftRightArithmetic n := n; (* ">>>" *)
-    binop_width BinaryShiftLeftArithmetic n := n; (* "<<<" *)
-    binop_width BinaryLogicalImplication n := 1; (* "->" *)
-    binop_width BinaryLogicalEquivalence n := 1. (* "<->" *)
-
-  Equations unop_width : Verilog.unaryop -> N -> N :=
-    unop_width _ _ := 0%N.
-
-  Equations expr_type : Verilog.expression -> N :=
-    expr_type (BinaryOp op lhs _) := binop_width op (expr_type lhs);
-    expr_type (UnaryOp op operand):= unop_width op (expr_type operand);
-    expr_type (BitSelect _ _) := 1%N;
-    expr_type (Concatenation exprs) := N_sum (map expr_type exprs);
-    expr_type (Conditional _ tBranch fBranch) := expr_type tBranch; (**  TODO: need to check fBranch? *)
-    expr_type (Resize t _) := t;
-    expr_type (IntegerLiteral w _) := w;
-    expr_type (NamedExpression t _) := t.
-
-  Global Transparent binop_width unop_width expr_type.
 End Verilog.
-
-Module Unit_as_MDT <: MiniDecidableType.
-  Definition t := unit.
-  Definition eq_dec (x y : unit) : { x = y } + { x <> y } :=
-    match x, y with
-    | tt, tt => left eq_refl
-    end.
-End Unit_as_MDT.
-
-Module Unit_as_DT := Make_UDT(Unit_as_MDT).
-
-(* Not used at the moment *)
-Module UntypedVerilog := MkVerilog(Unit_as_DT).

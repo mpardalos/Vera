@@ -246,16 +246,29 @@ Ltac bv_binop_tac :=
           clear Heqcall';
           repeat apply_somewhere XBV.to_from_bv_inverse;
           subst
-      end ;
-      [ idtac
-      | now (unfold XBV.from_bv in *; rewrite XBV.xbv_bv_inverse in * )
-      | now (unfold XBV.from_bv in *; rewrite XBV.xbv_bv_inverse in * )
-      ]
+      end;
+      rewrite XBV.xbv_bv_inverse in *;
+      repeat apply_somewhere XBV.from_bv_injective;
+      subst;
+      try crush
   end.
 
 Require Import Program.Equality.
 
-Lemma expr_to_smt_correct vars expr :
+Ltac destruct_rew :=
+  match goal with
+  | [H : context[rew [ _ ] ?E in _] |- _] =>
+      destruct E; simpl in H
+  end.
+
+Ltac funelim_plus e :=
+  funelim e; destruct_rew;
+  match goal with
+  | [ Heqcall : _ = e |- _] => rewrite <- Heqcall; clear Heqcall
+  | _ => idtac e
+  end.
+
+Lemma expr_to_smt_correct {w} vars (expr : Verilog.expression w) :
   forall t tag m st ρ xbv bv,
     expr_to_smt vars expr = inr t ->
     verilog_smt_match_states tag m st ρ ->
@@ -273,7 +286,7 @@ Proof.
     end.
 
   funelim (expr_to_smt vars expr); intros * Hexpr_to_smt Hmatch_states Heval_expr Hinterp_term;
-    inv Hexpr_to_smt; autodestruct_eqn E.
+    simp expr_to_smt in *; inv Hexpr_to_smt; autodestruct_eqn E;
     try match type of Heval_expr with
       | context[Verilog.BinaryOp] => expr_begin_tac
       | context[Verilog.UnaryOp] => expr_begin_tac
@@ -281,26 +294,34 @@ Proof.
   - (* BinaryPlus *)
     insterU H. inv H. apply_somewhere inj_pair2. subst.
     insterU H0. inv H0. apply_somewhere inj_pair2. subst.
-    bv_binop_tac. now constructor.
+    apply verilog_smt_match_to_bv.
+    bv_binop_tac.
   - (* BinaryMinus *)
     apply_somewhere inj_pair2. subst.
     insterU H. inv H. apply_somewhere inj_pair2. subst.
     insterU H0. inv H0. apply_somewhere inj_pair2. subst.
-    bv_binop_tac. now constructor.
+    apply verilog_smt_match_to_bv.
+    bv_binop_tac.
   - (* BinaryStar *)
     insterU H. inv H. apply_somewhere inj_pair2. subst.
     insterU H0. inv H0. apply_somewhere inj_pair2. subst.
-    bv_binop_tac. now constructor.
+    apply verilog_smt_match_to_bv.
+    bv_binop_tac.
   - (* BinaryBitwiseAnd *)
     insterU H. inv H. apply_somewhere inj_pair2. subst.
     insterU H0. inv H0. apply_somewhere inj_pair2. subst.
+    apply verilog_smt_match_to_bv.
     simp eval_binop.
-    constructor.
-    erewrite bitwise_and_no_exes.
-    + admit.
-    + admit.
-    + admit.
-  - admit. (* TODO BinaryBitwiseOr *)
+    erewrite bitwise_and_no_exes;
+      rewrite XBV.xbv_bv_inverse in *;
+      crush.
+  - insterU H. inv H. apply_somewhere inj_pair2. subst.
+    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
+    apply verilog_smt_match_to_bv.
+    simp eval_binop.
+    erewrite bitwise_or_no_exes;
+      rewrite XBV.xbv_bv_inverse in *;
+      crush.
   - admit. (* TODO BinaryShiftRight *)
   - admit. (* TODO BinaryShiftLeft *)
   - admit. (* TODO BinaryShiftLeftArithmetic *)
@@ -327,23 +348,30 @@ Proof.
     expr_begin_tac.
     now constructor.
   - (* Verilog.NamedExpression *)
-    funelim (term_for_name vars t n); rewrite <- Heqcall in *; try discriminate; clear Heqcall.
+    funelim (term_for_name vars w n); rewrite <- Heqcall in *; try discriminate; clear Heqcall.
     destruct Hmatch_states with (verilogName := name) (smtName := n__smt).
     { admit. (* TODO: names in the expression are in the bijection *) }
     inv H0. (* FIXME: don't reference names *)
-    expr_begin_tac; congruence.
+    expr_begin_tac.
+    simpl. apply_somewhere inj_pair2. congruence.
   - (* TODO: Resize *)
     expr_begin_tac.
-    simp convert; unfold convert_clause_1.
-    erewrite eval_expr_width_correct by eassumption.
-    funelim (cast_from_to (Verilog.expr_type expr) to t0);
-      rewrite <- Heqcall in *; clear Heqcall;
-      rewrite Heq.
-    + eauto.
-    + cbn in Hinterp_term. autodestruct_eqn E.
+    unfold Verilog.expr_type in *.
+    funelim (convert w x); destruct_rew; rewrite <- Heqcall; clear Heqcall.
+    + funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
+        (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
+        try crush.
+      cbn in Hinterp_term; autodestruct_eqn E.
+      (* TODO: Extension implementation matches *)
+      admit.
+    + funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
+        (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
+        try crush.
+      cbn in Hinterp_term; autodestruct_eqn E.
       (* TODO: Truncation implementation matches *) admit.
-    + cbn in Hinterp_term. autodestruct_eqn E.
-      (* TODO: Extension implementation matches *) admit.
+    + funelim (cast_from_to from from t0); rewrite <- Heqcall in *; clear Heqcall;
+        (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
+        try crush.
 Admitted.
 
 Theorem verilog_to_smt_correct tag start v smt :

@@ -65,7 +65,7 @@ Section expr_to_smt.
         }
       }.
 
-  Equations expr_to_smt : Verilog.expression -> transf SMTLib.term :=
+  Equations expr_to_smt {w} : Verilog.expression w -> transf SMTLib.term :=
     expr_to_smt (Verilog.UnaryOp Verilog.UnaryPlus operand) :=
       expr_to_smt operand ;
     expr_to_smt (Verilog.UnaryOp Verilog.UnaryMinus operand) :=
@@ -146,12 +146,10 @@ Section expr_to_smt.
       raise "todo"%string;
     expr_to_smt (Verilog.BinaryOp op _ _) :=
       raise ("Unsupported operator in SMT: " ++ to_string op)%string;
-    expr_to_smt (Verilog.Concatenation []) :=
-      raise "Unsupported empty concatenation in SMT"%string;
-    expr_to_smt (Verilog.Concatenation (hd :: tl)) :=
-      hd__smt <- expr_to_smt hd ;;
-      tl__smt <- mapT expr_to_smt tl ;;
-      ret (fold_left SMTLib.Term_BVConcat tl__smt hd__smt);
+    expr_to_smt (Verilog.Concatenation e1 e2) :=
+      e1_smt <- expr_to_smt e1 ;;
+      e2_smt <- expr_to_smt e2 ;;
+      ret (SMTLib.Term_BVConcat e1_smt e2_smt);
     expr_to_smt (Verilog.Conditional cond ifT ifF) :=
       let t__cond := Verilog.expr_type cond in
       condval__smt <- expr_to_smt cond ;;
