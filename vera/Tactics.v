@@ -11,6 +11,7 @@ Ltac crush :=
              || auto
              || eauto
              || firstorder
+             || cbn in *
     )].
 
 

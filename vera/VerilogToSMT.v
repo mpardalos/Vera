@@ -233,7 +233,7 @@ Equations mk_bijection (tag : TaggedName.Tag) (vars : list (Verilog.variable * s
     tail_bijection <- mk_bijection tag xs ;;
     prf1 <- assert_dec (tail_bijection (tag, Verilog.varName var) = None) "Duplicate variable name"%string ;;
     prf2 <- assert_dec (VerilogSMTBijection.bij_inverse tail_bijection name__smt = None) "Duplicate smt name"%string ;;
-    ret (VerilogSMTBijection.insert (tag, Verilog.varName var) name__smt tail_bijection _ _);
+    ret (VerilogSMTBijection.insert (tag, Verilog.varName var) name__smt tail_bijection prf1 prf2);
   mk_bijection tag [] := ret VerilogSMTBijection.empty.
 
 Equations verilog_to_smt (name_tag : TaggedName.Tag) (var_start : nat) (vmodule : Verilog.vmodule)

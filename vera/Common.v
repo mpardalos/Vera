@@ -465,5 +465,8 @@ Equations map2 {A B C} : (A -> B -> C) -> list A -> list B -> list C :=
   map2 f nil _ := nil;
   map2 f _ nil := nil.
 
+Lemma map2_length {A B C} (f : A -> B -> C) l1 l2 : List.length (map2 f l1 l2) = min (List.length l1) (List.length l2).
+Proof. funelim (map2 f l1 l2); simp map2; simpl; crush. Qed.
+
 Definition N_sum : list N -> N :=
   fold_right N.add 0%N.

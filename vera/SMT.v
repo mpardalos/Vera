@@ -23,6 +23,8 @@ Import BITVECTOR_LIST.
 From SMTCoqApi Require SMTLib.
 From SMTCoqApi Require SMTLibFacts.
 
+Import SigTNotations.
+
 Module SMT.
   Definition match_map_verilog (tag : TaggedName.Tag) (map : VerilogSMTBijection.t) verilog :=
     forall verilogName,
@@ -57,11 +59,11 @@ Module SMT.
     | Some (_, vname) =>
         match e vname with
         | None => None
-        | Some xbv =>
-            match XBV.to_bv xbv with
+        | Some (_; x) =>
+            match XBV.to_bv x with
             (* TODO: Fix handling of Xs *)
             | None => None
-            | Some val => Some (SMTLib.Value_BitVec (N.of_nat (length val)) {| bv := val |})
+            | Some val => Some (SMTLib.Value_BitVec _ val)
             end
         end
     end.
@@ -71,7 +73,7 @@ Module SMT.
         match m (tag, vname) with
         | Some smtName =>
             match v smtName with
-            | Some (SMTLib.Value_BitVec _ bv) => Some (XBV.from_bv bv)
+            | Some (SMTLib.Value_BitVec w bv) => Some (w; XBV.from_bv bv)
             | _ => None
             end
         | None => None
@@ -81,7 +83,7 @@ Module SMT.
   Lemma execution_of_valuation_some tag (m : VerilogSMTBijection.t) ρ smtName vname sz bv :
     m (tag, vname) = Some smtName ->
     ρ smtName = Some (SMTLib.Value_BitVec sz bv) ->
-    execution_of_valuation tag m ρ vname = Some (XBV.from_bv bv).
+    execution_of_valuation tag m ρ vname = Some (sz; XBV.from_bv bv).
   Proof.
     unfold execution_of_valuation.
     intros H1 H2.
@@ -101,19 +103,19 @@ Module SMT.
         in
         match e vname with
         | None => None
-        | Some xbv =>
+        | Some (sz; xbv) =>
             match XBV.to_bv xbv with
             (* TODO: Fix handling of Xs *)
             | None => None
-            | Some val => Some (SMTLib.Value_BitVec (N.of_nat (length val)) {| bv := val |})
+            | Some val => Some (SMTLib.Value_BitVec sz val)
             end
         end
     end.
 
   Lemma execution_left_of_valuation_of_executions m v e1 e2 :
     (* TODO: Remove assumption *)
-    (forall n xbv, e1 n = Some xbv -> ~ XBV.has_x xbv) ->
-    (forall n xbv, e2 n = Some xbv -> ~ XBV.has_x xbv) ->
+    (forall n w xbv, e1 n = Some (w; xbv) -> ~ XBV.has_x xbv) ->
+    (forall n w xbv, e2 n = Some (w; xbv) -> ~ XBV.has_x xbv) ->
     match_map_verilog TaggedName.VerilogLeft m v ->
     complete_execution v e1 ->
     execution_of_valuation TaggedName.VerilogLeft m (valuation_of_executions m e1 e2) = e1.
@@ -126,20 +128,17 @@ Module SMT.
     autodestruct_eqn E; simpl in *; try subst.
     - replace s with name in * by
         (apply bij_wf in E; congruence).
-      rewrite E3. f_equal.
+      replace (e1 name). repeat f_equal.
       apply XBV.bv_xbv_inverse. assumption.
-    - apply bij_wf in E.
-      congruence.
+    - rewrite bij_wf in *. congruence.
     - replace s with name in * by
           (apply bij_wf in E; congruence).
-      apply Hno_exes1 in E3.
-      rewrite <- XBV.has_x_to_bv in E4.
-      contradiction.
+      apply_somewhere Hno_exes1.
+      now rewrite <- XBV.has_x_to_bv in *.
     - replace s with name in * by
           (apply bij_wf in E; congruence).
-      apply Hno_exes2 in E3.
-      rewrite <- XBV.has_x_to_bv in E4.
-      contradiction.
+      apply_somewhere Hno_exes2.
+      now rewrite <- XBV.has_x_to_bv in *.
     - replace s with name in * by
          (apply bij_wf in E; congruence).
       auto.
@@ -158,8 +157,8 @@ Module SMT.
 
   Lemma execution_right_of_valuation_of_executions m v e1 e2 :
     (* TODO: Remove assumption *)
-    (forall n xbv, e1 n = Some xbv -> ~ XBV.has_x xbv) ->
-    (forall n xbv, e2 n = Some xbv -> ~ XBV.has_x xbv) ->
+    (forall n w xbv, e1 n = Some (w; xbv) -> ~ XBV.has_x xbv) ->
+    (forall n w xbv, e2 n = Some (w; xbv) -> ~ XBV.has_x xbv) ->
     match_map_verilog TaggedName.VerilogRight m v ->
     complete_execution v e2 ->
     execution_of_valuation TaggedName.VerilogRight m (valuation_of_executions m e1 e2) = e2.
@@ -170,21 +169,20 @@ Module SMT.
     apply functional_extensionality.
     intros name.
     autodestruct_eqn E; simpl in *; try subst.
-    - apply bij_wf in E.
-      congruence.
+    - apply bij_wf in E. congruence.
     - replace s with name in * by
         (apply bij_wf in E; congruence).
-      rewrite E3. f_equal.
+      replace (e2 name). repeat f_equal.
       apply XBV.bv_xbv_inverse. assumption.
     - replace s with name in * by
           (apply bij_wf in E; congruence).
-      apply Hno_exes1 in E3.
-      rewrite <- XBV.has_x_to_bv in E4.
+      insterU Hno_exes1.
+      rewrite <- XBV.has_x_to_bv in *.
       contradiction.
     - replace s with name in * by
           (apply bij_wf in E; congruence).
-      apply Hno_exes2 in E3.
-      rewrite <- XBV.has_x_to_bv in E4.
+      insterU Hno_exes2.
+      rewrite <- XBV.has_x_to_bv in *.
       contradiction.
     - apply bij_wf in E; congruence.
     - replace s with name in * by
@@ -202,12 +200,12 @@ Module SMT.
       eauto.
   Qed.
 
-  Lemma valuation_of_executions_some_left nameVerilog nameSMT xbv bv (m : VerilogSMTBijection.t) e1 e2 :
-    e1 nameVerilog = Some xbv ->
+  Lemma valuation_of_executions_some_left nameVerilog nameSMT w xbv bv (m : VerilogSMTBijection.t) e1 e2 :
+    e1 nameVerilog = Some (w; xbv) ->
     XBV.to_bv xbv = Some bv ->
     m (TaggedName.VerilogLeft, nameVerilog) = Some nameSMT ->
     (valuation_of_executions m e1 e2) nameSMT =
-      Some (SMTLib.Value_BitVec (RawBV.size bv) (of_bits bv)).
+      Some (SMTLib.Value_BitVec w bv).
   Proof.
     intros Hexec Hexes Hname.
     unfold valuation_of_executions; simpl.
@@ -219,20 +217,15 @@ Module SMT.
 
     rewrite Hexec.
     rewrite Hexes.
-    repeat f_equal.
-
-    unfold of_bits.
-
-    f_equal.
-    apply proof_irrelevance.
+    reflexivity.
   Qed.
 
-  Lemma valuation_of_executions_some_right nameVerilog nameSMT xbv bv (m : VerilogSMTBijection.t) e1 e2 :
-    e2 nameVerilog = Some xbv ->
+  Lemma valuation_of_executions_some_right nameVerilog nameSMT w xbv bv (m : VerilogSMTBijection.t) e1 e2 :
+    e2 nameVerilog = Some (w; xbv) ->
     XBV.to_bv xbv = Some bv ->
     m (TaggedName.VerilogRight, nameVerilog) = Some nameSMT ->
     (valuation_of_executions m e1 e2) nameSMT =
-      Some (SMTLib.Value_BitVec (RawBV.size bv) (of_bits bv)).
+      Some (SMTLib.Value_BitVec w bv).
   Proof.
     intros Hexec Hexes Hname.
     unfold valuation_of_executions; simpl.
@@ -244,12 +237,7 @@ Module SMT.
 
     rewrite Hexec.
     rewrite Hexes.
-    repeat f_equal.
-
-    unfold of_bits.
-
-    f_equal.
-    apply proof_irrelevance.
+    reflexivity.
   Qed.
 
   Section inverse.
@@ -260,12 +248,12 @@ Module SMT.
     Context (Hcomplete : complete_execution v e).
     Context (Hmatch : match_map_verilog tag m v).
 
-    Lemma valuation_of_execution_some nameVerilog nameSMT xbv bv :
-      e nameVerilog = Some xbv ->
+    Lemma valuation_of_execution_some nameVerilog nameSMT w xbv bv :
+      e nameVerilog = Some (w; xbv) ->
       XBV.to_bv xbv = Some bv ->
       m (tag, nameVerilog) = Some nameSMT ->
       (valuation_of_execution m e) nameSMT =
-        Some (SMTLib.Value_BitVec (RawBV.size bv) (of_bits bv)).
+        Some (SMTLib.Value_BitVec w bv).
     Proof.
       intros Hexec Hexes Hname.
       unfold valuation_of_execution; simpl.
@@ -277,17 +265,12 @@ Module SMT.
 
       rewrite Hexec.
       rewrite Hexes.
-      repeat f_equal.
-
-      unfold of_bits.
-
-      f_equal.
-      apply proof_irrelevance.
+      reflexivity.
     Qed.
 
     Lemma execution_of_valuation_of_execution :
       (* TODO: Remove assumption *)
-      (forall n xbv, e n = Some xbv -> ~ XBV.has_x xbv) -> 
+      (forall n w xbv, e n = Some (w; xbv) -> ~ XBV.has_x xbv) ->
       execution_of_valuation tag m (valuation_of_execution m e) = e.
     Proof.
       intros Hno_exes.
@@ -298,7 +281,7 @@ Module SMT.
         unfold match_map_verilog in Hmatch.
         specialize (Hcomplete verilogName). simpl in *.
         destruct Hcomplete as [Hcomplete' _]; clear Hcomplete.
-        edestruct Hcomplete' as [xbv Hxbv_val]. { firstorder. }
+        edestruct Hcomplete' as [[w xbv] Hxbv_val]. { firstorder. }
         clear Hcomplete'.
 
         unfold valuation_of_execution.
@@ -310,7 +293,7 @@ Module SMT.
 
         rewrite Hxbv_val.
 
-        specialize (Hno_exes verilogName xbv ltac:(assumption)).
+        insterU Hno_exes.
         apply XBV.not_has_x_to_bv in Hno_exes.
         destruct Hno_exes as [bv Hno_exes].
         rewrite Hno_exes.

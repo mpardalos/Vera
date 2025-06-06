@@ -85,6 +85,13 @@ Module RawBV.
     | [] => ""
     | b::bs => to_string bs ++ (if b then "1" else "0")
     end.
+
+  Definition bv_map2_common_map2 (f : bool -> bool -> bool) (bv1 bv2 : bitvector) :
+    map2 f bv1 bv2 = (Common.map2 f bv1 bv2).
+  Proof.
+    generalize dependent bv2.
+    induction bv1; destruct bv2; intros; simp map2; try crush.
+  Qed.
 End RawBV.
 
 Module BV.
@@ -109,6 +116,17 @@ Module BV.
 
   Definition to_N {n} (bv : bitvector n) : N :=
     RawBV.to_N (bits bv).
+
+  Program Definition map2 {n : N} (f : bool -> bool -> bool) (bv1 bv2 : bitvector n) : bitvector n :=
+    {| bv := RawBV.map2 f (bits bv1) (bits bv2) |}.
+  Next Obligation.
+    destruct bv1 as [bv1 wf1].
+    destruct bv2 as [bv2 wf2].
+    unfold RAWBITVECTOR_LIST.size in *.
+    rewrite RawBV.bv_map2_common_map2.
+    rewrite map2_length.
+    simpl. lia.
+  Qed.
 End BV.
 
 Module RawXBV.
@@ -451,7 +469,7 @@ Module XBV.
     apply wf.
   Qed.
 
-  Lemma xbv_eq_of_bits n (x1 x2 : xbv n) :
+  Lemma of_bits_equal n (x1 x2 : xbv n) :
     bits x1 = bits x2 ->
     x1 = x2.
   Proof.
@@ -488,10 +506,9 @@ Module XBV.
     destruct x as [x_bits x_wf].
     simpl in H.
     apply RawXBV.bv_xbv_inverse in H.
-    apply xbv_eq_of_bits. simpl.
+    apply of_bits_equal. simpl.
     auto.
   Qed.
-  Print Assumptions to_from_bv_inverse.
 
   Definition has_x {n} (v : xbv n) : Prop :=
     RawXBV.has_x (bits v).
@@ -536,7 +553,7 @@ Module XBV.
     intros * H1 H2.
     apply to_bv_bits in H1.
     apply to_bv_bits in H2.
-    apply xbv_eq_of_bits.
+    apply of_bits_equal.
     eapply RawXBV.to_bv_injective; eassumption.
   Qed.
 
@@ -586,7 +603,7 @@ Module XBV.
       from_bv bv = x.
   Proof.
     intros.
-    apply xbv_eq_of_bits.
+    apply of_bits_equal.
     apply RawXBV.bv_xbv_inverse.
     apply to_bv_bits.
     assumption.
@@ -609,7 +626,7 @@ Module XBV.
   Instance dec_eq_xbv {n} (xbv1 xbv2 : xbv n) : DecProp (xbv1 = xbv2).
   Proof.
     destruct (dec (bits xbv1 = bits xbv2)).
-    - left. now apply xbv_eq_of_bits.
+    - left. now apply of_bits_equal.
     - right. crush.
   Qed.
 

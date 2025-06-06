@@ -8,6 +8,7 @@ From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
 Import CombinationalOnly.
 From vera Require Import Bitvector.
+Import RawXBV(bit(..)).
 
 From Coq Require List.
 From Coq Require String.
@@ -25,6 +26,7 @@ Import List.ListNotations.
 Import CommonNotations.
 Import MonadNotation.
 Import FunctorNotation.
+Import SigTNotations.
 
 Lemma assign_vars_vars start vars :
   List.map fst (assign_vars start vars) = vars.
@@ -135,15 +137,24 @@ Proof.
   eauto using mk_bijection_only_tag.
 Qed.
 
-Inductive verilog_smt_match_value : XBV.t -> SMTLib.value -> Prop :=
-| verilog_smt_match_value_intro w xbv bv :
-  xbv = XBV.from_sized_bv bv ->
-  verilog_smt_match_value xbv (SMTLib.Value_BitVec w bv).
+Inductive verilog_smt_match_value {w} : XBV.xbv w -> SMTLib.value -> Prop :=
+| verilog_smt_match_value_intro bv :
+  verilog_smt_match_value (XBV.from_bv bv) (SMTLib.Value_BitVec w bv).
+
+Definition verilog_smt_match_to_bv n (xbv : XBV.xbv n) (bv : BV.bitvector n):
+  XBV.to_bv xbv = Some bv ->
+  verilog_smt_match_value xbv (SMTLib.Value_BitVec n bv).
+Proof.
+  intros H.
+  apply XBV.bv_xbv_inverse in H.
+  subst xbv.
+  constructor.
+Qed.
 
 Inductive verilog_smt_match_on_names (st : VerilogState) (ρ : SMTLib.valuation) verilogName smtName :=
-| verilog_smt_match_on_names_intro xbv val
+| verilog_smt_match_on_names_intro w xbv val
     (Hsmtval : ρ smtName = Some val)
-    (Hverilogval : regState st verilogName = Some xbv)
+    (Hverilogval : regState st verilogName = Some (w; xbv))
     (Hmatchvals : verilog_smt_match_value xbv val).
 
 Definition verilog_smt_match_states
@@ -155,86 +166,73 @@ Definition verilog_smt_match_states
     m (tag, verilogName) = Some smtName ->
     verilog_smt_match_on_names st ρ verilogName smtName.
 
-Lemma eval_expr_width_correct st expr xbv :
-  eval_expr st expr = Some xbv ->
-  XBV.size xbv = Verilog.expr_type expr.
-Admitted.
-
-Lemma to_bv_from_sized_bv_inverse w (bv : BV.bitvector w) bv' :
-  XBV.to_bv (XBV.from_sized_bv bv) = Some bv' ->
-  BV.bits bv = bv'.
-Proof.
-  destruct bv. unfold XBV.from_sized_bv.
-  rewrite XBV.xbv_bv_inverse.
-  intros H. inv H.
-  reflexivity.
-Qed.
-
-Lemma bitwise_binop_no_exes (f_bit : XBV.bit -> XBV.bit -> XBV.bit) (f_bool : bool -> bool -> bool) :
-  forall l_xbv l_bv r_xbv r_bv,
+Lemma bitwise_binop_no_exes (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
+  (forall (lb rb : bool), (if f_bool lb rb then I else O) = f_bit (if lb then I else O) (if rb then I else O)) ->
+  forall n (l_xbv r_xbv : XBV.xbv n) (l_bv r_bv : BV.bitvector n),
     XBV.to_bv l_xbv = Some l_bv ->
     XBV.to_bv r_xbv = Some r_bv ->
-    (forall (lb rb : bool), (if f_bool lb rb then XBV.I else XBV.O) = f_bit (if lb then XBV.I else XBV.O) (if rb then XBV.I else XBV.O)) ->
-    bitwise_binop f_bit l_xbv r_xbv = XBV.from_bv (RawBV.map2 f_bool l_bv r_bv).
+    bitwise_binop f_bit l_xbv r_xbv = XBV.from_bv (BV.map2 f_bool l_bv r_bv).
 Proof.
-  intros * Hl Hr Hf.
+  intros * Hf * Hl Hr.
   unfold RawBV.bv_and.
-  pose proof (XBV.bv_xbv_inverse _ _ Hl) as Hl_inverse. subst l_xbv.
-  pose proof (XBV.bv_xbv_inverse _ _ Hr) as Hr_inverse. subst r_xbv.
-  unfold bitwise_binop.
+  pose proof (XBV.bv_xbv_inverse _ _ _ Hl) as Hl_inverse. subst l_xbv.
+  pose proof (XBV.bv_xbv_inverse _ _ _ Hr) as Hr_inverse. subst r_xbv.
   clear Hl. clear Hr.
+  apply XBV.of_bits_equal; simpl.
+  destruct l_bv as [l_bv l_bv_wf].
+  destruct r_bv as [r_bv r_bv_wf].
+  simpl in *.
+  unfold bitwise_binop_raw.
+  generalize dependent n.
   generalize dependent r_bv.
-  induction l_bv; try now simp map2.
-  intros r_bv.
-  destruct r_bv; try now simp map2.
+  induction l_bv; simpl; simp map2; try easy.
+  destruct r_bv; simpl; simp map2; try easy.
   specialize (IHl_bv r_bv).
-  simpl; simp map2.
-  rewrite <- Hf.
-  f_equal; eauto.
+  intros.
+  simpl in *. f_equal.
+  - auto.
+  - unfold BVList.RAWBITVECTOR_LIST.size in *.
+    eapply IHl_bv; crush.
 Qed.
 
 Import EqNotations.
 
 Lemma bitwise_and_no_exes :
-  forall w l_xbv r_xbv (l_bv r_bv : BV.bitvector w)
-    (Hsizel : XBV.size l_xbv = w)
-    (Hsizer : XBV.size r_xbv = w),
-    XBV.to_sized_bv l_xbv = Some (rew <- Hsizel in l_bv) ->
-    XBV.to_sized_bv r_xbv = Some (rew <- Hsizer in r_bv) ->
-    bitwise_binop and_bit l_xbv r_xbv = XBV.from_sized_bv (BV.bv_and l_bv r_bv).
+  forall w (l_xbv r_xbv : XBV.xbv w) (l_bv r_bv : BV.bitvector w),
+    XBV.to_bv l_xbv = Some l_bv ->
+    XBV.to_bv r_xbv = Some r_bv ->
+    bitwise_binop and_bit l_xbv r_xbv = XBV.from_bv (BV.bv_and l_bv r_bv).
 Proof.
-  intros * Hl Hr.
-  unfold BV.bv_and, XBV.from_sized_bv in *.
-  simpl.
-  unfold RawBV.bv_and.
-  do 2 rewrite BVList.BITVECTOR_LIST.wf.
+  intros w [] [] [] [] Hl Hr.
+  etransitivity. {
+    apply bitwise_binop_no_exes with (f_bool:=andb); eauto.
+    intros [] []; crush.
+  }
+  f_equal. apply BV.of_bits_equal. simpl.
+  unfold BVList.RAWBITVECTOR_LIST.bv_and.
+  replace (BVList.RAWBITVECTOR_LIST.size bv1).
+  replace (BVList.RAWBITVECTOR_LIST.size bv2).
   rewrite N.eqb_refl.
-  destruct Hsizel, Hsizer.
-  unfold "rew <- [ _ ] _ in _" in *.
-  rewrite <- eq_rect_eq in *.
-
-  apply bitwise_binop_no_exes; try eassumption.
-  - apply to_sized_bv_to_bv. assumption.
-  - apply to_sized_bv_to_bv. assumption.
-  - intros. autodestruct_eqn E; now simp and_bit.
+  reflexivity.
 Qed.
 
 Lemma bitwise_or_no_exes :
-  forall l_xbv l_bv r_xbv r_bv,
-    (XBV.size l_xbv = XBV.size r_xbv) ->
+  forall w (l_xbv r_xbv : XBV.xbv w) (l_bv r_bv : BV.bitvector w),
     XBV.to_bv l_xbv = Some l_bv ->
     XBV.to_bv r_xbv = Some r_bv ->
-    bitwise_binop or_bit l_xbv r_xbv = XBV.from_bv (RawBV.bv_or l_bv r_bv).
+    bitwise_binop or_bit l_xbv r_xbv = XBV.from_bv (BV.bv_or l_bv r_bv).
 Proof.
-  intros * Hsize Hl Hr.
-  unfold RawBV.bv_or.
-  erewrite XBV.to_bv_size by eassumption.
-  erewrite XBV.to_bv_size by eassumption.
-  rewrite Hsize.
+  intros w [] [] [] [] Hl Hr.
+  etransitivity. {
+    apply bitwise_binop_no_exes with (f_bool:=orb); try crush.
+    intros [] []; crush.
+  }
+  f_equal. apply BV.of_bits_equal. simpl.
+  unfold BVList.RAWBITVECTOR_LIST.bv_or.
+  replace (BVList.RAWBITVECTOR_LIST.size bv1).
+  replace (BVList.RAWBITVECTOR_LIST.size bv2).
   rewrite N.eqb_refl.
-
-  apply bitwise_binop_no_exes; try eassumption.
-  intros. autodestruct_eqn E; now simp and_bit.
+  reflexivity.
 Qed.
 
 Ltac bv_binop_tac :=
@@ -246,14 +244,16 @@ Ltac bv_binop_tac :=
         [ Heqcall': _ = bv_binop op l r |- _ ] =>
           rewrite <- Heqcall' in *;
           clear Heqcall';
-          repeat apply_somewhere to_bv_from_sized_bv_inverse;
+          repeat apply_somewhere XBV.to_from_bv_inverse;
           subst
       end ;
       [ idtac
-      | now (unfold XBV.from_sized_bv in *; rewrite XBV.xbv_bv_inverse in * )
-      | now (unfold XBV.from_sized_bv in *; rewrite XBV.xbv_bv_inverse in * )
+      | now (unfold XBV.from_bv in *; rewrite XBV.xbv_bv_inverse in * )
+      | now (unfold XBV.from_bv in *; rewrite XBV.xbv_bv_inverse in * )
       ]
   end.
+
+Require Import Program.Equality.
 
 Lemma expr_to_smt_correct vars expr :
   forall t tag m st ρ xbv bv,
@@ -273,7 +273,7 @@ Proof.
     end.
 
   funelim (expr_to_smt vars expr); intros * Hexpr_to_smt Hmatch_states Heval_expr Hinterp_term;
-    inv Hexpr_to_smt; autodestruct_eqn E;
+    inv Hexpr_to_smt; autodestruct_eqn E.
     try match type of Heval_expr with
       | context[Verilog.BinaryOp] => expr_begin_tac
       | context[Verilog.UnaryOp] => expr_begin_tac
