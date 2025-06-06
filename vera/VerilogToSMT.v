@@ -87,35 +87,17 @@ Section expr_to_smt.
       rhs__smt <- expr_to_smt rhs ;;
       ret (SMTLib.Term_BVBinOp SMTLib.BVMul lhs__smt rhs__smt);
     expr_to_smt (Verilog.BinaryOp Verilog.BinaryShiftLeft lhs rhs) :=
-      let t__lhs := Verilog.expr_type lhs in
-      let t__rhs := Verilog.expr_type rhs in
-      let t__shift := N.max t__lhs t__rhs in
       lhs__smt <- expr_to_smt lhs ;;
       rhs__smt <- expr_to_smt rhs ;;
-      ret (cast_from_to t__shift t__lhs
-             (SMTLib.Term_BVBinOp SMTLib.BVShl
-                (cast_from_to t__lhs t__shift lhs__smt)
-                (cast_from_to t__rhs t__shift rhs__smt)));
+      ret (SMTLib.Term_BVBinOp SMTLib.BVShl lhs__smt rhs__smt);
     expr_to_smt (Verilog.BinaryOp Verilog.BinaryShiftLeftArithmetic lhs rhs) :=
-      let t__lhs := Verilog.expr_type lhs in
-      let t__rhs := Verilog.expr_type rhs in
-      let t__shift := N.max t__lhs t__rhs in
       lhs__smt <- expr_to_smt lhs ;;
       rhs__smt <- expr_to_smt rhs ;;
-      ret (cast_from_to t__shift t__lhs
-             (SMTLib.Term_BVBinOp SMTLib.BVShl
-                (cast_from_to t__lhs t__shift lhs__smt)
-                (cast_from_to t__rhs t__shift rhs__smt)));
+      ret (SMTLib.Term_BVBinOp SMTLib.BVShl lhs__smt rhs__smt);
     expr_to_smt (Verilog.BinaryOp Verilog.BinaryShiftRight lhs rhs) :=
-      let t__lhs := Verilog.expr_type lhs in
-      let t__rhs := Verilog.expr_type rhs in
-      let t__shift := N.max t__lhs t__rhs in
       lhs__smt <- expr_to_smt lhs ;;
       rhs__smt <- expr_to_smt rhs ;;
-      ret (cast_from_to t__shift t__lhs
-             (SMTLib.Term_BVBinOp SMTLib.BVShr
-                (cast_from_to t__lhs t__shift lhs__smt)
-                (cast_from_to t__rhs t__shift rhs__smt)));
+      ret (SMTLib.Term_BVBinOp SMTLib.BVShr lhs__smt rhs__smt);
     expr_to_smt (Verilog.BinaryOp Verilog.BinaryBitwiseOr lhs rhs) :=
       lhs__smt <- expr_to_smt lhs ;;
       rhs__smt <- expr_to_smt rhs ;;
