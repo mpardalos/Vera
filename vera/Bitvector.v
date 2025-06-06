@@ -112,7 +112,7 @@ Module BV.
   Qed.
 
   Definition is_zero {n} (bv : bitvector n) : bool :=
-    RawBV.is_zero (bits bv).
+    bv_eq bv (zeros n).
 
   Definition to_N {n} (bv : bitvector n) : N :=
     RawBV.to_N (bits bv).

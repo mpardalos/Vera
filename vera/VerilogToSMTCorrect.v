@@ -328,14 +328,36 @@ Proof.
   - admit. (* TODO UnaryPlus *)
   - admit. (* TODO UnaryMinus *)
   - admit. (* TODO UnaryNegation *)
-  - (* TODO: Conditional *)
+  - (* Conditional *)
     expr_begin_tac;
       try solve [eauto];
-      try rewrite Bool.negb_true_iff in *; try rewrite Bool.negb_false_iff in *.
-    + admit. (* Contradiction 0 <> 0 *)
-    + admit. (* Condition is X *)
-    + admit. (* Contradiction 0 <> 0 *)
-    + admit. (* Condition is X *)
+      try rewrite Bool.negb_true_iff in *;
+      try rewrite Bool.negb_false_iff in *;
+      insterU H; insterU H0; insterU H1.
+    + (* Contradiction 0 <> 0 *)
+      inv H.
+      apply_somewhere XBV.bv_xbv_inverse.
+      apply_somewhere XBV.from_bv_injective.
+      subst.
+      unfold Verilog.expr_type in *.
+      inv H3. autodestruct; try contradiction.
+      destruct e; cbn in *.
+      unfold BV.is_zero in *.
+      congruence.
+    + (* Contradiction 0 <> 0 *)
+      inv H.
+      apply_somewhere XBV.bv_xbv_inverse.
+      apply_somewhere XBV.from_bv_injective.
+      subst.
+      unfold Verilog.expr_type in *.
+      inv H3. autodestruct; try contradiction.
+      destruct e; cbn in *.
+      unfold BV.is_zero in *.
+      congruence.
+    + (* Condition is X *)
+      some_inv; now rewrite XBV.xbv_bv_inverse in *.
+    + (* Condition is X *)
+      some_inv; now rewrite XBV.xbv_bv_inverse in *.
   - (* TODO: BitSelect *)
     expr_begin_tac.
     admit.
@@ -351,7 +373,8 @@ Proof.
     funelim (term_for_name vars w n); rewrite <- Heqcall in *; try discriminate; clear Heqcall.
     destruct Hmatch_states with (verilogName := name) (smtName := n__smt).
     { admit. (* TODO: names in the expression are in the bijection *) }
-    inv H0. (* FIXME: don't reference names *)
+    (* FIXME: don't reference names *)
+    inv H0. 
     expr_begin_tac.
     simpl. apply_somewhere inj_pair2. congruence.
   - (* TODO: Resize *)
