@@ -46,7 +46,8 @@ Definition transf := sum string.
 Equations cast_from_to (from to: N) (t : SMTLib.term) : SMTLib.term :=
   cast_from_to from to t with N.compare to from => {
     | Lt => SMTLib.Term_BVExtract (nat_of_N (to - 1)) 0 t
-    | Gt => SMTLib.Term_BVConcat (SMTLib.Term_BVLit _ (BV.zeros (to - from))) t
+    (* smtlib concat is backwards *)
+    | Gt => SMTLib.Term_BVConcat t (SMTLib.Term_BVLit _ (BV.zeros (to - from)))
     | Eq => t
     }
 .

@@ -151,6 +151,18 @@ Proof.
   constructor.
 Qed.
 
+Definition verilog_smt_match_to_bv_bits
+  n1 n2 (xbv : XBV.xbv n1) (bv1 : BV.bitvector n1) (bv2 : BV.bitvector n2):
+  XBV.to_bv xbv = Some bv1 ->
+  BV.bits bv1 = BV.bits bv2 ->
+  verilog_smt_match_value xbv (SMTLib.Value_BitVec n2 bv2).
+Proof.
+  destruct bv1 as [bv1 wf1], bv2 as [bv2 wf2]. simpl. intros H1 H2.
+  apply XBV.bv_xbv_inverse in H1.
+  subst.
+  constructor.
+Qed.
+
 Inductive verilog_smt_match_on_names (st : VerilogState) (ρ : SMTLib.valuation) verilogName smtName :=
 | verilog_smt_match_on_names_intro w xbv val
     (Hsmtval : ρ smtName = Some val)
@@ -235,23 +247,18 @@ Proof.
   reflexivity.
 Qed.
 
-Ltac bv_binop_tac :=
-  simp eval_binop in *;
-  match goal with
-    [ |- context[bv_binop ?op ?l ?r] ] =>
-      funelim (bv_binop op l r);
-      match goal with
-        [ Heqcall': _ = bv_binop op l r |- _ ] =>
-          rewrite <- Heqcall' in *;
-          clear Heqcall';
-          repeat apply_somewhere XBV.to_from_bv_inverse;
-          subst
-      end;
-      rewrite XBV.xbv_bv_inverse in *;
-      repeat apply_somewhere XBV.from_bv_injective;
-      subst;
-      try crush
-  end.
+Lemma xbv_concat_to_bv w1 w2 (bv1 : BV.bitvector w1) (bv2 : BV.bitvector w2) :
+  XBV.to_bv (XBV.concat (XBV.from_bv bv1) (XBV.from_bv bv2)) =
+    Some (BV.bv_concat bv1 bv2).
+Proof.
+  rewrite <- XBV.xbv_bv_inverse.
+  f_equal.
+  destruct bv1 as [bv1 wf1], bv2 as [bv2 wf2].
+  apply XBV.of_bits_equal. simpl.
+  unfold RawBV.bv_concat, RawXBV.from_bv.
+  rewrite <- List.map_app.
+  reflexivity.
+Qed.
 
 Require Import Program.Equality.
 
@@ -276,6 +283,12 @@ Lemma expr_to_smt_correct {w} vars (expr : Verilog.expression w) :
     SMTLib.interp_term ρ t = Some bv ->
     verilog_smt_match_value xbv bv.
 Proof.
+  Ltac inster_all :=
+    repeat match goal with
+           | [ H : forall _, _ |- _ ] => insterU H; inv H
+           | [ H : (?x; _) = (?x; _) |- _ ] => apply inj_pair2 in H; subst
+           end.
+
   Ltac expr_begin_tac :=
     match goal with
     | [ Heval_expr: eval_expr _ _ = Some _ , Hinterp_term : SMTLib.interp_term _ _ = Some _ |- _ ] =>
@@ -283,40 +296,44 @@ Proof.
         simp eval_expr in Heval_expr; inv Heval_expr;
         let E := fresh "E" in
         autodestruct_eqn E
+    end; inster_all.
+
+  Ltac bv_binop_tac :=
+    apply verilog_smt_match_to_bv;
+    simp eval_binop in *;
+    match goal with
+      [ |- context[bv_binop ?op ?l ?r] ] =>
+        funelim (bv_binop op l r);
+        match goal with
+          [ Heqcall': _ = bv_binop op l r |- _ ] =>
+            rewrite <- Heqcall' in *;
+            clear Heqcall';
+            repeat apply_somewhere XBV.to_from_bv_inverse;
+            subst
+        end;
+        rewrite XBV.xbv_bv_inverse in *;
+        repeat apply_somewhere XBV.from_bv_injective;
+        subst;
+        try crush
     end.
 
+
   funelim (expr_to_smt vars expr); intros * Hexpr_to_smt Hmatch_states Heval_expr Hinterp_term;
-    simp expr_to_smt in *; inv Hexpr_to_smt; autodestruct_eqn E;
-    try match type of Heval_expr with
-      | context[Verilog.BinaryOp] => expr_begin_tac
-      | context[Verilog.UnaryOp] => expr_begin_tac
-      end.
+    simp expr_to_smt in *; inv Hexpr_to_smt; autodestruct_eqn E.
   - (* BinaryPlus *)
-    insterU H. inv H. apply_somewhere inj_pair2. subst.
-    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
-    apply verilog_smt_match_to_bv.
-    bv_binop_tac.
+    expr_begin_tac. bv_binop_tac.
   - (* BinaryMinus *)
-    apply_somewhere inj_pair2. subst.
-    insterU H. inv H. apply_somewhere inj_pair2. subst.
-    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
-    apply verilog_smt_match_to_bv.
-    bv_binop_tac.
+    expr_begin_tac. bv_binop_tac.
   - (* BinaryStar *)
-    insterU H. inv H. apply_somewhere inj_pair2. subst.
-    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
-    apply verilog_smt_match_to_bv.
-    bv_binop_tac.
+    expr_begin_tac. bv_binop_tac.
   - (* BinaryBitwiseAnd *)
-    insterU H. inv H. apply_somewhere inj_pair2. subst.
-    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
+    expr_begin_tac.
     apply verilog_smt_match_to_bv.
     simp eval_binop.
     erewrite bitwise_and_no_exes;
       rewrite XBV.xbv_bv_inverse in *;
       crush.
-  - insterU H. inv H. apply_somewhere inj_pair2. subst.
-    insterU H0. inv H0. apply_somewhere inj_pair2. subst.
+  - expr_begin_tac.
     apply verilog_smt_match_to_bv.
     simp eval_binop.
     erewrite bitwise_or_no_exes;
@@ -332,20 +349,8 @@ Proof.
     expr_begin_tac;
       try solve [eauto];
       try rewrite Bool.negb_true_iff in *;
-      try rewrite Bool.negb_false_iff in *;
-      insterU H; insterU H0; insterU H1.
+      try rewrite Bool.negb_false_iff in *.
     + (* Contradiction 0 <> 0 *)
-      inv H.
-      apply_somewhere XBV.bv_xbv_inverse.
-      apply_somewhere XBV.from_bv_injective.
-      subst.
-      unfold Verilog.expr_type in *.
-      inv H3. autodestruct; try contradiction.
-      destruct e; cbn in *.
-      unfold BV.is_zero in *.
-      congruence.
-    + (* Contradiction 0 <> 0 *)
-      inv H.
       apply_somewhere XBV.bv_xbv_inverse.
       apply_somewhere XBV.from_bv_injective.
       subst.
@@ -358,14 +363,24 @@ Proof.
       some_inv; now rewrite XBV.xbv_bv_inverse in *.
     + (* Condition is X *)
       some_inv; now rewrite XBV.xbv_bv_inverse in *.
+    + (* Contradiction 0 <> 0 *)
+      apply_somewhere XBV.bv_xbv_inverse.
+      apply_somewhere XBV.from_bv_injective.
+      subst.
+      unfold Verilog.expr_type in *.
+      inv H3. autodestruct; try contradiction.
+      destruct e; cbn in *.
+      unfold BV.is_zero in *.
+      congruence.
+    + now rewrite XBV.xbv_bv_inverse in *.
+    + now rewrite XBV.xbv_bv_inverse in *.
   - (* TODO: BitSelect *)
     expr_begin_tac.
     admit.
-  - (* TODO: Concatenation *)
-    (* The induction principe does not handle the list correctly, we probably
-       need to change the AST a bit *)
+  - (* Concatenation *)
     expr_begin_tac.
-    admit.
+    apply verilog_smt_match_to_bv.
+    apply xbv_concat_to_bv.
   - (* Verilog.IntegerLiteral *)
     expr_begin_tac.
     now constructor.
@@ -376,17 +391,21 @@ Proof.
     (* FIXME: don't reference names *)
     inv H0. 
     expr_begin_tac.
-    simpl. apply_somewhere inj_pair2. congruence.
+    crush.
   - (* TODO: Resize *)
     expr_begin_tac.
     unfold Verilog.expr_type in *.
     funelim (convert w x); destruct_rew; rewrite <- Heqcall; clear Heqcall.
-    + funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
+    + (* Extension implementation matches *)
+      funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
         (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
         try crush.
       cbn in Hinterp_term; autodestruct_eqn E.
-      (* TODO: Extension implementation matches *)
-      admit.
+      inster_all.
+      unfold XBV.zextn.
+      eapply verilog_smt_match_to_bv_bits.
+      * now rewrite XBV.extend_zero_to_bv.
+      * now rewrite BV.zextn_as_concat_bits.
     + funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
         (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
         try crush.
