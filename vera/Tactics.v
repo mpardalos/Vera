@@ -4,7 +4,9 @@ From vera Require Import Decidable.
 
 (* Stuff every "finisher" tactic you can think of in here *)
 Ltac crush :=
-  solve [repeat progress (
+  solve [
+      (simpl + simpl in * + cbn in * + cbn + idtac);
+      repeat progress (
              discriminate
              || lia
              || congruence
