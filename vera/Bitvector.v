@@ -619,6 +619,43 @@ Module XBV.
       wf := RawXBV.extr_width _ _ _
     |}.
 
+  Lemma extr_to_bv (n i j : N) (bv : BV.bitvector n) :
+    (i + j < n)%N ->
+    XBV.to_bv (XBV.extr (XBV.from_bv bv) i j) = Some (BV.bv_extr i j bv).
+  Proof.
+    intros. destruct bv as [bv wf].
+    rewrite <- xbv_bv_inverse. f_equal.
+    apply of_bits_equal; simpl.
+    unfold RawXBV.extr.
+    rewrite RawXBV.from_bv_size. rewrite wf. rewrite <- N.ltb_lt in H. rewrite N.add_comm in H. rewrite H.
+    unfold RAWBITVECTOR_LIST.bv_extr.
+    rewrite N.ltb_lt in H.
+    replace (n <? j + i)%N with false; cycle 1. {
+      symmetry. apply N.ltb_ge. lia.
+    }
+
+    (* Rewrite everything in terms of Nats instead of N *)
+    remember (N.to_nat i) as i_nat.
+    remember (N.to_nat j) as j_nat.
+    replace (N.to_nat (j + i)) with (j_nat + i_nat) by lia.
+    unfold RAWBITVECTOR_LIST.size in *.
+    assert (j_nat + i_nat < length bv) by lia.
+    clear H Heqi_nat Heqj_nat wf n i j.
+
+    generalize dependent i_nat. generalize dependent j_nat.
+    induction bv; simpl in *; intros.
+    - simp extract. reflexivity.
+    - autodestruct_eqn E;
+        try rewrite Nat.add_0_r in *; subst;
+        simp extract; simpl;
+        repeat f_equal;
+        try crush.
+      + rewrite IHbv; try crush. now rewrite Nat.add_comm.
+      + rewrite IHbv; repeat f_equal; lia.
+      + rewrite IHbv; try crush. now rewrite Nat.add_comm.
+      + rewrite IHbv; repeat f_equal; lia.
+  Qed.
+
   (*
    * Matches this Verilog operation:
    * bv1 === bv2
