@@ -163,20 +163,20 @@ Proof.
   constructor.
 Qed.
 
-Inductive verilog_smt_match_on_names (st : VerilogState) (ρ : SMTLib.valuation) verilogName smtName :=
+Inductive verilog_smt_match_on_names (regs : RegisterState) (ρ : SMTLib.valuation) verilogName smtName :=
 | verilog_smt_match_on_names_intro w xbv val
     (Hsmtval : ρ smtName = Some val)
-    (Hverilogval : regState st verilogName = Some (w; xbv))
+    (Hverilogval : regs verilogName = Some (w; xbv))
     (Hmatchvals : verilog_smt_match_value xbv val).
 
 Definition verilog_smt_match_states
   (tag : TaggedName.Tag)
   (m : VerilogSMTBijection.t)
-  (st : VerilogState)
+  (regs : RegisterState)
   (ρ : SMTLib.valuation) :=
   forall verilogName smtName,
     m (tag, verilogName) = Some smtName ->
-    verilog_smt_match_on_names st ρ verilogName smtName.
+    verilog_smt_match_on_names regs ρ verilogName smtName.
 
 Lemma bitwise_binop_no_exes (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
   (forall (lb rb : bool), (if f_bool lb rb then I else O) = f_bit (if lb then I else O) (if rb then I else O)) ->
@@ -276,10 +276,10 @@ Ltac funelim_plus e :=
   end.
 
 Lemma expr_to_smt_correct {w} vars (expr : Verilog.expression w) :
-  forall t tag m st ρ xbv bv,
+  forall t tag m regs ρ xbv bv,
     expr_to_smt vars expr = inr t ->
-    verilog_smt_match_states tag m st ρ ->
-    eval_expr st expr = Some xbv ->
+    verilog_smt_match_states tag m regs ρ ->
+    eval_expr regs expr = Some xbv ->
     SMTLib.interp_term ρ t = Some bv ->
     verilog_smt_match_value xbv bv.
 Proof.

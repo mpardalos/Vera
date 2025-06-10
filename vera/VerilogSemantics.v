@@ -44,11 +44,8 @@ Module CombinationalOnly.
       }
   .
 
-  Definition set_reg {w} (name : string) (value : XBV.xbv w) (st : VerilogState) : VerilogState :=
-    {| regState := fun n => if (n =? name)%string then Some (w; value) else (regState st n)
-    ; pendingProcesses := pendingProcesses st
-    |}
-  .
+  Definition set_reg {w} (name : string) (value : XBV.xbv w) : RegisterState -> RegisterState :=
+    StrFunMap.insert name (w; value).
 
   Definition pop_pending_process (st : VerilogState) : VerilogState :=
     {| regState := regState st
@@ -62,12 +59,42 @@ Module CombinationalOnly.
     | _ => false
     end.
 
+  Definition variable_widths vars : list (string * N):=
+    map (fun var => (Verilog.varName var, Verilog.varWidth var)) vars.
+
+  Definition variable_names vars : list string :=
+    map Verilog.varName vars.
+
+  Lemma variable_widths_names n w l:
+    In (n, w) (variable_widths l) -> In n (variable_names l).
+  Proof.
+    revert n w.
+    induction l; intros; simpl in *.
+    - contradiction.
+    - destruct H.
+      + inversion H. subst.
+        eauto.
+      + right. eauto.
+  Qed.
+
+  Lemma variable_names_widths n l:
+    In n (variable_names l) -> exists w, In (n, w) (variable_widths l).
+  Proof.
+    revert n.
+    induction l; intros; simpl in *.
+    - contradiction.
+    - destruct H.
+      + subst. eauto.
+      + destruct (IHl _ H).
+        eexists. eauto.
+  Qed.
+
   Definition input_valid (v : Verilog.vmodule) (input : list {w & XBV.xbv w}) :=
-    List.length input = List.length (Verilog.inputs v).
+    List.Forall2 (fun '(w, _) '(w'; _) => w = w') (Verilog.input_widths v) input.
 
   Definition initial_state (m : Verilog.vmodule) (input : list {n & XBV.xbv n}) : VerilogState :=
     {|
-      regState := StrFunMap.of_list (List.combine (Verilog.inputs m) input);
+      regState := StrFunMap.of_list (List.combine (Verilog.input_names m) input);
       pendingProcesses := List.filter is_always_comb (Verilog.modBody m)
     |}.
 
@@ -148,7 +175,7 @@ Module CombinationalOnly.
   Next Obligation. crush. Qed.
   Next Obligation. crush. Qed.
   Next Obligation. crush. Qed.
-  Next Obligation. reflexivity. Defined.
+  Next Obligation. crush. Defined.
 
   Equations select_bit {w1 w2} (vec : XBV.xbv w1) (idx : XBV.xbv w2) : XBV.xbv 1 :=
     select_bit vec idx with XBV.to_bv idx => {
@@ -157,18 +184,18 @@ Module CombinationalOnly.
       }.
 
   Equations
-    eval_expr {w} (st: VerilogState) (e : Verilog.expression w) : option (XBV.xbv w) :=
-    eval_expr st (Verilog.UnaryOp op operand) :=
-      let* operand_val := eval_expr st operand in
+    eval_expr {w} (regs: RegisterState) (e : Verilog.expression w) : option (XBV.xbv w) :=
+    eval_expr regs (Verilog.UnaryOp op operand) :=
+      let* operand_val := eval_expr regs operand in
       Some (eval_unaryop op operand_val);
-    eval_expr st (Verilog.BinaryOp op lhs rhs) :=
-      let* lhs__val := eval_expr st lhs in
-      let* rhs__val := eval_expr st rhs in
+    eval_expr regs (Verilog.BinaryOp op lhs rhs) :=
+      let* lhs__val := eval_expr regs lhs in
+      let* rhs__val := eval_expr regs rhs in
       Some (eval_binop op lhs__val rhs__val);
-    eval_expr st (Verilog.Conditional cond tBranch fBranch) :=
-      let* cond__val := eval_expr st cond in
-      let* tBranch__val := eval_expr st tBranch in
-      let* fBranch__val := eval_expr st fBranch in
+    eval_expr regs (Verilog.Conditional cond tBranch fBranch) :=
+      let* cond__val := eval_expr regs cond in
+      let* tBranch__val := eval_expr regs tBranch in
+      let* fBranch__val := eval_expr regs fBranch in
       (* TODO: Check that ?: semantics match with standard *)
       match XBV.to_bv cond__val with
       | None => Some (XBV.exes (XBV.size tBranch__val))
@@ -177,31 +204,31 @@ Module CombinationalOnly.
           then Some fBranch__val
           else Some tBranch__val
       end;
-    eval_expr st (Verilog.BitSelect vec idx) :=
-      let* vec__val := eval_expr st vec in
-      let* idx__val := eval_expr st idx in
+    eval_expr regs (Verilog.BitSelect vec idx) :=
+      let* vec__val := eval_expr regs vec in
+      let* idx__val := eval_expr regs idx in
       Some (select_bit vec__val idx__val);
-    eval_expr st (Verilog.Resize t expr) :=
-      let* val := eval_expr st expr in
+    eval_expr regs (Verilog.Resize t expr) :=
+      let* val := eval_expr regs expr in
       Some (convert t val);
-    eval_expr st (Verilog.Concatenation e1 e2) :=
-      let* val1 := eval_expr st e1 in
-      let* val2 := eval_expr st e2 in
+    eval_expr regs (Verilog.Concatenation e1 e2) :=
+      let* val1 := eval_expr regs e1 in
+      let* val2 := eval_expr regs e2 in
       Some (XBV.concat val1 val2);
-    eval_expr st (Verilog.IntegerLiteral _ val) :=
+    eval_expr regs (Verilog.IntegerLiteral _ val) :=
       Some (XBV.from_bv val) ;
-    eval_expr st (Verilog.NamedExpression t name) :=
-      let* (w; v) := regState st name in
+    eval_expr regs (Verilog.NamedExpression t name) :=
+      let* (w; v) := regs name in
       match dec (w = t) with
       | left E => Some (rew E in v)
       | right _ => None
       end.
 
   Equations
-    exec_statement (st : VerilogState) (stmt : Verilog.statement) : option VerilogState by struct :=
-    exec_statement st (Verilog.Block stmts) := exec_statements st stmts ;
-    exec_statement st (Verilog.If cond trueBranch falseBranch) :=
-      let* cond__val := eval_expr st cond in
+    exec_statement (regs : RegisterState) (stmt : Verilog.statement) : option RegisterState by struct :=
+    exec_statement regs (Verilog.Block stmts) := exec_statements regs stmts ;
+    exec_statement regs (Verilog.If cond trueBranch falseBranch) :=
+      let* cond__val := eval_expr regs cond in
       (*
        * If the cond_predicate expression evaluates to true (that is, has a
        * nonzero known value), the first statement shall be executed. If it
@@ -211,47 +238,30 @@ Module CombinationalOnly.
        * executed.
        *)
       match XBV.to_bv cond__val with
-      | None => exec_statement st falseBranch
+      | None => exec_statement regs falseBranch
       | Some cond__bv =>
         if BV.is_zero cond__bv
-        then exec_statement st falseBranch
-        else exec_statement st trueBranch
+        then exec_statement regs falseBranch
+        else exec_statement regs trueBranch
       end
     ;
-    exec_statement st (Verilog.BlockingAssign (Verilog.NamedExpression _ name) rhs) :=
-      let* rhs__val := eval_expr st rhs in
-      Some (set_reg name rhs__val st)
+    exec_statement regs (Verilog.BlockingAssign (Verilog.NamedExpression _ name) rhs) :=
+      let* rhs__val := eval_expr regs rhs in
+      Some (set_reg name rhs__val regs)
     ;
-    exec_statement st (Verilog.BlockingAssign lhs rhs) :=
+    exec_statement regs (Verilog.BlockingAssign lhs rhs) :=
       None;
-    exec_statement st (Verilog.NonBlockingAssign lhs rhs) :=
+    exec_statement regs (Verilog.NonBlockingAssign lhs rhs) :=
       None;
-  where exec_statements (st : VerilogState) (stmts : list Verilog.statement) : option VerilogState :=
-    exec_statements st [] := Some st;
-    exec_statements st (hd :: tl) :=
-      let* st' := exec_statement st hd in
-      exec_statements st' tl;
+  where exec_statements (regs : RegisterState) (stmts : list Verilog.statement) : option RegisterState :=
+    exec_statements regs [] := Some regs;
+    exec_statements regs (hd :: tl) :=
+      let* regs' := exec_statement regs hd in
+      exec_statements regs' tl;
   .
-
-  Lemma exec_statement_procs : forall st1 stmt st2,
-      exec_statement st1 stmt = Some st2 ->
-      pendingProcesses st1 = pendingProcesses st2
-  .
-  Proof.
-    refine (fst (exec_statement_elim
-                   (fun st1 stmt mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
-                   (fun st1 stmts mSt2 => forall st2, mSt2 = Some st2 -> pendingProcesses st1 = pendingProcesses st2)
-                   _ _ _ _ _ _ _ _ _ _ _ _ _ )); intros; auto; try discriminate.
-    - now (some_inv; autodestruct).
-    - now (some_inv; autodestruct; eauto).
-    - now (some_inv; autodestruct; eauto).
-    - inv H1; autodestruct.
-      erewrite H by easy.
-      eauto.
-  Qed.
 
   Equations
-    exec_module_item : VerilogState -> Verilog.module_item -> option VerilogState :=
+    exec_module_item : RegisterState -> Verilog.module_item -> option RegisterState :=
     exec_module_item st (Verilog.Initial _) :=
       None; (* initial blocks are not part of the semantics *)
     exec_module_item st (Verilog.AlwaysFF stmt) :=
@@ -260,46 +270,18 @@ Module CombinationalOnly.
       exec_statement st stmt;
   .
 
-  Lemma exec_module_item_procs : forall st1 mi st2,
-      exec_module_item st1 mi = Some st2 ->
-      pendingProcesses st1 = pendingProcesses st2
-  .
-  Proof.
-    intros st [] st2 H; simp exec_module_item in H.
-    - eapply exec_statement_procs. eassumption.
-    - discriminate.
-    - discriminate.
-  Qed.
-
   Equations run_step : VerilogState -> option VerilogState :=
     run_step (MkVerilogState reg []) := None;
-    run_step (MkVerilogState reg (p :: ps)) := exec_module_item (MkVerilogState reg ps) p.
+    run_step (MkVerilogState reg (p :: ps)) :=
+      let* reg' := exec_module_item reg p in
+      Some (MkVerilogState reg' ps).
 
   Equations run_multistep (st : VerilogState) : option VerilogState by wf (length (pendingProcesses st)) :=
-    run_multistep st =>
-      (match run_step st as n' return run_step st = n' -> _ with
-      | Some next => fun _ => match pendingProcesses next with
-                          | [] => Some next
-                          | (_::_) => run_multistep next
-                          end
-      | None => fun _ => None
-      end) eq_refl
-  .
-  Next Obligation.
-    clear run_multistep.
-    revert next e.
-    destruct st as [nextReg nextProcs].
-    induction nextProcs; intros; simp run_step in *; simpl in *.
-    - discriminate.
-    - match type of e with
-      | exec_module_item ?a ?b = _ =>
-          funelim (exec_module_item a b);
-          simp exec_module_item in *;
-          try discriminate
-      end.
-      apply exec_statement_procs in e. simpl in e. subst.
-      lia.
-  Qed.
+    run_multistep (MkVerilogState reg []) := Some (MkVerilogState reg []);
+    run_multistep (MkVerilogState reg (p :: ps)) :=
+      let* reg' := exec_module_item reg p in
+      run_multistep (MkVerilogState reg' ps).
+  Next Obligation. crush. Qed.
 
   Definition step (st1 st2 : VerilogState) := run_step st1 = Some st2.
 
@@ -323,54 +305,14 @@ Module CombinationalOnly.
     intros [regs procs]. revert regs.
     unfold final.
     induction procs; intros.
-    - simp run_multistep in H. simp run_step in H. discriminate.
-    - simp run_multistep in H.
-      simp run_step in H.
-      destruct (exec_module_item {| regState := regs; pendingProcesses := procs |} a) eqn:E;
-        try discriminate.
-      apply exec_module_item_procs in E. simpl in E. rewrite <- E in *.
-      destruct procs.
-      + inv H. congruence.
-      + destruct v; simpl in *.
-        rewrite <- E in *.
-        eapply IHprocs.
-        eassumption.
+    - simp run_multistep in *. now some_inv.
+    - simp run_multistep in *. inv H.
+      autodestruct. eauto.
   Qed.
 
   Lemma multistep_blocked : forall (st st' : VerilogState),
       run_multistep st = Some st' -> blocked st'.
   Proof. eauto using final_is_blocked, multistep_final. Qed.
-
-  Definition variable_widths vars : list (string * N):=
-    map (fun var => (Verilog.varName var, Verilog.varWidth var)) vars.
-
-  Definition variable_names vars : list string :=
-    map Verilog.varName vars.
-
-  Lemma variable_widths_names n w l:
-    In (n, w) (variable_widths l) -> In n (variable_names l).
-  Proof.
-    revert n w.
-    induction l; intros; simpl in *.
-    - contradiction.
-    - destruct H.
-      + inversion H. subst.
-        eauto.
-      + right. eauto.
-  Qed.
-
-  Lemma variable_names_widths n l:
-    In n (variable_names l) -> exists w, In (n, w) (variable_widths l).
-  Proof.
-    revert n.
-    induction l; intros; simpl in *.
-    - contradiction.
-    - destruct H.
-      + subst. eauto.
-      + destruct (IHl _ H).
-        eexists. eauto.
-  Qed.
-
 
   (** The values of the final state of the execution of module *)
   Definition execution := RegisterState.
