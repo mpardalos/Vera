@@ -44,14 +44,14 @@ Definition tc_name (Γ : TCBindings) (t_expr : Verilog.vtype) (name : string) : 
         else raise "Different type in env vs expression"%string
     end.
 
-Equations tc_lvalue : TCBindings -> Verilog.expression -> TC unit :=
+Equations tc_lvalue {w} : TCBindings -> Verilog.expression w -> TC unit :=
   tc_lvalue Γ (Verilog.UnaryOp _ _) :=
     raise "Unary operator not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.BinaryOp _ _ _) :=
     raise "Binary operator not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.Conditional _ _ _) :=
     raise "Conditional not permitted as lvalue"%string;
-  tc_lvalue Γ (Verilog.Concatenation _) :=
+  tc_lvalue Γ (Verilog.Concatenation _ _) :=
     (* TODO: Allow concatenation as lvalue *)
     raise "Concatenation not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.IntegerLiteral _ _) :=
@@ -66,7 +66,7 @@ Equations tc_lvalue : TCBindings -> Verilog.expression -> TC unit :=
 Definition dec_value_matches_type (v: RawBV.t) (t: Verilog.vtype) : { RawBV.size v = t } + { RawBV.size v <> t } :=
   N.eq_dec (RawBV.size v) t.
 
-Equations tc_expr : TCBindings -> Verilog.expression -> TC unit :=
+Equations tc_expr {w} : TCBindings -> Verilog.expression w -> TC unit :=
   tc_expr Γ (Verilog.UnaryOp op e) :=
     typed_e <- tc_expr Γ e ;;
     ret tt ;
@@ -86,8 +86,9 @@ Equations tc_expr : TCBindings -> Verilog.expression -> TC unit :=
       ret tt
     else
       raise "Conditional branches do not match"%string ;
-  tc_expr Γ (Verilog.Concatenation exprs) :=
-    mapT (tc_expr Γ) exprs ;;
+  tc_expr Γ (Verilog.Concatenation l r) :=
+    tc_expr Γ l ;;
+    tc_expr Γ r ;;
     ret tt ;
   tc_expr Γ (Verilog.IntegerLiteral _ value) :=
     ret tt;
@@ -125,8 +126,8 @@ Equations tc_module_item : TCBindings -> Verilog.module_item -> TC unit :=
 Equations variables_to_bindings : list Verilog.variable -> TCBindings :=
   variables_to_bindings [] :=
     StrMap.empty Verilog.vtype;
-  variables_to_bindings ((Verilog.MkVariable vecDecl _st n) :: tl) :=
-    StrMap.add n (Verilog.vector_declaration_width vecDecl) (variables_to_bindings tl).
+  variables_to_bindings (var :: tl) :=
+    StrMap.add (Verilog.varName var) (Verilog.varWidth var) (variables_to_bindings tl).
 
 Definition tc_vmodule (m : Verilog.vmodule) : TC unit :=
   let Γ := variables_to_bindings (Verilog.modVariables m) in
