@@ -36,13 +36,13 @@
           pname = "smtcoq-api";
           repo = "smtcoq-api";
           owner = "mpardalos";
-          branch = "extra";
+          branch = "extras";
 
-          version = "extra";
+          version = "extras";
           release = {
-            "extra" = {
-              rev = "e768d7a3f61ce4c812531a22df665b8800882910";
-              sha256 = "sha256-cumkEpFeifRo1nzii5ujUJsXq8pMFx4HR5b48CPncxw=";
+            "extras" = {
+              rev = "793f1d4f4b0667927badfd000d3feefe65a35b25";
+              sha256 = "sha256-MN5NRSUHrBT7m/yjWey1BRmbI3X4MOaVXZeE3cYrE4g=";
             };
           };
           nativeBuildInputs = [ coq.ocaml coqPackages.smtcoq ];
