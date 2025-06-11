@@ -43,7 +43,6 @@ Extraction "Vera.ml"
   int_from_nat
   int_to_nat
   VerilogEquivalence.equivalence_query
-  Verilog.UntypedVerilog
   VerilogTypecheck.tc_vmodule
   Verilog.Verilog
   VerilogToSMT.expr_to_smt

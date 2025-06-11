@@ -261,7 +261,6 @@ Definition canonicalize_module (vmodule : Verilog.vmodule) : sum string Verilog.
   ret
     {|
       Verilog.modName := Verilog.modName vmodule;
-      Verilog.modPorts := Verilog.modPorts vmodule;
       Verilog.modVariables := Verilog.modVariables vmodule;
       Verilog.modBody := body
     |}

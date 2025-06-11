@@ -125,19 +125,13 @@ Module VerilogCommon.
 
   Record variable :=
     MkVariable
-      { varVectorDeclaration : vector_declaration
+      { varPort : option port_direction
+      ; varVectorDeclaration : vector_declaration
       ; varStorageType : StorageType
       ; varName : string
       }.
 
-  Equations varWidth : variable -> N :=
-    varWidth v := vector_declaration_width (varVectorDeclaration v).
-
-  Record port :=
-    MkPort
-      { portDirection : port_direction
-      ; portName : string
-      }.
+  Definition varWidth (v : variable) : N := vector_declaration_width (varVectorDeclaration v).
 End VerilogCommon.
 
 Module Verilog.
@@ -211,7 +205,6 @@ Module Verilog.
   Record vmodule :=
     MkMod
       { modName : string
-      ; modPorts : list port
       ; modVariables : list variable
       ; modBody : list module_item
       }.
@@ -222,23 +215,29 @@ Module Verilog.
         (format "[ hi '.:' lo ]").
   End Notations.
 
-  Definition inputs (v : vmodule) : list string :=
-    map_opt (fun p => match p with
-                   | {|
-                       portDirection := PortIn;
-                       portName := name
-                     |} => Some name
+  Definition input_vars (v : vmodule) : list variable :=
+    map_opt (fun p => match varPort p with
+                   | Some PortIn => Some p
                    | _ => None
                    end)
-      (modPorts v).
+      (modVariables v).
 
-  Definition outputs (v : vmodule) : list string :=
-    map_opt (fun p => match p with
-                   | {|
-                       portDirection := PortOut;
-                       portName := name
-                     |} => Some name
+  Definition output_vars (v : vmodule) : list variable :=
+    map_opt (fun p => match varPort p with
+                   | Some PortOut => Some p
                    | _ => None
                    end)
-      (modPorts v).
+      (modVariables v).
+
+  Definition input_names (v : vmodule) : list string :=
+    map varName (input_vars v).
+
+  Definition output_names (v : vmodule) : list string :=
+    map varName (output_vars v).
+
+  Definition input_widths (v : vmodule) : list (N * string) :=
+    map (fun v => (varWidth v, varName v)) (input_vars v).
+
+  Definition output_widths (v : vmodule) : list (N * string) :=
+    map (fun v => (varWidth v, varName v)) (output_vars v).
 End Verilog.

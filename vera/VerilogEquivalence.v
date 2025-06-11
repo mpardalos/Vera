@@ -88,11 +88,11 @@ Program Definition equivalence_query_canonical
   : sum string (SMT.smt_with_namemap) :=
 
   inputs_ok1 <- assert_dec
-                 ((Verilog.inputs canonical_verilog1) = (Verilog.inputs canonical_verilog2))
+                 ((Verilog.input_names canonical_verilog1) = (Verilog.input_names canonical_verilog2))
                  "Inputs don't match" ;;
 
   outputs_ok2 <- assert_dec
-                 ((Verilog.outputs canonical_verilog1) = (Verilog.outputs canonical_verilog2))
+                 ((Verilog.output_names canonical_verilog1) = (Verilog.output_names canonical_verilog2))
                  "Outputs don't match" ;;
 
   smt1 <- VerilogToSMT.verilog_to_smt TaggedName.VerilogLeft 0 canonical_verilog1 ;;
@@ -100,8 +100,8 @@ Program Definition equivalence_query_canonical
 
   let nameMap := VerilogSMTBijection.combine (SMT.nameMap smt1) (SMT.nameMap smt2) _ _ in
 
-  inputs_same <- mk_inputs_same (Verilog.inputs canonical_verilog1) nameMap ;;
-  outputs_distinct <- mk_outputs_distinct (Verilog.outputs canonical_verilog1) nameMap ;;
+  inputs_same <- mk_inputs_same (Verilog.input_names canonical_verilog1) nameMap ;;
+  outputs_distinct <- mk_outputs_distinct (Verilog.output_names canonical_verilog1) nameMap ;;
 
   ret {|
       SMT.nameMap := nameMap ;

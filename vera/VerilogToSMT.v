@@ -177,9 +177,6 @@ Section expr_to_smt.
   .
 End expr_to_smt.
 
-Definition transfer_ports (ports : list Verilog.port) : list (string * port_direction) :=
-  map (fun '(Verilog.MkPort dir name) => (name, dir)) ports.
-
 Equations transfer_initial (stmt : Verilog.statement) : transf (list SMTLib.term) :=
   transfer_initial (Verilog.Block stmts) =>
     lists <- mapT transfer_initial stmts ;;
