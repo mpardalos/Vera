@@ -45,7 +45,7 @@ Definition transf := sum string.
 
 Equations cast_from_to (from to: N) (t : SMTLib.term) : SMTLib.term :=
   cast_from_to from to t with N.compare to from => {
-    | Lt => SMTLib.Term_BVExtract (nat_of_N (to - 1)) 0 t
+    | Lt => SMTLib.Term_BVExtract (N.to_nat to - 1) 0 t
     (* smtlib concat is backwards *)
     | Gt => SMTLib.Term_BVConcat t (SMTLib.Term_BVLit _ (BV.zeros (to - from)))
     | Eq => t
@@ -157,6 +157,7 @@ Section expr_to_smt.
     expr_to_smt (Verilog.Resize to expr) :=
       let from := Verilog.expr_type expr in
       expr__smt <- expr_to_smt expr ;;
+      assert_dec (to > 0)%N "Resize to 0 is not allowed"%string;;
       ret (cast_from_to from to expr__smt);
     expr_to_smt (Verilog.IntegerLiteral w val) :=
       ret (SMTLib.Term_BVLit w val);

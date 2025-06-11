@@ -390,7 +390,7 @@ Proof.
     expr_begin_tac.
     unfold Verilog.expr_type in *.
     funelim (convert w x); destruct_rew; rewrite <- Heqcall; clear Heqcall.
-    + (* Extension implementation matches *)
+    + (* Extension *)
       funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
         (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
         try crush.
@@ -400,15 +400,21 @@ Proof.
       eapply verilog_smt_match_to_bv_bits.
       * now rewrite XBV.extend_zero_to_bv.
       * now rewrite BV.zextn_as_concat_bits.
-    + funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
+    + (* Truncation *)
+      funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
         (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
         try crush.
       cbn in Hinterp_term; autodestruct_eqn E.
-      (* TODO: Truncation implementation matches *) admit.
+      (* replace (N.of_nat (N.to_nat (to - 1))) with (to - 1)%N by lia. *)
+      inster_all.
+      eapply verilog_smt_match_to_bv_bits.
+      * apply XBV.extr_to_bv. lia.
+      * simpl. f_equal. lia.
     + funelim (cast_from_to from from t0); rewrite <- Heqcall in *; clear Heqcall;
         (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
         try crush.
 Admitted.
+
 
 Theorem verilog_to_smt_correct tag start v smt :
   verilog_to_smt tag start v = inr smt ->
