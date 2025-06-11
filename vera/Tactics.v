@@ -1,4 +1,5 @@
 From Coq Require Export Lia.
+Import EqNotations.
 
 From vera Require Import Decidable.
 
@@ -142,3 +143,15 @@ Tactic Notation "insterKeep" hyp(H) "by" tactic(tac) := insterKeep' tac H.
 
 (** Like insterU, but keep an uninstantiated copy of `H' *)
 Tactic Notation "insterKeep" hyp(H) := insterKeep' crush H.
+
+Ltac destruct_rew :=
+  match goal with
+  | [H : context[rew [ _ ] ?E in _] |- _] =>
+      destruct E; simpl in H
+  | [H : context[rew dependent [ _ ] ?E in _] |- _] =>
+      destruct E; simpl in H
+  | [|- context[rew [ _ ] ?E in _]] =>
+      destruct E; simpl
+  | [|- context[rew dependent [ _ ] ?E in _]] =>
+      destruct E; simpl
+  end.

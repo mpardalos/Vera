@@ -262,12 +262,6 @@ Qed.
 
 Require Import Program.Equality.
 
-Ltac destruct_rew :=
-  match goal with
-  | [H : context[rew [ _ ] ?E in _] |- _] =>
-      destruct E; simpl in H
-  end.
-
 Ltac funelim_plus e :=
   funelim e; destruct_rew;
   match goal with
