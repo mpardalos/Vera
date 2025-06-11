@@ -38,47 +38,73 @@ Module RawBV.
   Definition is_zero (a : bitvector) :=
     bv_eq a (zeros (size a)).
 
-  Equations of_pos_full (value : positive) : bitvector := {
+  Fixpoint of_pos_full (value : positive) : bitvector :=
+    match value with
     | xH => [true]
-    | (p~1)%positive => bv_concat [true] (of_pos_full p)
-    | (p~0)%positive => bv_concat [false] (of_pos_full p)
-  }.
+    | (p~1)%positive => true :: of_pos_full p
+    | (p~0)%positive => false :: of_pos_full p
+    end.
 
-  Equations of_N_full (value : N) : bitvector := {
+  Definition of_N_full (value : N) : bitvector :=
+    match value with
     | N0 => [false]
     | Npos p => of_pos_full p
-  }.
+    end.
 
-  (** We use concat instead of bv_zextn because bv_zextn is broken! It adds
-  zeros at the start instead of the end, effectively shifting the value *)
-  (* TODO: Report issue with zextn *)
   Definition of_pos_fixed (width : N) (value : positive) : bitvector :=
     let bv := of_pos_full value in
     if (N.ltb (size bv) width)
-    then bv_concat bv (zeros (width - size bv))
+    then bv_concat (zeros (width - size bv)) bv
     else bv_extr 0 width (size bv) bv.
 
   Definition of_N_fixed (width : N) (value : N) : bitvector :=
     let bv := of_N_full value in
     if (N.ltb (size bv) width)
-    then bv_concat bv (zeros (width - size bv))
+    then bv_concat (zeros (width - size bv)) bv
     else bv_extr 0 width (size bv) bv.
 
-  Fixpoint to_positive (bs : list bool) : positive :=
-    match bs with
-    | [] => xH (** wrong! *)
-    | b :: bs =>
-        if b
-        then if negb (fold_left orb bs false)
-             then xH
-             else (to_positive bs)~1
-        else (to_positive bs)~0
-    end.
+  Definition to_N (val : bitvector) : N := N.of_nat (list2nat_be val).
 
-  Definition to_N (val : bitvector) : N :=
-    if negb (fold_left orb (bits val) false)
-    then N0
-    else Npos (to_positive (bits val)).
+  Lemma pow2_pow i : pow2 i = 2 ^ i.
+  Proof.
+    induction i; simpl.
+    { reflexivity. }
+    rewrite IHi. lia.
+  Qed.
+
+  Lemma _list2nat_be_of_N_full v : forall n i,
+    _list2nat_be (of_N_full v) n i = (pow2 i * N.to_nat v) + n.
+  Proof.
+    unfold of_N_full.
+    destruct v; simpl; intros.
+    { intros. lia. }
+    remember (of_pos_full p) as bv.
+    revert n i. generalize dependent p.
+    induction bv; intros; destruct p; simpl in *; try discriminate.
+    - inv Heqbv.
+      rewrite Pos2Nat.inj_xI.
+      erewrite IHbv; try reflexivity.
+      rewrite ! pow2_pow in *.
+      replace (i + 1) with (S i) by lia.
+      rewrite Nat.pow_succ_r'.
+      lia.
+    - inv Heqbv.
+      rewrite Pos2Nat.inj_xO.
+      erewrite IHbv; try reflexivity.
+      rewrite ! pow2_pow in *.
+      replace (i + 1) with (S i) by lia.
+      rewrite Nat.pow_succ_r'.
+      lia.
+    - destruct bv; try discriminate. inv Heqbv.
+      simpl. lia.
+  Qed.
+
+  Lemma to_N_of_N_full n : to_N (of_N_full n) = n.
+  Proof.
+    unfold to_N, list2nat_be.
+    rewrite _list2nat_be_of_N_full.
+    simpl. lia.
+  Qed.
 
   Fixpoint to_string (val : bitvector) : string :=
     match val with
