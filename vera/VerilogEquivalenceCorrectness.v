@@ -37,32 +37,35 @@ Import EqNotations.
 Local Open Scope string.
 Local Open Scope Z_scope.
 
+Import SigTNotations.
+
 Definition match_on_regs
   (regs : list string)
   (st1 st2 : RegisterState)
   : Prop :=
   List.Forall
     (fun 'n =>
-       exists v, st1 n = Some v
-            /\ st2 n = Some v
-            /\ ~ XBV.has_x v
+       exists w (v : XBV.xbv w),
+         st1 n = Some (w; v)
+         /\ st2 n = Some (w; v)
+         /\ ~ XBV.has_x v
     ) regs.
 
 Definition equivalent_behaviour v1 v2 :=
-  forall (input : list XBV.t)
+  forall (input : list {w & XBV.xbv w})
     (input_wf1 : input_valid v1 input)
     (input_wf2 : input_valid v2 input)
     (* (outputs_same : Verilog.outputs v1 = Verilog.outputs v2) *)
-    (input_vals_defined : Forall (fun bv => ~ XBV.has_x bv) input)
+    (input_vals_defined : Forall (fun '(_; bv) => ~ XBV.has_x bv) input)
     (final1 final2 : VerilogState),
     run_multistep (initial_state v1 input) = Some final1 ->
     run_multistep (initial_state v2 input) = Some final2 ->
-    match_on_regs (Verilog.outputs v1) (regState final1) (regState final2).
+    match_on_regs (Verilog.output_names v1) (regState final1) (regState final2).
 
 Record equivalent (v1 v2 : Verilog.vmodule) : Prop :=
   MkEquivalent {
-      interface_inputs_match : Verilog.inputs v1 = Verilog.inputs v2;
-      interface_outputs_match : Verilog.outputs v1 = Verilog.outputs v2;
+      interface_inputs_match : Verilog.input_vars v1 = Verilog.input_vars v2;
+      interface_outputs_match : Verilog.output_vars v1 = Verilog.output_vars v2;
       no_errors1 : no_errors v1;
       no_errors2 : no_errors v2;
       behaviour_match : equivalent_behaviour v1 v2;
@@ -74,13 +77,9 @@ Section V.
   Definition assign_out : vmodule :=
     {|
       modName := "assign_out";
-      modPorts := [
-        MkPort PortIn "in";
-        MkPort PortOut "out"
-      ];
       modVariables := [
-        MkVariable Verilog.Scalar Verilog.Wire "in";
-        MkVariable Verilog.Scalar Verilog.Wire "out"
+        MkVariable (Some PortIn) Verilog.Scalar Verilog.Wire "in";
+        MkVariable (Some PortOut) Verilog.Scalar Verilog.Wire "out"
       ];
       modBody := [
         AlwaysComb (BlockingAssign (NamedExpression 1%N "out") (NamedExpression 1%N "in"))
@@ -90,14 +89,10 @@ Section V.
   Definition assign_out_twostep : vmodule :=
     {|
       modName := "assign_out";
-      modPorts := [
-        MkPort PortIn "in";
-        MkPort PortOut "out"
-      ];
       modVariables := [
-        MkVariable Verilog.Scalar Verilog.Wire "in";
-        MkVariable Verilog.Scalar Verilog.Wire "v";
-        MkVariable Verilog.Scalar Verilog.Wire "out"
+        MkVariable (Some PortIn) Verilog.Scalar Verilog.Wire "in";
+        MkVariable None Verilog.Scalar Verilog.Wire "v";
+        MkVariable (Some PortOut) Verilog.Scalar Verilog.Wire "out"
       ];
       modBody := [
         AlwaysComb (BlockingAssign (NamedExpression 1%N "out") (NamedExpression 1%N "v"));
@@ -109,29 +104,38 @@ Section V.
   Proof.
     constructor; try auto.
     - unfold no_errors. intros.
-      repeat (destruct input; try solve [simpl in *; discriminate]).
-      eexists.
+      repeat (destruct input as [|[? ?]]; try (solve_by_inverts 3%nat)).
       repeat (unfold assign_out, set_reg, initial_state; simpl).
-      repeat (try econstructor; try unfold step; simpl; try simp run_step run_multistep exec_module_item exec_statement).
+      repeat (try unfold step; cbn; try simp eval_expr run_step run_multistep exec_module_item exec_statement).
+      autodestruct_eqn E; simp run_multistep.
+      + eauto.
+      + solve_by_inverts 2%nat.
     - unfold no_errors. intros.
-      repeat (destruct input; try solve [simpl in *; discriminate]).
-      eexists.
+      repeat (destruct input as [|[? ?]]; try (solve_by_inverts 3%nat)).
       repeat (unfold assign_out, set_reg, initial_state; simpl).
-      repeat (try econstructor; try unfold step; simpl; try simp run_step run_multistep exec_module_item exec_statement).
+      repeat (try unfold step; cbn; try simp eval_expr run_step run_multistep exec_module_item exec_statement).
+      autodestruct_eqn E; simp run_multistep.
+      + eauto.
+      + solve_by_inverts 2%nat.
     - unfold equivalent_behaviour.
       intros ? ? ? ? ? ? eval1 eval2.
-      repeat (destruct input; try solve [simpl in *; discriminate]).
+      do 2 (destruct input as [|[? ?]]; try (solve_by_inverts 2%nat)).
       unfold assign_out, set_reg in eval1; simpl in eval1.
       unfold assign_out, set_reg in eval2; simpl in eval2.
       repeat constructor.
-      repeat (simp run_multistep run_step exec_module_item exec_statement eval_expr in *; simpl in * );
-        unfold set_reg in *; simpl in *; try solve_by_inverts 3%nat.
-      inv eval1.
-      inv eval2.
-      eexists. intuition.
-      inv input_vals_defined. contradiction.
+      unfold initial_state in *; simpl in *.
+      simp run_multistep in *.
+      inv eval1. inv eval2.
+      simp exec_module_item exec_statement in *.
+      inv input_vals_defined.
+      autodestruct_eqn E. inv H0. inv H1. inv E. autodestruct_eqn E.
+      simp run_multistep in *. inv E0. simpl. simp eval_expr in *. inv E. autodestruct. simpl.
+      eexists. eexists. intuition.
   Qed.
 End V.
+
+
+From Coq Require Import Eqdep.
 
 Lemma match_on_regs_trans :
   forall rs v1 v2 v3,
@@ -140,15 +144,16 @@ Lemma match_on_regs_trans :
     match_on_regs rs v1 v3.
 Proof.
   intro rs.
-  induction rs; unfold match_on_regs.
-  - constructor.
-  - intros * H1 H2.
-    rewrite Forall_forall in *.
-    intros x Hin.
-    destruct (H1 ltac:(assumption) ltac:(assumption)) as [val1 ?].
-    destruct (H2 ltac:(assumption) ltac:(assumption)) as [val2 ?].
-    exists val1.
-    intuition congruence.
+  unfold match_on_regs.
+  intros * H1 H2.
+  rewrite ! Forall_forall in *.
+  intros x Hin.
+  insterU H1. insterU H2.
+  destruct H1 as [w1 [val1 [? [? ?]]]].
+  destruct H2 as [w2 [val2 [? [? ?]]]].
+  replace (v2 x) in H0. inv H0.
+  inversion_sigma. rewrite <- eq_rect_eq in *. subst.
+  exists w1. exists val1. intuition eauto.
 Qed.
 
 Lemma match_on_regs_sym :
@@ -157,14 +162,12 @@ Lemma match_on_regs_sym :
     match_on_regs rs v2 v1.
 Proof.
   intro rs.
-  induction rs; unfold match_on_regs.
-  - constructor.
-  - intros * H.
-    rewrite Forall_forall in *.
-    intros x Hin.
-    destruct (H ltac:(assumption) ltac:(assumption)) as [val ?].
-    exists val.
-    intuition congruence.
+  unfold match_on_regs.
+  intros.
+  rewrite ! Forall_forall in *.
+  intros x Hin.
+  insterU H. destruct H as [? [? [? [? ?]]]].
+  eexists. eexists. intuition eauto.
 Qed.
 
 Lemma equivalent_trans v1 v2 v3 :
