@@ -66,6 +66,12 @@ Section expr_to_smt.
         }
       }.
 
+  Definition smt_select_bit vec_width vec_smt idx_width idx_smt :=
+    SMTLib.Term_BVExtract 0 0
+      (SMTLib.Term_BVBinOp SMTLib.BVShr
+         (cast_from_to vec_width (N.max vec_width idx_width) vec_smt)
+         (cast_from_to idx_width (N.max vec_width idx_width) idx_smt)).
+
   Equations expr_to_smt {w} : Verilog.expression w -> transf SMTLib.term :=
     expr_to_smt (Verilog.UnaryOp Verilog.UnaryPlus operand) :=
       expr_to_smt operand ;
@@ -147,13 +153,9 @@ Section expr_to_smt.
     expr_to_smt (Verilog.BitSelect vec idx) :=
       let t__vec := Verilog.expr_type vec in
       let t__idx := Verilog.expr_type idx in
-      let t__shift := N.max t__vec t__idx in
       vec__smt <- expr_to_smt vec ;;
       idx__smt <- expr_to_smt idx ;;
-      ret (SMTLib.Term_BVExtract 0 0
-             (SMTLib.Term_BVBinOp SMTLib.BVShr
-                (cast_from_to t__vec t__shift vec__smt)
-                (cast_from_to t__idx t__shift idx__smt)));
+      ret (smt_select_bit t__vec vec__smt t__idx idx__smt);
     expr_to_smt (Verilog.Resize to expr) :=
       let from := Verilog.expr_type expr in
       expr__smt <- expr_to_smt expr ;;

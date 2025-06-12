@@ -13,7 +13,7 @@ Import RawXBV(bit(..)).
 From Coq Require List.
 From Coq Require String.
 From Coq Require Import Logic.ProofIrrelevance.
-From Coq Require Import BinNat.
+From Coq Require Import NArith.
 
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.MonadState.
@@ -269,6 +269,121 @@ Ltac funelim_plus e :=
   | _ => idtac e
   end.
 
+Lemma smt_select_bit_is_bit ρ w_vec vec w_idx idx val :
+    SMTLib.interp_term ρ (smt_select_bit w_vec vec w_idx idx) = Some val ->
+    exists bit, val = SMTLib.Value_BitVec 1 (BV.of_bits [bit]).
+Proof.
+  intros H. cbn in H. autodestruct_eqn E.
+  destruct (BVList.BITVECTOR_LIST.bv_extr 0 1 (BVList.BITVECTOR_LIST.bv_shr _ _)) as [bv_bit wf_bit].
+  do 2 (destruct bv_bit; try crush).
+  eexists. f_equal. apply BV.of_bits_equal. reflexivity.
+Qed.
+
+Lemma cast_from_to_part_eval ρ from to t val1 :
+    SMTLib.interp_term ρ (cast_from_to from to t) = Some val1 ->
+    (exists val2, SMTLib.interp_term ρ t = Some val2).
+Proof.
+  intros H.
+  funelim (cast_from_to from to t); rewrite <- Heqcall in *; clear Heqcall.
+  - eauto.
+  - cbn in H. autodestruct_eqn E. eauto.
+  - cbn in H. autodestruct_eqn E. eauto.
+Qed.
+
+Lemma smt_select_bit_part_eval_vec ρ w_vec vec w_idx idx val1 :
+    SMTLib.interp_term ρ (smt_select_bit w_vec vec w_idx idx) = Some val1 ->
+    (exists val2, SMTLib.interp_term ρ vec = Some val2).
+Proof.
+  intros H. cbn in H. autodestruct_eqn E.
+  eauto using cast_from_to_part_eval.
+Qed.
+
+Lemma smt_select_bit_part_eval_idx ρ w_vec vec w_idx idx val1 :
+    SMTLib.interp_term ρ (smt_select_bit w_vec vec w_idx idx) = Some val1 ->
+    (exists val2, SMTLib.interp_term ρ idx = Some val2).
+Proof.
+  intros H. cbn in H. autodestruct_eqn E.
+  eauto using cast_from_to_part_eval.
+Qed.
+
+Require ZifyBool.
+
+(* Compute RawBV.bv_shr [false; true; false; false]%list [true; false; false; false]%list. *)
+
+Lemma rawbv_shr_as_select vec idx :
+  (RawBV.size idx >= 1)%N ->
+  RawBV.size vec = RawBV.size idx ->
+  RawBV.bv_extr 0 1 (RawBV.size vec) (RawBV.bv_shr vec idx) = [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list.
+Proof.
+  intros H1 H2.
+  unfold RawBV.extract, RawBV.bv_extr, RawBV.bv_shr, RawBV.shr_be.
+  rewrite H2, N.eqb_refl.
+  replace (RawBV.size idx <? 1 + 0)%N with false by lia.
+  repeat (unfold Pos.to_nat; simpl).
+  remember (RawBV.list2nat_be idx).
+  generalize dependent idx. revert vec.
+  (* unfold RawBV.nshr_be, RawBV._shr_be. *)
+  induction n; intros; simpl.
+  - destruct vec; cbn.
+    destruct idx; cbn in *; try lia.
+    destruct vec; reflexivity.
+  - destruct vec; cbn.
+    destruct idx; cbn in *; try lia.
+    unfold RawBV.bitOf in *.
+Admitted.
+
+
+Lemma select_bit_to_bv w (vec idx : BV.bitvector w) :
+  (w > 0)%N ->
+  XBV.to_bv (select_bit (XBV.from_bv vec) (XBV.from_bv idx)) =
+    Some (BV.bv_extr 0 1 (BV.bv_shr vec idx)).
+Proof.
+  intros.
+  funelim (select_bit (XBV.from_bv vec) (XBV.from_bv idx));
+    rewrite XBV.xbv_bv_inverse in Heq; inv Heq;
+    rewrite <- Heqcall; clear Heqcall.
+  repeat match goal with
+         | [ bv : BV.bitvector _ |- _ ] => destruct bv
+         end.
+  rewrite <- XBV.xbv_bv_inverse. f_equal.
+  apply XBV.of_bits_equal; simpl.
+  unfold BVList.RAWBITVECTOR_LIST.bv_extr.
+  autodestruct_eqn E; (rewrite N.ltb_ge in * || rewrite N.ltb_lt in * ); try lia.
+  destruct (BVList.RAWBITVECTOR_LIST.bv_shr bv0 bv) eqn:Eshift; simpl; [ admit | ].
+  replace (BVList.RAWBITVECTOR_LIST.extract _ 0 0) with (@nil bool)
+    by (destruct b0; reflexivity).
+  simpl.
+  f_equal.
+  unfold BVList.RAWBITVECTOR_LIST.bv_shr in *.
+  unfold BVList.RAWBITVECTOR_LIST.shr_be in *.
+  unfold BV.to_N in *.
+  unfold RawBV.to_N in *.
+  unfold XBV.from_bv, XBV.bitOf in *.
+  simpl in *. rewrite Nat2N.id.
+  rewrite wf, wf0, N.eqb_refl in Eshift.
+  remember (RawBV.list2nat_be bv) as n. clear Heqn bv wf E.
+  generalize dependent b.
+  generalize dependent b0.
+  generalize dependent bv0.
+  generalize dependent w1.
+  induction n; intros; cbn in *; subst; cbn in *.
+  - reflexivity.
+  - unfold RawXBV.bitOf in *; destruct bv0.
+    { cbn in *. lia. }
+    simpl.
+    replace bv0 with ([true; true])%list in * by admit.
+    eapply IHn with (w1 := 2%N); try reflexivity; try lia.
+    cbn in *.
+    rewrite <- Eshift.
+    destruct n; simpl.
+    + admit.
+    + simpl in Eshift.
+      simpl in *.
+    unfold RawBV.nshr_be in Eshift.
+    unfold RawBV.nshr_be in Eshift.
+
+
+
 Lemma expr_to_smt_correct {w} vars (expr : Verilog.expression w) :
   forall t tag m regs ρ xbv bv,
     expr_to_smt vars expr = inr t ->
@@ -279,9 +394,11 @@ Lemma expr_to_smt_correct {w} vars (expr : Verilog.expression w) :
 Proof.
   Ltac inster_all :=
     repeat match goal with
-           | [ H : forall _, _ |- _ ] => insterU H; inv H
-           | [ H : (?x; _) = (?x; _) |- _ ] => apply inj_pair2 in H; subst
-           end.
+      | [ H : forall _, _ |- _ ] => insterU H
+      | [ H : verilog_smt_match_value _ _ |- _ ] => inv H
+      | [ H : {| pr1 := _; pr2 := _ |} = {| pr1 := _; pr2 := _ |} |- _ ] => inv H
+      | [ H : (?x; _) = (?x; _) |- _ ] => apply inj_pair2 in H; subst
+      end.
 
   Ltac expr_begin_tac :=
     match goal with
@@ -327,7 +444,8 @@ Proof.
     erewrite bitwise_and_no_exes;
       rewrite XBV.xbv_bv_inverse in *;
       crush.
-  - expr_begin_tac.
+  - (* BinaryBitwiseOr *)
+    expr_begin_tac.
     apply verilog_smt_match_to_bv.
     simp eval_binop.
     erewrite bitwise_or_no_exes;
@@ -369,7 +487,13 @@ Proof.
     + now rewrite XBV.xbv_bv_inverse in *.
     + now rewrite XBV.xbv_bv_inverse in *.
   - (* TODO: BitSelect *)
+    unfold smt_select_bit in *.
+    edestruct (smt_select_bit_part_eval_idx); eauto.
+    edestruct (smt_select_bit_part_eval_vec); eauto.
     expr_begin_tac.
+    cbn in Hinterp_term; autodestruct_eqn E.
+    apply verilog_smt_match_to_bv.
+    XBV.to_bv (select_bit (XBV.from_bv bv0) (XBV.from_bv bv1))
     admit.
   - (* Concatenation *)
     expr_begin_tac.
@@ -385,11 +509,16 @@ Proof.
     (* FIXME: don't reference names *)
     inv H0. 
     expr_begin_tac.
-    crush.
-  - (* TODO: Resize *)
-    expr_begin_tac.
+    simpl.
+    replace bv with (SMTLib.Value_BitVec w bv0) by congruence.
+    constructor.
+  - (* Resize *)
     unfold Verilog.expr_type in *.
-    funelim (convert w x); destruct_rew; rewrite <- Heqcall; clear Heqcall.
+    edestruct (cast_from_to_part_eval); eauto.
+    expr_begin_tac.
+
+    (* expr_begin_tac. *)
+    funelim (convert w (XBV.from_bv bv0)); destruct_rew; rewrite <- Heqcall; clear Heqcall.
     + (* Extension *)
       funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
         (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
