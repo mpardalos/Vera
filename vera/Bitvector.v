@@ -471,7 +471,7 @@ Module XBV.
     apply RawXBV.to_bv_size in e.
     erewrite e.
     apply wf.
-  Qed.
+  Defined. (* Qed blocks this from evaluating *)
 
   Lemma of_bits_equal n (x1 x2 : xbv n) :
     bits x1 = bits x2 ->

@@ -310,8 +310,17 @@ Require ZifyBool.
 
 (* Compute RawBV.bv_shr [false; true; false; false]%list [true; false; false; false]%list. *)
 
+Compute
+  let vec := [true; true; true; false; false; true]%list in
+  let idx := [false; true; true; false; false; false]%list in
+  (
+    (RawBV.list2nat_be idx),
+    RawBV.bv_extr 0 1 (RawBV.size vec) (RawBV.bv_shr vec idx),
+    [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list
+  ).
+
 Lemma rawbv_shr_as_select vec idx :
-  (RawBV.size idx >= 1)%N ->
+  (RawBV.size vec >= 1)%N ->
   RawBV.size vec = RawBV.size idx ->
   RawBV.bv_extr 0 1 (RawBV.size vec) (RawBV.bv_shr vec idx) = [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list.
 Proof.
@@ -320,18 +329,36 @@ Proof.
   rewrite H2, N.eqb_refl.
   replace (RawBV.size idx <? 1 + 0)%N with false by lia.
   repeat (unfold Pos.to_nat; simpl).
-  remember (RawBV.list2nat_be idx).
-  generalize dependent idx. revert vec.
+  generalize (RawBV.list2nat_be idx).
+  clear idx H2. intro n.
+  generalize dependent n.
+  induction vec; intros; try crush.
+  destruct vec; try (cbn in *; crush).
+  - clear H1 IHvec. (* does not apply *)
+    revert a.
+    induction n; intros; try crush.
+    cbn in *.
+    autodestruct; eauto.
+  - specialize (IHvec ltac:(crush)).
+    induction n; intros; try crush.
+    (* AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA *)
+
+
   (* unfold RawBV.nshr_be, RawBV._shr_be. *)
-  induction n; intros; simpl.
-  - destruct vec; cbn.
-    destruct idx; cbn in *; try lia.
-    destruct vec; reflexivity.
-  - destruct vec; cbn.
-    destruct idx; cbn in *; try lia.
-    unfold RawBV.bitOf in *.
+  simpl.
+  revert b vec.
+  induction n; intros; simpl in *.
+  - destruct vec; try crush.
+  - destruct vec; try crush.
+    unfold RawBV.bitOf in *; simpl in *.
+    rewrite <- IHn.
+    generalize dependent n. revert H1.
+    induction vec; intros; try crush.
+    simpl in *.
 Admitted.
 
+Transparent RawXBV.to_bv_size.
+Compute select_bit (XBV.from_bv (BV.of_bits [true; false; false])) (XBV.from_bv (BV.of_bits [true; false; false])).
 
 Lemma select_bit_to_bv w (vec idx : BV.bitvector w) :
   (w > 0)%N ->
@@ -366,21 +393,22 @@ Proof.
   generalize dependent b0.
   generalize dependent bv0.
   generalize dependent w1.
+
   induction n; intros; cbn in *; subst; cbn in *.
-  - reflexivity.
-  - unfold RawXBV.bitOf in *; destruct bv0.
-    { cbn in *. lia. }
-    simpl.
-    replace bv0 with ([true; true])%list in * by admit.
-    eapply IHn with (w1 := 2%N); try reflexivity; try lia.
-    cbn in *.
-    rewrite <- Eshift.
-    destruct n; simpl.
-    + admit.
-    + simpl in Eshift.
-      simpl in *.
-    unfold RawBV.nshr_be in Eshift.
-    unfold RawBV.nshr_be in Eshift.
+  { reflexivity. }
+  unfold RawXBV.bitOf in *; destruct bv0.
+  { cbn in *. lia. }
+  simpl.
+  replace bv0 with ([true; true])%list in * by admit.
+  eapply IHn with (w1 := 2%N); try reflexivity; try lia.
+  cbn in *.
+  rewrite <- Eshift.
+  destruct n; simpl.
+  - admit.
+  - simpl in Eshift.
+    simpl in *.
+  unfold RawBV.nshr_be in Eshift.
+  unfold RawBV.nshr_be in Eshift.
 
 
 
