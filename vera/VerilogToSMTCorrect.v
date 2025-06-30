@@ -179,7 +179,7 @@ Definition verilog_smt_match_states
     verilog_smt_match_on_names regs ρ verilogName smtName.
 
 Lemma bitwise_binop_no_exes (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
-  (forall (lb rb : bool), (if f_bool lb rb then I else O) = f_bit (if lb then I else O) (if rb then I else O)) ->
+  (forall (lb rb : bool), RawXBV.bool_to_bit (f_bool lb rb) = f_bit (RawXBV.bool_to_bit lb) (RawXBV.bool_to_bit rb)) ->
   forall n (l_xbv r_xbv : XBV.xbv n) (l_bv r_bv : BV.bitvector n),
     XBV.to_bv l_xbv = Some l_bv ->
     XBV.to_bv r_xbv = Some r_bv ->
@@ -319,53 +319,75 @@ Compute
     [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list
   ).
 
+Lemma rawbv_extr_one_bit (n : N) vec :
+  (1 + n <= RawBV.size vec)%N ->
+  RawBV.bv_extr n 1 (RawBV.size vec) vec = [RawBV.bitOf (N.to_nat n) vec]%list.
+Proof.
+  intros. unfold RawBV.bv_extr, RawBV.size in *.
+  autodestruct_eqn E; try (rewrite N.ltb_lt in *; lia); clear E.
+  replace (N.to_nat (1 + n)) with (S (N.to_nat n)) by lia.
+  assert (S (N.to_nat n) <= length vec) as H' by lia. clear H. revert H'.
+  generalize (N.to_nat n). clear n. intros n H.
+  revert vec H.
+  induction n; intros.
+  { destruct vec; try crush.
+    destruct vec; crush.
+  }
+  destruct vec; try crush.
+  simpl.
+  rewrite IHn; crush.
+Qed.
+
+Check RawBV.nshr_be. (* list bool -> nat -> list bool *)
+
+Equations nice_nshr_be : list bool -> nat -> list bool :=
+  nice_nshr_be [] _ := [];
+  nice_nshr_be bs 0 := bs;
+  nice_nshr_be (b :: bs) (S n) := nice_nshr_be bs n ++ [false].
+
+Lemma shr_be_nicify bs n :
+  RawBV.nshr_be bs n = nice_nshr_be bs n.
+Proof.
+  funelim (nice_nshr_be bs n); simp nice_nshr_be in *; simpl in *.
+  - induction n; crush.
+  - reflexivity.
+  - rewrite <- H. clear b H. revert bs.
+    induction n; intros; try crush.
+    simpl.
+    replace (RawBV._shr_be (bs ++ [false])) with (RawBV._shr_be bs ++ [false])%list
+      by (destruct bs; crush).
+    eapply IHn.
+Qed.
+
 Lemma rawbv_shr_as_select vec idx :
   (RawBV.size vec >= 1)%N ->
   RawBV.size vec = RawBV.size idx ->
-  RawBV.bv_extr 0 1 (RawBV.size vec) (RawBV.bv_shr vec idx) = [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list.
+  RawBV.bv_extr 0 1 (RawBV.size vec) (RawBV.bv_shr vec idx) =
+    [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list.
 Proof.
   intros H1 H2.
-  unfold RawBV.extract, RawBV.bv_extr, RawBV.bv_shr, RawBV.shr_be.
-  rewrite H2, N.eqb_refl.
-  replace (RawBV.size idx <? 1 + 0)%N with false by lia.
-  repeat (unfold Pos.to_nat; simpl).
-  generalize (RawBV.list2nat_be idx).
-  clear idx H2. intro n.
-  generalize dependent n.
-  induction vec; intros; try crush.
-  destruct vec; try (cbn in *; crush).
-  - clear H1 IHvec. (* does not apply *)
-    revert a.
-    induction n; intros; try crush.
-    cbn in *.
-    autodestruct; eauto.
-  - specialize (IHvec ltac:(crush)).
-    induction n; intros; try crush.
-    (* AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA *)
-
-
-  (* unfold RawBV.nshr_be, RawBV._shr_be. *)
-  simpl.
-  revert b vec.
-  induction n; intros; simpl in *.
-  - destruct vec; try crush.
-  - destruct vec; try crush.
-    unfold RawBV.bitOf in *; simpl in *.
-    rewrite <- IHn.
-    generalize dependent n. revert H1.
-    induction vec; intros; try crush.
-    simpl in *.
-Admitted.
-
-Transparent RawXBV.to_bv_size.
-Compute select_bit (XBV.from_bv (BV.of_bits [true; false; false])) (XBV.from_bv (BV.of_bits [true; false; false])).
+  assert (RawBV.size (RawBV.bv_shr vec idx) = RawBV.size vec) as H
+      by eauto using RawBV.bv_shr_size.
+  rewrite <- H.
+  rewrite rawbv_extr_one_bit; try crush.
+  f_equal.
+  unfold RawBV.bv_shr. replace (RawBV.size idx). rewrite N.eqb_refl.
+  unfold RawBV.shr_be. simpl.
+  unfold RawBV.size in *.
+  generalize (RawBV.list2nat_be idx). clear idx H2 H. intro n.
+  destruct n, vec; try crush. clear H1.
+  unfold RawBV.bitOf.
+  rewrite shr_be_nicify. simp nice_nshr_be. simpl. clear b.
+  funelim (nice_nshr_be vec n); simp nice_nshr_be; try crush.
+  destruct (nice_nshr_be bs n); crush.
+Qed.
 
 Lemma select_bit_to_bv w (vec idx : BV.bitvector w) :
-  (w > 0)%N ->
+  (BV.to_N idx < w)%N ->
   XBV.to_bv (select_bit (XBV.from_bv vec) (XBV.from_bv idx)) =
     Some (BV.bv_extr 0 1 (BV.bv_shr vec idx)).
 Proof.
-  intros.
+  intros Hidx.
   funelim (select_bit (XBV.from_bv vec) (XBV.from_bv idx));
     rewrite XBV.xbv_bv_inverse in Heq; inv Heq;
     rewrite <- Heqcall; clear Heqcall.
@@ -374,43 +396,21 @@ Proof.
          end.
   rewrite <- XBV.xbv_bv_inverse. f_equal.
   apply XBV.of_bits_equal; simpl.
-  unfold BVList.RAWBITVECTOR_LIST.bv_extr.
-  autodestruct_eqn E; (rewrite N.ltb_ge in * || rewrite N.ltb_lt in * ); try lia.
-  destruct (BVList.RAWBITVECTOR_LIST.bv_shr bv0 bv) eqn:Eshift; simpl; [ admit | ].
-  replace (BVList.RAWBITVECTOR_LIST.extract _ 0 0) with (@nil bool)
-    by (destruct b0; reflexivity).
-  simpl.
+  rewrite <- wf0.
+  rewrite rawbv_shr_as_select; try lia.
+  unfold XBV.bitOf, BV.to_N, RawBV.to_N in *. simpl in *.
+  rewrite Nat2N.id.
   f_equal.
-  unfold BVList.RAWBITVECTOR_LIST.bv_shr in *.
-  unfold BVList.RAWBITVECTOR_LIST.shr_be in *.
-  unfold BV.to_N in *.
-  unfold RawBV.to_N in *.
-  unfold XBV.from_bv, XBV.bitOf in *.
-  simpl in *. rewrite Nat2N.id.
-  rewrite wf, wf0, N.eqb_refl in Eshift.
-  remember (RawBV.list2nat_be bv) as n. clear Heqn bv wf E.
-  generalize dependent b.
-  generalize dependent b0.
-  generalize dependent bv0.
-  generalize dependent w1.
-
-  induction n; intros; cbn in *; subst; cbn in *.
-  { reflexivity. }
-  unfold RawXBV.bitOf in *; destruct bv0.
-  { cbn in *. lia. }
-  simpl.
-  replace bv0 with ([true; true])%list in * by admit.
-  eapply IHn with (w1 := 2%N); try reflexivity; try lia.
-  cbn in *.
-  rewrite <- Eshift.
-  destruct n; simpl.
-  - admit.
-  - simpl in Eshift.
-    simpl in *.
-  unfold RawBV.nshr_be in Eshift.
-  unfold RawBV.nshr_be in Eshift.
-
-
+  unfold RawBV.size in *.
+  generalize dependent (RawBV.list2nat_be bv). clear wf bv. intros.
+  unfold RawXBV.from_bv, RawXBV.bitOf, RawBV.bitOf in *.
+  subst.
+  rewrite List.nth_indep with (d':=O)
+    by (rewrite List.map_length; lia).
+  replace O with (RawXBV.bool_to_bit false)
+    by reflexivity.
+  apply List.map_nth.
+Qed.
 
 Lemma expr_to_smt_correct {w} vars (expr : Verilog.expression w) :
   forall t tag m regs ρ xbv bv,
@@ -521,8 +521,18 @@ Proof.
     expr_begin_tac.
     cbn in Hinterp_term; autodestruct_eqn E.
     apply verilog_smt_match_to_bv.
-    XBV.to_bv (select_bit (XBV.from_bv bv0) (XBV.from_bv bv1))
-    admit.
+    rewrite <- select_bit_to_bv.
+    + f_equal.
+      simp select_bit; unfold select_bit_clause_1.
+      rewrite ! XBV.xbv_bv_inverse. simpl.
+      (* TODO: Sign extending does not change the nat value *)
+      replace (N.to_nat (BV.to_N bv4)) with (N.to_nat (BV.to_N bv1))
+        by admit.
+      (* TODO: select_bit with the original bitvectors is the same as select bit on the zero-extended values. *)
+      (* TODO: Should be provable as long as the index is in-bounds. See below *)
+      admit.
+    + admit.
+      (* TODO: Index is in bounds. Does not hold, not sure how to handle. *)
   - (* Concatenation *)
     expr_begin_tac.
     apply verilog_smt_match_to_bv.

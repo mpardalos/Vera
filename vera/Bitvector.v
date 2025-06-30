@@ -179,6 +179,18 @@ Module RawXBV.
     end
   .
 
+  Definition bool_to_bit (b : bool) :=
+    if b then I else O.
+
+  Lemma bit_to_bool_inverse b :
+    bit_to_bool (bool_to_bit b) = Some b.
+  Proof. destruct b; crush. Qed.
+
+  Lemma bool_to_bit_inverse b1 b2 :
+    bit_to_bool b1 = Some b2 ->
+    bool_to_bit b2 = b1.
+  Proof. intros. destruct b1, b2; crush. Qed.
+
   Definition xbv := list bit.
 
   Definition size (xbv : xbv) := N.of_nat (length xbv).
@@ -212,7 +224,7 @@ Module RawXBV.
   Proof. decide equality. apply bit_eq_dec. Qed.
 
   Definition from_bv (bv : RawBV.t) : xbv :=
-    List.map (fun (b: bool) => if b then I else O) bv
+    List.map bool_to_bit bv
   .
 
   Lemma from_bv_size bv :
@@ -676,8 +688,6 @@ Module XBV.
         simp extract; simpl;
         repeat f_equal;
         try crush.
-      + rewrite IHbv; try crush. now rewrite Nat.add_comm.
-      + rewrite IHbv; repeat f_equal; lia.
       + rewrite IHbv; try crush. now rewrite Nat.add_comm.
       + rewrite IHbv; repeat f_equal; lia.
   Qed.

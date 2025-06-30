@@ -3,21 +3,6 @@ Import EqNotations.
 
 From vera Require Import Decidable.
 
-(* Stuff every "finisher" tactic you can think of in here *)
-Ltac crush :=
-  solve [
-      (simpl + simpl in * + cbn in * + cbn + idtac);
-      repeat progress (
-             discriminate
-             || lia
-             || congruence
-             || auto
-             || eauto
-             || firstorder
-             || cbn in *
-    )].
-
-
 (* This tactic due to Clement Pit-Claudel with some minor additions by JDP to
    allow the result to be named: https://pit-claudel.fr/clement/MSc/#org96a1b5f *)
 Inductive Learnt {A: Type} (a: A) :=
@@ -110,6 +95,35 @@ Ltac apply_somewhere f :=
   | [ H : _ |- _] => apply f in H
   end.
 
+Ltac destruct_rew :=
+  match goal with
+  | [H : context[rew [ _ ] ?E in _] |- _] =>
+      destruct E; simpl in H
+  | [H : context[rew dependent [ _ ] ?E in _] |- _] =>
+      destruct E; simpl in H
+  | [|- context[rew [ _ ] ?E in _]] =>
+      destruct E; simpl
+  | [|- context[rew dependent [ _ ] ?E in _]] =>
+      destruct E; simpl
+  end.
+
+(* Stuff every "finisher" tactic you can think of in here *)
+Ltac crush :=
+  let E := fresh "E" in
+  solve [
+      (simpl in * + idtac);
+      try destruct_rew;
+      try autodestruct_eqn E;
+      repeat progress (
+          discriminate
+          || lia
+          || congruence
+          || auto
+          || eauto
+          || firstorder
+          || cbn in *
+    )].
+
 Ltac insterU' tac H :=
   repeat match type of H with
     | forall x : ?T, _ =>
@@ -143,15 +157,3 @@ Tactic Notation "insterKeep" hyp(H) "by" tactic(tac) := insterKeep' tac H.
 
 (** Like insterU, but keep an uninstantiated copy of `H' *)
 Tactic Notation "insterKeep" hyp(H) := insterKeep' crush H.
-
-Ltac destruct_rew :=
-  match goal with
-  | [H : context[rew [ _ ] ?E in _] |- _] =>
-      destruct E; simpl in H
-  | [H : context[rew dependent [ _ ] ?E in _] |- _] =>
-      destruct E; simpl in H
-  | [|- context[rew [ _ ] ?E in _]] =>
-      destruct E; simpl
-  | [|- context[rew dependent [ _ ] ?E in _]] =>
-      destruct E; simpl
-  end.
