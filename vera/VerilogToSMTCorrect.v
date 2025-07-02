@@ -412,6 +412,47 @@ Proof.
   apply List.map_nth.
 Qed.
 
+Lemma value_bitvec_bits_equal n1 n2 bv1 bv2 :
+  BV.bits bv1 = BV.bits bv2 ->
+  SMTLib.Value_BitVec n1 bv1 = SMTLib.Value_BitVec n2 bv2.
+Proof.
+  intros H.
+  destruct bv1 as [bv1 wf1], bv2 as [bv2 wf2]. cbn in *.
+  subst bv2.
+  assert (n1 = n2) by crush.
+  subst.
+  reflexivity.
+Qed.
+
+Lemma value_bitvec_equal_inv n1 n2 bv1 bv2 :
+  SMTLib.Value_BitVec n1 bv1 = SMTLib.Value_BitVec n2 bv2 ->
+  BV.bits bv1 = BV.bits bv2.
+Proof. now inversion 1. Qed.
+
+Lemma cast_from_to_zextn ρ (from to : N) bv_from t :
+  (to >= from)%N ->
+  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) ->
+  SMTLib.interp_term ρ (cast_from_to from to t) = Some (SMTLib.Value_BitVec _ (BV.bv_concat (BV.zeros (to - from)) bv_from)).
+Proof.
+  intros.
+  destruct bv_from as [bv_from bv_from_wf].
+  funelim (cast_from_to from to t); rewrite <- Heqcall in *; clear Heqcall.
+  - rewrite N.compare_eq_iff in *. subst.
+    replace (SMTLib.interp_term ρ t).
+    f_equal. apply value_bitvec_bits_equal.
+    rewrite ! N.sub_diag. cbn.
+    now rewrite List.app_nil_r.
+  - rewrite N.compare_lt_iff in *. crush.
+  - rewrite N.compare_gt_iff in *. crush.
+Qed.
+
+Corollary cast_from_to_zextn_inv ρ (from to : N) bv_from result t :
+  (to >= from)%N ->
+  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) ->
+  SMTLib.interp_term ρ (cast_from_to from to t) = result ->
+  result = Some (SMTLib.Value_BitVec _ (BV.bv_concat (BV.zeros (to - from)) bv_from)).
+Admitted.
+
 Lemma expr_to_smt_correct {w} vars (expr : Verilog.expression w) :
   forall t tag m regs ρ xbv bv,
     expr_to_smt vars expr = inr t ->
@@ -455,7 +496,6 @@ Proof.
         subst;
         try crush
     end.
-
 
   funelim (expr_to_smt vars expr); intros * Hexpr_to_smt Hmatch_states Heval_expr Hinterp_term;
     simp expr_to_smt in *; inv Hexpr_to_smt; autodestruct_eqn E.
@@ -525,9 +565,11 @@ Proof.
     + f_equal.
       simp select_bit; unfold select_bit_clause_1.
       rewrite ! XBV.xbv_bv_inverse. simpl.
-      (* TODO: Sign extending does not change the nat value *)
-      replace (N.to_nat (BV.to_N bv4)) with (N.to_nat (BV.to_N bv1))
-        by admit.
+      (* Sign extending does not change the nat value *)
+      replace (BV.to_N bv4) with (BV.to_N bv1); cycle 1. {
+        erewrite cast_from_to_zextn in *; try crush.
+        some_inv; now rewrite BV.bv_zextn_to_N.
+      }
       (* TODO: select_bit with the original bitvectors is the same as select bit on the zero-extended values. *)
       (* TODO: Should be provable as long as the index is in-bounds. See below *)
       admit.
@@ -563,8 +605,7 @@ Proof.
         try crush.
       cbn in Hinterp_term; autodestruct_eqn E.
       inster_all.
-      unfold XBV.zextn.
-      eapply verilog_smt_match_to_bv_bits.
+      eapply verilog_smt_match_to_bv_bits; eauto.
       * now rewrite XBV.extend_zero_to_bv.
       * now rewrite BV.zextn_as_concat_bits.
     + (* Truncation *)

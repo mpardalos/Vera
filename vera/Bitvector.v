@@ -72,6 +72,73 @@ Module RawBV.
     rewrite IHi. lia.
   Qed.
 
+  Lemma _list2nat_be_arith : forall bs n i,
+      _list2nat_be bs n i = n + (2 ^ i) * list2nat_be bs.
+  Proof.
+    unfold list2nat_be.
+    induction bs; intros; try crush.
+    simpl.
+    rewrite ! IHbs with (i := 1).
+    rewrite ! IHbs with (i := (i + 1)).
+    rewrite ! pow2_pow.
+    rewrite ! Nat.add_1_r.
+    crush.
+  Qed.
+
+  Lemma _list2nat_be_cons : forall bs1 bs2 n i,
+      _list2nat_be (bs1 ++ bs2) n i =
+        _list2nat_be bs1 0 i + _list2nat_be bs2 n (i + length bs1).
+  Proof.
+    induction bs1; intros; try crush.
+    simpl.
+    rewrite ! IHbs1.
+    rewrite ! _list2nat_be_arith.
+    rewrite ! pow2_pow.
+    rewrite ! Nat.pow_add_r.
+    simpl. rewrite ! Nat.add_0_r.
+    crush.
+  Qed.
+
+  Lemma list2nat_be_cons bs1 bs2 :
+      list2nat_be (bs1 ++ bs2) =
+        list2nat_be bs1 + 2 ^ (length bs1) * list2nat_be bs2.
+  Proof.
+    unfold list2nat_be.
+    rewrite ! _list2nat_be_cons.
+    simpl.
+    rewrite ! _list2nat_be_arith.
+    crush.
+  Qed.
+
+  Lemma _list2nat_be_zeros : forall w n i,
+      RawBV._list2nat_be (BVList.RAWBITVECTOR_LIST.mk_list_false w) n i = n.
+  Proof. induction w; crush. Qed.
+
+  Lemma list2nat_be_zeros : forall w,
+      RawBV.list2nat_be (BVList.RAWBITVECTOR_LIST.mk_list_false w) = 0.
+  Proof. unfold RawBV.list2nat_be. intros. apply _list2nat_be_zeros. Qed.
+
+  Lemma list2nat_be_of_N_full v :
+    list2nat_be (of_N_full v) = N.to_nat v.
+  Proof.
+    unfold of_N_full.
+    destruct v; try crush.
+    remember (of_pos_full p) as bv.
+    generalize dependent p.
+    induction bv; intros; destruct p; simpl in *; try discriminate.
+    - inv Heqbv. insterU IHbv.
+      cbn. rewrite ! _list2nat_be_arith.
+      rewrite Pos2Nat.inj_xI.
+      rewrite IHbv.
+      crush.
+    - inv Heqbv. insterU IHbv.
+      cbn. rewrite ! _list2nat_be_arith.
+      rewrite Pos2Nat.inj_xO.
+      rewrite IHbv.
+      crush.
+    - inv Heqbv. crush.
+  Qed.
+
   Lemma _list2nat_be_of_N_full v : forall n i,
     _list2nat_be (of_N_full v) n i = (pow2 i * N.to_nat v) + n.
   Proof.
@@ -143,6 +210,18 @@ Module BV.
   Definition to_N {n} (bv : bitvector n) : N :=
     RawBV.to_N (bits bv).
 
+  Lemma bv_zextn_to_N n w (bv : bitvector n):
+    BV.to_N (BV.bv_concat (BV.zeros w) bv) =
+      BV.to_N bv.
+  Proof.
+    destruct bv.
+    unfold BV.to_N, RawBV.to_N, BV.bv_concat, RawBV.bv_concat, BV.zeros, RawBV.zeros.
+    f_equal. simpl.
+    rewrite RawBV.list2nat_be_cons.
+    rewrite RawBV.list2nat_be_zeros.
+    lia.
+  Qed.
+
   Program Definition map2 {n : N} (f : bool -> bool -> bool) (bv1 bv2 : bitvector n) : bitvector n :=
     {| bv := RawBV.map2 f (bits bv1) (bits bv2) |}.
   Next Obligation.
@@ -199,14 +278,7 @@ Module RawXBV.
 
   Arguments size / _.
 
-  Fixpoint mk_list_exes (count : nat) : xbv :=
-    match count with
-    | 0%nat => []
-    | S n => X :: mk_list_exes n
-    end
-  .
-
-  Definition exes (count : N) : xbv := mk_list_exes (nat_of_N count).
+  Definition exes (count : N) : xbv := List.repeat X (nat_of_N count).
 
   Lemma exes_size {n} : size (exes n) = n.
   Proof.
@@ -554,9 +626,6 @@ Module XBV.
     auto.
   Qed.
 
-  Definition exes (count : N) : xbv count :=
-    {| bv := RawXBV.exes count; wf := RawXBV.exes_size |}.
-
   Program Definition concat {n m : N} (l : xbv n) (r : xbv m) : xbv (n + m) :=
     {| bv := bv r ++ bv l |}.
   Next Obligation.
@@ -565,44 +634,23 @@ Module XBV.
     lia.
   Qed.
 
+  Lemma concat_to_bv n1 n2 (bv1 : BV.bitvector n1) (bv2 : BV.bitvector n2) :
+    to_bv (concat (from_bv bv1) (from_bv bv2)) = Some (BV.bv_concat bv1 bv2).
+  Proof.
+    destruct bv1, bv2.
+    rewrite <- xbv_bv_inverse. f_equal.
+    apply of_bits_equal; simpl.
+    unfold RAWBITVECTOR_LIST.bv_concat, RawXBV.from_bv.
+    now rewrite map_app.
+  Qed.
+
   Program Definition replicate (n : N) (b : bit) : xbv n :=
     of_bits (repeat b (N.to_nat n)).
   Next Obligation. rewrite repeat_length. lia. Qed.
 
-  (* Shouldn't this be adding bits at the end? *)
-  Definition extend {n} (i : N) (b : bit) (v : xbv n) : xbv (i + n) :=
-    rew (N.add_comm n i) in concat v (replicate i b).
-
-  Ltac destruct_rews :=
-    repeat match goal with
-           | |- context[rew [ _ ] ?e in _ ] =>
-               destruct e; simpl
-           | [H : context[rew [ _ ] ?e in _ ] |- _ ] =>
-               destruct e; simpl
-           end.
-
-  Lemma extend_bits w i b (v : xbv w) :
-    bits (extend i b v) = repeat b (N.to_nat i) ++ bits v.
-  Proof.
-    unfold extend, replicate.
-    destruct_rews.
-    now rewrite repeat_length, N2Nat.id.
-  Qed.
-
-  Lemma extend_zero_to_bv n i (bv : BV.bitvector n) :
-    to_bv (extend i O (XBV.from_bv bv)) = Some (BV.bv_zextn i bv).
-  Proof.
-    destruct bv as [bv wf].
-    rewrite <- xbv_bv_inverse.
-    f_equal.
-    apply of_bits_equal; simpl.
-    rewrite extend_bits; simpl.
-    unfold RawBV.bv_zextn, RAWBITVECTOR_LIST.zextend.
-    induction (N.to_nat i); crush.
-  Qed.
-
-  Definition zextn {n} (v : xbv n) (i : N) :=
-    extend i O v.
+  Definition exes (count : N) : xbv count := replicate count X.
+  Definition ones (count : N) : xbv count := replicate count O.
+  Definition zeros (count : N) : xbv count := replicate count I.
 
   Definition has_x {n} (v : xbv n) : Prop :=
     RawXBV.has_x (bits v).

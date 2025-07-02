@@ -166,7 +166,7 @@ Module CombinationalOnly.
 
   Equations convert {from} (to : N) (value : XBV.xbv from) : XBV.xbv to :=
     convert to value with dec (from < to)%N := {
-      | left Hlt => rew _ in XBV.zextn value (to - from)%N
+      | left Hlt => rew _ in XBV.concat (XBV.zeros (to - from)%N) value
       | right Hge with dec (from > to)%N => {
         | left Hgr => rew _ in XBV.extr value 0 to;
         | right Hle => rew _ in value
