@@ -496,6 +496,50 @@ Module RawXBV.
       + assumption.
   Qed.
 
+  (* bitvectors are little-endian, so shifts are inverted *)
+  Definition shl (bv : xbv) (shamt : nat) : xbv :=
+    match shamt with
+    | 0 => bv
+    | S n => match bv with
+            | [] => []
+            | _ => O :: List.removelast bv
+            end
+    end
+  .
+
+  Lemma removelast_cons_length {A} (a : A) (l : list A) :
+    List.length (List.removelast (a :: l)) = List.length l.
+  Proof. induction l; crush. Qed.
+
+  Lemma shl_size n bv :
+    size (shl bv n) = size bv.
+  Proof.
+    unfold shl, size. f_equal.
+    autodestruct; try crush.
+    transitivity (S (Datatypes.length (removelast (b :: bv)))).
+    - crush.
+    - now rewrite removelast_cons_length.
+  Qed.
+
+  Definition shr (bv : xbv) (shamt : nat) : xbv :=
+    match shamt with
+    | 0 => bv
+    | S n => match bv with
+            | [] => []
+            | (b :: bs) => bs ++ [O]
+            end
+    end
+  .
+
+  Lemma shr_size n bv :
+    size (shr bv n) = size bv.
+  Proof.
+    unfold shr, size. f_equal.
+    autodestruct; try crush.
+    rewrite List.app_length.
+    autodestruct; crush.
+  Qed.
+
   (*
    * Matches this Verilog operation:
    * bv1 === bv2
@@ -539,8 +583,6 @@ Module XBV.
 
   Definition bitOf {n} (i : nat) (x: xbv n): RawXBV.bit :=
     RawXBV.bitOf i (bits x).
-
-
 
   Import CommonNotations.
   Import EqNotations.
@@ -767,6 +809,18 @@ Module XBV.
     - apply zeros_to_bv.
     - eapply xbv_bv_inverse.
   Qed.
+
+  Local Obligation Tactic := intros.
+
+  #[program]
+  Definition shl {n} (bv : xbv n) (shamt : N) : xbv n :=
+    {| bv := RawXBV.shl (XBV.bits bv) (N.to_nat shamt) |}.
+  Next Obligation. rewrite RawXBV.shl_size. apply wf. Qed.
+
+  #[program]
+  Definition shr {n} (bv : xbv n) (shamt : N) : xbv n :=
+    {| bv := RawXBV.shr (XBV.bits bv) (N.to_nat shamt) |}.
+  Next Obligation. rewrite RawXBV.shr_size. apply wf. Qed.
 
   (*
    * Matches this Verilog operation:
