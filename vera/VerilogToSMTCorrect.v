@@ -453,6 +453,20 @@ Corollary cast_from_to_zextn_inv ρ (from to : N) bv_from result t :
   result = Some (SMTLib.Value_BitVec _ (BV.bv_concat (BV.zeros (to - from)) bv_from)).
 Admitted.
 
+Definition xbv_to_N {w} (bv : XBV.xbv w) : option N :=
+  option_map BV.to_N (XBV.to_bv bv).
+
+Lemma statically_in_bounds_max_bound {w} max_bound e regs (xbv : XBV.xbv w) val :
+  statically_in_bounds max_bound e ->
+  eval_expr regs e = Some xbv ->
+  xbv_to_N xbv = Some val ->
+  (val < max_bound)%N.
+Proof.
+  intros Hinbounds Heval HtoN.
+  inv Hinbounds.
+  - destruct (static_value e); cbn in *.
+
+
 Lemma expr_to_smt_correct {w} (vars : StrFunMap.t smt_var_info) (expr : Verilog.expression w) :
   forall t tag (m : VerilogSMTBijection.t) regs ρ xbv bv,
     (forall name, m (tag, name) = option_map fst (vars name)) ->
@@ -570,6 +584,7 @@ Proof.
         erewrite cast_from_to_zextn in *; try crush.
         some_inv; now rewrite BV.bv_zextn_to_N.
       }
+
       (* TODO: select_bit with the original bitvectors is the same as select bit on the zero-extended values. *)
       (* TODO: Should be provable as long as the index is in-bounds. See below *)
       admit.

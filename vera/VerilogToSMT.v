@@ -52,6 +52,15 @@ Equations cast_from_to (from to: N) (t : SMTLib.term) : SMTLib.term :=
     }
 .
 
+Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=
+  match expr with
+  | Verilog.IntegerLiteral _ val => Some val
+  | _ => None
+  end.
+
+Definition statically_in_bounds {w} (max_val : N) (expr : Verilog.expression w) : Prop :=
+  opt_prop (fun v => (BV.to_N v) < max_val)%N (static_value expr) \/ ((2 ^ w) < max_val)%N.
+
 Definition smt_var_info : Type := (smtname * width).
 
 Section expr_to_smt.
@@ -153,6 +162,7 @@ Section expr_to_smt.
     expr_to_smt (Verilog.BitSelect vec idx) :=
       let t__vec := Verilog.expr_type vec in
       let t__idx := Verilog.expr_type idx in
+      inb <- assert_dec (statically_in_bounds t__vec idx) "Cannot statically determine if index is in bounds"%string;;
       vec__smt <- expr_to_smt vec ;;
       idx__smt <- expr_to_smt idx ;;
       ret (smt_select_bit t__vec vec__smt t__idx idx__smt);

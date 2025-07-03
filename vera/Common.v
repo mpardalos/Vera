@@ -58,6 +58,22 @@ Definition opt_or {A} (l r : option A) : option A :=
   end
 .
 
+Definition opt_def {A} (v : A) (o : option A) : A :=
+  match o with
+  | Some x => x
+  | None => v
+  end
+.
+
+Definition opt_prop {A} (p : A -> Prop) (o : option A) :=
+  match o with
+  | Some x => p x
+  | None => False
+  end.
+
+Instance dec_opt_prop {A P} {o : option A} `{(forall x, DecProp (P x))} : DecProp ( opt_prop P o ).
+Proof. destruct o; crush. Qed.
+
 Fixpoint map_opt {A B} (f : A -> option B) (lst : list A) : list B :=
   match lst with
   | [] => []
