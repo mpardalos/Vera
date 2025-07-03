@@ -453,8 +453,9 @@ Corollary cast_from_to_zextn_inv ρ (from to : N) bv_from result t :
   result = Some (SMTLib.Value_BitVec _ (BV.bv_concat (BV.zeros (to - from)) bv_from)).
 Admitted.
 
-Lemma expr_to_smt_correct {w} vars (expr : Verilog.expression w) :
-  forall t tag m regs ρ xbv bv,
+Lemma expr_to_smt_correct {w} (vars : StrFunMap.t smt_var_info) (expr : Verilog.expression w) :
+  forall t tag (m : VerilogSMTBijection.t) regs ρ xbv bv,
+    (forall name, m (tag, name) = option_map fst (vars name)) ->
     expr_to_smt vars expr = inr t ->
     verilog_smt_match_states tag m regs ρ ->
     eval_expr regs expr = Some xbv ->
@@ -463,8 +464,7 @@ Lemma expr_to_smt_correct {w} vars (expr : Verilog.expression w) :
 Proof.
   Ltac inster_all :=
     repeat match goal with
-      | [ H : forall _, _ |- _ ] => insterU H
-      | [ H : verilog_smt_match_value _ _ |- _ ] => inv H
+      | [ H : context[verilog_smt_match_value _ _] |- _ ] => (insterU H || inv H)
       | [ H : {| pr1 := _; pr2 := _ |} = {| pr1 := _; pr2 := _ |} |- _ ] => inv H
       | [ H : (?x; _) = (?x; _) |- _ ] => apply inj_pair2 in H; subst
       end.
@@ -497,7 +497,7 @@ Proof.
         try crush
     end.
 
-  funelim (expr_to_smt vars expr); intros * Hexpr_to_smt Hmatch_states Heval_expr Hinterp_term;
+  funelim (expr_to_smt vars expr); intros * Hmatch_vars Hexpr_to_smt Hmatch_states Heval_expr Hinterp_term;
     simp expr_to_smt in *; inv Hexpr_to_smt; autodestruct_eqn E.
   - (* BinaryPlus *)
     expr_begin_tac. bv_binop_tac.
@@ -566,7 +566,7 @@ Proof.
       simp select_bit; unfold select_bit_clause_1.
       rewrite ! XBV.xbv_bv_inverse. simpl.
       (* Sign extending does not change the nat value *)
-      replace (BV.to_N bv4) with (BV.to_N bv1); cycle 1. {
+      replace (BV.to_N bv4) with (BV.to_N bv0); cycle 1. {
         erewrite cast_from_to_zextn in *; try crush.
         some_inv; now rewrite BV.bv_zextn_to_N.
       }
@@ -585,7 +585,7 @@ Proof.
   - (* Verilog.NamedExpression *)
     funelim (term_for_name vars w n); rewrite <- Heqcall in *; try discriminate; clear Heqcall.
     destruct Hmatch_states with (verilogName := name) (smtName := n__smt).
-    { admit. (* TODO: names in the expression are in the bijection *) }
+    { rewrite Hmatch_vars. replace (vars name). reflexivity. }
     (* FIXME: don't reference names *)
     inv H0. 
     expr_begin_tac.
