@@ -322,6 +322,17 @@ Module RawXBV.
       cbn. lia.
   Qed.
 
+  Definition replicate (n : N) (b : bit) :=
+    List.repeat b (N.to_nat n).
+
+  Lemma replicate_size n b :
+    size (replicate n b) = n.
+  Proof.
+    unfold replicate, size.
+    rewrite List.repeat_length.
+    apply N2Nat.id.
+  Qed.
+
   Definition has_x (bv : xbv) : Prop :=
     List.Exists (fun b => b = X) bv.
 
@@ -626,32 +637,6 @@ Module XBV.
     auto.
   Qed.
 
-  Program Definition concat {n m : N} (l : xbv n) (r : xbv m) : xbv (n + m) :=
-    {| bv := bv r ++ bv l |}.
-  Next Obligation.
-    destruct l, r; simpl in *.
-    rewrite app_length.
-    lia.
-  Qed.
-
-  Lemma concat_to_bv n1 n2 (bv1 : BV.bitvector n1) (bv2 : BV.bitvector n2) :
-    to_bv (concat (from_bv bv1) (from_bv bv2)) = Some (BV.bv_concat bv1 bv2).
-  Proof.
-    destruct bv1, bv2.
-    rewrite <- xbv_bv_inverse. f_equal.
-    apply of_bits_equal; simpl.
-    unfold RAWBITVECTOR_LIST.bv_concat, RawXBV.from_bv.
-    now rewrite map_app.
-  Qed.
-
-  Program Definition replicate (n : N) (b : bit) : xbv n :=
-    of_bits (repeat b (N.to_nat n)).
-  Next Obligation. rewrite repeat_length. lia. Qed.
-
-  Definition exes (count : N) : xbv count := replicate count X.
-  Definition ones (count : N) : xbv count := replicate count O.
-  Definition zeros (count : N) : xbv count := replicate count I.
-
   Definition has_x {n} (v : xbv n) : Prop :=
     RawXBV.has_x (bits v).
 
@@ -738,6 +723,49 @@ Module XBV.
         try crush.
       + rewrite IHbv; try crush. now rewrite Nat.add_comm.
       + rewrite IHbv; repeat f_equal; lia.
+  Qed.
+
+  Program Definition concat {n m : N} (l : xbv n) (r : xbv m) : xbv (n + m) :=
+    {| bv := bv r ++ bv l |}.
+  Next Obligation.
+    destruct l, r; simpl in *.
+    rewrite app_length.
+    lia.
+  Qed.
+
+  Lemma concat_to_bv n1 n2 (bv1 : BV.bitvector n1) (bv2 : BV.bitvector n2) :
+    to_bv (concat (from_bv bv1) (from_bv bv2)) = Some (BV.bv_concat bv1 bv2).
+  Proof.
+    destruct bv1, bv2.
+    rewrite <- xbv_bv_inverse. f_equal.
+    apply of_bits_equal; simpl.
+    unfold RAWBITVECTOR_LIST.bv_concat, RawXBV.from_bv.
+    now rewrite map_app.
+  Qed.
+
+  Program Definition replicate (n : N) (b : bit) : xbv n :=
+    {| bv := List.repeat b (N.to_nat n) |}.
+  Next Obligation. rewrite repeat_length. apply N2Nat.id. Qed.
+
+  Definition exes (count : N) : xbv count := replicate count X.
+  Definition ones (count : N) : xbv count := replicate count I.
+  Definition zeros (count : N) : xbv count := replicate count O.
+
+  Lemma zeros_to_bv n :
+    to_bv (zeros n) = Some (BV.zeros n).
+  Proof.
+    unfold zeros, BV.zeros, replicate, RawBV.zeros.
+    rewrite <- xbv_bv_inverse. f_equal.
+    apply of_bits_equal; simpl.
+    induction (N.to_nat n); crush.
+  Qed.
+
+  Lemma zeros_from_bv n :
+    zeros n = from_bv (BV.zeros n).
+  Proof.
+    eapply to_bv_injective.
+    - apply zeros_to_bv.
+    - eapply xbv_bv_inverse.
   Qed.
 
   (*

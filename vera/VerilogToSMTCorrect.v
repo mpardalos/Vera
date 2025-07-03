@@ -606,8 +606,8 @@ Proof.
       cbn in Hinterp_term; autodestruct_eqn E.
       inster_all.
       eapply verilog_smt_match_to_bv_bits; eauto.
-      * now rewrite XBV.extend_zero_to_bv.
-      * now rewrite BV.zextn_as_concat_bits.
+      rewrite XBV.zeros_from_bv.
+      apply XBV.concat_to_bv.
     + (* Truncation *)
       funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
         (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
