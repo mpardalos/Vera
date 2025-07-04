@@ -185,11 +185,11 @@ Module CombinationalOnly.
   Next Obligation. crush. Qed.
   Next Obligation. crush. Defined.
 
-  Equations select_bit {w1 w2} (vec : XBV.xbv w1) (idx : XBV.xbv w2) : XBV.xbv 1 :=
-    select_bit vec idx with XBV.to_bv idx => {
-      | None => XBV.of_bits [X]
-      | Some bv => XBV.of_bits [XBV.bitOf (N.to_nat (BV.to_N bv)) vec]
-      }.
+  Definition select_bit {w1 w2} (vec : XBV.xbv w1) (idx : XBV.xbv w2) : XBV.xbv 1 :=
+    match XBV.to_N idx with
+    | None => XBV.of_bits [X]
+    | Some n => XBV.of_bits [XBV.bitOf (N.to_nat n) vec]
+    end.
 
   Equations
     eval_expr {w} (regs: RegisterState) (e : Verilog.expression w) : option (XBV.xbv w) :=

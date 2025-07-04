@@ -210,6 +210,20 @@ Module BV.
   Definition to_N {n} (bv : bitvector n) : N :=
     RawBV.to_N (bits bv).
 
+  Lemma to_N_max_bound n (b : bitvector n) : (to_N b < 2 ^ n)%N.
+  Proof.
+    intros.
+    unfold to_N, RawBV.to_N, RawBV.size.
+    destruct b as [b wf]. simpl. subst.
+    unfold RawBV.size in *.
+    replace (2 ^ N.of_nat (length b))%N with (N.of_nat (2 ^ length b))
+      by now rewrite Nat2N.inj_pow.
+    enough (RawBV.list2nat_be b < 2 ^ (length b)) by lia.
+    induction b; intros; try crush.
+    cbn in *. rewrite ! RawBV._list2nat_be_arith in *.
+    crush.
+  Qed.
+
   Lemma bv_zextn_to_N n w (bv : bitvector n):
     BV.to_N (BV.bv_concat (BV.zeros w) bv) =
       BV.to_N bv.
@@ -623,7 +637,6 @@ Module XBV.
     apply UIP.
   Qed.
 
-
   Lemma xbv_bv_inverse n (bv : BV.bitvector n) :
       to_bv (from_bv bv) = Some bv.
   Proof.
@@ -728,6 +741,19 @@ Module XBV.
 
   Definition to_N {n} (x : xbv n) : option N :=
     option_map BV.to_N (to_bv x).
+
+  Lemma to_N_from_bv n (b : BV.bitvector n) : to_N (from_bv b) = Some (BV.to_N b).
+  Proof. unfold to_N. now rewrite xbv_bv_inverse. Qed.
+
+  Lemma to_N_max_bound n (b : xbv n) v :
+    to_N b = Some v ->
+    (v < 2 ^ n)%N.
+  Proof.
+    unfold to_N.
+    intros.
+    destruct (to_bv b); try discriminate. inv H.
+    apply BV.to_N_max_bound.
+  Qed.
 
   Definition extr {n} (x: xbv n) (i j: N) : xbv j :=
     {|

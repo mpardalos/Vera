@@ -389,9 +389,8 @@ Lemma select_bit_to_bv w (vec idx : BV.bitvector w) :
     Some (BV.bv_extr 0 1 (BV.bv_shr vec idx)).
 Proof.
   intros Hidx.
-  funelim (select_bit (XBV.from_bv vec) (XBV.from_bv idx));
-    rewrite XBV.xbv_bv_inverse in Heq; inv Heq;
-    rewrite <- Heqcall; clear Heqcall.
+  unfold select_bit.
+  rewrite XBV.to_N_from_bv.
   repeat match goal with
          | [ bv : BV.bitvector _ |- _ ] => destruct bv
          end.
@@ -447,29 +446,40 @@ Proof.
   - rewrite N.compare_gt_iff in *. crush.
 Qed.
 
-Corollary cast_from_to_zextn_inv ρ (from to : N) bv_from result t :
+Corollary cast_from_to_zextn_inv ρ
+  (from to : N)
+  (bv_from : BV.bitvector from)
+  bv_to t :
   (to >= from)%N ->
   SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) ->
-  SMTLib.interp_term ρ (cast_from_to from to t) = result ->
-  result = Some (SMTLib.Value_BitVec _ (BV.bv_concat (BV.zeros (to - from)) bv_from)).
-Admitted.
-
-Lemma to_N_from_bv n (b : BV.bitvector n) : XBV.to_N (XBV.from_bv b) = Some (BV.to_N b).
-Proof. unfold XBV.to_N. now rewrite XBV.xbv_bv_inverse. Qed.
-
-Lemma bv_to_N_max_bound n (b : BV.bitvector n) : (BV.to_N b < 2 ^ n)%N.
+  SMTLib.interp_term ρ (cast_from_to from to t) =
+    Some (SMTLib.Value_BitVec _ bv_to) ->
+  bv_to = BV.bv_concat (BV.zeros (to - from)) bv_from.
 Proof.
-  intros.
-  unfold BV.to_N, RawBV.to_N, RawBV.size.
-  destruct b. simpl. subst.
-  unfold RawBV.size in *.
-  replace (2 ^ N.of_nat (length bv))%N with (N.of_nat (2 ^ length bv))
-    by now rewrite Nat2N.inj_pow.
-  enough (RawBV.list2nat_be bv < 2 ^ (length bv)) by lia.
-  induction bv; intros; try crush.
-  cbn in *. rewrite ! RawBV._list2nat_be_arith in *.
-  crush.
+  intros Hcmp Ht Hcast.
+  erewrite cast_from_to_zextn in Hcast; try crush.
+  inv Hcast. inversion_sigma. subst.
+  now rewrite <- eq_rect_eq.
 Qed.
+
+(* Corollary cast_from_to_zextn_inv_bits ρ *)
+(*   (from to : N) *)
+(*   (bv_from : BV.bitvector from) *)
+(*   (bv_to : BV.bitvector to) *)
+(*   t : *)
+(*   (to >= from)%N -> *)
+(*   SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) -> *)
+(*   SMTLib.interp_term ρ (cast_from_to from to t) = *)
+(*     Some (SMTLib.Value_BitVec _ bv_to) -> *)
+(*   BV.bits bv_to = BV.bits (BV.bv_concat (BV.zeros (to - from)) bv_from). *)
+(* Proof. *)
+(*   intros Hcmp Ht Hcast. *)
+(*   pose proof cast_from_to_zextn_inv as H. insterU H. *)
+(*   erewrite cast_from_to_zextn_inv with (bv_to := bv_to). *)
+(*   erewrite cast_from_to_zextn in Hcast; try crush. *)
+(*   inv Hcast. inversion_sigma. subst. *)
+(*   now rewrite <- eq_rect_eq. *)
+(* Qed. *)
 
 Lemma statically_in_bounds_max_bound {w} max_bound e regs (xbv : XBV.xbv w) val :
   statically_in_bounds max_bound e ->
@@ -482,11 +492,51 @@ Proof.
   inv Hinbounds.
   - destruct e; try crush.
     simp eval_expr in Heval. inv Heval.
-    rewrite to_N_from_bv in HtoN. inv HtoN.
+    rewrite XBV.to_N_from_bv in HtoN. inv HtoN.
     crush.
-  - unfold XBV.to_N in *. destruct (XBV.to_bv xbv); try discriminate. inv HtoN.
-    enough (BV.to_N b < 2 ^ w)%N by lia.
-    apply bv_to_N_max_bound.
+  - enough (val < 2 ^ w)%N by lia.
+    eauto using XBV.to_N_max_bound.
+Qed.
+
+Lemma xbv_bitof_concat n1 n2 b (xbv1 : XBV.xbv n1) (xbv2 : XBV.xbv n2) :
+  (N.of_nat b < n1)%N ->
+  XBV.bitOf b (XBV.concat xbv2 xbv1) =
+    XBV.bitOf b xbv1.
+Proof.
+  destruct xbv1 as [xbv1 wf1].
+  subst.
+  unfold XBV.bitOf, RawXBV.bitOf. simpl.
+  intros.
+  rewrite List.app_nth1; crush.
+Qed.
+
+Lemma select_bit_concat1
+  n1 n2 n3 (vec1 : XBV.xbv n1) (vec2 : XBV.xbv n2) (idx : XBV.xbv n3) :
+  opt_prop (fun n => n < n1)%N (XBV.to_N idx) ->
+  select_bit (XBV.concat vec2 vec1) idx = select_bit vec1 idx.
+Proof.
+  unfold select_bit. intros H.
+  destruct (XBV.to_N idx); simpl in *; try crush.
+  rewrite xbv_bitof_concat by lia.
+  reflexivity.
+Qed.
+
+Lemma select_bit_index_same_value
+  n1 n2 n3 (vec : XBV.xbv n1) (idx1 : XBV.xbv n2) (idx2 : XBV.xbv n3) :
+  XBV.to_N idx1 = XBV.to_N idx2 ->
+  select_bit vec idx1 = select_bit vec idx2.
+Proof. unfold select_bit. intros. crush. Qed.
+
+Lemma from_bv_concat n1 n2 (bv1 : BV.bitvector n1) (bv2 : BV.bitvector n2) :
+  XBV.from_bv (BV.bv_concat bv1 bv2) = XBV.concat (XBV.from_bv bv1) (XBV.from_bv bv2).
+Proof.
+  repeat match goal with
+         | [ bv : BV.bitvector _ |- _ ] => destruct bv
+         end.
+  subst.
+  apply XBV.of_bits_equal. simpl.
+  unfold RawBV.bv_concat, RawXBV.from_bv.
+  apply List.map_app.
 Qed.
 
 Lemma expr_to_smt_correct {w} (vars : StrFunMap.t smt_var_info) (expr : Verilog.expression w) :
@@ -597,20 +647,8 @@ Proof.
     expr_begin_tac.
     cbn in Hinterp_term; autodestruct_eqn E.
     apply verilog_smt_match_to_bv.
-    rewrite <- select_bit_to_bv.
-    + f_equal.
-      simp select_bit; unfold select_bit_clause_1.
-      rewrite ! XBV.xbv_bv_inverse. simpl.
-      (* Sign extending does not change the nat value *)
-      replace (BV.to_N bv4) with (BV.to_N bv0); cycle 1. {
-        erewrite cast_from_to_zextn in *; try crush.
-        some_inv; now rewrite BV.bv_zextn_to_N.
-      }
-      unfold XBV.bitOf, RawXBV.bitOf.
-      admit.
-      (* TODO: select_bit with the original bitvectors is the same as select bit on the zero-extended values. *)
-      (* TODO: Should be provable as long as the index is in-bounds. See below *)
-    + clear E. eapply statically_in_bounds_max_bound in s; eauto using to_N_from_bv.
+    rewrite <- select_bit_to_bv; cycle 1. {
+      clear E. eapply statically_in_bounds_max_bound in s; eauto using XBV.to_N_from_bv.
       replace (BV.to_N bv4) with (BV.to_N bv0); cycle 1. {
         erewrite cast_from_to_zextn in *; try crush.
         some_inv; now rewrite BV.bv_zextn_to_N.
@@ -618,6 +656,23 @@ Proof.
       enough (Verilog.expr_type vec <= w)%N by lia.
       replace w with (N.max (Verilog.expr_type vec) (Verilog.expr_type idx)) by admit.
       lia.
+    }
+    f_equal.
+
+    erewrite cast_from_to_zextn in *; try crush.
+    transitivity (select_bit (XBV.from_bv bv1) (XBV.from_bv bv4)). {
+      eapply select_bit_index_same_value.
+      some_inv; now rewrite ! XBV.to_N_from_bv, BV.bv_zextn_to_N.
+    }
+    inv E6. inversion_sigma. rewrite <- eq_rect_eq in *. subst.
+    rewrite from_bv_concat.
+    rewrite select_bit_concat1; cycle 1. {
+      rewrite XBV.to_N_from_bv. simpl.
+      inv E8. rewrite BV.bv_zextn_to_N.
+      eapply statically_in_bounds_max_bound; eauto.
+      eapply XBV.to_N_from_bv.
+    }
+    easy.
   - (* Concatenation *)
     expr_begin_tac.
     apply verilog_smt_match_to_bv.
