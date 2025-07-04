@@ -726,6 +726,9 @@ Module XBV.
     eapply RawXBV.to_bv_injective; eassumption.
   Qed.
 
+  Definition to_N {n} (x : xbv n) : option N :=
+    option_map BV.to_N (to_bv x).
+
   Definition extr {n} (x: xbv n) (i j: N) : xbv j :=
     {|
       bv := RawXBV.extr (bits x) i j;

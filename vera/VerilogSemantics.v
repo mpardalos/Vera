@@ -152,7 +152,14 @@ Module CombinationalOnly.
     eval_binop Verilog.BinaryStar l r := bv_binop (@BV.bv_mult _) l r;
     eval_binop Verilog.BinaryBitwiseAnd l r := bitwise_binop and_bit l r;
     eval_binop Verilog.BinaryBitwiseOr l r := bitwise_binop or_bit l r;
-    eval_binop Verilog.BinaryShiftLeft l r := _;
+    eval_binop Verilog.BinaryShiftLeft l r with XBV.to_N r := {
+      | Some shamt => XBV.shl l shamt
+      | None => XBV.exes n
+      };
+    eval_binop Verilog.BinaryShiftRight l r with XBV.to_N r := {
+      | Some shamt => XBV.shr l shamt
+      | None => XBV.exes n
+      };
     eval_binop op l r := _
   .
   Admit Obligations.
