@@ -462,24 +462,39 @@ Proof.
   now rewrite <- eq_rect_eq.
 Qed.
 
-(* Corollary cast_from_to_zextn_inv_bits ρ *)
-(*   (from to : N) *)
-(*   (bv_from : BV.bitvector from) *)
-(*   (bv_to : BV.bitvector to) *)
-(*   t : *)
-(*   (to >= from)%N -> *)
-(*   SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) -> *)
-(*   SMTLib.interp_term ρ (cast_from_to from to t) = *)
-(*     Some (SMTLib.Value_BitVec _ bv_to) -> *)
-(*   BV.bits bv_to = BV.bits (BV.bv_concat (BV.zeros (to - from)) bv_from). *)
-(* Proof. *)
-(*   intros Hcmp Ht Hcast. *)
-(*   pose proof cast_from_to_zextn_inv as H. insterU H. *)
-(*   erewrite cast_from_to_zextn_inv with (bv_to := bv_to). *)
-(*   erewrite cast_from_to_zextn in Hcast; try crush. *)
-(*   inv Hcast. inversion_sigma. subst. *)
-(*   now rewrite <- eq_rect_eq. *)
-(* Qed. *)
+Corollary cast_from_to_zextn_inv_bits ρ
+  (from to : N)
+  (bv_from : BV.bitvector from)
+  (bv_to : BV.bitvector to)
+  t :
+  (to >= from)%N ->
+  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) ->
+  SMTLib.interp_term ρ (cast_from_to from to t) =
+    Some (SMTLib.Value_BitVec _ bv_to) ->
+  BV.bits bv_to = BV.bits (BV.bv_concat (BV.zeros (to - from)) bv_from).
+Proof.
+  intros Hcmp Ht Hcast.
+  erewrite cast_from_to_zextn in Hcast; try crush.
+  inv Hcast. crush.
+Qed.
+
+Corollary cast_from_to_zextn_inv_width ρ
+  (from to1 to2 : N)
+  (bv_from : BV.bitvector from)
+  (bv_to : BV.bitvector to2)
+  t :
+  (to1 > 0)%N ->
+  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) ->
+  SMTLib.interp_term ρ (cast_from_to from to1 t) =
+    Some (SMTLib.Value_BitVec to2 bv_to) ->
+  to1 = to2.
+Proof.
+  intros Hcmp Ht Hcast.
+  funelim (cast_from_to from to1 t); rewrite <- Heqcall in *; clear Heqcall.
+  - rewrite N.compare_eq_iff in *. crush.
+  - rewrite N.compare_lt_iff in *. crush.
+  - rewrite N.compare_gt_iff in *. crush.
+Qed.
 
 Lemma statically_in_bounds_max_bound {w} max_bound e regs (xbv : XBV.xbv w) val :
   statically_in_bounds max_bound e ->
@@ -654,7 +669,8 @@ Proof.
         some_inv; now rewrite BV.bv_zextn_to_N.
       }
       enough (Verilog.expr_type vec <= w)%N by lia.
-      replace w with (N.max (Verilog.expr_type vec) (Verilog.expr_type idx)) by admit.
+      replace w with (N.max (Verilog.expr_type vec) (Verilog.expr_type idx))
+        by (eapply cast_from_to_zextn_inv_width; crush).
       lia.
     }
     f_equal.
