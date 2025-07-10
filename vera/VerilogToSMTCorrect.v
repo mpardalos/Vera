@@ -571,6 +571,43 @@ Lemma cast_from_to_up_as_concat ρ t from to1 to2 bv1 bv2 :
   exists w, (_; bv2) = (_; BV.bv_concat (BV.zeros w) bv1).
 Proof. Admitted.
 
+Lemma bitselect_impl_correct:
+  forall (w0 w1 : N) (t0 t1 : SMTLib.term) (ρ : SMTLib.valuation)
+    (w : N) (bv1ext bv0ext : BVList.BITVECTOR_LIST.bitvector w) (bv1 : BV.bitvector w1) (bv0 : BV.bitvector w0),
+    (BV.to_N bv1 < w0)%N ->
+    SMTLib.interp_term ρ t0 = Some (SMTLib.Value_BitVec w0 bv0) ->
+    SMTLib.interp_term ρ t1 = Some (SMTLib.Value_BitVec w1 bv1) ->
+    SMTLib.interp_term ρ (cast_from_to w0 (N.max w0 w1) t0) = Some (SMTLib.Value_BitVec w bv0ext) ->
+    SMTLib.interp_term ρ (cast_from_to w1 (N.max w0 w1) t1) = Some (SMTLib.Value_BitVec w bv1ext) ->
+    XBV.to_bv (select_bit (XBV.from_bv bv0) (XBV.from_bv bv1)) =
+      Some (BVList.BITVECTOR_LIST.bv_extr 0 1  (BVList.BITVECTOR_LIST.bv_shr bv0ext bv1ext)).
+Proof.
+  intros * Hbounds Ht0 Ht1 Hcast0 Hcast1.
+  rewrite <- select_bit_to_bv; cycle 1. {
+    erewrite <- cast_from_to_up_same_value with (bv1:=bv1) (bv2:=bv1ext);
+      try crush; try lia.
+    replace w with (N.max w0 w1)
+      by (eapply cast_from_to_zextn_inv_width with (t:=t0); crush).
+    lia.
+  }
+
+  f_equal.
+
+  transitivity (select_bit (XBV.from_bv bv0ext) (XBV.from_bv bv1)). {
+    edestruct cast_from_to_up_as_concat with (t:=t0); try eassumption. inv H.
+    repeat (apply_somewhere inj_pair2; subst).
+    rewrite from_bv_concat.
+    symmetry. apply select_bit_concat1.
+    rewrite XBV.to_N_from_bv. simpl.
+    lia.
+  }
+
+  eapply select_bit_index_same_value. {
+    erewrite cast_from_to_zextn in *; try crush.
+    some_inv; now rewrite ! XBV.to_N_from_bv, BV.bv_zextn_to_N.
+  }
+Qed.
+
 Lemma expr_to_smt_correct {w} (vars : StrFunMap.t smt_var_info) (expr : Verilog.expression w) :
   forall t tag (m : VerilogSMTBijection.t) regs ρ xbv bv,
     (forall name, m (tag, name) = option_map fst (vars name)) ->
@@ -680,35 +717,11 @@ Proof.
     expr_begin_tac.
     cbn in Hinterp_term; autodestruct_eqn E.
     apply verilog_smt_match_to_bv.
+    unfold Verilog.expr_type in *.
 
-    transitivity (XBV.to_bv (select_bit (XBV.from_bv bv3) (XBV.from_bv bv4))); cycle 1. {
-      eapply select_bit_to_bv.
-      eapply statically_in_bounds_max_bound in s; eauto using XBV.to_N_from_bv.
-
-      erewrite <- cast_from_to_up_same_value with (bv1:=bv0) (bv2:=bv4);
-        try eassumption; try (unfold Verilog.expr_type in *; lia).
-
-      enough (Verilog.expr_type vec <= w)%N by lia.
-      replace w with (N.max (Verilog.expr_type vec) (Verilog.expr_type idx))
-        by (eapply cast_from_to_zextn_inv_width; crush).
-      lia.
-    }
-
-    f_equal.
-
-    transitivity (select_bit (XBV.from_bv bv3) (XBV.from_bv bv0)). {
-      edestruct cast_from_to_up_as_concat; try eassumption. inv H.
-      repeat (apply_somewhere inj_pair2; subst).
-      rewrite from_bv_concat.
-      symmetry. apply select_bit_concat1.
-      rewrite XBV.to_N_from_bv. simpl.
+    eapply bitselect_impl_correct; try eassumption. {
       eapply statically_in_bounds_max_bound; eauto.
       eapply XBV.to_N_from_bv.
-    }
-
-    eapply select_bit_index_same_value. {
-      erewrite cast_from_to_zextn in *; try crush.
-      some_inv; now rewrite ! XBV.to_N_from_bv, BV.bv_zextn_to_N.
     }
   - (* Concatenation *)
     expr_begin_tac.
