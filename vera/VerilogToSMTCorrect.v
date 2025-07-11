@@ -566,10 +566,22 @@ Proof.
 Qed.
 
 Lemma cast_from_to_up_as_concat ρ t from to1 to2 bv1 bv2 :
+  (to1 >= from)%N ->
   SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv1) ->
   SMTLib.interp_term ρ (cast_from_to from to1 t) = Some (SMTLib.Value_BitVec to2 bv2) ->
   exists w, (_; bv2) = (_; BV.bv_concat (BV.zeros w) bv1).
-Proof. Admitted.
+Proof.
+  intros Hcmp H1 H2.
+  funelim (cast_from_to from to1 t); rewrite <- Heqcall in *; clear Heqcall;
+    rewrite N.compare_eq_iff in * || rewrite  N.compare_lt_iff in * || rewrite N.compare_gt_iff in *.
+  - subst.
+    rewrite H1 in H2. clear H1. inv H2.
+    exists 0%N. cbn. f_equal.
+    apply BV.of_bits_equal. destruct bv1.
+    cbn. now rewrite List.app_nil_r.
+  - crush.
+  - crush.
+Qed.
 
 Lemma bitselect_impl_correct:
   forall (w0 w1 : N) (t0 t1 : SMTLib.term) (ρ : SMTLib.valuation)
@@ -594,7 +606,8 @@ Proof.
   f_equal.
 
   transitivity (select_bit (XBV.from_bv bv0ext) (XBV.from_bv bv1)). {
-    edestruct cast_from_to_up_as_concat with (t:=t0); try eassumption. inv H.
+    edestruct cast_from_to_up_as_concat with (t:=t0); [|eassumption|eassumption|]. lia.
+    inv H.
     repeat (apply_somewhere inj_pair2; subst).
     rewrite from_bv_concat.
     symmetry. apply select_bit_concat1.
