@@ -621,6 +621,41 @@ Proof.
   }
 Qed.
 
+Lemma cast_from_to_correct ρ t from to bv1 v2 :
+  (to > 0)%N ->
+  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv1) ->
+  SMTLib.interp_term ρ (cast_from_to from to t) = Some v2 ->
+  verilog_smt_match_value (convert to (XBV.from_bv bv1)) v2.
+Proof.
+  intros Hnz Ht Hcast.
+
+  (* expr_begin_tac. *)
+  funelim (convert to (XBV.from_bv bv1)); destruct_rew; rewrite <- Heqcall; clear Heqcall.
+  + (* Extension *)
+    funelim (cast_from_to from to t); rewrite <- Heqcall in *; clear Heqcall;
+      (rewrite N.compare_eq_iff in *|| rewrite N.compare_lt_iff in * || rewrite N.compare_gt_iff in * );
+      try crush.
+    cbn in *; autodestruct_eqn E.
+    apply_somewhere inj_pair2. subst.
+    eapply verilog_smt_match_to_bv_bits; eauto.
+    rewrite XBV.zeros_from_bv.
+    apply XBV.concat_to_bv.
+  + (* Truncation *)
+    funelim (cast_from_to from to t); rewrite <- Heqcall in *; clear Heqcall;
+      (rewrite N.compare_eq_iff in *|| rewrite N.compare_lt_iff in * || rewrite N.compare_gt_iff in * );
+      try crush.
+    cbn in *; autodestruct_eqn E.
+    apply_somewhere inj_pair2. subst.
+    eapply verilog_smt_match_to_bv_bits.
+    * apply XBV.extr_to_bv. lia.
+    * simpl. f_equal. lia.
+  + funelim (cast_from_to from from t); rewrite <- Heqcall in *; clear Heqcall;
+      (rewrite N.compare_eq_iff in *|| rewrite N.compare_lt_iff in * || rewrite N.compare_gt_iff in * );
+      try crush.
+    rewrite Ht in Hcast. inv Hcast.
+    constructor.
+Qed.
+
 Lemma expr_to_smt_correct {w} (vars : StrFunMap.t smt_var_info) (expr : Verilog.expression w) :
   forall t tag (m : VerilogSMTBijection.t) regs ρ xbv bv,
     (forall name, m (tag, name) = option_map fst (vars name)) ->
@@ -702,11 +737,10 @@ Proof.
       apply_somewhere XBV.bv_xbv_inverse.
       apply_somewhere XBV.from_bv_injective.
       subst.
-      unfold Verilog.expr_type in *.
-      inv H3. autodestruct; try contradiction.
-      destruct e; cbn in *.
-      unfold BV.is_zero in *.
-      congruence.
+      unfold Verilog.expr_type, SMTLib.value_eqb, BV.is_zero in *.
+      autodestruct; try contradiction.
+      destruct e.
+      crush.
     + (* Condition is X *)
       some_inv; now rewrite XBV.xbv_bv_inverse in *.
     + (* Condition is X *)
@@ -715,11 +749,10 @@ Proof.
       apply_somewhere XBV.bv_xbv_inverse.
       apply_somewhere XBV.from_bv_injective.
       subst.
-      unfold Verilog.expr_type in *.
-      inv H3. autodestruct; try contradiction.
-      destruct e; cbn in *.
-      unfold BV.is_zero in *.
-      congruence.
+      unfold Verilog.expr_type, SMTLib.value_eqb, BV.is_zero in *.
+      autodestruct; try contradiction.
+      destruct e.
+      crush.
     + now rewrite XBV.xbv_bv_inverse in *.
     + now rewrite XBV.xbv_bv_inverse in *.
   - (* BitSelect *)
@@ -758,30 +791,7 @@ Proof.
     edestruct (cast_from_to_part_eval); eauto.
     expr_begin_tac.
 
-    (* expr_begin_tac. *)
-    funelim (convert w (XBV.from_bv bv0)); destruct_rew; rewrite <- Heqcall; clear Heqcall.
-    + (* Extension *)
-      funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
-        (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
-        try crush.
-      cbn in Hinterp_term; autodestruct_eqn E.
-      inster_all.
-      eapply verilog_smt_match_to_bv_bits; eauto.
-      rewrite XBV.zeros_from_bv.
-      apply XBV.concat_to_bv.
-    + (* Truncation *)
-      funelim (cast_from_to from to t0); rewrite <- Heqcall in *; clear Heqcall;
-        (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
-        try crush.
-      cbn in Hinterp_term; autodestruct_eqn E.
-      (* replace (N.of_nat (N.to_nat (to - 1))) with (to - 1)%N by lia. *)
-      inster_all.
-      eapply verilog_smt_match_to_bv_bits.
-      * apply XBV.extr_to_bv. lia.
-      * simpl. f_equal. lia.
-    + funelim (cast_from_to from from t0); rewrite <- Heqcall in *; clear Heqcall;
-        (apply_somewhere N.compare_eq_iff || apply_somewhere N.compare_lt_iff || apply_somewhere N.compare_gt_iff);
-        try crush.
+    eapply cast_from_to_correct; eauto.
 Admitted.
 
 
