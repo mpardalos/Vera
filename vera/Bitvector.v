@@ -511,14 +511,10 @@ Module RawXBV.
   Qed.
 
   (* bitvectors are little-endian, so shifts are inverted *)
-  Definition shl (bv : xbv) (shamt : nat) : xbv :=
-    match shamt with
-    | 0 => bv
-    | S n => match bv with
-            | [] => []
-            | _ => O :: List.removelast bv
-            end
-    end
+  Equations shl (bv : xbv) (shamt : nat) : xbv :=
+    shl bv 0 := bv;
+    shl [] n := [];
+    shl bv (S n) := O :: List.removelast bv
   .
 
   Lemma removelast_cons_length {A} (a : A) (l : list A) :
@@ -528,30 +524,24 @@ Module RawXBV.
   Lemma shl_size n bv :
     size (shl bv n) = size bv.
   Proof.
-    unfold shl, size. f_equal.
-    autodestruct; try crush.
-    transitivity (S (Datatypes.length (removelast (b :: bv)))).
-    - crush.
-    - now rewrite removelast_cons_length.
+    unfold size. f_equal.
+    funelim (shl bv n); simp shl; try crush.
+    induction l; crush.
   Qed.
 
-  Definition shr (bv : xbv) (shamt : nat) : xbv :=
-    match shamt with
-    | 0 => bv
-    | S n => match bv with
-            | [] => []
-            | (b :: bs) => bs ++ [O]
-            end
-    end
+  Equations shr (bv : xbv) (shamt : nat) : xbv :=
+    shr bv 0 := bv;
+    shr [] n := [];
+    shr (b :: bs) (S n) := shr bs n ++ [O]
   .
 
   Lemma shr_size n bv :
     size (shr bv n) = size bv.
   Proof.
-    unfold shr, size. f_equal.
-    autodestruct; try crush.
+    unfold size.
+    funelim (shr bv n); simp shr; try crush.
     rewrite List.app_length.
-    autodestruct; crush.
+    crush.
   Qed.
 
   (*

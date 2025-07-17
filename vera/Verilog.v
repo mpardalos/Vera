@@ -22,49 +22,46 @@ Module VerilogCommon.
     | BinaryPlus (* '+' *)
     | BinaryMinus (* '-' *)
     | BinaryStar (* '*' *)
-    | BinarySlash (* '/' *)
-    | BinaryPercent (* '%' *)
-    | BinaryEqualsEquals (* '==' *)
-    | BinaryNotEquals (* '!=' *)
-    | BinaryEqualsEqualsEquals (* '===' *)
-    | BinaryNotEqualsEquals (* '!==' *)
-    | BinaryWildcardEqual (* '==?' *)
-    | BinaryWildcardNotEqual (* '!=?' *)
-    | BinaryLogicalAnd (* '&&' *)
-    | BinaryLogicalOr (* '||' *)
-    | BinaryExponent (* '**' *)
-    | BinaryLessThan (* '<' *)
-    | BinaryLessThanEqual (* '<=' *)
-    | BinaryGreaterThan (* '>' *)
-    | BinaryGreaterThanEqual (* '>=' *)
+    (* | BinarySlash (* '/' *) *)
+    (* | BinaryPercent (* '%' *) *)
+    (* | BinaryEqualsEquals (* '==' *) *)
+    (* | BinaryNotEquals (* '!=' *) *)
+    (* | BinaryEqualsEqualsEquals (* '===' *) *)
+    (* | BinaryNotEqualsEquals (* '!==' *) *)
+    (* | BinaryWildcardEqual (* '==?' *) *)
+    (* | BinaryWildcardNotEqual (* '!=?' *) *)
+    (* | BinaryLogicalAnd (* '&&' *) *)
+    (* | BinaryLogicalOr (* '||' *) *)
+    (* | BinaryExponent (* '**' *) *)
+    (* | BinaryLessThan (* '<' *) *)
+    (* | BinaryLessThanEqual (* '<=' *) *)
+    (* | BinaryGreaterThan (* '>' *) *)
+    (* | BinaryGreaterThanEqual (* '>=' *) *)
     | BinaryBitwiseAnd (* '&' *)
     | BinaryBitwiseOr (* '|' *)
-    | BinaryBitwiseXor (* '^' *)
-    | BinaryXNor (* '^~', '~^' *)
+    (* | BinaryBitwiseXor (* '^' *) *)
+    (* | BinaryXNor (* '^~', '~^' *) *)
     | BinaryShiftRight (* '>>' *)
     | BinaryShiftLeft (* '<<' *)
-    | BinaryShiftRightArithmetic (* '>>>' *)
+    (* | BinaryShiftRightArithmetic (* '>>>' *) *)
     | BinaryShiftLeftArithmetic (* '<<<' *)
-    | BinaryLogicalImplication (* '->' *)
-    | BinaryLogicalEquivalence (* '<->' *)
+    (* | BinaryLogicalImplication (* '->' *) *)
+    (* | BinaryLogicalEquivalence (* '<->' *) *)
   .
 
 
   Variant unaryop :=
     | UnaryPlus (* +  *)
-    | UnaryMinus (* -  *)
-    | UnaryNegation (* !  *)
-    (* TODO: reduction operators *)
-    (*
-    | UnaryReduce... (* ~  *)
-    | UnaryReduce... (* &  *)
-    | UnaryReduce... (* ~& *)
-    | UnaryReduce... (* |  *)
-    | UnaryReduce... (* ~| *)
-    | UnaryReduce... (* ^  *)
-    | UnaryReduce... (* ~^ *)
-    | UnaryReduce... (* ^~ *)
-     *)
+    (* | UnaryMinus (* -  *) *)
+    (* | UnaryNegation (* !  *) *)
+    (* | UnaryReduce... (* ~  *) *)
+    (* | UnaryReduce... (* &  *) *)
+    (* | UnaryReduce... (* ~& *) *)
+    (* | UnaryReduce... (* |  *) *)
+    (* | UnaryReduce... (* ~| *) *)
+    (* | UnaryReduce... (* ^  *) *)
+    (* | UnaryReduce... (* ~^ *) *)
+    (* | UnaryReduce... (* ^~ *) *)
   .
 
   Section op_show.
@@ -76,39 +73,39 @@ Module VerilogCommon.
           | BinaryPlus => "+"
           | BinaryMinus => "-"
           | BinaryStar => "*"
-          | BinarySlash => "/"
-          | BinaryPercent => "%"
-          | BinaryEqualsEquals => "=="
-          | BinaryNotEquals => "!="
-          | BinaryEqualsEqualsEquals => "==="
-          | BinaryNotEqualsEquals => "!=="
-          | BinaryWildcardEqual => "==?"
-          | BinaryWildcardNotEqual => "!=?"
-          | BinaryLogicalAnd => "&&"
-          | BinaryLogicalOr => "||"
-          | BinaryExponent => "**"
-          | BinaryLessThan => "<"
-          | BinaryLessThanEqual => "<="
-          | BinaryGreaterThan => ">"
-          | BinaryGreaterThanEqual => ">="
+          (* | BinarySlash => "/" *)
+          (* | BinaryPercent => "%" *)
+          (* | BinaryEqualsEquals => "==" *)
+          (* | BinaryNotEquals => "!=" *)
+          (* | BinaryEqualsEqualsEquals => "===" *)
+          (* | BinaryNotEqualsEquals => "!==" *)
+          (* | BinaryWildcardEqual => "==?" *)
+          (* | BinaryWildcardNotEqual => "!=?" *)
+          (* | BinaryLogicalAnd => "&&" *)
+          (* | BinaryLogicalOr => "||" *)
+          (* | BinaryExponent => "**" *)
+          (* | BinaryLessThan => "<" *)
+          (* | BinaryLessThanEqual => "<=" *)
+          (* | BinaryGreaterThan => ">" *)
+          (* | BinaryGreaterThanEqual => ">=" *)
           | BinaryBitwiseAnd => "&"
           | BinaryBitwiseOr => "|"
-          | BinaryBitwiseXor => "^"
-          | BinaryXNor => "^~"
+          (* | BinaryBitwiseXor => "^" *)
+          (* | BinaryXNor => "^~" *)
           | BinaryShiftRight => ">>"
           | BinaryShiftLeft => "<<"
-          | BinaryShiftRightArithmetic => ">>>"
+          (* | BinaryShiftRightArithmetic => ">>>" *)
           | BinaryShiftLeftArithmetic => "<<<"
-          | BinaryLogicalImplication => "->"
-          | BinaryLogicalEquivalence => "<->"
+          (* | BinaryLogicalImplication => "->" *)
+          (* | BinaryLogicalEquivalence => "<->" *)
           end
       }.
     Global Instance unaryop_Show : Show unaryop :=
       { show u :=
           match u with
           | UnaryPlus => "+"
-          | UnaryMinus => "-"
-          | UnaryNegation => "!"
+          (* | UnaryMinus => "-" *)
+          (* | UnaryNegation => "!" *)
           end
       }.
   End op_show.
@@ -143,34 +140,35 @@ Module Verilog.
     binop_width BinaryPlus n := n; (* "+" *)
     binop_width BinaryMinus n := n; (* "-" *)
     binop_width BinaryStar n := n; (* "*" *)
-    binop_width BinarySlash n := n; (* "/" *)
-    binop_width BinaryPercent n := n; (* "%" *)
-    binop_width BinaryExponent n := n; (* "**" *)
-    binop_width BinaryEqualsEquals n := 1; (* "==" *)
-    binop_width BinaryNotEquals n := 1; (* "!=" *)
-    binop_width BinaryEqualsEqualsEquals n := 1; (* "===" *)
-    binop_width BinaryNotEqualsEquals n := 1; (* "!==" *)
-    binop_width BinaryWildcardEqual n := 1; (* "==?" *)
-    binop_width BinaryWildcardNotEqual n := 1; (* "!=?" *)
-    binop_width BinaryLogicalAnd n := 1; (* "&&" *)
-    binop_width BinaryLogicalOr n := 1; (* "||" *)
-    binop_width BinaryLessThan n := 1; (* "<" *)
-    binop_width BinaryLessThanEqual n := 1; (* "<=" *)
-    binop_width BinaryGreaterThan n := 1; (* ">" *)
-    binop_width BinaryGreaterThanEqual n := 1; (* ">=" *)
+    (* binop_width BinarySlash n := n; (* "/" *) *)
+    (* binop_width BinaryPercent n := n; (* "%" *) *)
+    (* binop_width BinaryExponent n := n; (* "**" *) *)
+    (* binop_width BinaryEqualsEquals n := 1; (* "==" *) *)
+    (* binop_width BinaryNotEquals n := 1; (* "!=" *) *)
+    (* binop_width BinaryEqualsEqualsEquals n := 1; (* "===" *) *)
+    (* binop_width BinaryNotEqualsEquals n := 1; (* "!==" *) *)
+    (* binop_width BinaryWildcardEqual n := 1; (* "==?" *) *)
+    (* binop_width BinaryWildcardNotEqual n := 1; (* "!=?" *) *)
+    (* binop_width BinaryLogicalAnd n := 1; (* "&&" *) *)
+    (* binop_width BinaryLogicalOr n := 1; (* "||" *) *)
+    (* binop_width BinaryLessThan n := 1; (* "<" *) *)
+    (* binop_width BinaryLessThanEqual n := 1; (* "<=" *) *)
+    (* binop_width BinaryGreaterThan n := 1; (* ">" *) *)
+    (* binop_width BinaryGreaterThanEqual n := 1; (* ">=" *) *)
     binop_width BinaryBitwiseAnd n := n; (* "&" *)
     binop_width BinaryBitwiseOr n := n; (* "|" *)
-    binop_width BinaryBitwiseXor n := n; (* "^" *)
-    binop_width BinaryXNor n := n; (* "^~" *)
+    (* binop_width BinaryBitwiseXor n := n; (* "^" *) *)
+    (* binop_width BinaryXNor n := n; (* "^~" *) *)
     binop_width BinaryShiftRight n := n; (* ">>" *)
     binop_width BinaryShiftLeft n := n; (* "<<" *)
-    binop_width BinaryShiftRightArithmetic n := n; (* ">>>" *)
+    (* binop_width BinaryShiftRightArithmetic n := n; (* ">>>" *) *)
     binop_width BinaryShiftLeftArithmetic n := n; (* "<<<" *)
-    binop_width BinaryLogicalImplication n := 1; (* "->" *)
-    binop_width BinaryLogicalEquivalence n := 1. (* "<->" *)
+    (* binop_width BinaryLogicalImplication n := 1; (* "->" *) *)
+    (* binop_width BinaryLogicalEquivalence n := 1 (* "<->" *) *)
+  .
 
   Equations unop_width : Verilog.unaryop -> N -> N :=
-    unop_width _ _ := 0%N.
+    unop_width UnaryPlus n := n.
 
   Global Transparent binop_width unop_width.
 

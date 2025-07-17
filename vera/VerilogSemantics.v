@@ -146,7 +146,7 @@ Module CombinationalOnly.
     or_bit X _ := X;
     or_bit _ X := X.
 
-  Equations eval_binop {n} (op : Verilog.binop) : XBV.xbv n -> XBV.xbv n -> (XBV.xbv (Verilog.binop_width op n)) :=
+  Equations eval_binop {n} (op : Verilog.binop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv (Verilog.binop_width op n) :=
     eval_binop Verilog.BinaryPlus l r := bv_binop (@BV.bv_add _) l r;
     eval_binop Verilog.BinaryMinus l r := bv_binop (fun bvl bvr => BV.bv_add bvl (BV.bv_neg bvr)) l r;
     eval_binop Verilog.BinaryStar l r := bv_binop (@BV.bv_mult _) l r;
@@ -160,12 +160,15 @@ Module CombinationalOnly.
       | Some shamt => XBV.shr l shamt
       | None => XBV.exes n
       };
-    eval_binop op l r := _
+    eval_binop Verilog.BinaryShiftLeftArithmetic l r with XBV.to_N r := {
+      | Some shamt => XBV.shl l shamt
+      | None => XBV.exes n
+      };
   .
-  Admit Obligations.
 
-  Definition eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv (Verilog.unop_width op n).
-  Admitted.
+  Equations eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv (Verilog.unop_width op n) :=
+    eval_unaryop Verilog.UnaryPlus x := x
+  .
 
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
   (* Notation with_rewrite e := (eq_rect_r _ e _). *)

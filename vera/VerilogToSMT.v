@@ -81,69 +81,42 @@ Section expr_to_smt.
          (cast_from_to vec_width (N.max vec_width idx_width) vec_smt)
          (cast_from_to idx_width (N.max vec_width idx_width) idx_smt)).
 
+  Equations binop_to_smt : Verilog.binop -> SMTLib.term -> SMTLib.term -> transf SMTLib.term :=
+    binop_to_smt Verilog.BinaryPlus lhs rhs :=
+      ret (SMTLib.Term_BVBinOp SMTLib.BVAdd lhs rhs);
+    binop_to_smt Verilog.BinaryMinus lhs rhs :=
+      ret (SMTLib.Term_BVBinOp SMTLib.BVAdd lhs (SMTLib.Term_BVUnaryOp SMTLib.BVNeg rhs));
+    binop_to_smt Verilog.BinaryStar lhs rhs :=
+      ret (SMTLib.Term_BVBinOp SMTLib.BVMul lhs rhs);
+    binop_to_smt Verilog.BinaryShiftLeft lhs rhs :=
+      ret (SMTLib.Term_BVBinOp SMTLib.BVShl lhs rhs);
+    binop_to_smt Verilog.BinaryShiftLeftArithmetic lhs rhs :=
+      ret (SMTLib.Term_BVBinOp SMTLib.BVShl lhs rhs);
+    binop_to_smt Verilog.BinaryShiftRight lhs rhs :=
+      ret (SMTLib.Term_BVBinOp SMTLib.BVShr lhs rhs);
+    binop_to_smt Verilog.BinaryBitwiseOr lhs rhs :=
+      ret (SMTLib.Term_BVBinOp SMTLib.BVOr lhs rhs);
+    binop_to_smt Verilog.BinaryBitwiseAnd lhs rhs :=
+      ret (SMTLib.Term_BVBinOp SMTLib.BVAnd lhs rhs)
+  .
+
+  Equations unaryop_to_smt : Verilog.unaryop -> SMTLib.term -> transf SMTLib.term :=
+    unaryop_to_smt Verilog.UnaryPlus operand :=
+      ret operand ;
+    (* unaryop_to_smt Verilog.UnaryMinus operand := *)
+    (*   ret (SMTLib.Term_BVUnaryOp SMTLib.BVNeg operand); *)
+    (* unaryop_to_smt Verilog.UnaryNegation operand := *)
+    (*   ret (SMTLib.Term_BVUnaryOp SMTLib.BVNot operand) *)
+  .
+
   Equations expr_to_smt {w} : Verilog.expression w -> transf SMTLib.term :=
-    expr_to_smt (Verilog.UnaryOp Verilog.UnaryPlus operand) :=
-      expr_to_smt operand ;
-    expr_to_smt (Verilog.UnaryOp Verilog.UnaryMinus operand) :=
+    expr_to_smt (Verilog.UnaryOp op operand) :=
       operand__smt <- expr_to_smt operand ;;
-      ret (SMTLib.Term_BVUnaryOp SMTLib.BVNeg operand__smt);
-    expr_to_smt (Verilog.UnaryOp Verilog.UnaryNegation operand) :=
-      operand__smt <- expr_to_smt operand ;;
-      ret (SMTLib.Term_BVUnaryOp SMTLib.BVNot operand__smt);
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryPlus lhs rhs) :=
+      unaryop_to_smt op operand__smt ;
+    expr_to_smt (Verilog.BinaryOp op lhs rhs) :=
       lhs__smt <- expr_to_smt lhs ;;
       rhs__smt <- expr_to_smt rhs ;;
-      ret (SMTLib.Term_BVBinOp SMTLib.BVAdd lhs__smt rhs__smt);
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryMinus lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      ret (SMTLib.Term_BVBinOp SMTLib.BVAdd lhs__smt (SMTLib.Term_BVUnaryOp SMTLib.BVNeg rhs__smt));
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryStar lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      ret (SMTLib.Term_BVBinOp SMTLib.BVMul lhs__smt rhs__smt);
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryShiftLeft lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      ret (SMTLib.Term_BVBinOp SMTLib.BVShl lhs__smt rhs__smt);
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryShiftLeftArithmetic lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      ret (SMTLib.Term_BVBinOp SMTLib.BVShl lhs__smt rhs__smt);
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryShiftRight lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      ret (SMTLib.Term_BVBinOp SMTLib.BVShr lhs__smt rhs__smt);
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryBitwiseOr lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      ret (SMTLib.Term_BVBinOp SMTLib.BVOr lhs__smt rhs__smt);
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryBitwiseAnd lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      ret (SMTLib.Term_BVBinOp SMTLib.BVAnd lhs__smt rhs__smt);
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryGreaterThan lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      raise "todo"%string;
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryLessThan lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      raise "todo"%string;
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryLessThanEqual lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      raise "todo"%string;
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryEqualsEquals lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      raise "todo"%string;
-    expr_to_smt (Verilog.BinaryOp Verilog.BinaryLogicalAnd lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      raise "todo"%string;
-    expr_to_smt (Verilog.BinaryOp op _ _) :=
-      raise ("Unsupported operator in SMT: " ++ to_string op)%string;
+      binop_to_smt op lhs__smt rhs__smt;
     expr_to_smt (Verilog.Concatenation e1 e2) :=
       e1_smt <- expr_to_smt e1 ;;
       e2_smt <- expr_to_smt e2 ;;

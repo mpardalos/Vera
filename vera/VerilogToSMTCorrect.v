@@ -656,6 +656,141 @@ Proof.
     constructor.
 Qed.
 
+Lemma rawxbv_from_bv_app b1 b2 :
+  RawXBV.from_bv (b1 ++ b2)%list = (RawXBV.from_bv b1 ++ RawXBV.from_bv b2)%list.
+Proof. unfold RawXBV.from_bv. apply List.map_app. Qed.
+
+Lemma shl_to_bv n vec shamt :
+  XBV.to_bv (XBV.shl (XBV.from_bv vec) (BV.to_N shamt)) = Some (BV.bv_shl (n:=n) vec shamt).
+Proof.
+  unfold BV.to_N, RawBV.to_N, BV.bv_shl, RawBV.bv_shl, RawBV.shl_be.
+  intros.
+  destruct vec as [vec vec_wf].
+  destruct shamt as [shamt shamt_wf].
+  rewrite <- XBV.xbv_bv_inverse. f_equal.
+  apply XBV.of_bits_equal; simpl.
+  rewrite vec_wf, shamt_wf. clear vec_wf shamt_wf.
+  rewrite N.eqb_refl. rewrite Nat2N.id. clear n.
+  generalize (RawBV.list2nat_be shamt). clear shamt. intro i.
+  revert vec.
+  induction i; intros.
+  - simp shl. crush.
+  - simpl.
+    rewrite <- IHi. clear IHi.
+    admit.
+Admitted.
+
+Lemma shr_to_bv n vec shamt :
+  XBV.to_bv (XBV.shr (XBV.from_bv vec) (BV.to_N shamt)) = Some (BV.bv_shr (n:=n) vec shamt).
+Proof.
+  unfold BV.to_N, RawBV.to_N, BV.bv_shr, RawBV.bv_shr, RawBV.shr_be.
+  intros.
+  destruct vec as [vec vec_wf].
+  destruct shamt as [shamt shamt_wf].
+  rewrite <- XBV.xbv_bv_inverse. f_equal.
+  apply XBV.of_bits_equal; simpl.
+  rewrite vec_wf, shamt_wf. clear vec_wf shamt_wf.
+  rewrite N.eqb_refl. rewrite Nat2N.id. clear n.
+  generalize (RawBV.list2nat_be shamt). clear shamt. intro i.
+  revert vec.
+  induction i; intros.
+  - simp shr. crush.
+  - simpl.
+    rewrite <- IHi. clear IHi.
+    destruct vec; simpl; simp shr.
+    + destruct i; crush.
+    + clear b.
+      rewrite rawxbv_from_bv_app. simpl.
+      generalize (RawXBV.from_bv vec). clear vec. intro vec.
+      revert i.
+      induction vec; intros.
+      * destruct i; simpl; simp shr; try crush.
+        destruct i; simpl; simp shr; try crush.
+      * simpl; simp shr.
+        destruct i; simpl; simp shr; try crush.
+Qed.
+
+Lemma binop_to_smt_correct {w} (vars : StrFunMap.t smt_var_info) :
+  forall op t (m : VerilogSMTBijection.t) regs ρ lhs lhs_smt xbv_lhs bv_lhs rhs rhs_smt xbv_rhs bv_rhs xbv bv,
+    eval_expr regs lhs = Some xbv_lhs ->
+    SMTLib.interp_term ρ lhs_smt = Some bv_lhs ->
+    verilog_smt_match_value (w:=w) xbv_lhs bv_lhs ->
+
+    eval_expr regs rhs = Some xbv_rhs ->
+    SMTLib.interp_term ρ rhs_smt = Some bv_rhs ->
+    verilog_smt_match_value (w:=w) xbv_rhs bv_rhs ->
+
+    eval_binop op xbv_lhs xbv_rhs = xbv ->
+    SMTLib.interp_term ρ t = Some bv ->
+    binop_to_smt op lhs_smt rhs_smt = inr t ->
+
+    verilog_smt_match_value xbv bv.
+Proof.
+  Ltac inv_match_values :=
+    repeat match goal with
+      | [ H : context[verilog_smt_match_value _ _] |- _ ] => (insterU H || inv H)
+      end.
+
+  Ltac inv_dep_pairs :=
+    repeat match goal with
+    | [ H : {| pr1 := _; pr2 := _ |} = {| pr1 := _; pr2 := _ |} |- _ ] => inv H
+    | [ H : (?x; _) = (?x; _) |- _ ] => apply inj_pair2 in H; subst
+    end.
+
+  intros.
+  destruct op;
+  (* funelim (binop_to_smt op lhs_smt rhs_smt); *)
+    try discriminate;
+    repeat (simp binop_to_smt eval_binop in *; simpl in *; autodestruct_eqn E);
+    inv_match_values;
+    inv_dep_pairs.
+  - simp bv_binop. rewrite ! XBV.xbv_bv_inverse. constructor.
+  - simp bv_binop. rewrite ! XBV.xbv_bv_inverse. constructor.
+  - simp bv_binop. rewrite ! XBV.xbv_bv_inverse. constructor.
+  - apply verilog_smt_match_to_bv.
+    erewrite bitwise_and_no_exes
+      by (rewrite XBV.xbv_bv_inverse in *; crush).
+    rewrite ! XBV.xbv_bv_inverse.
+    crush.
+  - apply verilog_smt_match_to_bv.
+    erewrite bitwise_or_no_exes
+      by (rewrite XBV.xbv_bv_inverse in *; crush).
+    rewrite ! XBV.xbv_bv_inverse.
+    crush.
+  - (* Shift right *)
+    apply verilog_smt_match_to_bv.
+    rewrite ! XBV.to_N_from_bv. simpl.
+    apply shr_to_bv.
+  - (* Shift left *)
+    apply verilog_smt_match_to_bv.
+    rewrite ! XBV.to_N_from_bv. simpl.
+    apply shl_to_bv.
+  - (* Shift left (arithmetic) *)
+    apply verilog_smt_match_to_bv.
+    rewrite ! XBV.to_N_from_bv. simpl.
+    apply shl_to_bv.
+Qed.
+
+Lemma binop_to_smt_eval_left ρ op l r t bv :
+  binop_to_smt op l r = inr t ->
+  SMTLib.interp_term ρ t = Some bv ->
+  (exists bv', SMTLib.interp_term ρ l = Some bv').
+Proof.
+  intros * H1 H2.
+  destruct op; simp binop_to_smt in *;
+    inv H1; crush.
+Qed.
+
+Lemma binop_to_smt_eval_right ρ op l r t bv :
+  binop_to_smt op l r = inr t ->
+  SMTLib.interp_term ρ t = Some bv ->
+  (exists bv', SMTLib.interp_term ρ r = Some bv').
+Proof.
+  intros * H1 H2.
+  destruct op; simp binop_to_smt in *;
+    inv H1; crush.
+Qed.
+
 Lemma expr_to_smt_correct {w} (vars : StrFunMap.t smt_var_info) (expr : Verilog.expression w) :
   forall t tag (m : VerilogSMTBijection.t) regs ρ xbv bv,
     (forall name, m (tag, name) = option_map fst (vars name)) ->
@@ -666,11 +801,11 @@ Lemma expr_to_smt_correct {w} (vars : StrFunMap.t smt_var_info) (expr : Verilog.
     verilog_smt_match_value xbv bv.
 Proof.
   Ltac inster_all :=
-    repeat match goal with
+    unshelve (repeat match goal with
       | [ H : context[verilog_smt_match_value _ _] |- _ ] => (insterU H || inv H)
       | [ H : {| pr1 := _; pr2 := _ |} = {| pr1 := _; pr2 := _ |} |- _ ] => inv H
       | [ H : (?x; _) = (?x; _) |- _ ] => apply inj_pair2 in H; subst
-      end.
+      end); try crush.
 
   Ltac expr_begin_tac :=
     match goal with
@@ -702,32 +837,15 @@ Proof.
 
   funelim (expr_to_smt vars expr); intros * Hmatch_vars Hexpr_to_smt Hmatch_states Heval_expr Hinterp_term;
     simp expr_to_smt in *; inv Hexpr_to_smt; autodestruct_eqn E.
-  - (* BinaryPlus *)
-    expr_begin_tac. bv_binop_tac.
-  - (* BinaryMinus *)
-    expr_begin_tac. bv_binop_tac.
-  - (* BinaryStar *)
-    expr_begin_tac. bv_binop_tac.
-  - (* BinaryBitwiseAnd *)
-    expr_begin_tac.
-    apply verilog_smt_match_to_bv.
-    simp eval_binop.
-    erewrite bitwise_and_no_exes;
-      rewrite XBV.xbv_bv_inverse in *;
-      crush.
-  - (* BinaryBitwiseOr *)
-    expr_begin_tac.
-    apply verilog_smt_match_to_bv.
-    simp eval_binop.
-    erewrite bitwise_or_no_exes;
-      rewrite XBV.xbv_bv_inverse in *;
-      crush.
-  - admit. (* TODO BinaryShiftRight *)
-  - admit. (* TODO BinaryShiftLeft *)
-  - admit. (* TODO BinaryShiftLeftArithmetic *)
-  - admit. (* TODO UnaryPlus *)
-  - admit. (* TODO UnaryMinus *)
-  - admit. (* TODO UnaryNegation *)
+  - simp eval_expr in Heval_expr. inv Heval_expr. autodestruct_eqn E.
+    edestruct binop_to_smt_eval_left with (t:=t); eauto.
+    edestruct binop_to_smt_eval_right with (t:=t); eauto.
+    expr_begin_tac; [idtac].
+    eapply binop_to_smt_correct with (lhs:=lhs) (rhs:=rhs) (lhs_smt:=t0) (rhs_smt:=t1);
+      (eauto || constructor).
+  - destruct op.
+    + simp eval_expr in Heval_expr. inv Heval_expr. autodestruct_eqn E.
+      simp unaryop_to_smt in *.
   - (* Conditional *)
     expr_begin_tac;
       try solve [eauto];
@@ -760,7 +878,7 @@ Proof.
     unfold smt_select_bit in *.
     edestruct (smt_select_bit_part_eval_idx); eauto.
     edestruct (smt_select_bit_part_eval_vec); eauto.
-    expr_begin_tac.
+    expr_begin_tac; [idtac].
     cbn in Hinterp_term; autodestruct_eqn E.
     apply verilog_smt_match_to_bv.
     unfold Verilog.expr_type in *.
@@ -770,11 +888,11 @@ Proof.
       eapply XBV.to_N_from_bv.
     }
   - (* Concatenation *)
-    expr_begin_tac.
+    expr_begin_tac; [idtac].
     apply verilog_smt_match_to_bv.
     apply xbv_concat_to_bv.
   - (* Verilog.IntegerLiteral *)
-    expr_begin_tac.
+    expr_begin_tac; [idtac].
     now constructor.
   - (* Verilog.NamedExpression *)
     funelim (term_for_name vars w n); rewrite <- Heqcall in *; try discriminate; clear Heqcall.
@@ -782,18 +900,17 @@ Proof.
     { rewrite Hmatch_vars. replace (vars name). reflexivity. }
     (* FIXME: don't reference names *)
     inv H0. 
-    expr_begin_tac.
+    expr_begin_tac; [idtac].
     simpl.
     replace bv with (SMTLib.Value_BitVec w bv0) by congruence.
     constructor.
   - (* Resize *)
     unfold Verilog.expr_type in *.
     edestruct (cast_from_to_part_eval); eauto.
-    expr_begin_tac.
+    expr_begin_tac; [idtac].
 
     eapply cast_from_to_correct; eauto.
-Admitted.
-
+Qed.
 
 Theorem verilog_to_smt_correct tag start v smt :
   verilog_to_smt tag start v = inr smt ->
