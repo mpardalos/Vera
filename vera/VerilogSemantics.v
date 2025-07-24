@@ -35,6 +35,103 @@ Set Bullet Behavior "Strict Subproofs".
 Module CombinationalOnly.
   Definition Process := Verilog.module_item.
 
+  Section Sorted.
+    Equations
+      expr_reads {w} : Verilog.expression w -> list string :=
+      expr_reads (Verilog.UnaryOp op operand) :=
+        expr_reads operand ;
+      expr_reads (Verilog.BinaryOp op lhs rhs) :=
+        expr_reads lhs ++ expr_reads rhs ;
+      expr_reads (Verilog.Conditional cond tBranch fBranch) :=
+        expr_reads cond ++ expr_reads tBranch ++ expr_reads fBranch ;
+      expr_reads (Verilog.BitSelect vec idx) :=
+        expr_reads vec ++ expr_reads idx;
+      expr_reads (Verilog.Resize t expr) :=
+        expr_reads expr;
+      expr_reads (Verilog.Concatenation e1 e2) :=
+        expr_reads e1 ++ expr_reads e2 ;
+      expr_reads (Verilog.IntegerLiteral _ val) :=
+        [] ;
+      expr_reads (Verilog.NamedExpression t name) :=
+        [name].
+
+    Equations
+      statement_reads : Verilog.statement -> list string :=
+      statement_reads (Verilog.Block stmts) :=
+        statement_reads_lst stmts ;
+      statement_reads (Verilog.If cond trueBranch falseBranch) :=
+        expr_reads cond ++ statement_reads trueBranch ++ statement_reads falseBranch ;
+      statement_reads (Verilog.BlockingAssign lhs rhs) :=
+        expr_reads rhs ; (* ONLY looking at rhs here *)
+      statement_reads (Verilog.NonBlockingAssign lhs rhs) :=
+        expr_reads rhs ; (* ...and here *)
+    where statement_reads_lst :  list Verilog.statement -> list string :=
+      statement_reads_lst [] := [];
+      statement_reads_lst (hd :: tl) :=
+        statement_reads hd ++ statement_reads_lst tl;
+    .
+
+    Equations
+      statement_writes : Verilog.statement -> list string :=
+      statement_writes (Verilog.Block stmts) :=
+        statement_writes_lst stmts ;
+      statement_writes (Verilog.If cond trueBranch falseBranch) :=
+        statement_writes trueBranch ++ statement_writes falseBranch ;
+      statement_writes (Verilog.BlockingAssign lhs rhs) :=
+        expr_reads lhs ; (* ONLY looking at lhs here *)
+      statement_writes (Verilog.NonBlockingAssign lhs rhs) :=
+        expr_reads lhs ; (* ...and here *)
+    where statement_writes_lst : list Verilog.statement -> list string :=
+      statement_writes_lst [] := [];
+      statement_writes_lst (hd :: tl) :=
+        statement_writes hd ++ statement_writes_lst tl;
+    .
+
+    Equations module_item_reads_comb : Verilog.module_item -> list string :=
+      module_item_reads_comb (Verilog.AlwaysComb stmt) => statement_reads stmt ;
+      module_item_reads_comb (Verilog.AlwaysFF _) => [] ;
+      (* TODO: idk if this is right? Initial blocks definitely don't matter
+      after initalization, but maybe there should be some kind of check for
+      that? In any case, only matters once we do synchronous *)
+      module_item_reads_comb (Verilog.Initial stmt) => [] ;
+    .
+
+    Equations module_item_writes_comb : Verilog.module_item -> list string :=
+      module_item_writes_comb (Verilog.AlwaysComb stmt) => statement_writes stmt ;
+      module_item_writes_comb (Verilog.AlwaysFF _) => [] ;
+      (* TODO: See above comment. *)
+      module_item_writes_comb (Verilog.Initial stmt) => [] ;
+    .
+
+    Definition disjoint {A} (l r : list A) : Prop :=
+      Forall (fun x => ~ In x r) l.
+
+    Lemma disjoint_l A (l r : list A) :
+      Forall (fun x => ~ In x r) l ->
+      disjoint l r.
+    Proof. trivial. Qed.
+
+    Lemma disjoint_r A (l r : list A) :
+      Forall (fun x => ~ In x l) r ->
+      disjoint l r.
+    Proof. unfold disjoint. rewrite ! Forall_forall. crush. Qed.
+
+    Equations module_items_sorted : list Verilog.module_item -> Prop :=
+      module_items_sorted [] := True;
+      module_items_sorted (mi :: mis) :=
+        Forall (fun mi' => disjoint (module_item_writes_comb mi) (module_item_reads_comb mi')) mis.
+
+    Instance dec_disjoint {A} `{decA : forall (x y : A), DecProp (x = y)} (l r : list A) : DecProp (disjoint l r).
+    Proof. Admitted.
+
+    Instance dec_module_items_sorted ms : DecProp (module_items_sorted ms).
+    Proof.
+      destruct ms; simp module_items_sorted.
+      - crush.
+      - typeclasses eauto.
+    Defined.
+  End Sorted.
+
   Definition RegisterState := StrFunMap.t {n & XBV.xbv n}.
 
   Record VerilogState :=
