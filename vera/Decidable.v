@@ -22,6 +22,12 @@ Notation "mk_dec_eq( x )" :=
   ltac:(unfold DecProp in *; eauto using x)
          (only parsing).
 
+Instance dec_False : DecProp (False).
+Proof. firstorder. Qed.
+
+Instance dec_True : DecProp (True).
+Proof. firstorder. Qed.
+
 Instance dec_not {P} `{DecProp P} : DecProp (~ P ).
 Proof. firstorder. Qed.
 
@@ -117,6 +123,10 @@ Proof.
       * right. inversion 1; subst; contradiction.
 Qed.
 
+Instance dec_In A {dec_x : forall (x y : A), DecProp (x = y)} l (x : A) :
+  DecProp (In x l).
+Proof. induction l; firstorder. Qed.
+
 Instance dec_NoDup {A}
   `{a_dec : forall (x y: A), DecProp (x = y)}
   (l : list A) :
@@ -135,4 +145,10 @@ Definition assert_dec {E} (P : Prop) `{ DecProp P } (err : E) : sum E P :=
   match dec P with
   | right _ => inl err
   | left prf => inr prf
+  end.
+
+Definition opt_dec (P : Prop) `{DecProp P} : option P :=
+  match dec P with
+  | right _ => None
+  | left prf => Some prf
   end.

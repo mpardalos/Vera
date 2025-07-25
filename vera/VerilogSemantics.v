@@ -116,19 +116,21 @@ Module CombinationalOnly.
       disjoint l r.
     Proof. unfold disjoint. rewrite ! Forall_forall. crush. Qed.
 
+    (* Just checking that typeclasses eauto can indeed figure out DecProp (disjoint l r) *)
+    Goal (forall (l r : list nat), DecProp (disjoint l r)). typeclasses eauto. Qed.
+
     Equations module_items_sorted : list Verilog.module_item -> Prop :=
       module_items_sorted [] := True;
       module_items_sorted (mi :: mis) :=
-        Forall (fun mi' => disjoint (module_item_writes_comb mi) (module_item_reads_comb mi')) mis.
+        Forall (fun mi' => disjoint (module_item_writes_comb mi) (module_item_reads_comb mi')) mis
+               /\ module_items_sorted mis
+    .
 
-    Instance dec_disjoint {A} `{decA : forall (x y : A), DecProp (x = y)} (l r : list A) : DecProp (disjoint l r).
-    Proof. Admitted.
-
-    Instance dec_module_items_sorted ms : DecProp (module_items_sorted ms).
+    Global Instance dec_module_items_sorted ms : DecProp (module_items_sorted ms).
     Proof.
-      destruct ms; simp module_items_sorted.
-      - crush.
-      - typeclasses eauto.
+      induction ms;
+        simp module_items_sorted;
+        typeclasses eauto.
     Defined.
   End Sorted.
 
@@ -381,6 +383,7 @@ Module CombinationalOnly.
   Equations run_step : VerilogState -> option VerilogState :=
     run_step (MkVerilogState reg []) := None;
     run_step (MkVerilogState reg (p :: ps)) :=
+      let* _ := opt_dec (module_items_sorted (p :: ps)) in
       let* reg' := exec_module_item reg p in
       Some (MkVerilogState reg' ps).
 
