@@ -152,14 +152,20 @@ Section expr_to_smt.
 
   Equations transfer_comb_assignments : Verilog.statement -> transf (list SMTLib.term) :=
     transfer_comb_assignments (Verilog.Block stmts) =>
-      lists <- mapT transfer_comb_assignments stmts ;;
-      ret (concat lists) ;
+      transfer_comb_assignments_lst stmts ;
     transfer_comb_assignments (Verilog.BlockingAssign (Verilog.NamedExpression t name) rhs) =>
       lhs__smt <- term_for_name t name ;;
       rhs__smt <- expr_to_smt rhs ;;
       ret [SMTLib.Term_Eq lhs__smt rhs__smt];
     transfer_comb_assignments _ =>
-      raise "VerilogToSMT: Invalid expression in always_comb block"%string
+      raise "VerilogToSMT: Invalid expression in always_comb block"%string;
+    where
+      transfer_comb_assignments_lst : list Verilog.statement -> transf (list SMTLib.term) :=
+      transfer_comb_assignments_lst [] := ret [];
+      transfer_comb_assignments_lst (hd :: tl) :=
+        a <- transfer_comb_assignments hd ;;
+        b <- transfer_comb_assignments_lst tl ;;
+        ret (a ++ b)
   .
 End expr_to_smt.
 

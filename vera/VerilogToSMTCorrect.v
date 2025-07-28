@@ -20,6 +20,8 @@ From Coq Require String.
 From Coq Require Import Logic.ProofIrrelevance.
 From Coq Require Import NArith.
 From Coq Require Import PeanoNat.
+From Coq Require Import Morphisms.
+From Coq Require Import Setoid.
 
 From Equations Require Import Equations.
 
@@ -164,7 +166,7 @@ Proof.
   constructor.
 Qed.
 
-Inductive verilog_smt_match_on_names (regs : RegisterState) (ρ : SMTLib.valuation) verilogName smtName :=
+Inductive verilog_smt_match_on_name (regs : RegisterState) (ρ : SMTLib.valuation) verilogName smtName : Prop :=
 | verilog_smt_match_on_names_intro w xbv val
     (Hsmtval : ρ smtName = Some val)
     (Hverilogval : regs verilogName = Some (w; xbv))
@@ -174,10 +176,45 @@ Definition verilog_smt_match_states
   (tag : TaggedName.Tag)
   (m : VerilogSMTBijection.t)
   (regs : RegisterState)
-  (ρ : SMTLib.valuation) :=
+  (ρ : SMTLib.valuation) : Prop :=
   forall verilogName smtName,
     m (tag, verilogName) = Some smtName ->
-    verilog_smt_match_on_names regs ρ verilogName smtName.
+    verilog_smt_match_on_name regs ρ verilogName smtName.
+
+Definition verilog_smt_match_states_partial
+  (cond : String.string -> Prop)
+  (tag : TaggedName.Tag)
+  (m : VerilogSMTBijection.t)
+  (regs : RegisterState)
+  (ρ : SMTLib.valuation) : Prop :=
+  forall verilogName smtName,
+    cond verilogName ->
+    m (tag, verilogName) = Some smtName ->
+    verilog_smt_match_on_name regs ρ verilogName smtName.
+
+(* Written by Claude *in one shot* wat. *)
+Instance verilog_smt_match_states_partial_morphism
+  (tag : TaggedName.Tag)
+  (m : VerilogSMTBijection.t)
+  (regs : RegisterState)
+  (ρ : SMTLib.valuation) :
+  Proper (pointwise_relation String.string iff ==> iff)
+    (fun cond => verilog_smt_match_states_partial cond tag m regs ρ).
+Proof.
+  intros cond1 cond2 H_equiv.
+  unfold verilog_smt_match_states_partial.
+  split; intros H verilogName smtName.
+  - intros H_cond1 H_map.
+    apply (H verilogName smtName).
+    + apply H_equiv. exact H_cond1.
+    + exact H_map.
+  - intros H_cond2 H_map.
+    apply (H verilogName smtName).
+    + apply H_equiv. exact H_cond2.
+    + exact H_map.
+Qed.
+
+
 
 Lemma bitwise_binop_no_exes (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
   (forall (lb rb : bool), RawXBV.bool_to_bit (f_bool lb rb) = f_bit (RawXBV.bool_to_bit lb) (RawXBV.bool_to_bit rb)) ->
@@ -912,6 +949,165 @@ Proof.
     eapply cast_from_to_correct; eauto.
 Qed.
 
+Lemma set_reg_get name w val regs :
+  set_reg name val regs name = Some (w; val).
+Proof.
+  unfold set_reg, StrFunMap.insert.
+  now rewrite String.eqb_refl.
+Qed.
+
+Definition smt_reflect_when
+  (C : SMTLib.valuation -> Prop)
+  (q : SMTLib.query)
+  (P : SMTLib.valuation -> Prop) :=
+  forall ρ : SMTLib.valuation,
+    C ρ -> (SMTLib.satisfied_by ρ q <-> P ρ).
+
+Lemma verilog_smt_match_states_partial_impl P1 P2 tag m regs ρ :
+  (forall x, P2 x -> P1 x) ->
+  verilog_smt_match_states_partial P1 tag m regs ρ ->
+  verilog_smt_match_states_partial P2 tag m regs ρ.
+Proof. crush. Qed.
+
+Lemma expr_to_smt_some w e : forall vars m tag regs ρ t,
+    expr_to_smt vars (w:=w) e = inr t ->
+    verilog_smt_match_states_partial (fun n : String.string => List.In n (expr_reads e)) tag m regs ρ ->
+    (exists bv, SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w bv)).
+Proof.
+  induction e; intros;
+    simp expr_to_smt in H; inv H; autodestruct_eqn E;
+    simp expr_reads in *.
+  - edestruct IHe1 as [bv1 Hbv1]; eauto.
+    {
+      unfold verilog_smt_match_states_partial in *.
+      intros.
+      eapply H0; eauto.
+      rewrite List.in_app_iff. eauto.
+    }
+    edestruct IHe2 as [bv2 Hbv2].
+    { eassumption. }
+    {
+      unfold verilog_smt_match_states_partial in *.
+      intros.
+      eapply H0; eauto.
+      rewrite List.in_app_iff. eauto.
+    }
+    destruct op; simp binop_to_smt in H2; inv H2;
+      simpl; rewrite Hbv1; rewrite Hbv2;
+      destruct (N.eq_dec w w); try contradiction;
+      eexists; reflexivity.
+  - edestruct IHe as [bv Hbv].
+    { eassumption. }
+    {
+      unfold verilog_smt_match_states_partial in *.
+      intros.
+      eapply H0; eauto.
+    }
+    destruct op; simp unaryop_to_smt in H2; inv H2;
+      simpl; rewrite Hbv;
+      eexists; reflexivity.
+  - edestruct IHe1 as [bv1 Hbv1].
+    { eassumption. }
+    {
+      unfold verilog_smt_match_states_partial in *.
+      intros.
+      eapply H0; eauto.
+      rewrite ! List.in_app_iff. eauto.
+    }
+    edestruct IHe2 as [bv2 Hbv2].
+    { eassumption. }
+    {
+      unfold verilog_smt_match_states_partial in *.
+      intros.
+      eapply H0; eauto.
+      rewrite ! List.in_app_iff. eauto.
+    }
+    edestruct IHe3 as [bv3 Hbv3].
+    { eassumption. }
+    {
+      unfold verilog_smt_match_states_partial in *.
+      intros.
+      eapply H0; eauto.
+      rewrite ! List.in_app_iff. eauto.
+    }
+    simpl. rewrite Hbv1, Hbv2, Hbv3.
+    autodestruct; eexists; eauto.
+Admitted.
+
+Lemma stmt_to_smt_correct
+  (vars : StrFunMap.t smt_var_info) (stmt : Verilog.statement) :
+  forall t tag (m : VerilogSMTBijection.t) regs regs',
+    (forall name, m (tag, name) = option_map fst (vars name)) ->
+    transfer_comb_assignments vars stmt = inr t ->
+    exec_statement regs stmt = Some regs' ->
+    smt_reflect_when
+      (verilog_smt_match_states_partial (fun n => List.In n (statement_reads stmt)) tag m regs)
+      t
+      (verilog_smt_match_states_partial (fun n => List.In n (statement_writes stmt)) tag m regs').
+Proof.
+  eapply transfer_comb_assignments_elim with
+    (var_verilog_to_smt := vars)
+    (P0:= fun ss x =>
+            forall (t : list SMTLib.term) (tag : TaggedName.Tag) (m : VerilogSMTBijection.t) (regs regs' : RegisterState),
+              (forall name : String.string, m (tag, name) = option_map fst (vars name)) ->
+              x = inr t ->
+              exec_statements regs ss = Some regs' ->
+              smt_reflect_when
+                (verilog_smt_match_states_partial (fun n : String.string => List.In n (statement_reads_lst ss)) tag m regs) t
+                (verilog_smt_match_states_partial (fun n : String.string => List.In n (statement_writes_lst ss)) tag m regs')
+    ); intros; try discriminate.
+  - simp exec_statement statement_writes statement_reads in *.
+  - simp exec_statement statement_writes statement_reads expr_reads in *.
+    repeat match goal with
+           | [H : (_ ;; _)%monad = _ |- _ ] => inv H
+           | [H : inr ?x = inr ?y |- _ ] => inv H
+           | [H : inl ?x = inl ?y |- _ ] => inv H
+           | [H : inl ?x = inr ?y |- _ ] => inv H
+           | [H : inr ?x = inl ?y |- _ ] => inv H
+           end; autodestruct_eqn E.
+    funelim (term_for_name vars t name); rewrite <- Heqcall in *; clear Heqcall;
+      try discriminate.
+    inv E0.
+    split; intros.
+    + unfold verilog_smt_match_states_partial in *; intros.
+      inv H1. inv H2; [|now some_inv]. inv H6. autodestruct_eqn E.
+      (* TODO: expr_to_smt correct should only need the read names to match *)
+      eapply expr_to_smt_correct in E2; eauto; [|admit]. inv E2.
+      rewrite SMTLib.value_eqb_eq in *; subst.
+      erewrite H, Heq0 in H3. simpl in H3. inv H3.
+      repeat econstructor; eauto.
+      rewrite set_reg_get. do 2 f_equal.
+    + edestruct expr_to_smt_some as [bv Hbv]; [solve[eauto]|solve[eauto]|].
+      (* TODO: expr_to_smt correct should only need the read names to match *)
+      eapply expr_to_smt_correct with (bv:=((SMTLib.Value_BitVec t bv))) in E2; eauto; [|admit]. inv E1.
+      repeat constructor. unfold SMTLib.term_satisfied_by. simpl.
+      edestruct H1. {
+        repeat econstructor.
+      } {
+        erewrite H, Heq0. reflexivity.
+      } simpl in *.
+      rewrite Hsmtval, Hbv.
+      repeat f_equal.
+      rewrite set_reg_get in Hverilogval. inv Hverilogval.
+      apply_somewhere inj_pair2; subst.
+      repeat econstructor. unfold SMTLib.term_satisfied_by. simpl.
+      rewrite SMTLib.value_eqb_eq.
+      inv Hmatchvals. repeat f_equal.
+      inv E2. apply_somewhere inj_pair2; subst.
+      eapply BV.of_bits_equal.
+      apply RawXBV.from_bv_injective.
+      auto.
+  - unfold verilog_smt_match_states_partial.
+    simp exec_statement statement_writes statement_reads in *.
+    inv H0. split; intros; (crush || constructor).
+  - simp exec_statement statement_writes statement_reads in *.
+    repeat match goal with
+           | [H : (_ ;; _)%monad = _ |- _ ] => inv H
+           end; autodestruct_eqn E.
+    (* TODO: exec_statements case *)
+    admit.
+Admitted.
+
 Theorem verilog_to_smt_correct tag start v smt :
   verilog_to_smt tag start v = inr smt ->
   SMTLibFacts.smt_reflect
@@ -923,6 +1119,9 @@ Proof.
     try rewrite Heq in *;
     simpl in *;
     try discriminate.
-  autodestruct_eqn E. cbn.
-  intros H. inv H. cbn in *.
+  autodestruct_eqn E. intros H. inv H.
+  eapply stmt_to_smt_correct in E1.
+  (* FIXME: The expectation of a single sequential always block is... questionable *)
+  (* intros H. inv H. cbn in *. *)
+  (* replace l with (@List.nil SMTLib.term) by admit. simpl. *)
 Admitted.
