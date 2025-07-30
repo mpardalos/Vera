@@ -106,11 +106,7 @@ Lemma verilog_to_smt_map_match tag start v smt :
   SMT.match_map_verilog tag (SMT.nameMap smt) v.
 Proof.
   intros.
-  funelim (verilog_to_smt tag start v);
-    simp verilog_to_smt in *;
-    try rewrite Heq in *;
-    simpl in *;
-    try discriminate.
+  unfold verilog_to_smt in *. simpl in *.
   autodestruct_eqn E. cbn.
   eauto using mk_bijection_smt_map_match.
 Qed.
@@ -131,11 +127,7 @@ Lemma verilog_to_smt_only_tag tag start v s :
   VerilogSMTBijection.only_tag tag (SMT.nameMap s).
 Proof.
   intros.
-  funelim (verilog_to_smt tag start v);
-    simp verilog_to_smt in *;
-    try rewrite Heq in *;
-    simpl in *;
-    try discriminate.
+  unfold verilog_to_smt in *. simpl in *.
   autodestruct_eqn E. cbn.
   eauto using mk_bijection_only_tag.
 Qed.
@@ -1108,20 +1100,175 @@ Proof.
     admit.
 Admitted.
 
+(* Lemma stmt_to_smt_correct' *)
+(*   (vars : StrFunMap.t smt_var_info) (stmt : Verilog.statement) : *)
+(*   forall t tag (m : VerilogSMTBijection.t) regs regs', *)
+(*     (forall name, m (tag, name) = option_map fst (vars name)) -> *)
+(*     transfer_comb_assignments vars stmt = inr t -> *)
+(*     exec_statement regs stmt = Some regs' -> *)
+(*     forall ρ : SMTLib.valuation, *)
+(*       verilog_smt_match_states_partial (fun n => List.In n (statement_reads stmt)) tag m regs ρ -> *)
+(*       (SMTLib.satisfied_by ρ t <-> verilog_smt_match_states_partial (fun n => List.In n (statement_writes stmt)) tag m regs' ρ). *)
+
+Definition inputs_of_execution (input_vars : list Verilog.variable) (e : execution) : option (list {n : N & XBV.xbv n}) :=
+  List.mapT_list (fun var => match e (Verilog.varName var) with
+                          | Some (w; xbv) =>
+                              if (w =? Verilog.varWidth var)%N
+                              then Some (w; xbv)
+                              else None
+                          | None => None
+                          end) input_vars.
+
+Lemma mapT_list_eq_nil A B (f : A -> option B) l :
+  List.mapT_list f l = Some []%list ->
+  l = []%list.
+Proof. destruct l; crush. Qed.
+
+Lemma mapT_list_eq_cons A B l : forall (f : A -> option B) l' b,
+  List.mapT_list f l = Some (b :: l')%list ->
+  exists (a : A) (tl : list A), l = (a :: tl)%list /\ f a = Some b /\ List.mapT_list f tl = Some l'.
+Proof.
+  destruct l; intros * H; [crush|].
+  inv H. autodestruct_eqn E.
+  some_inv. eauto.
+Qed.
+
+Lemma inputs_of_execution_valid input : forall vars e,
+    inputs_of_execution vars e = Some input ->
+    input_valid vars input.
+Proof.
+  unfold input_valid, inputs_of_execution, Verilog.var_names.
+  induction input as [|[w bv]]; intros * H.
+  - apply mapT_list_eq_nil in H.
+    subst. constructor.
+  - eapply mapT_list_eq_cons in H.
+    destruct H as [n [ns [H1 [H2 H3]]]].
+    autodestruct_eqn E. rewrite N.eqb_eq in *.
+    crush.
+Qed.
+
+(* TODO: StrFunMap.gsi *)
+
+Lemma inputs_of_execution_same_values vars : forall e input,
+  inputs_of_execution vars e = Some input ->
+  List.Forall (fun n : String.string => StrFunMap.of_list (List.combine (Verilog.var_names vars) input) n = e n) (Verilog.var_names vars).
+Proof.
+  unfold inputs_of_execution.
+  induction vars; intros; [crush|].
+  simpl in *. autodestruct_eqn E; [discriminate|].
+  inv H1. simpl. rewrite N.eqb_eq in *. subst.
+  unfold StrFunMap.insert.
+  insterU IHvars.
+  rewrite ! List.Forall_forall in *.
+  intros ? []; autodestruct_eqn E;
+    (rewrite String.eqb_eq in * || rewrite String.eqb_neq in * );
+    subst; crush.
+Qed.
+
+Lemma exec_statement_reads_has_values_before r1 r2 stmt :
+  exec_statement r1 stmt = Some r2 ->
+  List.Forall (fun n => exists v, r1 n = v) (statement_reads stmt).
+Proof.
+  rewrite List.Forall_forall.
+  eapply exec_statement_elim
+    with
+    (P := fun regs stmt result =>
+            result = Some r2 ->
+            forall x : String.string,
+              List.In x (statement_reads stmt) ->
+              exists v : option {n : N & XBV.xbv n}, r1 x = v)
+    (P0 := fun regs stmts result =>
+             result = Some r2 ->
+             forall x : String.string,
+               List.In x (statement_reads_lst stmts) ->
+               exists v : option {n : N & XBV.xbv n}, r1 x = v);
+    crush.
+Qed.
+
+Lemma TODO_exec_statement_change_vars r1 r2 stmt :
+  List.Forall (fun n => r1 n = r2 n) (statement_reads stmt) ->
+  exec_statement r1 stmt = exec_statement r2 stmt.
+Proof. Admitted.
+
+Lemma valid_execution_single v r1 r2 stmt :
+  (* FIXME: statement_reads should only include actual inputs, but currently includes "self" write-reads *)
+  (* FIXME: order might be different *)
+  Verilog.var_names (Verilog.input_vars (Verilog.modVariables v)) = statement_reads stmt ->
+  Verilog.modBody v = [Verilog.AlwaysComb stmt]%list ->
+  exec_statement r1 stmt = Some r2 ->
+  valid_execution v r2.
+Proof.
+  unfold valid_execution.
+  intros Hinputs Hbody Hexec.
+  pose proof exec_statement_reads_has_values_before as Hvals. insterU Hvals.
+  destruct (inputs_of_execution (Verilog.input_vars (Verilog.modVariables v)) r1) as [input|] eqn:E.
+  {
+    exists input. exists ({| regState := r2; pendingProcesses := []%list |}).
+    split.
+    - eauto using inputs_of_execution_valid.
+    - split; [|crush].
+      unfold initial_state. rewrite Hbody.
+      simp run_multistep exec_module_item.
+      rewrite TODO_exec_statement_change_vars with (r2 := r1); cycle 1. {
+        rewrite <- Hinputs.
+        eauto using inputs_of_execution_same_values.
+      }
+      rewrite Hexec. simpl. simp run_multistep. reflexivity.
+  }
+  {
+    (* FIXME:
+       exec_statement r1 stmt = Some r2 ->
+       inputs_of_execution (Verilog.input_vars (Verilog.modVariables v)) r1 <> None
+     *)
+    admit.
+  }
+Admitted.
+
+Lemma smt_reflect_when_intro C q P :
+  (forall ρ, P ρ -> C ρ) ->
+  (forall ρ, SMTLib.satisfied_by ρ q -> C ρ) ->
+  smt_reflect_when C q P ->
+  SMTLibFacts.smt_reflect q P.
+Proof. unfold smt_reflect_when, SMTLibFacts.smt_reflect. firstorder. Qed.
+
+Lemma transfer_module_body_correct v :
+  forall tag vars (m : VerilogSMTBijection.t) stmt q,
+    no_errors v ->
+    Verilog.modBody v = [Verilog.AlwaysComb stmt]%list ->
+    (forall name, m (tag, name) = option_map fst (vars name)) ->
+    transfer_module_body vars (Verilog.modBody v) = inr q ->
+    SMTLibFacts.smt_reflect
+      q
+      (fun ρ => valid_execution v (SMT.execution_of_valuation tag m ρ)).
+Proof.
+  intros.
+  destruct v. simpl in *. subst modBody.
+  simp transfer_module_body in *. inv H2; autodestruct_eqn E.
+  simp transfer_module_item in *.
+  rewrite List.app_nil_r.
+  split; intro.
+  - (* FIXME: statement_reads should really be statement_observes *)
+    eapply valid_execution_single; simpl.
+    + simpl. admit.
+    + trivial.
+    + pose proof stmt_to_smt_correct as Hreflect. unfold smt_reflect_when in Hreflect.
+      admit.
+  - admit.
+Admitted.
+
+Lemma mapT_inv A B : forall l (f : A -> transf B) o,
+  List.mapT_list f l = inr o ->
+  List.Forall (fun x => exists y, f x = inr y) l.
+Proof. induction l; intros; crush. Qed.
+
 Theorem verilog_to_smt_correct tag start v smt :
   verilog_to_smt tag start v = inr smt ->
   SMTLibFacts.smt_reflect
     (SMT.query smt)
     (fun ρ => valid_execution v (SMT.execution_of_valuation tag (SMT.nameMap smt) ρ)).
 Proof.
-  funelim (verilog_to_smt tag start v);
-    simp verilog_to_smt in *;
-    try rewrite Heq in *;
-    simpl in *;
-    try discriminate.
-  autodestruct_eqn E. intros H. inv H.
-  eapply stmt_to_smt_correct in E1.
-  (* FIXME: The expectation of a single sequential always block is... questionable *)
-  (* intros H. inv H. cbn in *. *)
-  (* replace l with (@List.nil SMTLib.term) by admit. simpl. *)
+  unfold verilog_to_smt.
+  intros H.
+  inv H. autodestruct_eqn E. cbn in *.
+  admit.
 Admitted.

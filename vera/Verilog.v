@@ -136,6 +136,8 @@ Module Verilog.
 
   Definition vtype := N.
 
+  Definition name := string.
+
   Equations binop_width : Verilog.binop -> N -> N :=
     binop_width BinaryPlus n := n; (* "+" *)
     binop_width BinaryMinus n := n; (* "-" *)
@@ -180,7 +182,7 @@ Module Verilog.
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
   | IntegerLiteral (w : N) : BV.bitvector w -> expression w
-  | NamedExpression (w : N) : string -> expression w
+  | NamedExpression (w : N) : name -> expression w
   | Resize {w_from} (w_to : N) : expression w_from -> expression w_to
   .
 
@@ -202,7 +204,7 @@ Module Verilog.
   (** Verilog modules *)
   Record vmodule :=
     MkMod
-      { modName : string
+      { modName : name
       ; modVariables : list variable
       ; modBody : list module_item
       }.
@@ -213,29 +215,21 @@ Module Verilog.
         (format "[ hi '.:' lo ]").
   End Notations.
 
-  Definition input_vars (v : vmodule) : list variable :=
+  Definition input_vars : list variable -> list variable :=
     map_opt (fun p => match varPort p with
                    | Some PortIn => Some p
                    | _ => None
-                   end)
-      (modVariables v).
+                   end).
 
-  Definition output_vars (v : vmodule) : list variable :=
+  Definition output_vars : list variable -> list variable :=
     map_opt (fun p => match varPort p with
                    | Some PortOut => Some p
                    | _ => None
-                   end)
-      (modVariables v).
+                   end).
 
-  Definition input_names (v : vmodule) : list string :=
-    map varName (input_vars v).
+  Definition var_names : list variable -> list name :=
+    map varName.
 
-  Definition output_names (v : vmodule) : list string :=
-    map varName (output_vars v).
-
-  Definition input_widths (v : vmodule) : list (N * string) :=
-    map (fun v => (varWidth v, varName v)) (input_vars v).
-
-  Definition output_widths (v : vmodule) : list (N * string) :=
-    map (fun v => (varWidth v, varName v)) (output_vars v).
+  Definition var_widths : list variable -> list (N * name) :=
+    map (fun v => (varWidth v, varName v)).
 End Verilog.

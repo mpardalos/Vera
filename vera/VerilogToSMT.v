@@ -167,6 +167,20 @@ Section expr_to_smt.
         b <- transfer_comb_assignments_lst tl ;;
         ret (a ++ b)
   .
+
+  Equations transfer_module_item : Verilog.module_item -> transf (list SMTLib.term) :=
+    transfer_module_item (Verilog.AlwaysComb stmt) := transfer_comb_assignments stmt;
+    transfer_module_item (Verilog.AlwaysFF stmt) := raise "always_ff not implemented"%string;
+    transfer_module_item (Verilog.Initial stmt) := raise "initial not implemented"%string
+  .
+
+  Equations transfer_module_body : list Verilog.module_item -> transf (list SMTLib.term) :=
+    transfer_module_body [] := ret [];
+    transfer_module_body (hd :: tl) :=
+      a <- transfer_module_item hd ;;
+      b <- transfer_module_body tl ;;
+      ret (a ++ b)
+  .
 End expr_to_smt.
 
 Equations transfer_initial (stmt : Verilog.statement) : transf (list SMTLib.term) :=
@@ -206,22 +220,15 @@ Equations mk_bijection (tag : TaggedName.Tag) (vars : list (Verilog.variable * s
     ret (VerilogSMTBijection.insert (tag, Verilog.varName var) name__smt tail_bijection prf1 prf2);
   mk_bijection tag [] := ret VerilogSMTBijection.empty.
 
-Equations verilog_to_smt (name_tag : TaggedName.Tag) (var_start : nat) (vmodule : Verilog.vmodule)
-  : transf SMT.smt_with_namemap :=
-  verilog_to_smt name_tag var_start vmodule with Verilog.modBody vmodule := {
-    | [ Verilog.Initial initial_body;
-        Verilog.AlwaysFF (Verilog.Block []);
-        Verilog.AlwaysComb always_comb_body
-      ] =>
-        let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
-        let var_map := mk_var_map var_assignment in
-        nameMap <- mk_bijection name_tag var_assignment ;;
-        initial_smt <- transfer_initial initial_body ;;
-        always_comb_smt <- transfer_comb_assignments var_map always_comb_body ;;
-        inr {|
-            SMT.nameMap := nameMap;
-            SMT.widths := List.map (fun '(var, smtname) => (smtname, Verilog.varWidth var)) var_assignment;
-            SMT.query := initial_smt ++ always_comb_smt;
-          |}
-    | _ => raise "Non-canonical verilog passed to verilog_to_smt"%string
-    }.
+Definition verilog_to_smt (name_tag : TaggedName.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smt_with_namemap :=
+  let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
+  let var_map := mk_var_map var_assignment in
+  nameMap <- mk_bijection name_tag var_assignment ;;
+  (* initial_smt <- transfer_initial initial_body ;; *)
+  body_smt <- transfer_module_body var_map (Verilog.modBody vmodule) ;;
+  inr {|
+      SMT.nameMap := nameMap;
+      SMT.widths := List.map (fun '(var, smtname) => (smtname, Verilog.varWidth var)) var_assignment;
+      SMT.query := body_smt;
+    |}
+.

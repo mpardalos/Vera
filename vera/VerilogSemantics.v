@@ -152,12 +152,6 @@ Module CombinationalOnly.
     |}
   .
 
-  Definition is_always_comb (it : Verilog.module_item) : bool :=
-    match it with
-    | Verilog.AlwaysComb _ => true
-    | _ => false
-    end.
-
   Definition variable_widths vars : list (string * N):=
     map (fun var => (Verilog.varName var, Verilog.varWidth var)) vars.
 
@@ -188,13 +182,13 @@ Module CombinationalOnly.
         eexists. eauto.
   Qed.
 
-  Definition input_valid (v : Verilog.vmodule) (input : list {w & XBV.xbv w}) :=
-    List.Forall2 (fun '(w, _) '(w'; _) => w = w') (Verilog.input_widths v) input.
+  Definition input_valid (input_vars : list Verilog.variable) (input : list {w & XBV.xbv w}) :=
+    List.Forall2 (fun '(w, _) '(w'; _) => w = w') (Verilog.var_widths input_vars) input.
 
-  Definition initial_state (m : Verilog.vmodule) (input : list {n & XBV.xbv n}) : VerilogState :=
+  Definition initial_state (v : Verilog.vmodule) (input : list {n & XBV.xbv n}) : VerilogState :=
     {|
-      regState := StrFunMap.of_list (List.combine (Verilog.input_names m) input);
-      pendingProcesses := List.filter is_always_comb (Verilog.modBody m)
+      regState := StrFunMap.of_list (List.combine (Verilog.var_names (Verilog.input_vars (Verilog.modVariables v))) input);
+      pendingProcesses := Verilog.modBody v
     |}.
 
   Equations bv_binop {w} : (BV.bitvector w -> BV.bitvector w -> BV.bitvector w) -> XBV.xbv w -> XBV.xbv w -> XBV.xbv w :=
@@ -430,7 +424,7 @@ Module CombinationalOnly.
 
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
     exists input final,
-      input_valid v input
+      input_valid (Verilog.input_vars (Verilog.modVariables v)) input
       /\ run_multistep (initial_state v input) = Some final
       /\ regState final = e.
 
@@ -445,7 +439,7 @@ Module CombinationalOnly.
 
   Definition no_errors (v : Verilog.vmodule) :=
     forall (input : list {w & XBV.xbv w})
-      (input_wf : input_valid v input)
+      (input_wf : input_valid (Verilog.input_vars (Verilog.modVariables v)) input)
       (input_defined : Forall (fun bv => ~ XBV.has_x bv.2) input),
     exists final, run_multistep (initial_state v input) = Some final.
 End CombinationalOnly.
