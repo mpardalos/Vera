@@ -51,7 +51,16 @@ Module CombinationalOnly.
     Defined.
   End Sorted.
 
-  Definition RegisterState := StrFunMap.t {n & XBV.xbv n}.
+  Module VariableAsMDT <: MiniDecidableType.
+    Definition t := Verilog.variable.
+    Definition eq_dec (x y : t) := dec (x = y).
+  End VariableAsMDT.
+
+  Module VariableAsUDT := Make_UDT(VariableAsMDT).
+
+  Module VariableDepMap := MkDepFunMap(VariableAsUDT).
+
+  Definition RegisterState := VariableDepMap.t (fun var => XBV.xbv (Verilog.varType var)).
 
   Record VerilogState :=
     MkVerilogState
@@ -60,8 +69,8 @@ Module CombinationalOnly.
       }
   .
 
-  Definition set_reg {w} (name : string) (value : XBV.xbv w) : RegisterState -> RegisterState :=
-    StrFunMap.insert name (w; value).
+  Definition set_reg (var : Verilog.variable) (value : XBV.xbv (Verilog.varType var)) : RegisterState -> RegisterState :=
+    VariableDepMap.insert var value.
 
   Definition pop_pending_process (st : VerilogState) : VerilogState :=
     {| regState := regState st
@@ -72,12 +81,12 @@ Module CombinationalOnly.
   Definition variable_names vars : list string :=
     map Verilog.varName vars.
 
-  Definition input_valid (input_vars : list Verilog.variable) (input : list {w & XBV.xbv w}) :=
-    List.Forall2 (fun var '(w; _) => Verilog.varType var = w) input_vars input.
-
-  Definition initial_state (v : Verilog.vmodule) (input : list {n & XBV.xbv n}) : VerilogState :=
+  Definition initial_state (v : Verilog.vmodule) (input : (forall var, In var (Verilog.modVariables v) -> (XBV.xbv (Verilog.varType var)))) : VerilogState :=
     {|
-      regState := StrFunMap.of_list (List.combine (Verilog.var_names (Verilog.module_inputs v)) input);
+      regState := (fun var => match dec (In var (Verilog.modVariables v)) with
+                           | left prf => Some (input var prf)
+                           | right prf => None
+                           end);
       pendingProcesses := Verilog.modBody v
     |}.
 
@@ -211,11 +220,7 @@ Module CombinationalOnly.
     eval_expr regs (Verilog.IntegerLiteral _ val) :=
       Some (XBV.from_bv val) ;
     eval_expr regs (Verilog.NamedExpression var) :=
-      let* (w; v) := regs (Verilog.varName var) in
-      match dec (w = Verilog.varType var) with
-      | left E => Some (rew E in v)
-      | right _ => None
-      end.
+      regs var.
 
   Equations
     exec_statement (regs : RegisterState) (stmt : Verilog.statement) : option RegisterState by struct :=
@@ -240,7 +245,7 @@ Module CombinationalOnly.
     ;
     exec_statement regs (Verilog.BlockingAssign (Verilog.NamedExpression var) rhs) :=
       let* rhs__val := eval_expr regs rhs in
-      Some (set_reg (Verilog.varName var) rhs__val regs)
+      Some (set_reg var rhs__val regs)
     ;
     exec_statement regs (Verilog.BlockingAssign lhs rhs) :=
       None;
@@ -313,22 +318,17 @@ Module CombinationalOnly.
 
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
     exists input final,
-      input_valid (Verilog.module_inputs v) input
-      /\ run_multistep (initial_state v input) = Some final
+      run_multistep (initial_state v input) = Some final
       /\ regState final = e.
 
   Definition complete_execution (v : Verilog.vmodule) (e : execution) :=
-    forall name,
-      In name (variable_names (Verilog.modVariables v))
-         <-> exists bv, e name = Some bv.
+    forall var, In var (Verilog.modVariables v) <-> exists bv, e var = Some bv.
 
   Lemma valid_execution_complete : forall v e,
       valid_execution v e -> complete_execution v e.
   Admitted.
 
   Definition no_errors (v : Verilog.vmodule) :=
-    forall (input : list {w & XBV.xbv w})
-      (input_wf : input_valid (Verilog.module_inputs v) input)
-      (input_defined : Forall (fun bv => ~ XBV.has_x bv.2) input),
+    forall input (input_defined : forall var prf, ~ XBV.has_x (input var prf)),
     exists final, run_multistep (initial_state v input) = Some final.
 End CombinationalOnly.

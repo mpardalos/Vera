@@ -64,19 +64,17 @@ Definition statically_in_bounds {w} (max_val : N) (expr : Verilog.expression w) 
 Definition smt_var_info : Type := (smtname * width).
 
 Section expr_to_smt.
-  Variable var_verilog_to_smt : StrFunMap.t smt_var_info.
+  Variable tag : TaggedName.Tag.
+  Variable name_bijection : VerilogSMTBijection.t.
 
   (* Used for checking expected invariants (assignments only read module outputs and write to module inputs) *)
   Variable inputs : list Verilog.variable.
   Variable outputs : list Verilog.variable.
 
   Equations var_to_smt (var : Verilog.variable): transf SMTLib.term :=
-    var_to_smt var with var_verilog_to_smt (Verilog.varName var) := {
+    var_to_smt var with name_bijection (tag, Verilog.varName var) := {
       | None => raise ("Name not declared: " ++ (Verilog.varName var))%string
-      | Some (n__smt, width) with dec (width = (Verilog.varType var)) => {
-        | left E => ret (SMTLib.Term_Const n__smt)
-        | right _ => raise ("Incorrect sort for " ++ (Verilog.varName var))%string
-        }
+      | Some n__smt => ret (SMTLib.Term_Const n__smt)
       }.
 
   Definition smt_select_bit vec_width vec_smt idx_width idx_smt :=
@@ -181,9 +179,9 @@ Equations assign_vars (start : smtname) (vars : list Verilog.variable) : list (V
   assign_vars start nil :=
     nil.
 
-Definition mk_var_map (vars : list (Verilog.variable * smtname)) : StrFunMap.t (smtname * width) :=
+Definition mk_var_map (vars : list (Verilog.variable * smtname)) : StrFunMap.t smtname :=
   List.fold_right
-    (fun '(var, smt__name) acc => StrFunMap.insert (Verilog.varName var) (smt__name, Verilog.varType var) acc)
+    (fun '(var, smt__name) acc => StrFunMap.insert (Verilog.varName var) smt__name acc)
     StrFunMap.empty vars.
 
 Equations mk_bijection (tag : TaggedName.Tag) (vars : list (Verilog.variable * smtname)) : transf VerilogSMTBijection.t :=
@@ -196,10 +194,10 @@ Equations mk_bijection (tag : TaggedName.Tag) (vars : list (Verilog.variable * s
 
 Definition verilog_to_smt (name_tag : TaggedName.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smt_with_namemap :=
   let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
-  let var_map := mk_var_map var_assignment in
   nameMap <- mk_bijection name_tag var_assignment ;;
   body_smt <- transfer_module_body
-               var_map
+               name_tag
+               nameMap
                (Verilog.module_inputs vmodule)
                (Verilog.module_outputs vmodule)
                (Verilog.modBody vmodule) ;;

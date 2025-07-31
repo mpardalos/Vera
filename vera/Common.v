@@ -29,6 +29,7 @@ From vera Require Import Tactics.
 From vera Require Import Decidable.
 
 Import ListNotations.
+Import SigTNotations.
 
 Module CommonNotations.
   Notation "{! x }" := (@exist _ _ x _).
@@ -133,6 +134,47 @@ End StrSet.
 Equations opt_or_else : forall {A}, option A -> A -> A :=
   opt_or_else (Some x) _ := x;
   opt_or_else None o := o.
+
+Module MkDepFunMap(Key: UsualDecidableTypeBoth).
+  Import (notations) Key.
+
+  Definition t A := forall (k : Key.t), option (A k).
+
+  Definition empty {A} : t A := fun _ => None.
+
+  Definition remove {A} (k: Key.t) (m: t A) : t A :=
+    fun k' => match Key.eq_dec k k' with
+           | left _ => None
+           | right _ => m k'
+           end.
+
+  Definition insert {A} (k: Key.t) (v: A k) (m: t A) : t A :=
+    fun k' => match Key.eq_dec k k' with
+           | left e => match e with
+                      | eq_refl => Some v
+                      end
+           | right _ => m k'
+           end.
+
+  Fixpoint of_list {A} (elems : list {k : Key.t & A k}) : t A :=
+    match elems with
+    | [] => fun _ => None
+    | (k; v) :: tl => insert k v (of_list tl)
+    end
+  .
+
+  Definition combine {A} (l r : t A) : t A :=
+    fun k => match l k with
+          | Some x => Some x
+          | None => r k
+          end.
+
+  Definition map {A B} (f : forall {k}, A k -> B k) (m : t A) : t B :=
+    fun k => match m k with
+          | Some x => Some (f x)
+          | None => None
+          end.
+End MkDepFunMap.
 
 Module MkFunMap(Key: BooleanEqualityType').
   Import (notations) Key.
