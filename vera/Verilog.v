@@ -120,15 +120,15 @@ Module VerilogCommon.
 
   Variant StorageType := Reg | Wire.
 
-  Record variable :=
-    MkVariable
-      { varPort : option port_direction
-      ; varVectorDeclaration : vector_declaration
-      ; varStorageType : StorageType
-      ; varName : string
+  Record variable_declaration :=
+    MkVariableDeclaration
+      { varDeclPort : option port_direction
+      ; varDeclVectorDeclaration : vector_declaration
+      ; varDeclStorageType : StorageType
+      ; varDeclName : string
       }.
 
-  Definition varWidth (v : variable) : N := vector_declaration_width (varVectorDeclaration v).
+  Definition varDeclWidth (v : variable_declaration) : N := vector_declaration_width (varDeclVectorDeclaration v).
 End VerilogCommon.
 
 Module Verilog.
@@ -137,6 +137,17 @@ Module Verilog.
   Definition vtype := N.
 
   Definition name := string.
+
+  Record variable :=
+    MkVariable
+      { varName : name
+      ; varType : vtype
+      }.
+
+  Definition variable_of_decl (decl : variable_declaration) : variable :=
+    {| varName := varDeclName decl
+    ; varType := varDeclWidth decl
+    |}.
 
   Equations binop_width : Verilog.binop -> N -> N :=
     binop_width BinaryPlus n := n; (* "+" *)
@@ -182,7 +193,7 @@ Module Verilog.
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
   | IntegerLiteral (w : N) : BV.bitvector w -> expression w
-  | NamedExpression (w : N) : name -> expression w
+  | NamedExpression (var : Verilog.variable) : expression (Verilog.varType var)
   | Resize {w_from} (w_to : N) : expression w_from -> expression w_to
   .
 
@@ -205,9 +216,12 @@ Module Verilog.
   Record vmodule :=
     MkMod
       { modName : name
-      ; modVariables : list variable
+      ; modVariableDecls : list variable_declaration
       ; modBody : list module_item
       }.
+
+  Definition modVariables (v : vmodule) : list variable :=
+    map variable_of_decl (modVariableDecls v).
 
   Module Notations.
     Notation "[ hi .: lo ]" :=
@@ -215,21 +229,95 @@ Module Verilog.
         (format "[ hi '.:' lo ]").
   End Notations.
 
-  Definition input_vars : list variable -> list variable :=
-    map_opt (fun p => match varPort p with
-                   | Some PortIn => Some p
-                   | _ => None
-                   end).
+  Definition module_inputs (v : Verilog.vmodule) : list variable :=
+    map_opt
+      (fun decl =>
+         match varDeclPort decl with
+         | Some PortIn => Some (variable_of_decl decl)
+         | _ => None
+         end)
+      (modVariableDecls v).
 
-  Definition output_vars : list variable -> list variable :=
-    map_opt (fun p => match varPort p with
-                   | Some PortOut => Some p
-                   | _ => None
-                   end).
+  Definition module_outputs (v : Verilog.vmodule) : list variable :=
+    map_opt
+      (fun decl =>
+         match varDeclPort decl with
+         | Some PortOut => Some (variable_of_decl decl)
+         | _ => None
+         end)
+      (modVariableDecls v).
 
   Definition var_names : list variable -> list name :=
     map varName.
 
   Definition var_widths : list variable -> list (N * name) :=
-    map (fun v => (varWidth v, varName v)).
+    map (fun v => (varType v, varName v)).
+
+  Equations
+    expr_reads {w} : Verilog.expression w -> list Verilog.variable :=
+    expr_reads (Verilog.UnaryOp op operand) :=
+      expr_reads operand ;
+    expr_reads (Verilog.BinaryOp op lhs rhs) :=
+      expr_reads lhs ++ expr_reads rhs ;
+    expr_reads (Verilog.Conditional cond tBranch fBranch) :=
+      expr_reads cond ++ expr_reads tBranch ++ expr_reads fBranch ;
+    expr_reads (Verilog.BitSelect vec idx) :=
+      expr_reads vec ++ expr_reads idx;
+    expr_reads (Verilog.Resize t expr) :=
+      expr_reads expr;
+    expr_reads (Verilog.Concatenation e1 e2) :=
+      expr_reads e1 ++ expr_reads e2 ;
+    expr_reads (Verilog.IntegerLiteral _ val) :=
+      [] ;
+    expr_reads (Verilog.NamedExpression var) :=
+      [var].
+
+  Equations
+    statement_reads : Verilog.statement -> list Verilog.variable :=
+    statement_reads (Verilog.Block stmts) :=
+      statement_reads_lst stmts ;
+    statement_reads (Verilog.If cond trueBranch falseBranch) :=
+      expr_reads cond ++ statement_reads trueBranch ++ statement_reads falseBranch ;
+    statement_reads (Verilog.BlockingAssign lhs rhs) :=
+      expr_reads rhs ; (* ONLY looking at rhs here *)
+    statement_reads (Verilog.NonBlockingAssign lhs rhs) :=
+      expr_reads rhs ; (* ...and here *)
+  where statement_reads_lst : list Verilog.statement -> list Verilog.variable :=
+    statement_reads_lst [] := [];
+    statement_reads_lst (hd :: tl) :=
+      statement_reads hd ++ statement_reads_lst tl;
+  .
+
+  Equations
+    statement_writes : Verilog.statement -> list Verilog.variable :=
+    statement_writes (Verilog.Block stmts) :=
+      statement_writes_lst stmts ;
+    statement_writes (Verilog.If cond trueBranch falseBranch) :=
+      statement_writes trueBranch ++ statement_writes falseBranch ;
+    statement_writes (Verilog.BlockingAssign lhs rhs) :=
+      expr_reads lhs ; (* ONLY looking at lhs here *)
+    statement_writes (Verilog.NonBlockingAssign lhs rhs) :=
+      expr_reads lhs ; (* ...and here *)
+  where statement_writes_lst : list Verilog.statement -> list Verilog.variable :=
+    statement_writes_lst [] := [];
+    statement_writes_lst (hd :: tl) :=
+      statement_writes hd ++ statement_writes_lst tl;
+  .
+
+  Equations module_item_reads_comb : Verilog.module_item -> list Verilog.variable :=
+    module_item_reads_comb (Verilog.AlwaysComb stmt) => statement_reads stmt ;
+    module_item_reads_comb (Verilog.AlwaysFF _) => [] ;
+    (* TODO: idk if this is right? Initial blocks definitely don't matter
+      after initalization, but maybe there should be some kind of check for
+      that? In any case, only matters once we do synchronous *)
+    module_item_reads_comb (Verilog.Initial stmt) => [] ;
+  .
+
+  Equations module_item_writes_comb : Verilog.module_item -> list Verilog.variable :=
+    module_item_writes_comb (Verilog.AlwaysComb stmt) => statement_writes stmt ;
+    module_item_writes_comb (Verilog.AlwaysFF _) => [] ;
+    (* TODO: See above comment. *)
+    module_item_writes_comb (Verilog.Initial stmt) => [] ;
+  .
+
 End Verilog.
