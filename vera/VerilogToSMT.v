@@ -70,8 +70,8 @@ Section expr_to_smt.
   Variable inputs : list Verilog.variable.
   Variable outputs : list Verilog.variable.
 
-  Equations term_for_var (var : Verilog.variable): transf SMTLib.term :=
-    term_for_var var with var_verilog_to_smt (Verilog.varName var) := {
+  Equations var_to_smt (var : Verilog.variable): transf SMTLib.term :=
+    var_to_smt var with var_verilog_to_smt (Verilog.varName var) := {
       | None => raise ("Name not declared: " ++ (Verilog.varName var))%string
       | Some (n__smt, width) with dec (width = (Verilog.varType var)) => {
         | left E => ret (SMTLib.Term_Const n__smt)
@@ -151,14 +151,14 @@ Section expr_to_smt.
     expr_to_smt (Verilog.IntegerLiteral w val) :=
       ret (SMTLib.Term_BVLit w val);
     expr_to_smt (Verilog.NamedExpression var) :=
-      term_for_var var
+      var_to_smt var
   .
 
   Equations transfer_module_item : Verilog.module_item -> transf SMTLib.term :=
     transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign (Verilog.NamedExpression var) rhs)) :=
       assert_dec (In var outputs) "Assignment target must be module outputs"%string ;;
       assert_dec (List.Forall (fun n => In n inputs) (Verilog.expr_reads rhs)) "Only reads from module inputs allowed"%string ;;
-      lhs__smt <- term_for_var var ;;
+      lhs__smt <- var_to_smt var ;;
       rhs__smt <- expr_to_smt rhs ;;
       ret (SMTLib.Term_Eq lhs__smt rhs__smt);
     transfer_module_item (Verilog.AlwaysComb _) := raise "Only single-assignment always_comb (assign) allowed"%string;

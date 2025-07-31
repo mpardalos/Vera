@@ -16,7 +16,7 @@ From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.Functor.
 
 From Coq Require List.
-From Coq Require String.
+From Coq Require Import String.
 From Coq Require Import Logic.ProofIrrelevance.
 From Coq Require Import NArith.
 From Coq Require Import PeanoNat.
@@ -30,6 +30,8 @@ Import CommonNotations.
 Import MonadNotation.
 Import FunctorNotation.
 Import SigTNotations.
+
+Local Open Scope list.
 
 Lemma assign_vars_vars start vars :
   List.map fst (assign_vars start vars) = vars.
@@ -338,25 +340,14 @@ Qed.
 
 Require ZifyBool.
 
-(* Compute RawBV.bv_shr [false; true; false; false]%list [true; false; false; false]%list. *)
-
-Compute
-  let vec := [true; true; true; false; false; true]%list in
-  let idx := [false; true; true; false; false; false]%list in
-  (
-    (RawBV.list2nat_be idx),
-    RawBV.bv_extr 0 1 (RawBV.size vec) (RawBV.bv_shr vec idx),
-    [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list
-  ).
-
 Lemma rawbv_extr_one_bit (n : N) vec :
   (1 + n <= RawBV.size vec)%N ->
-  RawBV.bv_extr n 1 (RawBV.size vec) vec = [RawBV.bitOf (N.to_nat n) vec]%list.
+  RawBV.bv_extr n 1 (RawBV.size vec) vec = [RawBV.bitOf (N.to_nat n) vec].
 Proof.
   intros. unfold RawBV.bv_extr, RawBV.size in *.
   autodestruct_eqn E; try (rewrite N.ltb_lt in *; lia); clear E.
   replace (N.to_nat (1 + n)) with (S (N.to_nat n)) by lia.
-  assert (S (N.to_nat n) <= length vec) as H' by lia. clear H. revert H'.
+  assert (S (N.to_nat n) <= List.length vec) as H' by lia. clear H. revert H'.
   generalize (N.to_nat n). clear n. intros n H.
   revert vec H.
   induction n; intros.
@@ -924,14 +915,14 @@ Proof.
     expr_begin_tac; [idtac].
     now constructor.
   - (* Verilog.NamedExpression *)
-    funelim (term_for_name vars w n); rewrite <- Heqcall in *; try discriminate; clear Heqcall.
-    destruct Hmatch_states with (verilogName := name) (smtName := n__smt).
-    { rewrite Hmatch_vars. replace (vars name). reflexivity. }
+    funelim (var_to_smt vars var); rewrite <- Heqcall in *; try discriminate; clear Heqcall.
+    destruct Hmatch_states with (verilogName := Verilog.varName var) (smtName := n__smt).
+    { rewrite Hmatch_vars. replace (vars (Verilog.varName var)). reflexivity. }
     (* FIXME: don't reference names *)
     inv H0. 
     expr_begin_tac; [idtac].
     simpl.
-    replace bv with (SMTLib.Value_BitVec w bv0) by congruence.
+    replace bv with (SMTLib.Value_BitVec (Verilog.varType var) bv0) by congruence.
     constructor.
   - (* Resize *)
     unfold Verilog.expr_type in *.
@@ -963,7 +954,7 @@ Proof. crush. Qed.
 
 Lemma expr_to_smt_some w e : forall vars m tag regs ρ t,
     expr_to_smt vars (w:=w) e = inr t ->
-    verilog_smt_match_states_partial (fun n : String.string => List.In n (expr_reads e)) tag m regs ρ ->
+    verilog_smt_match_states_partial (fun n : String.string => List.In n (List.map Verilog.varName (Verilog.expr_reads e))) tag m regs ρ ->
     (exists bv, SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w bv)).
 Proof.
   induction e; intros;
@@ -974,7 +965,11 @@ Proof.
       unfold verilog_smt_match_states_partial in *.
       intros.
       eapply H0; eauto.
-      rewrite List.in_app_iff. eauto.
+      rewrite List.in_map_iff in H.
+      destruct H as [? [? ?]]. subst.
+      rewrite List.in_map_iff.
+      setoid_rewrite List.in_app_iff.
+      eauto.
     }
     edestruct IHe2 as [bv2 Hbv2].
     { eassumption. }
@@ -982,61 +977,77 @@ Proof.
       unfold verilog_smt_match_states_partial in *.
       intros.
       eapply H0; eauto.
-      rewrite List.in_app_iff. eauto.
+      rewrite List.in_map_iff in H.
+      destruct H as [? [? ?]]. subst.
+      rewrite List.in_map_iff.
+      setoid_rewrite List.in_app_iff.
+      eauto.
     }
     destruct op; simp binop_to_smt in H2; inv H2;
       simpl; rewrite Hbv1; rewrite Hbv2;
       destruct (N.eq_dec w w); try contradiction;
       eexists; reflexivity.
-  - edestruct IHe as [bv Hbv].
-    { eassumption. }
-    {
-      unfold verilog_smt_match_states_partial in *.
-      intros.
-      eapply H0; eauto.
-    }
-    destruct op; simp unaryop_to_smt in H2; inv H2;
-      simpl; rewrite Hbv;
-      eexists; reflexivity.
-  - edestruct IHe1 as [bv1 Hbv1].
-    { eassumption. }
-    {
-      unfold verilog_smt_match_states_partial in *.
-      intros.
-      eapply H0; eauto.
-      rewrite ! List.in_app_iff. eauto.
-    }
-    edestruct IHe2 as [bv2 Hbv2].
-    { eassumption. }
-    {
-      unfold verilog_smt_match_states_partial in *.
-      intros.
-      eapply H0; eauto.
-      rewrite ! List.in_app_iff. eauto.
-    }
-    edestruct IHe3 as [bv3 Hbv3].
-    { eassumption. }
-    {
-      unfold verilog_smt_match_states_partial in *.
-      intros.
-      eapply H0; eauto.
-      rewrite ! List.in_app_iff. eauto.
-    }
-    simpl. rewrite Hbv1, Hbv2, Hbv3.
-    autodestruct; eexists; eauto.
+    all: admit. (* Very repetitive from the above. Solve with tactic *)
 Admitted.
 
-Lemma stmt_to_smt_correct
-  (vars : StrFunMap.t smt_var_info) (stmt : Verilog.statement) :
+Ltac cleanup :=
+  repeat match goal with
+    | [ H : assert_dec _ _ = inr _ |- _ ] => clear H
+    end.
+
+Ltac monad_inv :=
+  try discriminate;
+  repeat match goal with
+    | [ H : (_ ;; _)%monad = _ |- _ ] => inv H
+    | [ H : _ = (_ ;; _)%monad |- _ ] => inv H
+    | [ H : inl _ = inl _ |- _ ] => inv H
+    | [ H : inr _ = inr _ |- _ ] => inv H
+    | [ H : ret _ = inr _ |- _ ] => inv H
+    | [ H : inr _ = ret _ |- _ ] => inv H
+    end;
+  let E := fresh "E" in
+  autodestruct_eqn E;
+  cleanup
+.
+
+Lemma var_to_smt_some var vars (m : VerilogSMTBijection.t) tag regs ρ t :
+    var_to_smt vars var = inr t ->
+    (forall name, m (tag, name) = option_map fst (vars name)) ->
+    verilog_smt_match_states_partial (fun n : String.string => n = Verilog.varName var) tag m regs ρ ->
+    (exists bv, SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec (Verilog.varType var) bv)).
+Proof.
+  intros Hsmt Hnames Hmatch.
+  funelim (var_to_smt vars var); try rewrite <- Heqcall in *; clear Heqcall; monad_inv.
+  unfold verilog_smt_match_states_partial in *.
+  setoid_rewrite Hnames in Hmatch.
+  insterU Hmatch.
+  replace (vars (Verilog.varName var)) in *. simpl in *. insterU Hmatch.
+  (* TODO: width matches between smt and verilog *)
+  admit.
+Admitted.
+
+Lemma module_item_to_smt_satisfiable
+  (vars : StrFunMap.t smt_var_info) (mi : Verilog.module_item) inputs outputs :
   forall t tag (m : VerilogSMTBijection.t) regs regs',
     (forall name, m (tag, name) = option_map fst (vars name)) ->
-    transfer_comb_assignments vars stmt = inr t ->
-    exec_statement regs stmt = Some regs' ->
-    smt_reflect_when
-      (verilog_smt_match_states_partial (fun n => List.In n (statement_reads stmt)) tag m regs)
-      t
-      (verilog_smt_match_states_partial (fun n => List.In n (statement_writes stmt)) tag m regs').
+    transfer_module_item vars inputs outputs mi = inr t ->
+    exec_module_item regs mi = Some regs' ->
+    SMTLib.satisfied_by (SMT.valuation_of_execution m regs') [t]%list.
 Proof.
+  funelim (transfer_module_item vars inputs outputs mi); intros; monad_inv; [idtac].
+  simp exec_module_item exec_statement in *.
+  monad_inv.
+  unfold SMTLib.satisfied_by, SMTLib.term_satisfied_by. repeat constructor.
+  simpl.
+  edestruct var_to_smt_some with (var := var); eauto. 2: rewrite H0.
+  { admit. (* state matches valuation on written vars *) }
+  edestruct expr_to_smt_some with (e := rhs); eauto. 2: rewrite H1.
+  { admit. (* state matches valuation on read-from vars *) }
+  rewrite H1.
+  repeat f_equal. rewrite SMTLib.value_eqb_eq. f_equal.
+
+
+
   eapply transfer_comb_assignments_elim with
     (var_verilog_to_smt := vars)
     (P0:= fun ss x =>
@@ -1231,6 +1242,18 @@ Lemma smt_reflect_when_intro C q P :
   SMTLibFacts.smt_reflect q P.
 Proof. unfold smt_reflect_when, SMTLibFacts.smt_reflect. firstorder. Qed.
 
+(* TODO: Add this as a check in exec_module_item *)
+Lemma TODO_exec_module_item_no_overwrite r1 r2 mi :
+  exec_module_item r1 mi = Some r2 ->
+  forall n v, r1 n = Some v -> r2 n = Some v.
+Proof. Admitted.
+
+Lemma transfer_module_body_satisfiable tag vars v q m ρ :
+  transfer_module_body vars (Verilog.modBody v) = inr q ->
+  valid_execution v (SMT.execution_of_valuation tag m ρ) ->
+  SMTLib.satisfied_by ρ q.
+Proof. Admitted.
+
 Lemma transfer_module_body_correct v :
   forall tag vars (m : VerilogSMTBijection.t) stmt q,
     no_errors v ->
@@ -1241,19 +1264,32 @@ Lemma transfer_module_body_correct v :
       q
       (fun ρ => valid_execution v (SMT.execution_of_valuation tag m ρ)).
 Proof.
-  intros.
-  destruct v. simpl in *. subst modBody.
-  simp transfer_module_body in *. inv H2; autodestruct_eqn E.
-  simp transfer_module_item in *.
-  rewrite List.app_nil_r.
+  intros * Hnoerrors Hbody Hnames Htransfer_body.
   split; intro.
   - (* FIXME: statement_reads should really be statement_observes *)
+    destruct v. simpl in *. subst modBody.
+    simp transfer_module_body in *. inv Htransfer_body; autodestruct_eqn E.
+    simp transfer_module_item in *.
+    rewrite List.app_nil_r in *.
     eapply valid_execution_single; simpl.
     + simpl. admit.
     + trivial.
     + pose proof stmt_to_smt_correct as Hreflect. unfold smt_reflect_when in Hreflect.
       admit.
-  - admit.
+  - eapply transfer_module_body_satisfiable.
+    unfold valid_execution, initial_state in H. destruct H as [input [final [Hvalid [Hrun Hfinal]]]].
+    simpl in *. simp run_multistep in Hrun. inv Hrun. autodestruct_eqn E.
+    simp run_multistep in H0. inv H0. simpl in *. subst.
+    epose proof (TODO_exec_module_item_no_overwrite _ _ (Verilog.AlwaysComb stmt) ltac:(eassumption)) as Hno_overwrite.
+    simp exec_module_item in *.
+    pose proof stmt_to_smt_correct as Hreflect. unfold smt_reflect_when in Hreflect.
+    eapply Hreflect. 1, 2, 3: solve [eauto].
+    + (* TODO: Initial state matches *)
+      unfold verilog_smt_match_states_partial. intros.
+      econstructor; cycle 1.
+      *
+    + (* TODO: Final state matches *) admit.
+
 Admitted.
 
 Lemma mapT_inv A B : forall l (f : A -> transf B) o,
