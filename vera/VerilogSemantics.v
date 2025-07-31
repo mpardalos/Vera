@@ -36,93 +36,10 @@ Module CombinationalOnly.
   Definition Process := Verilog.module_item.
 
   Section Sorted.
-    Equations
-      expr_reads {w} : Verilog.expression w -> list string :=
-      expr_reads (Verilog.UnaryOp op operand) :=
-        expr_reads operand ;
-      expr_reads (Verilog.BinaryOp op lhs rhs) :=
-        expr_reads lhs ++ expr_reads rhs ;
-      expr_reads (Verilog.Conditional cond tBranch fBranch) :=
-        expr_reads cond ++ expr_reads tBranch ++ expr_reads fBranch ;
-      expr_reads (Verilog.BitSelect vec idx) :=
-        expr_reads vec ++ expr_reads idx;
-      expr_reads (Verilog.Resize t expr) :=
-        expr_reads expr;
-      expr_reads (Verilog.Concatenation e1 e2) :=
-        expr_reads e1 ++ expr_reads e2 ;
-      expr_reads (Verilog.IntegerLiteral _ val) :=
-        [] ;
-      expr_reads (Verilog.NamedExpression t name) :=
-        [name].
-
-    Equations
-      statement_reads : Verilog.statement -> list string :=
-      statement_reads (Verilog.Block stmts) :=
-        statement_reads_lst stmts ;
-      statement_reads (Verilog.If cond trueBranch falseBranch) :=
-        expr_reads cond ++ statement_reads trueBranch ++ statement_reads falseBranch ;
-      statement_reads (Verilog.BlockingAssign lhs rhs) :=
-        expr_reads rhs ; (* ONLY looking at rhs here *)
-      statement_reads (Verilog.NonBlockingAssign lhs rhs) :=
-        expr_reads rhs ; (* ...and here *)
-    where statement_reads_lst :  list Verilog.statement -> list string :=
-      statement_reads_lst [] := [];
-      statement_reads_lst (hd :: tl) :=
-        statement_reads hd ++ statement_reads_lst tl;
-    .
-
-    Equations
-      statement_writes : Verilog.statement -> list string :=
-      statement_writes (Verilog.Block stmts) :=
-        statement_writes_lst stmts ;
-      statement_writes (Verilog.If cond trueBranch falseBranch) :=
-        statement_writes trueBranch ++ statement_writes falseBranch ;
-      statement_writes (Verilog.BlockingAssign lhs rhs) :=
-        expr_reads lhs ; (* ONLY looking at lhs here *)
-      statement_writes (Verilog.NonBlockingAssign lhs rhs) :=
-        expr_reads lhs ; (* ...and here *)
-    where statement_writes_lst : list Verilog.statement -> list string :=
-      statement_writes_lst [] := [];
-      statement_writes_lst (hd :: tl) :=
-        statement_writes hd ++ statement_writes_lst tl;
-    .
-
-    Equations module_item_reads_comb : Verilog.module_item -> list string :=
-      module_item_reads_comb (Verilog.AlwaysComb stmt) => statement_reads stmt ;
-      module_item_reads_comb (Verilog.AlwaysFF _) => [] ;
-      (* TODO: idk if this is right? Initial blocks definitely don't matter
-      after initalization, but maybe there should be some kind of check for
-      that? In any case, only matters once we do synchronous *)
-      module_item_reads_comb (Verilog.Initial stmt) => [] ;
-    .
-
-    Equations module_item_writes_comb : Verilog.module_item -> list string :=
-      module_item_writes_comb (Verilog.AlwaysComb stmt) => statement_writes stmt ;
-      module_item_writes_comb (Verilog.AlwaysFF _) => [] ;
-      (* TODO: See above comment. *)
-      module_item_writes_comb (Verilog.Initial stmt) => [] ;
-    .
-
-    Definition disjoint {A} (l r : list A) : Prop :=
-      Forall (fun x => ~ In x r) l.
-
-    Lemma disjoint_l A (l r : list A) :
-      Forall (fun x => ~ In x r) l ->
-      disjoint l r.
-    Proof. trivial. Qed.
-
-    Lemma disjoint_r A (l r : list A) :
-      Forall (fun x => ~ In x l) r ->
-      disjoint l r.
-    Proof. unfold disjoint. rewrite ! Forall_forall. crush. Qed.
-
-    (* Just checking that typeclasses eauto can indeed figure out DecProp (disjoint l r) *)
-    Goal (forall (l r : list nat), DecProp (disjoint l r)). typeclasses eauto. Qed.
-
     Equations module_items_sorted : list Verilog.module_item -> Prop :=
       module_items_sorted [] := True;
       module_items_sorted (mi :: mis) :=
-        Forall (fun mi' => disjoint (module_item_writes_comb mi) (module_item_reads_comb mi')) mis
+        Forall (fun mi' => disjoint (Verilog.module_item_writes_comb mi) (Verilog.module_item_reads_comb mi')) mis
                /\ module_items_sorted mis
     .
 
@@ -130,7 +47,7 @@ Module CombinationalOnly.
     Proof.
       induction ms;
         simp module_items_sorted;
-        typeclasses eauto.
+        try typeclasses eauto.
     Defined.
   End Sorted.
 
@@ -152,42 +69,15 @@ Module CombinationalOnly.
     |}
   .
 
-  Definition variable_widths vars : list (string * N):=
-    map (fun var => (Verilog.varName var, Verilog.varWidth var)) vars.
-
   Definition variable_names vars : list string :=
     map Verilog.varName vars.
 
-  Lemma variable_widths_names n w l:
-    In (n, w) (variable_widths l) -> In n (variable_names l).
-  Proof.
-    revert n w.
-    induction l; intros; simpl in *.
-    - contradiction.
-    - destruct H.
-      + inversion H. subst.
-        eauto.
-      + right. eauto.
-  Qed.
-
-  Lemma variable_names_widths n l:
-    In n (variable_names l) -> exists w, In (n, w) (variable_widths l).
-  Proof.
-    revert n.
-    induction l; intros; simpl in *.
-    - contradiction.
-    - destruct H.
-      + subst. eauto.
-      + destruct (IHl _ H).
-        eexists. eauto.
-  Qed.
-
   Definition input_valid (input_vars : list Verilog.variable) (input : list {w & XBV.xbv w}) :=
-    List.Forall2 (fun '(w, _) '(w'; _) => w = w') (Verilog.var_widths input_vars) input.
+    List.Forall2 (fun var '(w; _) => Verilog.varType var = w) input_vars input.
 
   Definition initial_state (v : Verilog.vmodule) (input : list {n & XBV.xbv n}) : VerilogState :=
     {|
-      regState := StrFunMap.of_list (List.combine (Verilog.var_names (Verilog.input_vars (Verilog.modVariables v))) input);
+      regState := StrFunMap.of_list (List.combine (Verilog.var_names (Verilog.module_inputs v)) input);
       pendingProcesses := Verilog.modBody v
     |}.
 
@@ -215,7 +105,6 @@ Module CombinationalOnly.
     rewrite map2_size.
     lia.
   Qed.
-
 
   Obligation Tactic := intros.
 
@@ -321,9 +210,9 @@ Module CombinationalOnly.
       Some (XBV.concat val1 val2);
     eval_expr regs (Verilog.IntegerLiteral _ val) :=
       Some (XBV.from_bv val) ;
-    eval_expr regs (Verilog.NamedExpression t name) :=
-      let* (w; v) := regs name in
-      match dec (w = t) with
+    eval_expr regs (Verilog.NamedExpression var) :=
+      let* (w; v) := regs (Verilog.varName var) in
+      match dec (w = Verilog.varType var) with
       | left E => Some (rew E in v)
       | right _ => None
       end.
@@ -349,9 +238,9 @@ Module CombinationalOnly.
         else exec_statement regs trueBranch
       end
     ;
-    exec_statement regs (Verilog.BlockingAssign (Verilog.NamedExpression _ name) rhs) :=
+    exec_statement regs (Verilog.BlockingAssign (Verilog.NamedExpression var) rhs) :=
       let* rhs__val := eval_expr regs rhs in
-      Some (set_reg name rhs__val regs)
+      Some (set_reg (Verilog.varName var) rhs__val regs)
     ;
     exec_statement regs (Verilog.BlockingAssign lhs rhs) :=
       None;
@@ -424,7 +313,7 @@ Module CombinationalOnly.
 
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
     exists input final,
-      input_valid (Verilog.input_vars (Verilog.modVariables v)) input
+      input_valid (Verilog.module_inputs v) input
       /\ run_multistep (initial_state v input) = Some final
       /\ regState final = e.
 
@@ -439,7 +328,7 @@ Module CombinationalOnly.
 
   Definition no_errors (v : Verilog.vmodule) :=
     forall (input : list {w & XBV.xbv w})
-      (input_wf : input_valid (Verilog.input_vars (Verilog.modVariables v)) input)
+      (input_wf : input_valid (Verilog.module_inputs v) input)
       (input_defined : Forall (fun bv => ~ XBV.has_x bv.2) input),
     exists final, run_multistep (initial_state v input) = Some final.
 End CombinationalOnly.

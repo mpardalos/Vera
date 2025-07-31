@@ -486,3 +486,19 @@ Proof. funelim (map2 f l1 l2); simp map2; simpl; crush. Qed.
 
 Definition N_sum : list N -> N :=
   fold_right N.add 0%N.
+
+Definition disjoint {A} (l r : list A) : Prop :=
+  Forall (fun x => ~ In x r) l.
+
+Lemma disjoint_l A (l r : list A) :
+  Forall (fun x => ~ In x r) l ->
+  disjoint l r.
+Proof. trivial. Qed.
+
+Lemma disjoint_r A (l r : list A) :
+  Forall (fun x => ~ In x l) r ->
+  disjoint l r.
+Proof. unfold disjoint. rewrite ! Forall_forall. crush. Qed.
+
+(* Just checking that typeclasses eauto can indeed figure out DecProp (disjoint l r) *)
+Goal (forall (l r : list nat), DecProp (disjoint l r)). typeclasses eauto. Qed.

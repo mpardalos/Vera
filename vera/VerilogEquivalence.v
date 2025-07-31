@@ -35,9 +35,9 @@ Import FunctorNotation.
 Local Open Scope monad_scope.
 Local Open Scope string.
 
-Equations mk_var_same (name : string) (namemap : VerilogSMTBijection.t)
+Equations mk_var_same (var : Verilog.variable) (namemap : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
-  | name, namemap with namemap (TaggedName.VerilogLeft, name), namemap (TaggedName.VerilogRight, name) => {
+  | var, namemap with namemap (TaggedName.VerilogLeft, Verilog.varName var), namemap (TaggedName.VerilogRight, Verilog.varName var) => {
     | Some smt_name1, Some smt_name2 =>
         inr (SMTLib.Term_Eq (SMTLib.Term_Const smt_name1) (SMTLib.Term_Const smt_name2))
     | _, _ => inl "mk_var_same"%string
@@ -45,13 +45,13 @@ Equations mk_var_same (name : string) (namemap : VerilogSMTBijection.t)
   }
   .
 
-Equations mk_inputs_same (inputs : list string) (namemap : VerilogSMTBijection.t)
+Equations mk_inputs_same (inputs : list Verilog.variable) (namemap : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
   | [], m => inr SMTLib.Term_True
-  | (name :: names), m =>
+  | (var :: vars), m =>
       match
-        mk_var_same name m,
-        mk_inputs_same names m
+        mk_var_same var m,
+        mk_inputs_same vars m
       with
       | inr hd, inr tl =>
           inr (SMTLib.Term_And hd tl)
@@ -59,9 +59,9 @@ Equations mk_inputs_same (inputs : list string) (namemap : VerilogSMTBijection.t
       end
   }.
 
-Equations mk_var_distinct (name : string) (namemap : VerilogSMTBijection.t)
+Equations mk_var_distinct (var : Verilog.variable) (namemap : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
-  | name, namemap with namemap (TaggedName.VerilogLeft, name), namemap (TaggedName.VerilogRight, name) => {
+  | var, namemap with namemap (TaggedName.VerilogLeft, Verilog.varName var), namemap (TaggedName.VerilogRight, Verilog.varName var) => {
     | Some smt_name1, Some smt_name2 =>
         inr (SMTLib.Term_Not (SMTLib.Term_Eq (SMTLib.Term_Const smt_name1) (SMTLib.Term_Const smt_name2)))
     | _, _ => inl "mk_var_distinct"%string
@@ -69,13 +69,13 @@ Equations mk_var_distinct (name : string) (namemap : VerilogSMTBijection.t)
   }
   .
 
-Equations mk_outputs_distinct (inputs : list string) (namemap : VerilogSMTBijection.t)
+Equations mk_outputs_distinct (inputs : list Verilog.variable) (namemap : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
   | [], m => inr SMTLib.Term_False
-  | (name :: names), m =>
+  | (var :: vars), m =>
       match
-        mk_var_distinct name m,
-        mk_outputs_distinct names m
+        mk_var_distinct var m,
+        mk_outputs_distinct vars m
       with
       | inr hd, inr tl =>
           inr (SMTLib.Term_Or hd tl)
@@ -87,22 +87,16 @@ Program Definition equivalence_query_canonical
   (canonical_verilog1 canonical_verilog2 : Verilog.vmodule)
   : sum string (SMT.smt_with_namemap) :=
 
-  let inputs1 := Verilog.var_names (Verilog.input_vars (Verilog.modVariables canonical_verilog1)) in
-  let inputs2 := Verilog.var_names (Verilog.input_vars (Verilog.modVariables canonical_verilog2)) in
-  let outputs1 := Verilog.var_names (Verilog.output_vars (Verilog.modVariables canonical_verilog1)) in
-  let outputs2 := Verilog.var_names (Verilog.output_vars (Verilog.modVariables canonical_verilog2)) in
-
-  inputs_ok1 <- assert_dec (inputs1 = inputs2) "Inputs don't match" ;;
-
-  outputs_ok2 <- assert_dec (outputs1 = outputs2) "Outputs don't match" ;;
+  inputs_ok1 <- assert_dec (Verilog.module_inputs canonical_verilog1 = Verilog.module_inputs canonical_verilog2) "Inputs don't match" ;;
+  outputs_ok1 <- assert_dec (Verilog.module_outputs canonical_verilog1 = Verilog.module_outputs canonical_verilog2) "Outputs don't match" ;;
 
   smt1 <- VerilogToSMT.verilog_to_smt TaggedName.VerilogLeft 0 canonical_verilog1 ;;
   smt2 <- VerilogToSMT.verilog_to_smt TaggedName.VerilogRight (1 + SMT.max_var (SMT.query smt1)) canonical_verilog2 ;;
 
   let nameMap := VerilogSMTBijection.combine (SMT.nameMap smt1) (SMT.nameMap smt2) _ _ in
 
-  inputs_same <- mk_inputs_same inputs1 nameMap ;;
-  outputs_distinct <- mk_outputs_distinct outputs1 nameMap ;;
+  inputs_same <- mk_inputs_same (Verilog.module_inputs canonical_verilog1) nameMap ;;
+  outputs_distinct <- mk_outputs_distinct (Verilog.module_outputs canonical_verilog1) nameMap ;;
 
   ret {|
       SMT.nameMap := nameMap ;

@@ -111,15 +111,15 @@ Definition transfer_scoped {A} (f : transf A) : transf (A * (StrMap.t {w & Veril
 Import EqNotations.
 
 Equations transfer_expression {w} : Verilog.expression w -> transf (Verilog.expression w) :=
-| Verilog.NamedExpression t n =>
+| Verilog.NamedExpression var =>
     st <- get ;;
-    match StrEnvStack.lookup n (substitutionsBlocking st) with
+    match StrEnvStack.lookup (Verilog.varName var) (substitutionsBlocking st) with
     | Some (w'; e) =>
-        match dec (w' = t) with
+        match dec (w' = Verilog.varType var) with
         | right _ => raise "oops"%string
         | left E => ret (rew E in e)
         end
-    | None => ret (Verilog.NamedExpression t n)
+    | None => ret (Verilog.NamedExpression var)
     end
 | e => ret e
 .
@@ -149,11 +149,11 @@ Definition merge_if
                 width_ok <- decide_or_fail (wf = wt) "Incompatible widths in conditional";;
                 setter n (Verilog.Conditional cond t (rew width_ok in f))
             | Some (w; t), None =>
-                let '(w'; def) := opt_or_else default (w; Verilog.NamedExpression w n) in
+                let '(w'; def) := opt_or_else default (w; Verilog.NamedExpression {| Verilog.varType := w; Verilog.varName := n |}) in
                 width_ok <- decide_or_fail _ "Incompatible widths in conditional";;
                 setter n (Verilog.Conditional cond t (rew width_ok in def))
             | None, Some (_; f) =>
-                let '(w'; def) := opt_or_else default (w; Verilog.NamedExpression w n) in
+                let '(w'; def) := opt_or_else default (w; Verilog.NamedExpression {| Verilog.varType := w; Verilog.varName := n |}) in
                 width_ok <- decide_or_fail _ "Incompatible widths in conditional";;
                 setter n (Verilog.Conditional cond def (rew width_ok in f))
             | None, None => raise "Invalid state in merge_if"%string
@@ -172,14 +172,14 @@ Equations transfer_statement : Verilog.statement -> transf () :=
 | Verilog.Block body =>
     mapT transfer_statement body ;;
     ret ()
-| Verilog.NonBlockingAssign (Verilog.NamedExpression t__lhs name__lhs) rhs =>
+| Verilog.NonBlockingAssign (Verilog.NamedExpression var) rhs =>
     input__rhs <- transfer_expression rhs ;;
-    set_substitution_nonblocking name__lhs input__rhs
+    set_substitution_nonblocking (Verilog.varName var) input__rhs
 | Verilog.NonBlockingAssign lhs rhs =>
     raise "Invalid lhs for non-blocking assignment"%string
-| Verilog.BlockingAssign (Verilog.NamedExpression t__lhs name__lhs) rhs =>
+| Verilog.BlockingAssign (Verilog.NamedExpression var) rhs =>
     input__rhs <- transfer_expression rhs ;;
-    set_substitution_blocking name__lhs input__rhs
+    set_substitution_blocking (Verilog.varName var) input__rhs
 | Verilog.BlockingAssign lhs rhs =>
     raise "Invalid lhs for blocking assignment"%string
 | Verilog.If condition trueBranch falseBranch =>
@@ -240,7 +240,7 @@ Definition substitutions_to_assignments
   map (fun '(lhs, (w; rhs)) =>
          assignment
            (* TODO: Keep the original type, rather than getting it from rhs *)
-           (Verilog.NamedExpression (Verilog.expr_type rhs) lhs) rhs) subs.
+           (Verilog.NamedExpression {| Verilog.varType := Verilog.expr_type rhs; Verilog.varName := lhs |}) rhs) subs.
 
 Definition canonicalize_module (vmodule : Verilog.vmodule) : sum string Verilog.vmodule :=
   let initial_body := collect_initial_statements (Verilog.modBody vmodule) in
@@ -261,7 +261,7 @@ Definition canonicalize_module (vmodule : Verilog.vmodule) : sum string Verilog.
   ret
     {|
       Verilog.modName := Verilog.modName vmodule;
-      Verilog.modVariables := Verilog.modVariables vmodule;
+      Verilog.modVariableDecls := Verilog.modVariableDecls vmodule;
       Verilog.modBody := body
     |}
 .

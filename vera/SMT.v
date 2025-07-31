@@ -38,17 +38,6 @@ Module SMT.
         nameMap : VerilogSMTBijection.t;
       }.
 
-  Remark match_map_verilog_width tag map verilog smtName verilogName :
-    match_map_verilog tag map verilog ->
-    map (tag, verilogName) = Some smtName ->
-    exists width, In (verilogName, width) (variable_widths (Verilog.modVariables verilog)).
-  Proof.
-    intros H1 H2.
-    apply variable_names_widths.
-    eapply H1.
-    eauto.
-  Qed.
-
   Definition max_var (q : SMTLib.query) : nat :=
     List.list_max (SMTLibFacts.domain q).
 

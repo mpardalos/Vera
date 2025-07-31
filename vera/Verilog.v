@@ -6,6 +6,7 @@ From ExtLib Require Import Programming.Show.
 
 From vera Require Import Common.
 From vera Require Import Bitvector.
+From vera Require Import Decidable.
 Import (notations) Bitvector.RawBV.
 
 Require Import List.
@@ -144,6 +145,10 @@ Module Verilog.
       ; varType : vtype
       }.
 
+  #[global]
+  Instance dec_eq_variable (x y : variable) : DecProp (x = y) :=
+    mk_dec_eq.
+
   Definition variable_of_decl (decl : variable_declaration) : variable :=
     {| varName := varDeclName decl
     ; varType := varDeclWidth decl
@@ -250,9 +255,6 @@ Module Verilog.
   Definition var_names : list variable -> list name :=
     map varName.
 
-  Definition var_widths : list variable -> list (N * name) :=
-    map (fun v => (varType v, varName v)).
-
   Equations
     expr_reads {w} : Verilog.expression w -> list Verilog.variable :=
     expr_reads (Verilog.UnaryOp op operand) :=
@@ -319,5 +321,4 @@ Module Verilog.
     (* TODO: See above comment. *)
     module_item_writes_comb (Verilog.Initial stmt) => [] ;
   .
-
 End Verilog.

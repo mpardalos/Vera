@@ -66,12 +66,16 @@ Definition smt_var_info : Type := (smtname * width).
 Section expr_to_smt.
   Variable var_verilog_to_smt : StrFunMap.t smt_var_info.
 
-  Equations term_for_name (t : Verilog.vtype) (name : string) : transf SMTLib.term :=
-    term_for_name t name with var_verilog_to_smt name := {
-      | None => raise ("Name not declared: " ++ name)%string
-      | Some (n__smt, width) with dec (width = t) => {
+  (* Used for checking expected invariants (assignments only read module outputs and write to module inputs) *)
+  Variable inputs : list Verilog.variable.
+  Variable outputs : list Verilog.variable.
+
+  Equations term_for_var (var : Verilog.variable): transf SMTLib.term :=
+    term_for_var var with var_verilog_to_smt (Verilog.varName var) := {
+      | None => raise ("Name not declared: " ++ (Verilog.varName var))%string
+      | Some (n__smt, width) with dec (width = (Verilog.varType var)) => {
         | left E => ret (SMTLib.Term_Const n__smt)
-        | right _ => raise ("Incorrect sort for " ++ name)%string
+        | right _ => raise ("Incorrect sort for " ++ (Verilog.varName var))%string
         }
       }.
 
@@ -146,30 +150,18 @@ Section expr_to_smt.
       ret (cast_from_to from to expr__smt);
     expr_to_smt (Verilog.IntegerLiteral w val) :=
       ret (SMTLib.Term_BVLit w val);
-    expr_to_smt (Verilog.NamedExpression t n) :=
-      term_for_name t n
+    expr_to_smt (Verilog.NamedExpression var) :=
+      term_for_var var
   .
 
-  Equations transfer_comb_assignments : Verilog.statement -> transf (list SMTLib.term) :=
-    transfer_comb_assignments (Verilog.Block stmts) =>
-      transfer_comb_assignments_lst stmts ;
-    transfer_comb_assignments (Verilog.BlockingAssign (Verilog.NamedExpression t name) rhs) =>
-      lhs__smt <- term_for_name t name ;;
+  Equations transfer_module_item : Verilog.module_item -> transf SMTLib.term :=
+    transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign (Verilog.NamedExpression var) rhs)) :=
+      assert_dec (In var outputs) "Assignment target must be module outputs"%string ;;
+      assert_dec (List.Forall (fun n => In n inputs) (Verilog.expr_reads rhs)) "Only reads from module inputs allowed"%string ;;
+      lhs__smt <- term_for_var var ;;
       rhs__smt <- expr_to_smt rhs ;;
-      ret [SMTLib.Term_Eq lhs__smt rhs__smt];
-    transfer_comb_assignments _ =>
-      raise "VerilogToSMT: Invalid expression in always_comb block"%string;
-    where
-      transfer_comb_assignments_lst : list Verilog.statement -> transf (list SMTLib.term) :=
-      transfer_comb_assignments_lst [] := ret [];
-      transfer_comb_assignments_lst (hd :: tl) :=
-        a <- transfer_comb_assignments hd ;;
-        b <- transfer_comb_assignments_lst tl ;;
-        ret (a ++ b)
-  .
-
-  Equations transfer_module_item : Verilog.module_item -> transf (list SMTLib.term) :=
-    transfer_module_item (Verilog.AlwaysComb stmt) := transfer_comb_assignments stmt;
+      ret (SMTLib.Term_Eq lhs__smt rhs__smt);
+    transfer_module_item (Verilog.AlwaysComb _) := raise "Only single-assignment always_comb (assign) allowed"%string;
     transfer_module_item (Verilog.AlwaysFF stmt) := raise "always_ff not implemented"%string;
     transfer_module_item (Verilog.Initial stmt) := raise "initial not implemented"%string
   .
@@ -179,27 +171,9 @@ Section expr_to_smt.
     transfer_module_body (hd :: tl) :=
       a <- transfer_module_item hd ;;
       b <- transfer_module_body tl ;;
-      ret (a ++ b)
+      ret (a :: b)
   .
 End expr_to_smt.
-
-Equations transfer_initial (stmt : Verilog.statement) : transf (list SMTLib.term) :=
-  transfer_initial (Verilog.Block stmts) =>
-    lists <- mapT transfer_initial stmts ;;
-    ret (concat lists) ;
-  transfer_initial (Verilog.BlockingAssign
-                      (Verilog.NamedExpression _ n)
-                      (Verilog.IntegerLiteral _ val)) =>
-    (* raise "VerilogToSMT: initial block blegh"%string; *)
-    ret [] ;
-  transfer_initial (Verilog.BlockingAssign
-                      (Verilog.NamedExpression _ n)
-                     (Verilog.Resize _ (Verilog.IntegerLiteral _ val))) =>
-    (* raise "VerilogToSMT: initial block blegh"%string; *)
-    ret [] ;
-  transfer_initial _ =>
-    raise "VerilogToSMT: Invalid expression in initial block"%string
-.
 
 Equations assign_vars (start : smtname) (vars : list Verilog.variable) : list (Verilog.variable * smtname) :=
   assign_vars start (var :: rest) :=
@@ -209,7 +183,7 @@ Equations assign_vars (start : smtname) (vars : list Verilog.variable) : list (V
 
 Definition mk_var_map (vars : list (Verilog.variable * smtname)) : StrFunMap.t (smtname * width) :=
   List.fold_right
-    (fun '(var, smt__name) acc => StrFunMap.insert (Verilog.varName var) (smt__name, Verilog.varWidth var) acc)
+    (fun '(var, smt__name) acc => StrFunMap.insert (Verilog.varName var) (smt__name, Verilog.varType var) acc)
     StrFunMap.empty vars.
 
 Equations mk_bijection (tag : TaggedName.Tag) (vars : list (Verilog.variable * smtname)) : transf VerilogSMTBijection.t :=
@@ -224,11 +198,14 @@ Definition verilog_to_smt (name_tag : TaggedName.Tag) (var_start : nat) (vmodule
   let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
   let var_map := mk_var_map var_assignment in
   nameMap <- mk_bijection name_tag var_assignment ;;
-  (* initial_smt <- transfer_initial initial_body ;; *)
-  body_smt <- transfer_module_body var_map (Verilog.modBody vmodule) ;;
+  body_smt <- transfer_module_body
+               var_map
+               (Verilog.module_inputs vmodule)
+               (Verilog.module_outputs vmodule)
+               (Verilog.modBody vmodule) ;;
   inr {|
       SMT.nameMap := nameMap;
-      SMT.widths := List.map (fun '(var, smtname) => (smtname, Verilog.varWidth var)) var_assignment;
+      SMT.widths := List.map (fun '(var, smtname) => (smtname, Verilog.varType var)) var_assignment;
       SMT.query := body_smt;
     |}
 .

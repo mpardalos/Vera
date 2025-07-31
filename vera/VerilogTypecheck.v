@@ -35,11 +35,11 @@ Definition TCContext := Verilog.vtype.
 
 Definition TC := sum string.
 
-Definition tc_name (Γ : TCBindings) (t_expr : Verilog.vtype) (name : string) : TC unit :=
-    match StrMap.find name Γ with
+Definition tc_var (Γ : TCBindings) (var : Verilog.variable) : TC unit :=
+    match StrMap.find (Verilog.varName var) Γ with
     | None => raise "Name not in context"%string
     | Some t_env =>
-        if N.eq_dec t_env t_expr
+        if N.eq_dec t_env (Verilog.varType var)
         then ret tt
         else raise "Different type in env vs expression"%string
     end.
@@ -60,8 +60,8 @@ Equations tc_lvalue {w} : TCBindings -> Verilog.expression w -> TC unit :=
     raise "Resize not permitted as lvalue"%string;
   tc_lvalue Γ (Verilog.BitSelect _ _) :=
     raise "BitSelect lvalues not implemented"%string;
-  tc_lvalue Γ (Verilog.NamedExpression t_expr n) :=
-    tc_name Γ t_expr n .
+  tc_lvalue Γ (Verilog.NamedExpression var) :=
+    tc_var Γ var .
 
 Definition dec_value_matches_type (v: RawBV.t) (t: Verilog.vtype) : { RawBV.size v = t } + { RawBV.size v <> t } :=
   N.eq_dec (RawBV.size v) t.
@@ -92,8 +92,8 @@ Equations tc_expr {w} : TCBindings -> Verilog.expression w -> TC unit :=
     ret tt ;
   tc_expr Γ (Verilog.IntegerLiteral _ value) :=
     ret tt;
-  tc_expr Γ (Verilog.NamedExpression t_expr n) :=
-    tc_name Γ t_expr n ;
+  tc_expr Γ (Verilog.NamedExpression var) :=
+    tc_var Γ var ;
   tc_expr Γ (Verilog.Resize t e) :=
     tc_expr Γ e
 .
@@ -127,7 +127,7 @@ Equations variables_to_bindings : list Verilog.variable -> TCBindings :=
   variables_to_bindings [] :=
     StrMap.empty Verilog.vtype;
   variables_to_bindings (var :: tl) :=
-    StrMap.add (Verilog.varName var) (Verilog.varWidth var) (variables_to_bindings tl).
+    StrMap.add (Verilog.varName var) (Verilog.varType var) (variables_to_bindings tl).
 
 Definition tc_vmodule (m : Verilog.vmodule) : TC unit :=
   let Γ := variables_to_bindings (Verilog.modVariables m) in
