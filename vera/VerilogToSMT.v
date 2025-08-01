@@ -25,10 +25,10 @@ From SMTCoqApi Require SMTLib.
 
 From vera Require Import Verilog.
 From vera Require Import Common.
-Import (coercions) VerilogSMTBijection.
 From vera Require EnvStack.
 From vera Require Import Bitvector.
 From vera Require Import SMT.
+Import (coercions) VerilogSMTBijection.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 
@@ -64,7 +64,7 @@ Definition statically_in_bounds {w} (max_val : N) (expr : Verilog.expression w) 
 Definition smt_var_info : Type := (smtname * width).
 
 Section expr_to_smt.
-  Variable tag : TaggedName.Tag.
+  Variable tag : TaggedVariable.Tag.
   Variable name_bijection : VerilogSMTBijection.t.
 
   (* Used for checking expected invariants (assignments only read module outputs and write to module inputs) *)
@@ -72,7 +72,7 @@ Section expr_to_smt.
   Variable outputs : list Verilog.variable.
 
   Equations var_to_smt (var : Verilog.variable): transf SMTLib.term :=
-    var_to_smt var with name_bijection (tag, Verilog.varName var) := {
+    var_to_smt var with name_bijection (tag, var) := {
       | None => raise ("Name not declared: " ++ (Verilog.varName var))%string
       | Some n__smt => ret (SMTLib.Term_Const n__smt)
       }.
@@ -184,15 +184,15 @@ Definition mk_var_map (vars : list (Verilog.variable * smtname)) : StrFunMap.t s
     (fun '(var, smt__name) acc => StrFunMap.insert (Verilog.varName var) smt__name acc)
     StrFunMap.empty vars.
 
-Equations mk_bijection (tag : TaggedName.Tag) (vars : list (Verilog.variable * smtname)) : transf VerilogSMTBijection.t :=
+Equations mk_bijection (tag : TaggedVariable.Tag) (vars : list (Verilog.variable * smtname)) : transf VerilogSMTBijection.t :=
   mk_bijection tag ((var, name__smt) :: xs) :=
     tail_bijection <- mk_bijection tag xs ;;
-    prf1 <- assert_dec (tail_bijection (tag, Verilog.varName var) = None) "Duplicate variable name"%string ;;
+    prf1 <- assert_dec (tail_bijection (tag, var) = None) "Duplicate variable name"%string ;;
     prf2 <- assert_dec (VerilogSMTBijection.bij_inverse tail_bijection name__smt = None) "Duplicate smt name"%string ;;
-    ret (VerilogSMTBijection.insert (tag, Verilog.varName var) name__smt tail_bijection prf1 prf2);
+    ret (VerilogSMTBijection.insert (tag, var) name__smt tail_bijection prf1 prf2);
   mk_bijection tag [] := ret VerilogSMTBijection.empty.
 
-Definition verilog_to_smt (name_tag : TaggedName.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smt_with_namemap :=
+Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smt_with_namemap :=
   let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
   nameMap <- mk_bijection name_tag var_assignment ;;
   body_smt <- transfer_module_body

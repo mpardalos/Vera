@@ -432,84 +432,6 @@ Proof.
     + eapply IHl2; assumption.
 Qed.
 
-Module TaggedName.
-  Inductive Tag :=
-  | VerilogLeft
-  | VerilogRight
-  .
-
-  #[global] Instance dec_eq_tag (a b : TaggedName.Tag) : DecProp (a = b) :=
-    mk_dec_eq.
-
-  Definition t := (Tag * string)%type.
-
-  Definition eq (l r : t) := l = r.
-
-  Definition eq_equiv : Equivalence eq := eq_equivalence.
-
-  Definition eq_dec (x y : t) : { eq x y } + { ~ eq x y } :=
-    dec _.
-End TaggedName.
-
-Module VerilogSMTBijection.
-  Include PartialBijection(TaggedName)(NatAsUDT).
-
-  Definition only_tag t m := forall tag smtName,
-      option_map fst (bij_inverse m smtName) = Some tag ->
-      tag = t.
-
-  Lemma only_tag_empty t : only_tag t empty.
-  Proof. cbv. discriminate. Qed.
-
-  Lemma only_tag_insert tag name b m :
-    only_tag tag m ->
-    forall H1 H2,
-      only_tag tag (insert (tag, name) b m H1 H2).
-  Proof.
-    unfold insert, only_tag.
-    intros.
-    unfold option_map in *.
-    repeat (autodestruct_eqn E; cbn in * ); try reflexivity.
-    eapply H. now erewrite E.
-  Qed.
-
-  Lemma combine_different_tag_left (m1 m2 : t) (t1 t2 : TaggedName.Tag) prf1 prf2:
-    (t1 <> t2) ->
-    only_tag t1 m1 ->
-    only_tag t2 m2 ->
-    forall n, combine m1 m2 prf1 prf2 (t1, n) = m1 (t1, n).
-  Proof.
-    intros.
-    unfold combine. simpl.
-    destruct (m1 (t1, n)) eqn:E1; try reflexivity.
-    destruct (m2 (t1, n)) eqn:E2; try reflexivity.
-    exfalso.
-    apply bij_wf in E2.
-    erewrite (H1 t1) in H. contradiction.
-    now erewrite E2.
-  Qed.
-
-  Lemma combine_different_tag_right (m1 m2 : VerilogSMTBijection.t) (t1 t2 : TaggedName.Tag) prf1 prf2:
-    (t1 <> t2) ->
-    only_tag t1 m1 ->
-    only_tag t2 m2 ->
-    forall n, VerilogSMTBijection.combine m1 m2 prf1 prf2 (t2, n) = m2 (t2, n).
-  Proof.
-    intros.
-    unfold VerilogSMTBijection.combine. simpl.
-    destruct (m1 (t2, n)) eqn:E1; try reflexivity.
-    destruct (m2 (t2, n)) eqn:E2; try reflexivity.
-    - exfalso.
-      apply VerilogSMTBijection.bij_wf in E1.
-      erewrite (H0 t2) in H. contradiction.
-      now erewrite E1.
-    - exfalso.
-      apply VerilogSMTBijection.bij_wf in E1.
-      erewrite (H0 t2) in H. contradiction.
-      now erewrite E1.
-  Qed.
-End VerilogSMTBijection.
-
 Lemma mapT_list_option_length {A B} (f : A -> option B) (l : list A) :
   forall (l' : list B), mapT f l = Some l' ->
                    List.length l = List.length l'.
@@ -532,15 +454,27 @@ Definition N_sum : list N -> N :=
 Definition disjoint {A} (l r : list A) : Prop :=
   Forall (fun x => ~ In x r) l.
 
-Lemma disjoint_l A (l r : list A) :
+Lemma disjoint_elim_l A (l r : list A) :
   Forall (fun x => ~ In x r) l ->
   disjoint l r.
 Proof. trivial. Qed.
 
-Lemma disjoint_r A (l r : list A) :
+Lemma disjoint_elim_r A (l r : list A) :
   Forall (fun x => ~ In x l) r ->
   disjoint l r.
 Proof. unfold disjoint. rewrite ! Forall_forall. crush. Qed.
+
+Lemma disjoint_l_intro A (l r : list A) : forall x,
+  disjoint l r ->
+  In x l ->
+  ~ In x r.
+Proof. unfold disjoint. setoid_rewrite Forall_forall. firstorder. Qed.
+
+Lemma disjoint_r_intro A (l r : list A) : forall x,
+  disjoint l r ->
+  In x r ->
+  ~ In x l.
+Proof. unfold disjoint. setoid_rewrite Forall_forall. firstorder. Qed.
 
 (* Just checking that typeclasses eauto can indeed figure out DecProp (disjoint l r) *)
 Goal (forall (l r : list nat), DecProp (disjoint l r)). typeclasses eauto. Qed.

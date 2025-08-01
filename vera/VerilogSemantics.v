@@ -81,9 +81,9 @@ Module CombinationalOnly.
   Definition variable_names vars : list string :=
     map Verilog.varName vars.
 
-  Definition initial_state (v : Verilog.vmodule) (input : (forall var, In var (Verilog.modVariables v) -> (XBV.xbv (Verilog.varType var)))) : VerilogState :=
+  Definition initial_state (v : Verilog.vmodule) (input : (forall var, In var (Verilog.module_inputs v) -> (XBV.xbv (Verilog.varType var)))) : VerilogState :=
     {|
-      regState := (fun var => match dec (In var (Verilog.modVariables v)) with
+      regState := (fun var => match dec _ with
                            | left prf => Some (input var prf)
                            | right prf => None
                            end);
@@ -317,9 +317,9 @@ Module CombinationalOnly.
   Definition execution := RegisterState.
 
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
-    exists input final,
-      run_multistep (initial_state v input) = Some final
-      /\ regState final = e.
+    exists input,
+      run_multistep (initial_state v input) =
+        Some {| regState := e; pendingProcesses := [] |}.
 
   Definition complete_execution (v : Verilog.vmodule) (e : execution) :=
     forall var, In var (Verilog.modVariables v) <-> exists bv, e var = Some bv.

@@ -242,8 +242,8 @@ Proof. Admitted.
 
 Definition smt_same_value (var : string) (m : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
   exists smtName1 smtName2 v,
-    m (TaggedName.VerilogLeft, var) = Some smtName1 /\
-      m (TaggedName.VerilogRight, var) = Some smtName2 /\
+    m (TaggedVariable.VerilogLeft, var) = Some smtName1 /\
+      m (TaggedVariable.VerilogRight, var) = Some smtName2 /\
       ρ smtName1 = Some v /\
       ρ smtName2 = Some v.
 
@@ -253,17 +253,17 @@ Definition smt_all_same_values
 
 Definition smt_distinct_value (var : string) (m : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
   exists smtName1 smtName2 v1 v2,
-    m (TaggedName.VerilogLeft, var) = Some smtName1 /\
-      m (TaggedName.VerilogRight, var) = Some smtName2 /\
+    m (TaggedVariable.VerilogLeft, var) = Some smtName1 /\
+      m (TaggedVariable.VerilogRight, var) = Some smtName2 /\
       ρ smtName1 = Some v1 /\
       ρ smtName2 = Some v2 /\
       v1 <> v2.
 
-Definition smt_has_value (tag : TaggedName.Tag) (var : string) (nameMap : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
+Definition smt_has_value (tag : TaggedVariable.Tag) (var : string) (nameMap : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
   exists smtName v, nameMap (tag, var) = Some smtName /\ ρ smtName = Some v.
 
 Definition smt_all_have_values
-  (tag : TaggedName.Tag) (vars : list string) (nameMap : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
+  (tag : TaggedVariable.Tag) (vars : list string) (nameMap : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
   Forall (fun verilogName => smt_has_value tag verilogName nameMap ρ) vars.
 
 Definition smt_some_distinct_values
@@ -456,8 +456,8 @@ Proof.
 Qed.
 
 Lemma mk_var_distinct_is_bool var : forall m t ρ,
-    smt_has_value TaggedName.VerilogLeft var m ρ ->
-    smt_has_value TaggedName.VerilogRight var m ρ ->
+    smt_has_value TaggedVariable.VerilogLeft var m ρ ->
+    smt_has_value TaggedVariable.VerilogRight var m ρ ->
     mk_var_distinct var m = inr t ->
     smtlib_is_bool ρ t.
 Proof.
@@ -490,8 +490,8 @@ Proof.
 Qed.
 
 Lemma mk_outputs_distinct_is_bool outputs : forall m t ρ,
-    smt_all_have_values TaggedName.VerilogLeft outputs m ρ ->
-    smt_all_have_values TaggedName.VerilogRight outputs m ρ ->
+    smt_all_have_values TaggedVariable.VerilogLeft outputs m ρ ->
+    smt_all_have_values TaggedVariable.VerilogRight outputs m ρ ->
     mk_outputs_distinct outputs m = inr t ->
     smtlib_is_bool ρ t.
 Proof.
@@ -499,8 +499,8 @@ Proof.
   - inv H. repeat econstructor.
   - autodestruct_eqn E.
     inv Hval1. inv Hval2.
-    fold (smt_all_have_values TaggedName.VerilogLeft outputs m ρ) in *.
-    fold (smt_all_have_values TaggedName.VerilogRight outputs m ρ) in *.
+    fold (smt_all_have_values TaggedVariable.VerilogLeft outputs m ρ) in *.
+    fold (smt_all_have_values TaggedVariable.VerilogRight outputs m ρ) in *.
     apply smtlib_is_bool_or.
     eauto using mk_var_distinct_is_bool.
 Qed.
@@ -529,8 +529,8 @@ Proof. destruct tag; firstorder. Qed.
 Lemma mk_outputs_distinct_spec outputs m q:
   mk_outputs_distinct outputs m = inr q ->
   SMTLibFacts.smt_reflect [q] (fun ρ => smt_some_distinct_values outputs m ρ
-                                     /\ smt_all_have_values TaggedName.VerilogLeft outputs m ρ
-                                     /\ smt_all_have_values TaggedName.VerilogRight outputs m ρ).
+                                     /\ smt_all_have_values TaggedVariable.VerilogLeft outputs m ρ
+                                     /\ smt_all_have_values TaggedVariable.VerilogRight outputs m ρ).
 Proof.
   revert q m. induction outputs.
   - intros. inv H. simp mk_outputs_distinct.
@@ -550,8 +550,8 @@ Proof.
                 (smtlib_or_disj t t0
                    (smt_distinct_value a m)
                    (fun ρ => smt_some_distinct_values outputs m ρ
-                          /\ smt_all_have_values TaggedName.VerilogLeft  outputs m ρ
-                          /\ smt_all_have_values TaggedName.VerilogRight outputs m ρ) _ _) as Hreflect).
+                          /\ smt_all_have_values TaggedVariable.VerilogLeft  outputs m ρ
+                          /\ smt_all_have_values TaggedVariable.VerilogRight outputs m ρ) _ _) as Hreflect).
     { auto using mk_var_distinct_spec. }
     { assumption. }
     eapply SMTLibFacts.smt_reflect_rewrite. 2: apply Hreflect.
@@ -559,8 +559,8 @@ Proof.
     unfold smt_all_have_values.
     rewrite Exists_cons.
     rewrite 2 Forall_cons_iff.
-    fold (smt_all_have_values TaggedName.VerilogLeft  outputs m ρ) in *.
-    fold (smt_all_have_values TaggedName.VerilogRight outputs m ρ) in *.
+    fold (smt_all_have_values TaggedVariable.VerilogLeft  outputs m ρ) in *.
+    fold (smt_all_have_values TaggedVariable.VerilogRight outputs m ρ) in *.
     fold (smt_some_distinct_values outputs m ρ) in *.
     intuition (eauto using mk_outputs_distinct_is_bool,
                 mk_var_distinct_is_bool,
@@ -570,12 +570,12 @@ Proof.
 Qed.
 
 Definition counterexample_valuation v1 v2 m ρ :=
-  valid_execution v1 (SMT.execution_of_valuation TaggedName.VerilogLeft m ρ)
-  /\ valid_execution v2 (SMT.execution_of_valuation TaggedName.VerilogRight m ρ)
+  valid_execution v1 (SMT.execution_of_valuation TaggedVariable.VerilogLeft m ρ)
+  /\ valid_execution v2 (SMT.execution_of_valuation TaggedVariable.VerilogRight m ρ)
   /\ smt_all_same_values (Verilog.inputs v1) m ρ
   /\ smt_some_distinct_values (Verilog.outputs v1) m ρ
-  /\ smt_all_have_values TaggedName.VerilogLeft (Verilog.outputs v1) m ρ
-  /\ smt_all_have_values TaggedName.VerilogRight (Verilog.outputs v1) m ρ.
+  /\ smt_all_have_values TaggedVariable.VerilogLeft (Verilog.outputs v1) m ρ
+  /\ smt_all_have_values TaggedVariable.VerilogRight (Verilog.outputs v1) m ρ.
 
 Definition execution_same_value (e1 e2 : execution) name :=
   exists v, e1 name = Some v /\ e2 name = Some v.
@@ -631,8 +631,8 @@ Theorem all_same_values_execution_of_valuation names m ρ :
   only_bitvectors ρ ->
   smt_all_same_values names m ρ ->
   execution_all_same_values
-    (SMT.execution_of_valuation TaggedName.VerilogLeft m ρ)
-    (SMT.execution_of_valuation TaggedName.VerilogRight m ρ)
+    (SMT.execution_of_valuation TaggedVariable.VerilogLeft m ρ)
+    (SMT.execution_of_valuation TaggedVariable.VerilogRight m ρ)
     names.
 Proof.
   intro Honly_bv.
@@ -649,8 +649,8 @@ Theorem some_distinct_values_execution_of_valuation names m ρ :
   only_bitvectors ρ ->
   smt_some_distinct_values names m ρ ->
   execution_some_distinct_values
-    (SMT.execution_of_valuation TaggedName.VerilogLeft m ρ)
-    (SMT.execution_of_valuation TaggedName.VerilogRight m ρ) names.
+    (SMT.execution_of_valuation TaggedVariable.VerilogLeft m ρ)
+    (SMT.execution_of_valuation TaggedVariable.VerilogRight m ρ) names.
 Proof.
   intros Honly_bv.
   unfold smt_some_distinct_values, execution_some_distinct_values in *.
@@ -687,8 +687,8 @@ Theorem counterexample_valuation_execution v1 v2 m ρ:
   only_bitvectors ρ ->
   counterexample_valuation v1 v2 m ρ ->
   counterexample_execution
-    v1 (SMT.execution_of_valuation TaggedName.VerilogLeft m ρ)
-    v2 (SMT.execution_of_valuation TaggedName.VerilogRight m ρ).
+    v1 (SMT.execution_of_valuation TaggedVariable.VerilogLeft m ρ)
+    v2 (SMT.execution_of_valuation TaggedVariable.VerilogRight m ρ).
 Proof.
   unfold counterexample_valuation, counterexample_execution.
   intros Honly_bv [Hvalid1 [Hvalid2 [Hinputsame [Houtdistinct [Houtputsexist1 Houtputsexist2]]]]].
@@ -700,7 +700,7 @@ Proof.
   now eapply all_have_values_execution_of_valuation.
 Qed.
 
-Definition match_map_execution (tag : TaggedName.Tag) (m : VerilogSMTBijection.t) (e : execution) :=
+Definition match_map_execution (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (e : execution) :=
   forall name, (exists smtName, m (tag, name) = Some smtName) <-> (exists xbv, e name = Some xbv).
 
 Lemma match_map_execution_of_verilog v tag m e :
@@ -731,8 +731,8 @@ Proof.
 Qed.
 
 Lemma all_same_values_valuation_of_executions e1 e2 names m :
-  match_map_execution TaggedName.VerilogLeft m e1 ->
-  match_map_execution TaggedName.VerilogRight m e2 ->
+  match_map_execution TaggedVariable.VerilogLeft m e1 ->
+  match_map_execution TaggedVariable.VerilogRight m e2 ->
   execution_no_exes e1 names ->
   execution_all_same_values e1 e2 names ->
   smt_all_same_values names m (SMT.valuation_of_executions m e1 e2).
@@ -763,8 +763,8 @@ Lemma FIXME_valid_executions_no_exes v e name xbv :
 Admitted.
 
 Lemma some_distinct_values_valuation_of_executions e1 e2 names m :
-  match_map_execution TaggedName.VerilogLeft m e1 ->
-  match_map_execution TaggedName.VerilogRight m e2 ->
+  match_map_execution TaggedVariable.VerilogLeft m e1 ->
+  match_map_execution TaggedVariable.VerilogRight m e2 ->
   execution_no_exes e1 names ->
   execution_no_exes e2 names ->
   execution_some_distinct_values e1 e2 names ->
@@ -801,9 +801,9 @@ Qed.
 
 Lemma all_have_values_left_valuation_of_executions e1 e2 names m :
   execution_no_exes e1 names ->
-  match_map_execution TaggedName.VerilogLeft m e1 ->
+  match_map_execution TaggedVariable.VerilogLeft m e1 ->
   execution_all_have_values e1 names ->
-  smt_all_have_values TaggedName.VerilogLeft names m (SMT.valuation_of_executions m e1 e2).
+  smt_all_have_values TaggedVariable.VerilogLeft names m (SMT.valuation_of_executions m e1 e2).
 Proof.
   intros Hno_exes Hmatch.
   unfold execution_all_have_values, execution_has_value, smt_all_have_values, smt_has_value, match_map_execution in *.
@@ -820,9 +820,9 @@ Qed.
 
 Lemma all_have_values_right_valuation_of_executions e1 e2 names m :
   execution_no_exes e2 names ->
-  match_map_execution TaggedName.VerilogRight m e2 ->
+  match_map_execution TaggedVariable.VerilogRight m e2 ->
   execution_all_have_values e2 names ->
-  smt_all_have_values TaggedName.VerilogRight names m (SMT.valuation_of_executions m e1 e2).
+  smt_all_have_values TaggedVariable.VerilogRight names m (SMT.valuation_of_executions m e1 e2).
 Proof.
   intros Hno_exes Hmatch.
   unfold execution_all_have_values, execution_has_value, smt_all_have_values, smt_has_value, match_map_execution in *.
@@ -838,15 +838,15 @@ Proof.
 Qed.
 
 Lemma counterexample_execution_valuation v1 v2 m e1 e2 :
-  SMT.match_map_verilog TaggedName.VerilogLeft m v1 ->
-  SMT.match_map_verilog TaggedName.VerilogRight m v2 ->
+  SMT.match_map_verilog TaggedVariable.VerilogLeft m v1 ->
+  SMT.match_map_verilog TaggedVariable.VerilogRight m v2 ->
   counterexample_execution v1 e1 v2 e2 ->
   counterexample_valuation v1 v2 m (SMT.valuation_of_executions m e1 e2).
 Proof.
   unfold counterexample_valuation, counterexample_execution.
   intros Hmatch1 Hmatch2 [Hvalid1 [Hvalid2 [Hinputsame [Houtputdifferent [Houtputexist1 Houtputexist2]]]]].
-  assert (match_map_execution TaggedName.VerilogLeft m e1) by eauto using match_map_execution_of_verilog.
-  assert (match_map_execution TaggedName.VerilogRight m e2) by eauto using match_map_execution_of_verilog.
+  assert (match_map_execution TaggedVariable.VerilogLeft m e1) by eauto using match_map_execution_of_verilog.
+  assert (match_map_execution TaggedVariable.VerilogRight m e2) by eauto using match_map_execution_of_verilog.
   assert (forall names, execution_no_exes e1 names). {
     intros. unfold execution_no_exes, execution_not_x. apply Forall_forall.
     intros. eauto using FIXME_valid_executions_no_exes.
@@ -898,11 +898,11 @@ Proof.
   remember (VerilogSMTBijection.combine _ _ _ _) as m_combined.
   apply SMTLibFacts.concat_conj. {
     eapply SMTLibFacts.smt_reflect_rewrite with
-      (P2 := (fun ρ => valid_execution verilog1 (SMT.execution_of_valuation TaggedName.VerilogLeft (SMT.nameMap s) ρ))).
+      (P2 := (fun ρ => valid_execution verilog1 (SMT.execution_of_valuation TaggedVariable.VerilogLeft (SMT.nameMap s) ρ))).
     - intros.
       rewrite (execution_of_valuation_map_equal m_combined (SMT.nameMap s)). reflexivity.
       replace m_combined.
-      eapply VerilogSMTBijection.combine_different_tag_left with (t2 := TaggedName.VerilogRight).
+      eapply VerilogSMTBijection.combine_different_tag_left with (t2 := TaggedVariable.VerilogRight).
       + discriminate.
       + eapply VerilogToSMTCorrect.verilog_to_smt_only_tag; eassumption.
       + eapply VerilogToSMTCorrect.verilog_to_smt_only_tag; eassumption.
@@ -910,11 +910,11 @@ Proof.
   }
   apply SMTLibFacts.concat_conj. {
     eapply SMTLibFacts.smt_reflect_rewrite with
-      (P2 := (fun ρ => valid_execution verilog2 (SMT.execution_of_valuation TaggedName.VerilogRight (SMT.nameMap s0) ρ))).
+      (P2 := (fun ρ => valid_execution verilog2 (SMT.execution_of_valuation TaggedVariable.VerilogRight (SMT.nameMap s0) ρ))).
     - intros.
       rewrite (execution_of_valuation_map_equal m_combined (SMT.nameMap s0)). reflexivity.
       replace m_combined.
-      eapply VerilogSMTBijection.combine_different_tag_right with (t1 := TaggedName.VerilogLeft).
+      eapply VerilogSMTBijection.combine_different_tag_right with (t1 := TaggedVariable.VerilogLeft).
       + discriminate.
       + eapply VerilogToSMTCorrect.verilog_to_smt_only_tag; eassumption.
       + eapply VerilogToSMTCorrect.verilog_to_smt_only_tag; eassumption.
@@ -927,8 +927,8 @@ Proof.
 Qed.
 
 Lemma not_distinct_same_value var m ρ :
-  smt_has_value TaggedName.VerilogLeft var m ρ ->
-  smt_has_value TaggedName.VerilogRight var m ρ ->
+  smt_has_value TaggedVariable.VerilogLeft var m ρ ->
+  smt_has_value TaggedVariable.VerilogRight var m ρ ->
   ~ (smt_distinct_value var m ρ) ->
   smt_same_value var m ρ.
 Proof.
@@ -944,8 +944,8 @@ Proof.
 Qed.
 
 Lemma not_some_distinct_all_same vars m ρ :
-  smt_all_have_values TaggedName.VerilogLeft  vars m ρ ->
-  smt_all_have_values TaggedName.VerilogRight vars m ρ ->
+  smt_all_have_values TaggedVariable.VerilogLeft  vars m ρ ->
+  smt_all_have_values TaggedVariable.VerilogRight vars m ρ ->
   ~ (smt_some_distinct_values vars m ρ) ->
   smt_all_same_values vars m ρ.
 Proof.
@@ -1175,14 +1175,14 @@ Proof.
         simpl.
         eapply match_map_verilog_tag_equal with (m1 := (SMT.nameMap s)).
         -- intros.
-           erewrite VerilogSMTBijection.combine_different_tag_left with (t2 := TaggedName.VerilogRight);
+           erewrite VerilogSMTBijection.combine_different_tag_left with (t2 := TaggedVariable.VerilogRight);
              try discriminate; eauto using VerilogToSMTCorrect.verilog_to_smt_only_tag.
         -- eapply VerilogToSMTCorrect.verilog_to_smt_map_match; eauto.
       * unfold equivalence_query_canonical in Hquery; inv Hquery; autodestruct_eqn E.
         simpl.
         eapply match_map_verilog_tag_equal with (m1 := (SMT.nameMap s0)).
         -- intros.
-           erewrite VerilogSMTBijection.combine_different_tag_right with (t1 := TaggedName.VerilogLeft);
+           erewrite VerilogSMTBijection.combine_different_tag_right with (t1 := TaggedVariable.VerilogLeft);
              try discriminate; eauto using VerilogToSMTCorrect.verilog_to_smt_only_tag.
         -- eapply VerilogToSMTCorrect.verilog_to_smt_map_match; eauto.
       * eassumption.
