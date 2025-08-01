@@ -39,7 +39,7 @@ Module CombinationalOnly.
     Equations module_items_sorted : list Verilog.module_item -> Prop :=
       module_items_sorted [] := True;
       module_items_sorted (mi :: mis) :=
-        Forall (fun mi' => disjoint (Verilog.module_item_writes_comb mi) (Verilog.module_item_reads_comb mi')) mis
+        Forall (fun mi' => disjoint (Verilog.module_item_writes mi) (Verilog.module_item_reads mi')) mis
                /\ module_items_sorted mis
     .
 

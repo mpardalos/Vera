@@ -5,6 +5,7 @@ From Coq Require Import BinNums.
 From ExtLib Require Import Programming.Show.
 
 From vera Require Import Common.
+From vera Require Import Tactics.
 From vera Require Import Bitvector.
 From vera Require Import Decidable.
 Import (notations) Bitvector.RawBV.
@@ -306,19 +307,30 @@ Module Verilog.
       statement_writes hd ++ statement_writes_lst tl;
   .
 
-  Equations module_item_reads_comb : Verilog.module_item -> list Verilog.variable :=
-    module_item_reads_comb (Verilog.AlwaysComb stmt) => statement_reads stmt ;
-    module_item_reads_comb (Verilog.AlwaysFF _) => [] ;
+  Equations module_item_reads : Verilog.module_item -> list Verilog.variable :=
+    module_item_reads (Verilog.AlwaysComb stmt) => statement_reads stmt ;
+    module_item_reads (Verilog.AlwaysFF _) => [] ;
     (* TODO: idk if this is right? Initial blocks definitely don't matter
       after initalization, but maybe there should be some kind of check for
       that? In any case, only matters once we do synchronous *)
-    module_item_reads_comb (Verilog.Initial stmt) => [] ;
+    module_item_reads (Verilog.Initial stmt) => [] ;
   .
 
-  Equations module_item_writes_comb : Verilog.module_item -> list Verilog.variable :=
-    module_item_writes_comb (Verilog.AlwaysComb stmt) => statement_writes stmt ;
-    module_item_writes_comb (Verilog.AlwaysFF _) => [] ;
+  Equations module_item_writes : Verilog.module_item -> list Verilog.variable :=
+    module_item_writes (Verilog.AlwaysComb stmt) => statement_writes stmt ;
+    module_item_writes (Verilog.AlwaysFF _) => [] ;
     (* TODO: See above comment. *)
-    module_item_writes_comb (Verilog.Initial stmt) => [] ;
+    module_item_writes (Verilog.Initial stmt) => [] ;
   .
+
+  Equations module_body_reads : list Verilog.module_item -> list Verilog.variable :=
+    module_body_reads [] := [];
+    module_body_reads (hd :: tl) := module_item_reads hd ++ module_body_reads tl
+  .
+
+  Equations module_body_writes : list Verilog.module_item -> list Verilog.variable :=
+    module_body_writes [] := [];
+    module_body_writes (hd :: tl) := module_item_writes hd ++ module_body_writes tl
+  .
+
 End Verilog.

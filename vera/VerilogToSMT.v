@@ -167,6 +167,11 @@ Section expr_to_smt.
   Equations transfer_module_body : list Verilog.module_item -> transf (list SMTLib.term) :=
     transfer_module_body [] := ret [];
     transfer_module_body (hd :: tl) :=
+      assert_dec
+        (disjoint
+           (Verilog.module_item_writes hd)
+           (Verilog.module_body_writes tl))
+        "Multiply-driven net"%string ;;
       a <- transfer_module_item hd ;;
       b <- transfer_module_body tl ;;
       ret (a :: b)
@@ -193,6 +198,9 @@ Equations mk_bijection (tag : TaggedVariable.Tag) (vars : list (Verilog.variable
   mk_bijection tag [] := ret VerilogSMTBijection.empty.
 
 Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smt_with_namemap :=
+  assert_dec
+    (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
+    "Overlapping inputs and outputs"%string ;;
   let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
   nameMap <- mk_bijection name_tag var_assignment ;;
   body_smt <- transfer_module_body
