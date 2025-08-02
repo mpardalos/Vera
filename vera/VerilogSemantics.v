@@ -81,15 +81,6 @@ Module CombinationalOnly.
   Definition variable_names vars : list string :=
     map Verilog.varName vars.
 
-  Definition initial_state (v : Verilog.vmodule) (input : (forall var, In var (Verilog.module_inputs v) -> (XBV.xbv (Verilog.varType var)))) : VerilogState :=
-    {|
-      regState := (fun var => match dec _ with
-                           | left prf => Some (input var prf)
-                           | right prf => None
-                           end);
-      pendingProcesses := Verilog.modBody v
-    |}.
-
   Equations bv_binop {w} : (BV.bitvector w -> BV.bitvector w -> BV.bitvector w) -> XBV.xbv w -> XBV.xbv w -> XBV.xbv w :=
     bv_binop f l r with XBV.to_bv l, XBV.to_bv r => {
       | Some lbv, Some rbv => XBV.from_bv (f lbv rbv)
@@ -316,10 +307,17 @@ Module CombinationalOnly.
   (** The values of the final state of the execution of module *)
   Definition execution := RegisterState.
 
+  Definition limit_to_regs (vars : list Verilog.variable) (regs : RegisterState) : RegisterState :=
+    fun var =>
+      match dec (In var vars) with
+      | left prf => regs var
+      | right prf => None
+      end.
+
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
-    exists input,
-      run_multistep (initial_state v input) =
-        Some {| regState := e; pendingProcesses := [] |}.
+    run_multistep
+      {| regState := limit_to_regs (Verilog.module_inputs v) e; pendingProcesses := Verilog.modBody v |} =
+      Some {| regState := e; pendingProcesses := [] |}.
 
   Definition complete_execution (v : Verilog.vmodule) (e : execution) :=
     forall var, In var (Verilog.modVariables v) <-> exists bv, e var = Some bv.
@@ -329,6 +327,7 @@ Module CombinationalOnly.
   Admitted.
 
   Definition no_errors (v : Verilog.vmodule) :=
-    forall input (input_defined : forall var prf, ~ XBV.has_x (input var prf)),
-    exists final, run_multistep (initial_state v input) = Some final.
+    forall (initial : RegisterState)
+      (input_defined : forall var, exists xbv, initial var = Some xbv -> ~ XBV.has_x xbv),
+    exists final, run_multistep {| regState := initial; pendingProcesses := Verilog.modBody v |} = Some final.
 End CombinationalOnly.
