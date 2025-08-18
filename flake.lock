@@ -1,5 +1,23 @@
 {
   "nodes": {
+    "coqhammer": {
+      "inputs": {
+        "src": "src"
+      },
+      "locked": {
+        "lastModified": 1730228124,
+        "narHash": "sha256-uT85AlXkJgFvO9CokqI6ik4vHJjS2pQ+3c+d7QrT7xs=",
+        "owner": "wrsturgeon",
+        "repo": "coqhammer-nix",
+        "rev": "3ba408bae9deb4ed4d883d1e3e24f7c8e24b6eeb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "wrsturgeon",
+        "repo": "coqhammer-nix",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -20,24 +38,42 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1732350895,
-        "narHash": "sha256-GcOQbOgmwlsRhpLGSwZJwLbo3pu9ochMETuRSS1xpz4=",
+        "lastModified": 1755186698,
+        "narHash": "sha256-wNO3+Ks2jZJ4nTHMuks+cxAiVBGNuEBXsT29Bz6HASo=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "0c582677378f2d9ffcb01490af2f2c678dcb29d3",
+        "rev": "fbcf476f790d8a217c3eab4e12033dc4a0f6d23c",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
-        "ref": "nixos-24.11",
+        "ref": "nixos-unstable",
         "repo": "nixpkgs",
         "type": "github"
       }
     },
     "root": {
       "inputs": {
+        "coqhammer": "coqhammer",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs"
+      }
+    },
+    "src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1712685986,
+        "narHash": "sha256-4b8QTDlm3B3FyiiNdNObgMAFQsvXVj+h60TfW76hgfY=",
+        "owner": "lukaszcz",
+        "repo": "coqhammer",
+        "rev": "772ba94b389fe808d5071307ef0ebddb5e0ec9e7",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lukaszcz",
+        "ref": "coq8.19",
+        "repo": "coqhammer",
+        "type": "github"
       }
     },
     "systems": {

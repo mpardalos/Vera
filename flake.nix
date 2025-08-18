@@ -1,11 +1,15 @@
 {
   description = "A verified verilog equivalence checker (minimum viable product)";
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    coqhammer = {
+        url = "github:wrsturgeon/coqhammer-nix";
+        inputs.src.url = "github:lukaszcz/coqhammer/coq8.19";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, coqhammer }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -81,6 +85,7 @@
           (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
           pkgs.z3
           pkgs.cvc5
+          (coqhammer.lib.with-pkgs pkgs coqPackages).tactics
         ];
       in {
         devShells.default = pkgs.mkShell {
