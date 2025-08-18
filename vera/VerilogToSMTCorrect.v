@@ -24,6 +24,7 @@ From Coq Require Import Morphisms.
 From Coq Require Import Setoid.
 
 From Equations Require Import Equations.
+From Hammer Require Import Tactics.
 
 Import List.ListNotations.
 Import CommonNotations.
@@ -37,20 +38,15 @@ Lemma assign_vars_vars start vars :
   List.map fst (assign_vars start vars) = vars.
 Proof.
   revert start.
-  induction vars; intros;
-    simp assign_vars in *; cbn in *.
-  - reflexivity.
-  - rewrite IHvars. reflexivity.
+  induction vars; sauto rew:db: assign_vars.
 Qed.
 
 Lemma assign_vars_smtname_start start vars :
   List.Forall (fun n => n >= start) (List.map snd (assign_vars start vars)).
 Proof.
   revert start.
-  induction vars;
-    intros; simp assign_vars in *; cbn in *;
-    constructor.
-  - lia.
+  induction vars; intros.
+  - sauto rew:db: assign_vars hint:db: datatypes.
   - specialize (IHvars (S start)).
     revert IHvars.
     eapply List.Forall_impl.
