@@ -985,38 +985,6 @@ Lemma verilog_smt_match_states_partial_impl P1 P2 tag m regs ρ :
   verilog_smt_match_states_partial P2 tag m regs ρ.
 Proof. crush. Qed.
 
-Lemma expr_to_smt_some w e : forall m tag regs ρ t,
-    expr_to_smt tag m (w:=w) e = inr t ->
-    verilog_smt_match_states_partial (fun v => List.In v (Verilog.expr_reads e)) tag m regs ρ ->
-    (exists bv, SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w bv)).
-Proof.
-  induction e; intros;
-    simp expr_to_smt in H; inv H; autodestruct_eqn E;
-    simp expr_reads in *.
-  - edestruct IHe1 as [bv1 Hbv1]; eauto.
-    {
-      unfold verilog_smt_match_states_partial in *.
-      intros.
-      eapply H0; eauto.
-      apply List.in_app_iff.
-      auto.
-    }
-    edestruct IHe2 as [bv2 Hbv2].
-    { eassumption. }
-    {
-      unfold verilog_smt_match_states_partial in *.
-      intros.
-      eapply H0; eauto.
-      apply List.in_app_iff.
-      auto.
-    }
-    destruct op; simp binop_to_smt in H2; inv H2;
-      simpl; rewrite Hbv1; rewrite Hbv2;
-      destruct (N.eq_dec w w); try contradiction;
-      eexists; reflexivity.
-    all: admit. (* Very repetitive from the above. Solve with tactic *)
-Admitted.
-
 Lemma var_to_smt_value var (m : VerilogSMTBijection.t) tag regs ρ t :
     var_to_smt tag m var = inr t ->
     verilog_smt_match_states_partial (fun v => v = var) tag m regs ρ ->
@@ -1042,15 +1010,6 @@ Proof.
   crush.
 Qed.
 
-(* FIXME: The following two (admitted) expr_to_smt lemmas are (likely) *almost*
-   correct, but they are missing a condition about their input state not having
-   any Xs.
-
-   I need to find a way to thread the "no exes in the state" invariant through
-   the proof. Actually, all I really need is "no exes in the inputs", but that
-   might not be that different.
- *)
-
 Definition defined_on C (regs : RegisterState) :=
   forall var, C var -> exists bv, regs var = Some (XBV.from_bv bv).
 
@@ -1067,31 +1026,156 @@ Proof.
   eauto.
 Qed.
 
-Lemma FIXME_expr_to_smt_value w expr (m : VerilogSMTBijection.t) tag regs ρ t :
+Lemma bitOf_in_bounds n w (bv : BV.bitvector w) def :
+  (n < w)%N ->
+  RawXBV.bit_to_bool (XBV.bitOf (N.to_nat n) (XBV.from_bv bv)) = Some (List.nth (N.to_nat n) (BV.bits bv) def).
+Proof.
+  intros H.
+  destruct bv as [bv wf].
+  unfold XBV.from_bv, RawXBV.from_bv, XBV.bitOf, RawXBV.bitOf,
+    BVList.RAWBITVECTOR_LIST.size in *.
+  subst. simpl.
+  erewrite List.nth_indep
+    by (rewrite List.map_length; lia).
+  rewrite List.map_nth.
+  rewrite RawXBV.bit_to_bool_inverse.
+  reflexivity.
+Qed.
+
+Lemma select_bit_no_exes:
+  forall (w_val w_sel : N) (vec : XBV.xbv w_val) (idx : XBV.xbv w_sel) vec_bv idx_val,
+    XBV.to_bv vec = Some vec_bv ->
+    XBV.to_N idx = Some idx_val ->
+    (idx_val < w_val)%N ->
+    exists bv : BV.bitvector 1, XBV.to_bv (select_bit vec idx) = Some bv.
+Proof.
+  intros * Hvec Hidx Hmax.
+  apply XBV.to_from_bv_inverse in Hvec. subst.
+  unfold select_bit. rewrite Hidx. clear Hidx.
+  pose proof bitOf_in_bounds.
+Admitted.
+
+(* FIXME: The following two (admitted) expr_to_smt lemmas are (likely) *almost*
+   correct, but they are missing a condition about their input state not having
+   any Xs.
+
+   I need to find a way to thread the "no exes in the state" invariant through
+   the proof. Actually, all I really need is "no exes in the inputs", but that
+   might not be that different.
+ *)
+
+Lemma FIXME_eval_expr_no_exes w regs e :
+  forall xbv tag m t,
+    expr_to_smt tag m e = inr t ->
+    eval_expr (w:=w) regs e = Some xbv ->
+    exists bv, XBV.to_bv xbv = Some bv.
+Proof.
+  induction e; intros * Hexpr_to_smt Heval;
+    simp expr_to_smt in *; simp eval_expr in *;
+    simpl in *; monad_inv.
+  - (* binop *)
+    insterU IHe1. insterU IHe2.
+    destruct IHe1. destruct IHe2.
+    repeat apply_somewhere XBV.to_from_bv_inverse. subst.
+    admit.
+  - (* unop *)
+    insterU IHe.
+    admit.
+  - (* conditional (false) *)
+    insterU IHe1. insterU IHe2. insterU IHe3.
+    eauto.
+  - (* conditional (true) *)
+    insterU IHe1. insterU IHe2. insterU IHe3.
+    eauto.
+  - (* conditional (X) *)
+    insterU IHe1. insterU IHe2. insterU IHe3.
+    inv IHe1. congruence.
+  - (* Bitselect *)
+    insterU IHe1. insterU IHe2.
+    destruct IHe1. destruct IHe2.
+    repeat apply_somewhere XBV.to_from_bv_inverse. subst.
+    eapply statically_in_bounds_max_bound in s; eauto using XBV.to_N_from_bv.
+    eapply select_bit_no_exes.
+    + apply XBV.xbv_bv_inverse.
+    + apply XBV.to_N_from_bv.
+    + assumption.
+  - (* concat *)
+    insterU IHe1. insterU IHe2.
+    destruct IHe1. destruct IHe2.
+    repeat apply_somewhere XBV.to_from_bv_inverse. subst.
+    eexists.
+    apply XBV.concat_to_bv.
+  - (* literal *)
+    eexists. apply XBV.xbv_bv_inverse.
+  - (* variable *)
+    admit. (* FIXME: Need "no exes in state" assumption *)
+Admitted.
+
+Lemma FIXME_expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ t,
     expr_to_smt tag m expr = inr t ->
     verilog_smt_match_states_partial (fun v => List.In v (Verilog.expr_reads expr)) tag m regs ρ ->
-    SMTLib.interp_term ρ t = (xbv <- eval_expr (w:=w) regs expr ;; bv <- XBV.to_bv xbv ;; ret (SMTLib.Value_BitVec _ bv))%monad.
-Proof. Admitted.
-
-Lemma FIXME_eval_expr_no_exes w regs e xbv :
-  eval_expr (w:=w) regs e = Some xbv ->
-  exists bv, XBV.to_bv xbv = Some bv.
-Proof. Admitted.
+    SMTLib.interp_term ρ t =
+      (xbv <- eval_expr (w:=w) regs expr ;;
+       bv <- XBV.to_bv xbv ;;
+       ret (SMTLib.Value_BitVec _ bv))%monad
+.
+Proof.
+  induction expr; intros * Hexpr_to_smt Hmatch;
+    simp expr_reads expr_to_smt eval_expr in *.
+  - (* binop *)
+    simpl in *; monad_inv.
+    all: admit.
+  - (* unop *)
+    simpl in *; monad_inv.
+    all: admit.
+  - (* conditional *)
+    simpl in *; monad_inv.
+    all: admit.
+  - (* Bitselect *)
+    simpl in *; monad_inv.
+    all: admit.
+  - (* concat *)
+    simpl in *; monad_inv.
+    all: admit.
+  - (* literal *)
+    simpl in *; monad_inv.
+    + simpl. rewrite XBV.xbv_bv_inverse in *.
+      some_inv; reflexivity.
+    + simpl. rewrite XBV.xbv_bv_inverse in *.
+      some_inv.
+  - (* variable *)
+    (* FIXME: Need "no exes in state" assumption *)
+    (* This is implied by the state match and a "read variables are in the bijection (m)" assumption *)
+    simpl in *; monad_inv.
+    + unfold verilog_smt_match_states_partial in *.
+      simp var_to_smt in *. unfold var_to_smt_clause_1 in *.
+      insterU Hmatch.
+      admit.
+    all: admit.
+  - (* resize *)
+    simpl in *; monad_inv.
+    all: admit.
+Admitted.
 
 Lemma expr_to_smt_valid w tag m expr t regs ρ val :
   expr_to_smt (w := w) tag m expr = inr t ->
   SMTLib.interp_term ρ t = Some val ->
   verilog_smt_match_states_partial (fun v => List.In v (Verilog.expr_reads expr)) tag m regs ρ ->
   exists xbv, (eval_expr regs expr = Some xbv /\ verilog_smt_match_value xbv val).
-Admitted.
+Proof.
+  intros * Hexpr_to_smt Hinterp Hmatch_states.
+  erewrite FIXME_expr_to_smt_value in Hinterp; eauto.
+  monad_inv.
+  eauto using verilog_smt_match_to_bv.
+Qed.
 
 Lemma verilog_smt_match_states_valuation_of_execution_same C tag m r :
   verilog_smt_match_states_partial C tag m r (SMT.valuation_of_execution m r).
-Admitted.
+Proof. Admitted.
 
 Lemma verilog_smt_match_states_execution_of_valuation_same C tag m ρ :
   verilog_smt_match_states_partial C tag m (SMT.execution_of_valuation tag m ρ) ρ.
-Admitted.
+Proof. Admitted.
 
 Lemma verilog_smt_match_states_valuation_of_execution C tag m r1 r2 :
   (forall var, C var -> r1 var = r2 var) ->
@@ -1250,7 +1334,7 @@ Proof.
   monad_inv.
   rewrite smt_eq_sat_iff in Hsat. destruct Hsat as [v [Ht0 Ht1]].
   edestruct expr_to_smt_valid as [xbv_expr [Heval_expr Hmatch_expr]]; eauto; [idtac].
-  edestruct eval_expr_no_exes; [eassumption|].
+  edestruct FIXME_eval_expr_no_exes; [eassumption|].
   apply_somewhere XBV.bv_xbv_inverse. subst xbv_expr.
   rewrite Heval_expr.
   edestruct var_to_smt_valid as [xbv_var [Heval_var Hmatch_var]]; eauto.
@@ -1572,15 +1656,15 @@ Lemma FAKE_verilog_smt_match_states_partial_valid_execution v tag m final ρ :
             (Verilog.module_body_reads (Verilog.modBody v) ++ Verilog.module_body_writes (Verilog.modBody v)))
          tag m final ρ ->
   valid_execution v (SMT.execution_of_valuation tag m ρ).
-Admitted.
+Proof. Admitted.
 
 Lemma FAKE_body_reads_inputs_same v :
   Verilog.module_body_reads (Verilog.modBody v) = Verilog.module_inputs v.
-Admitted.
+Proof. Admitted.
 
 Lemma FAKE_body_writes_outputs_same v :
   Verilog.module_body_reads (Verilog.modBody v) = Verilog.module_inputs v.
-Admitted.
+Proof. Admitted.
 
 Lemma transfer_module_body_valid tag m v ρ q :
   disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
@@ -1609,7 +1693,7 @@ Qed.
 
 Lemma valuation_of_execution_of_valuation m tag ρ :
   SMT.valuation_of_execution m (SMT.execution_of_valuation tag m ρ) = ρ.
-Admitted.
+Proof. Admitted.
 
 Lemma transfer_module_body_correct v :
   forall tag (m : VerilogSMTBijection.t) q,
