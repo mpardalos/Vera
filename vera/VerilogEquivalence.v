@@ -37,7 +37,7 @@ Local Open Scope string.
 
 Equations mk_var_same (var : Verilog.variable) (namemap : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
-  | var, namemap with namemap (TaggedVariable.VerilogLeft, Verilog.varName var), namemap (TaggedVariable.VerilogRight, Verilog.varName var) => {
+  | var, namemap with namemap (TaggedVariable.VerilogLeft, var), namemap (TaggedVariable.VerilogRight, var) => {
     | Some smt_name1, Some smt_name2 =>
         inr (SMTLib.Term_Eq (SMTLib.Term_Const smt_name1) (SMTLib.Term_Const smt_name2))
     | _, _ => inl "mk_var_same"%string
@@ -61,7 +61,7 @@ Equations mk_inputs_same (inputs : list Verilog.variable) (namemap : VerilogSMTB
 
 Equations mk_var_distinct (var : Verilog.variable) (namemap : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
-  | var, namemap with namemap (TaggedVariable.VerilogLeft, Verilog.varName var), namemap (TaggedVariable.VerilogRight, Verilog.varName var) => {
+  | var, namemap with namemap (TaggedVariable.VerilogLeft, var), namemap (TaggedVariable.VerilogRight, var) => {
     | Some smt_name1, Some smt_name2 =>
         inr (SMTLib.Term_Not (SMTLib.Term_Eq (SMTLib.Term_Const smt_name1) (SMTLib.Term_Const smt_name2)))
     | _, _ => inl "mk_var_distinct"%string
