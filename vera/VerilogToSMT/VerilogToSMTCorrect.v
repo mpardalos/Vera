@@ -151,24 +151,6 @@ Lemma verilog_smt_match_states_execution_of_valuation_same C tag m ρ :
   verilog_smt_match_states_partial C tag m (SMT.execution_of_valuation tag m ρ) ρ.
 Proof. Admitted.
 
-Lemma verilog_smt_match_states_valuation_of_execution C tag m r1 r2 :
-  (forall var, C var -> r1 var = r2 var) ->
-  (forall var, C var -> exists bv, r1 var = Some (XBV.from_bv bv)) ->
-  verilog_smt_match_states_partial C tag m r1 (SMT.valuation_of_execution m r2).
-Proof.
-  unfold verilog_smt_match_states_partial.
-  intros Hsame Hsome * Hcond Hmap.
-  insterU Hsame. insterU Hsome.
-  destruct Hsome as [xbv Hxbv].
-  econstructor.
-  - eapply SMT.valuation_of_execution_some.
-    + rewrite <- Hsame. eassumption.
-    + now rewrite XBV.xbv_bv_inverse.
-    + eassumption.
-  - eassumption.
-  - econstructor.
-Qed.
-
 Lemma verilog_smt_match_states_partial_set_reg_out C tag m r ρ var val :
   ~ C var ->
   verilog_smt_match_states_partial C tag m (set_reg var val r) ρ <->
@@ -176,17 +158,18 @@ Lemma verilog_smt_match_states_partial_set_reg_out C tag m r ρ var val :
 Proof.
   intro Hcond1.
   unfold verilog_smt_match_states_partial.
-  split; intros H * Hcond2 * Hmatch.
+  split; intros H * Hcond2.
   - destruct (dec (var0 = var)).
     + subst. contradiction.
-    + insterU H. destruct H.
-      econstructor. 1, 3: eassumption.
+    + insterU H. destruct H as [smtName [? []]].
+      econstructor. split. { eassumption. }
       rewrite set_reg_get_out in Hverilogval by congruence.
-      eassumption.
+      econstructor; eassumption.
   - destruct (dec (var0 = var)).
     + subst. contradiction.
-    + insterU H. destruct H.
-      econstructor. 1, 3: eassumption.
+    + insterU H. destruct H as [smtName [? []]].
+      econstructor. split. { eassumption. }
+      econstructor; try eassumption; [idtac].
       rewrite set_reg_get_out by congruence.
       eassumption.
 Qed.
@@ -198,32 +181,36 @@ Lemma verilog_smt_match_states_partial_split C1 C2 C3 tag m reg ρ :
   verilog_smt_match_states_partial C3 tag m reg ρ.
 Proof.
   unfold verilog_smt_match_states_partial.
-  intros Himpl H1 H2 * HC3 Hmatch.
+  intros Himpl H1 H2 * HC3.
   apply Himpl in HC3.
   destruct HC3; eauto.
 Qed.
 
 Lemma verilog_smt_match_states_partial_set_reg_elim C tag (m : VerilogSMTBijection.t) regs ρ var bv :
-  (forall smtName,
-      m (tag, var) = Some smtName ->
-      ρ smtName = Some (SMTLib.Value_BitVec _ bv)) ->
+  (exists smtName,
+      m (tag, var) = Some smtName /\ ρ smtName = Some (SMTLib.Value_BitVec _ bv)) ->
   verilog_smt_match_states_partial C tag m regs ρ ->
   verilog_smt_match_states_partial C tag m (set_reg var (XBV.from_bv bv) regs) ρ.
 Proof.
   unfold verilog_smt_match_states_partial.
   intros Hvar Hrest *.
-  destruct (dec (var0 = var)); intros Hcond Hmap.
+  destruct (dec (var0 = var)); intros Hcond.
   - subst.
-    insterU Hvar.
-    econstructor.
-    + eassumption.
-    + eapply set_reg_get_in.
-    + econstructor.
-  - insterU Hrest. inv Hrest.
-    econstructor.
-    + eassumption.
-    + rewrite set_reg_get_out; eauto.
-    + eassumption.
+    insterU Hvar. destruct Hvar as [? [? ?]].
+    insterU Hrest. destruct Hrest as [? [? []]].
+    replace x0 with x in * by congruence.
+    inv Hmatchvals.
+    repeat econstructor; try eassumption; [idtac].
+    rewrite set_reg_get_in.
+    repeat f_equal.
+    rewrite H0 in Hsmtval. inv Hsmtval.
+    apply_somewhere inj_pair2.
+    assumption.
+  - insterU Hvar. destruct Hvar as [? [? ?]].
+    insterU Hrest. destruct Hrest as [? [? []]].
+    inv Hmatchvals.
+    repeat econstructor; try eassumption; [idtac].
+    rewrite set_reg_get_out; eauto.
 Qed.
 
 Lemma module_item_to_smt_satisfiable
@@ -315,18 +302,18 @@ Proof.
   simpl. eexists. split; [reflexivity|].
   eapply verilog_smt_match_states_partial_split. solve [apply List.in_app_or].
   - eapply verilog_smt_match_states_partial_set_reg_elim. {
+      eexists. split. { eassumption. }
+      replace (ρ xbv_var).
       inv Hmatch_expr.
-      intros smtName ?.
-      replace smtName with xbv_var in * by congruence.
-      replace (ρ xbv_var). repeat f_equal.
       apply_somewhere RawXBV.from_bv_injective.
+      repeat f_equal.
       now apply BV.of_bits_equal.
     }
     eassumption.
   - unfold verilog_smt_match_states_partial.
-    intros * Hin Hmatch_var2.
+    intros * Hin.
     inv Hin; [|crush].
-    replace smtName with xbv_var in * by congruence.
+    exists xbv_var. split. { eassumption. }
     econstructor.
     + eassumption.
     + eapply set_reg_get_in.
@@ -443,12 +430,13 @@ Lemma verilog_smt_match_states_partial_change_regs C tag m r1 r2 ρ :
   verilog_smt_match_states_partial C tag m r2 ρ.
 Proof.
   unfold verilog_smt_match_states_partial.
-  intros Hsame Hmatch1 * Hcond Hname.
+  intros Hsame Hmatch1 * Hcond.
   insterU Hsame. insterU Hcond. insterU Hmatch1.
-  inv Hmatch1. econstructor.
-  - eassumption.
-  - rewrite <- Hsame. eassumption.
-  - eassumption.
+  destruct Hmatch1 as [smtName [? []]].
+  exists smtName.
+  split. { eassumption. }
+  econstructor; try eassumption; [idtac].
+  rewrite <- Hsame. assumption.
 Qed.
 
 Lemma transfer_module_item_inputs tag m inputs outputs mi t :

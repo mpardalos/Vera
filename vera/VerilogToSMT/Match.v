@@ -65,6 +65,7 @@ Inductive verilog_smt_match_on_name (regs : RegisterState) (ρ : SMTLib.valuatio
     (Hverilogval : regs var = Some xbv)
     (Hmatchvals : verilog_smt_match_value xbv val).
 
+(* TODO: No longer used, deleteme *)
 Definition verilog_smt_match_states
   (tag : TaggedVariable.Tag)
   (m : VerilogSMTBijection.t)
@@ -80,12 +81,12 @@ Definition verilog_smt_match_states_partial
   (m : VerilogSMTBijection.t)
   (regs : RegisterState)
   (ρ : SMTLib.valuation) : Prop :=
-  forall var smtName,
+  forall var,
     cond var ->
-    m (tag, var) = Some smtName ->
-    verilog_smt_match_on_name regs ρ var smtName.
+    exists smtName,
+      m (tag, var) = Some smtName
+      /\ verilog_smt_match_on_name regs ρ var smtName.
 
-(* Written by Claude *in one shot* wat. *)
 Instance verilog_smt_match_states_partial_morphism
   (tag : TaggedVariable.Tag)
   (m : VerilogSMTBijection.t)
@@ -93,16 +94,4 @@ Instance verilog_smt_match_states_partial_morphism
   (ρ : SMTLib.valuation) :
   Proper (pointwise_relation Verilog.variable iff ==> iff)
     (fun cond => verilog_smt_match_states_partial cond tag m regs ρ).
-Proof.
-  intros cond1 cond2 H_equiv.
-  unfold verilog_smt_match_states_partial.
-  split; intros H verilogName smtName.
-  - intros H_cond1 H_map.
-    apply (H verilogName smtName).
-    + apply H_equiv. exact H_cond1.
-    + exact H_map.
-  - intros H_cond2 H_map.
-    apply (H verilogName smtName).
-    + apply H_equiv. exact H_cond2.
-    + exact H_map.
-Qed.
+Proof. intros cond1 cond2 Hequiv. crush. Qed.

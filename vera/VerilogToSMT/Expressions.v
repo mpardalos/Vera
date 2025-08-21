@@ -812,10 +812,12 @@ Proof.
   intros Hsmt Hmatch.
   funelim (var_to_smt tag m var); try rewrite <- Heqcall in *; clear Heqcall; monad_inv.
   unfold verilog_smt_match_states_partial in *.
-  insterU Hmatch. inv Hmatch.
-  inv Hmatchvals. simpl.
-  rewrite Hverilogval.
-  rewrite XBV.xbv_bv_inverse.
+  insterU Hmatch.
+  destruct Hmatch as [smtName [Heq2 [? ? ? ? Hmatchvals]]].
+  inv Hmatchvals.
+  replace n__smt with smtName in * by congruence.
+  simpl.
+  rewrite Hverilogval, XBV.xbv_bv_inverse.
   assumption.
 Qed.
 
@@ -840,7 +842,7 @@ Proof.
   unfold verilog_smt_match_states_partial, defined_on.
   intros H Hsmt ? Hcond.
   edestruct H; eauto.
-  edestruct Hsmt; eauto.
+  edestruct Hsmt as [? [? [? ?]]]; eauto.
   inv Hmatchvals.
   eauto.
 Qed.
@@ -932,7 +934,9 @@ Admitted.
 
 Lemma FIXME_expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ t,
     expr_to_smt tag m expr = inr t ->
-    verilog_smt_match_states_partial (fun v => List.In v (Verilog.expr_reads expr)) tag m regs ρ ->
+    verilog_smt_match_states_partial
+      (fun v => List.In v (Verilog.expr_reads expr))
+      tag m regs ρ ->
     SMTLib.interp_term ρ t =
       (xbv <- eval_expr (w:=w) regs expr ;;
        bv <- XBV.to_bv xbv ;;
@@ -963,14 +967,19 @@ Proof.
     + simpl. rewrite XBV.xbv_bv_inverse in *.
       some_inv.
   - (* variable *)
-    (* FIXME: Need "no exes in state" assumption *)
-    (* This is implied by the state match and a "read variables are in the bijection (m)" assumption *)
+    edestruct Hmatch as [smtName [Heq2 [? ? ? ? Hmatchvals]]]. { repeat econstructor. }
     simpl in *; monad_inv.
-    all: admit.
-    (* + unfold verilog_smt_match_states_partial in *. *)
-    (*   simp var_to_smt in *. unfold var_to_smt_clause_1 in *. *)
-    (*   insterU Hmatch. *)
-    (*   admit. *)
+    + funelim (var_to_smt tag m var);
+        rewrite <- Heqcall in *; clear Heqcall; [|discriminate].
+      inv Hexpr_to_smt.
+      simpl.
+      replace n__smt with smtName in * by congruence.
+      inv Hmatchvals.
+      rewrite XBV.xbv_bv_inverse in *.
+      crush.
+    + inv Hmatchvals.
+      rewrite XBV.xbv_bv_inverse in *.
+      crush.
   - (* resize *)
     simpl in *; monad_inv.
     all: admit.
