@@ -978,6 +978,7 @@ Lemma FIXME_expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag re
        ret (SMTLib.Value_BitVec _ bv))%monad
 .
 Proof.
+  intros.
   induction expr; intros * Hexpr_to_smt Hmatch;
     simp expr_reads expr_to_smt eval_expr in *.
   - (* binop *)
@@ -990,17 +991,38 @@ Proof.
     simpl in *; monad_inv.
     all: admit.
   - (* Bitselect *)
-    simpl in *; monad_inv.
-    all: admit.
+    simpl in Hexpr_to_smt. autodestruct_eqn E.
+    setoid_rewrite List.in_app_iff in Hmatch.
+    rewrite verilog_smt_match_states_partial_split_iff in Hmatch.
+    destruct Hmatch.
+    insterU IHexpr1. insterU IHexpr2.
+    admit.
   - (* concat *)
-    simpl in *; monad_inv.
-    all: admit.
+    inv Hexpr_to_smt. autodestruct_eqn E.
+    setoid_rewrite List.in_app_iff in Hmatch.
+    rewrite verilog_smt_match_states_partial_split_iff in Hmatch.
+    destruct Hmatch.
+    insterU IHexpr1. insterU IHexpr2.
+    simpl in *.
+    rewrite IHexpr1, IHexpr2.
+    destruct (eval_expr regs expr1) eqn:Eeval1; trivial; [idtac].
+    edestruct eval_expr_no_exes with (e:=expr1);
+      eauto using verilog_smt_match_states_partial_defined_value_for;
+      [idtac].
+    replace (XBV.to_bv x) in *.
+
+    destruct (eval_expr regs expr2) eqn:Eeval2; trivial; [idtac].
+    edestruct eval_expr_no_exes with (e:=expr2);
+      eauto using verilog_smt_match_states_partial_defined_value_for;
+      [idtac].
+    replace (XBV.to_bv x1) in *.
+
+    repeat apply_somewhere XBV.bv_xbv_inverse. subst.
+    rewrite xbv_concat_to_bv.
+    reflexivity.
   - (* literal *)
-    simpl in *; monad_inv.
-    + simpl. rewrite XBV.xbv_bv_inverse in *.
-      some_inv; reflexivity.
-    + simpl. rewrite XBV.xbv_bv_inverse in *.
-      some_inv.
+    inv Hexpr_to_smt. simpl.
+    now rewrite XBV.xbv_bv_inverse.
   - (* variable *)
     edestruct Hmatch as [smtName [Heq2 [? ? ? ? Hmatchvals]]]. { repeat econstructor. }
     simpl in *; monad_inv.
