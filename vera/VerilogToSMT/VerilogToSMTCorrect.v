@@ -143,74 +143,18 @@ Proof.
   eauto using mk_bijection_only_tag.
 Qed.
 
-Lemma verilog_smt_match_states_valuation_of_execution_same C tag m r :
-  verilog_smt_match_states_partial C tag m r (SMT.valuation_of_execution m r).
-Proof. Admitted.
 
-Lemma verilog_smt_match_states_execution_of_valuation_same C tag m ρ :
-  verilog_smt_match_states_partial C tag m (SMT.execution_of_valuation tag m ρ) ρ.
-Proof. Admitted.
-
-Lemma verilog_smt_match_states_partial_set_reg_out C tag m r ρ var val :
-  ~ C var ->
-  verilog_smt_match_states_partial C tag m (set_reg var val r) ρ <->
-  verilog_smt_match_states_partial C tag m r ρ.
+Lemma defined_value_for_set_reg_intro_out C regs var xbv :
+  (~ C var) ->
+  defined_value_for C (set_reg var xbv regs) ->
+  defined_value_for C regs.
 Proof.
-  intro Hcond1.
-  unfold verilog_smt_match_states_partial.
-  split; intros H * Hcond2.
-  - destruct (dec (var0 = var)).
-    + subst. contradiction.
-    + insterU H. destruct H as [smtName [? []]].
-      econstructor. split. { eassumption. }
-      rewrite set_reg_get_out in Hverilogval by congruence.
-      econstructor; eassumption.
-  - destruct (dec (var0 = var)).
-    + subst. contradiction.
-    + insterU H. destruct H as [smtName [? []]].
-      econstructor. split. { eassumption. }
-      econstructor; try eassumption; [idtac].
-      rewrite set_reg_get_out by congruence.
-      eassumption.
-Qed.
-
-Lemma verilog_smt_match_states_partial_split C1 C2 C3 tag m reg ρ :
-  (forall var, C3 var -> C1 var \/ C2 var) ->
-  verilog_smt_match_states_partial C1 tag m reg ρ ->
-  verilog_smt_match_states_partial C2 tag m reg ρ ->
-  verilog_smt_match_states_partial C3 tag m reg ρ.
-Proof.
-  unfold verilog_smt_match_states_partial.
-  intros Himpl H1 H2 * HC3.
-  apply Himpl in HC3.
-  destruct HC3; eauto.
-Qed.
-
-Lemma verilog_smt_match_states_partial_set_reg_elim C tag (m : VerilogSMTBijection.t) regs ρ var bv :
-  (exists smtName,
-      m (tag, var) = Some smtName /\ ρ smtName = Some (SMTLib.Value_BitVec _ bv)) ->
-  verilog_smt_match_states_partial C tag m regs ρ ->
-  verilog_smt_match_states_partial C tag m (set_reg var (XBV.from_bv bv) regs) ρ.
-Proof.
-  unfold verilog_smt_match_states_partial.
-  intros Hvar Hrest *.
-  destruct (dec (var0 = var)); intros Hcond.
-  - subst.
-    insterU Hvar. destruct Hvar as [? [? ?]].
-    insterU Hrest. destruct Hrest as [? [? []]].
-    replace x0 with x in * by congruence.
-    inv Hmatchvals.
-    repeat econstructor; try eassumption; [idtac].
-    rewrite set_reg_get_in.
-    repeat f_equal.
-    rewrite H0 in Hsmtval. inv Hsmtval.
-    apply_somewhere inj_pair2.
-    assumption.
-  - insterU Hvar. destruct Hvar as [? [? ?]].
-    insterU Hrest. destruct Hrest as [? [? []]].
-    inv Hmatchvals.
-    repeat econstructor; try eassumption; [idtac].
-    rewrite set_reg_get_out; eauto.
+  unfold defined_value_for.
+  intros HnotC Hdefined var1 HC.
+  insterU Hdefined.
+  destruct Hdefined as [? [? ?]].
+  rewrite set_reg_get_out in H by crush.
+  crush.
 Qed.
 
 Lemma module_item_to_smt_satisfiable
@@ -230,7 +174,20 @@ Proof.
   unfold SMTLib.satisfied_by, SMTLib.term_satisfied_by. repeat constructor.
   simpl.
 
-  edestruct FIXME_eval_expr_no_exes as [bv_rhs Hbv_rhs]; [eassumption|eassumption|].
+  edestruct eval_expr_no_exes as [bv_rhs Hbv_rhs]; eauto; [idtac|idtac]. {
+    simp module_item_reads module_item_writes
+      statement_reads statement_writes expr_reads
+      in *.
+    setoid_rewrite List.in_app_iff in H2.
+    apply verilog_smt_match_states_partial_split_iff in H2.
+    destruct H2.
+    eapply defined_value_for_set_reg_intro_out with (var:=var). {
+      rewrite List.Forall_forall in *.
+      eapply disjoint_r_intro in H; eauto.
+    }
+    eapply verilog_smt_match_states_partial_defined_value_for.
+    eassumption.
+  }
   apply XBV.to_from_bv_inverse in Hbv_rhs. subst x.
 
   erewrite var_to_smt_value with (var := var) (regs := (set_reg var (XBV.from_bv bv_rhs) regs)); eauto; cycle 1.
@@ -295,7 +252,9 @@ Proof.
   monad_inv.
   rewrite smt_eq_sat_iff in Hsat. destruct Hsat as [v [Ht0 Ht1]].
   edestruct expr_to_smt_valid as [xbv_expr [Heval_expr Hmatch_expr]]; eauto; [idtac].
-  edestruct FIXME_eval_expr_no_exes; [eassumption|eassumption|].
+  edestruct eval_expr_no_exes;
+    eauto using verilog_smt_match_states_partial_defined_value_for;
+    [idtac].
   apply_somewhere XBV.bv_xbv_inverse. subst xbv_expr.
   rewrite Heval_expr.
   edestruct var_to_smt_valid as [xbv_var [Heval_var Hmatch_var]]; eauto.
@@ -363,13 +322,6 @@ Proof.
     crush.
 Qed.
 
-Lemma smt_reflect_when_intro C q P :
-  (forall ρ, P ρ -> C ρ) ->
-  (forall ρ, SMTLib.satisfied_by ρ q -> C ρ) ->
-  smt_reflect_when C q P ->
-  SMTLibFacts.smt_reflect q P.
-Proof. unfold smt_reflect_when, SMTLibFacts.smt_reflect. firstorder. Qed.
-
 Lemma exec_statement_preserve stmt : forall r1 r2 var,
   exec_statement r1 stmt = Some r2 ->
   (~ List.In var (Verilog.statement_writes stmt)) ->
@@ -422,21 +374,6 @@ Proof.
     transitivity (r var).
     + eapply exec_module_item_preserve; eauto.
     + eapply IHprocs; eauto.
-Qed.
-
-Lemma verilog_smt_match_states_partial_change_regs C tag m r1 r2 ρ :
-  (forall var, C var -> r1 var = r2 var) ->
-  verilog_smt_match_states_partial C tag m r1 ρ ->
-  verilog_smt_match_states_partial C tag m r2 ρ.
-Proof.
-  unfold verilog_smt_match_states_partial.
-  intros Hsame Hmatch1 * Hcond.
-  insterU Hsame. insterU Hcond. insterU Hmatch1.
-  destruct Hmatch1 as [smtName [? []]].
-  exists smtName.
-  split. { eassumption. }
-  econstructor; try eassumption; [idtac].
-  rewrite <- Hsame. assumption.
 Qed.
 
 Lemma transfer_module_item_inputs tag m inputs outputs mi t :

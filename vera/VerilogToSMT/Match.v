@@ -87,11 +87,137 @@ Definition verilog_smt_match_states_partial
       m (tag, var) = Some smtName
       /\ verilog_smt_match_on_name regs ρ var smtName.
 
-Instance verilog_smt_match_states_partial_morphism
-  (tag : TaggedVariable.Tag)
-  (m : VerilogSMTBijection.t)
-  (regs : RegisterState)
-  (ρ : SMTLib.valuation) :
-  Proper (pointwise_relation Verilog.variable iff ==> iff)
-    (fun cond => verilog_smt_match_states_partial cond tag m regs ρ).
-Proof. intros cond1 cond2 Hequiv. crush. Qed.
+Global Instance verilog_smt_match_states_partial_proper :
+  Proper
+    (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> eq ==> eq ==> iff)
+    verilog_smt_match_states_partial.
+Proof.
+  repeat intro. subst.
+  crush.
+Qed.
+
+Lemma verilog_smt_match_states_valuation_of_execution_same C tag m r :
+  verilog_smt_match_states_partial C tag m r (SMT.valuation_of_execution m r).
+Proof. Admitted.
+
+Lemma verilog_smt_match_states_execution_of_valuation_same C tag m ρ :
+  verilog_smt_match_states_partial C tag m (SMT.execution_of_valuation tag m ρ) ρ.
+Proof. Admitted.
+
+Lemma verilog_smt_match_states_partial_impl P1 P2 tag m regs ρ :
+  (forall x, P2 x -> P1 x) ->
+  verilog_smt_match_states_partial P1 tag m regs ρ ->
+  verilog_smt_match_states_partial P2 tag m regs ρ.
+Proof. crush. Qed.
+
+Lemma verilog_smt_match_states_partial_set_reg_out C tag m r ρ var val :
+  ~ C var ->
+  verilog_smt_match_states_partial C tag m (set_reg var val r) ρ <->
+  verilog_smt_match_states_partial C tag m r ρ.
+Proof.
+  intro Hcond1.
+  unfold verilog_smt_match_states_partial.
+  split; intros H * Hcond2.
+  - destruct (dec (var0 = var)).
+    + subst. contradiction.
+    + insterU H. destruct H as [smtName [? []]].
+      econstructor. split. { eassumption. }
+      rewrite set_reg_get_out in Hverilogval by congruence.
+      econstructor; eassumption.
+  - destruct (dec (var0 = var)).
+    + subst. contradiction.
+    + insterU H. destruct H as [smtName [? []]].
+      econstructor. split. { eassumption. }
+      econstructor; try eassumption; [idtac].
+      rewrite set_reg_get_out by congruence.
+      eassumption.
+Qed.
+
+Lemma verilog_smt_match_states_partial_split C1 C2 C3 tag m reg ρ :
+  (forall var, C3 var -> C1 var \/ C2 var) ->
+  verilog_smt_match_states_partial C1 tag m reg ρ ->
+  verilog_smt_match_states_partial C2 tag m reg ρ ->
+  verilog_smt_match_states_partial C3 tag m reg ρ.
+Proof.
+  unfold verilog_smt_match_states_partial.
+  intros Himpl H1 H2 * HC3.
+  apply Himpl in HC3.
+  destruct HC3; eauto.
+Qed.
+
+Lemma verilog_smt_match_states_partial_split_iff C1 C2 tag m reg ρ :
+  verilog_smt_match_states_partial (fun var => C1 var \/ C2 var) tag m reg ρ <->
+    (verilog_smt_match_states_partial C1 tag m reg ρ
+     /\ verilog_smt_match_states_partial C2 tag m reg ρ).
+Proof. unfold verilog_smt_match_states_partial. crush. Qed.
+
+Lemma verilog_smt_match_states_partial_set_reg_elim C tag (m : VerilogSMTBijection.t) regs ρ var bv :
+  (exists smtName,
+      m (tag, var) = Some smtName /\ ρ smtName = Some (SMTLib.Value_BitVec _ bv)) ->
+  verilog_smt_match_states_partial C tag m regs ρ ->
+  verilog_smt_match_states_partial C tag m (set_reg var (XBV.from_bv bv) regs) ρ.
+Proof.
+  unfold verilog_smt_match_states_partial.
+  intros Hvar Hrest *.
+  destruct (dec (var0 = var)); intros Hcond.
+  - subst.
+    insterU Hvar. destruct Hvar as [? [? ?]].
+    insterU Hrest. destruct Hrest as [? [? []]].
+    replace x0 with x in * by congruence.
+    inv Hmatchvals.
+    repeat econstructor; try eassumption; [idtac].
+    rewrite set_reg_get_in.
+    repeat f_equal.
+    rewrite H0 in Hsmtval. inv Hsmtval.
+    apply_somewhere inj_pair2.
+    assumption.
+  - insterU Hvar. destruct Hvar as [? [? ?]].
+    insterU Hrest. destruct Hrest as [? [? []]].
+    inv Hmatchvals.
+    repeat econstructor; try eassumption; [idtac].
+    rewrite set_reg_get_out; eauto.
+Qed.
+
+Lemma verilog_smt_match_states_partial_change_regs C tag m r1 r2 ρ :
+  (forall var, C var -> r1 var = r2 var) ->
+  verilog_smt_match_states_partial C tag m r1 ρ ->
+  verilog_smt_match_states_partial C tag m r2 ρ.
+Proof.
+  unfold verilog_smt_match_states_partial.
+  intros Hsame Hmatch1 * Hcond.
+  insterU Hsame. insterU Hcond. insterU Hmatch1.
+  destruct Hmatch1 as [smtName [? []]].
+  exists smtName.
+  split. { eassumption. }
+  econstructor; try eassumption; [idtac].
+  rewrite <- Hsame. assumption.
+Qed.
+
+Definition defined_value_for (C : Verilog.variable -> Prop) (regs : RegisterState) :=
+  forall (var : Verilog.variable),
+    C var ->
+    exists xbv, regs var = Some xbv /\ ~ XBV.has_x xbv.
+
+Global Instance defined_value_for_proper :
+  Proper (pointwise_relation Verilog.variable iff ==> eq ==> iff) defined_value_for.
+Proof. repeat intro. subst. crush. Qed.
+
+Lemma defined_value_for_split_iff (C1 C2 : Verilog.variable -> Prop) regs :
+  (defined_value_for C1 regs /\ defined_value_for C2 regs) <->
+    (defined_value_for (fun var => C1 var \/ C2 var) regs).
+Proof. unfold defined_value_for. crush. Qed.
+
+Lemma verilog_smt_match_states_partial_defined_value_for C tag m regs ρ :
+  verilog_smt_match_states_partial C tag m regs ρ ->
+  defined_value_for C regs.
+Proof.
+  unfold verilog_smt_match_states_partial, defined_value_for.
+  intros Hmatch * Hcond.
+  insterU Hmatch.
+  destruct Hmatch as [? [? []]].
+  inv Hmatchvals.
+  exists (XBV.from_bv bv).
+  split; eauto.
+  apply XBV.not_has_x_to_bv.
+  eexists. eapply XBV.xbv_bv_inverse.
+Qed.

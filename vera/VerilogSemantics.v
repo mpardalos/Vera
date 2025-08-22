@@ -7,6 +7,7 @@ From Coq Require Import ssreflect.
 From Coq Require Import Relations.
 From Coq Require Import Structures.Equalities.
 From Coq Require Import Psatz.
+From Coq Require Import Program.Equality.
 
 From vera Require Import Verilog.
 From vera Require Import Common.
@@ -71,6 +72,25 @@ Module CombinationalOnly.
 
   Definition set_reg (var : Verilog.variable) (value : XBV.xbv (Verilog.varType var)) : RegisterState -> RegisterState :=
     VariableDepMap.insert var value.
+
+  Lemma set_reg_get_in var val regs :
+    set_reg var val regs var = Some val.
+  Proof.
+    unfold set_reg, VariableDepMap.insert.
+    autodestruct; [|contradiction].
+    dependent destruction e.
+    reflexivity.
+  Qed.
+
+  Lemma set_reg_get_out var1 var2 val regs :
+    var1 <> var2 ->
+    set_reg var1 val regs var2 = regs var2.
+  Proof.
+    intros.
+    unfold set_reg, VariableDepMap.insert.
+    autodestruct; [contradiction|].
+    reflexivity.
+  Qed.
 
   Definition pop_pending_process (st : VerilogState) : VerilogState :=
     {| regState := regState st
