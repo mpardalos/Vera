@@ -199,7 +199,7 @@ Proof.
   }
   rewrite set_reg_get_in. simpl. rewrite XBV.xbv_bv_inverse.
 
-  erewrite FIXME_expr_to_smt_value with (expr := rhs) (regs := regs); eauto; cycle 1. {
+  erewrite expr_to_smt_value with (expr := rhs) (regs := regs); eauto; cycle 1. {
     eapply verilog_smt_match_states_partial_set_reg_out; cycle 1.
     - eapply verilog_smt_match_states_partial_impl; [|eassumption].
       intros. simpl.

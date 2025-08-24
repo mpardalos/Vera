@@ -126,7 +126,7 @@ Module CombinationalOnly.
     lia.
   Qed.
 
-  Obligation Tactic := intros.
+  Local Obligation Tactic := intros.
 
   Program Definition bitwise_binop {n} (f : bit -> bit -> bit) (l r : XBV.xbv n) : XBV.xbv n :=
     {| XBV.bv := bitwise_binop_raw f (XBV.bits l) (XBV.bits r) |}.
@@ -196,6 +196,16 @@ Module CombinationalOnly.
     | Some n => XBV.of_bits [XBV.bitOf (N.to_nat n) vec]
     end.
 
+  (* TODO: Check that ?: semantics match with standard *)
+  Definition eval_conditional {w_cond w} (cond : XBV.xbv w_cond) (ifT : XBV.xbv w) (ifF : XBV.xbv w) : XBV.xbv w :=
+      match XBV.to_bv cond with
+      | None => XBV.exes (XBV.size ifT)
+      | Some cond_bv =>
+          if BV.is_zero cond_bv
+          then ifF
+          else ifT
+      end.
+
   Equations
     eval_expr {w} (regs: RegisterState) (e : Verilog.expression w) : option (XBV.xbv w) :=
     eval_expr regs (Verilog.UnaryOp op operand) :=
@@ -209,14 +219,7 @@ Module CombinationalOnly.
       let* cond__val := eval_expr regs cond in
       let* tBranch__val := eval_expr regs tBranch in
       let* fBranch__val := eval_expr regs fBranch in
-      (* TODO: Check that ?: semantics match with standard *)
-      match XBV.to_bv cond__val with
-      | None => Some (XBV.exes (XBV.size tBranch__val))
-      | Some cond__bv =>
-          if BV.is_zero cond__bv
-          then Some fBranch__val
-          else Some tBranch__val
-      end;
+      Some (eval_conditional cond__val tBranch__val fBranch__val);
     eval_expr regs (Verilog.BitSelect vec idx) :=
       let* vec__val := eval_expr regs vec in
       let* idx__val := eval_expr regs idx in

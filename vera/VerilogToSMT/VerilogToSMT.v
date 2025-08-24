@@ -111,6 +111,13 @@ Section expr_to_smt.
     (*   ret (SMTLib.Term_BVUnaryOp SMTLib.BVNot operand) *)
   .
 
+  Definition conditional_to_smt
+    (cond_type : Verilog.vtype) (cond ifT ifF : SMTLib.term) : SMTLib.term :=
+    SMTLib.Term_ITE
+      (SMTLib.Term_Not (SMTLib.Term_Eq cond (SMTLib.Term_BVLit _ (BV.zeros cond_type))))
+      ifT ifF
+  .
+
   Equations expr_to_smt {w} : Verilog.expression w -> transf SMTLib.term :=
     expr_to_smt (Verilog.UnaryOp op operand) :=
       operand__smt <- expr_to_smt operand ;;
@@ -124,16 +131,11 @@ Section expr_to_smt.
       e2_smt <- expr_to_smt e2 ;;
       ret (SMTLib.Term_BVConcat e1_smt e2_smt);
     expr_to_smt (Verilog.Conditional cond ifT ifF) :=
-      let t__cond := Verilog.expr_type cond in
-      condval__smt <- expr_to_smt cond ;;
-      ifT__smt <- expr_to_smt ifT ;;
-      ifF__smt <- expr_to_smt ifF ;;
-      let cond__smt := SMTLib.Term_Not
-                       (SMTLib.Term_Eq
-                          condval__smt
-                          (SMTLib.Term_BVLit _ (BV.zeros t__cond)))
-      in
-      ret (SMTLib.Term_ITE cond__smt ifT__smt ifF__smt);
+      let cond_type := Verilog.expr_type cond in
+      cond_smt <- expr_to_smt cond ;;
+      ifT_smt <- expr_to_smt ifT ;;
+      ifF_smt <- expr_to_smt ifF ;;
+      ret (conditional_to_smt cond_type cond_smt ifT_smt ifF_smt);
     expr_to_smt (Verilog.BitSelect vec idx) :=
       let t__vec := Verilog.expr_type vec in
       let t__idx := Verilog.expr_type idx in

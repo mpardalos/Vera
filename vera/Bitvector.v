@@ -751,12 +751,11 @@ Module XBV.
       wf := RawXBV.extr_width _ _ _
     |}.
 
-  Lemma extr_to_bv (n i j : N) (bv : BV.bitvector n) :
+  Lemma extr_no_exes (n i j : N) (bv : BV.bitvector n) :
     (i + j < n)%N ->
-    XBV.to_bv (XBV.extr (XBV.from_bv bv) i j) = Some (BV.bv_extr i j bv).
+    extr (from_bv bv) i j = from_bv (BV.bv_extr i j bv).
   Proof.
     intros. destruct bv as [bv wf].
-    rewrite <- xbv_bv_inverse. f_equal.
     apply of_bits_equal; simpl.
     unfold RawXBV.extr.
     rewrite RawXBV.from_bv_size. rewrite wf. rewrite <- N.ltb_lt in H. rewrite N.add_comm in H. rewrite H.
