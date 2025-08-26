@@ -126,21 +126,25 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma rawbv_extr_one_bit (n : N) vec :
-  (1 + n <= RawBV.size vec)%N ->
-  RawBV.bv_extr n 1 (RawBV.size vec) vec = [RawBV.bitOf (N.to_nat n) vec].
+Lemma bv_extr_one_bit (n : N) w (bv : BV.bitvector w) :
+  (1 + n <= w)%N ->
+  BV.bv_extr n 1 bv = BV.of_bits [BV.bitOf (N.to_nat n) bv].
 Proof.
-  intros. unfold RawBV.bv_extr, RawBV.size in *.
+  destruct bv as [bv wf].
+  subst. intros.
+  apply BV.of_bits_equal.
+  simpl.
+  unfold BV.bv_extr, RawBV.bv_extr, RawBV.size in *.
   autodestruct_eqn E; try (rewrite N.ltb_lt in *; lia); clear E.
   replace (N.to_nat (1 + n)) with (S (N.to_nat n)) by lia.
-  assert (S (N.to_nat n) <= List.length vec) as H' by lia. clear H. revert H'.
+  assert (S (N.to_nat n) <= List.length bv) as H' by lia. clear H. revert H'.
   generalize (N.to_nat n). clear n. intros n H.
-  revert vec H.
+  revert bv H.
   induction n; intros.
-  { destruct vec; try crush.
-    destruct vec; crush.
+  { destruct bv; try crush.
+    destruct bv; crush.
   }
-  destruct vec; try crush.
+  destruct bv; try crush.
   simpl.
   rewrite IHn; crush.
 Qed.
@@ -165,7 +169,33 @@ Definition select_bit_bv {w1 w2} (vec : BV.bitvector w1) (idx : BV.bitvector w2)
 
 Lemma to_bv_some_raw_iff w (xbv : XBV.xbv w) (bv : BV.bitvector w) :
   XBV.to_bv xbv = Some bv <-> RawXBV.to_bv (XBV.bits xbv) = Some (BV.bits bv).
-Proof. Admitted.
+Proof.
+  (* This is disgusting (written while half asleep) plzfix *)
+  split; intros; simpl in *.
+  - apply XBV.bv_xbv_inverse in H. subst.
+    destruct bv as [bv bv_wf].
+    simpl. apply RawXBV.xbv_bv_inverse.
+  - apply RawXBV.bv_xbv_inverse in H.
+    destruct bv as [bv bv_wf].
+    simpl in *.
+    funelim (XBV.to_bv xbv).
+    + unfold XBV.raw_to_bv_with_proof in *.
+      rewrite e in Heq. inv Heq.
+      rewrite <- Heqcall in *. clear Heqcall.
+      f_equal.
+      apply BV.of_bits_equal.
+      simpl. destruct_rew.
+      destruct v as [v v_wf].
+      unfold XBV.bits, XBV.bv, RawBV.of_bits in *. simpl in *. subst.
+      rewrite RawXBV.xbv_bv_inverse in e.
+      inv e.
+      reflexivity.
+    + destruct v as [v v_wf].
+      simpl in *. subst.
+      clear Heq.
+      rewrite RawXBV.xbv_bv_inverse in prf.
+      discriminate.
+Qed.
 
 Lemma select_bit_to_bv w_vec w_idx (vec : BV.bitvector w_vec) (idx : BV.bitvector w_idx) :
   (BV.to_N idx < w_vec)%N ->
@@ -652,28 +682,102 @@ Proof.
     reflexivity.
 Qed.
 
-Lemma rawbv_shr_as_select w vec idx :
-  (RawBV.size vec >= 1)%N ->
-  RawBV.size vec = RawBV.size idx ->
-  w = RawBV.size vec ->
-  RawBV.bv_extr 0 1 w (RawBV.bv_shr vec idx) =
-    [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list.
+Lemma bv_shr_as_select w (vec : BV.bitvector w) (idx : BV.bitvector w) :
+  (w > 0)%N ->
+  BV.bv_extr 0 1 (BV.bv_shr vec idx) =
+    BV.of_bits [BV.bitOf (N.to_nat (BV.to_N idx)) vec]%list.
 Proof.
-  intros H1 H2 Heq. subst w.
-  assert (RawBV.size (RawBV.bv_shr vec idx) = RawBV.size vec) as H
-      by eauto using RawBV.bv_shr_size.
-  rewrite <- H.
-  rewrite rawbv_extr_one_bit; try crush.
-  f_equal.
-  unfold RawBV.bv_shr. replace (RawBV.size idx). rewrite N.eqb_refl.
-  unfold RawBV.shr_be. simpl.
-  unfold RawBV.size in *.
-  generalize (RawBV.list2nat_be idx). clear idx H2 H. intro n.
-  destruct n, vec; try crush. clear H1.
+  intros Hbound.
+  rewrite bv_extr_one_bit; try crush.
+  apply BV.of_bits_equal. simpl.
+  do 2 f_equal.
+  unfold BV.bitOf, BV.bv_shr.
+  destruct vec as [vec vec_wf].
+  destruct idx as [idx idx_wf].
+  simpl.
+  unfold BV.to_N, RawBV.to_N, BV.bv_shr, RawBV.bv_shr, RawBV.shr_be, RawBV.size in *.
+  simpl.
+  rewrite vec_wf, idx_wf, N.eqb_refl.
+  generalize (RawBV.list2nat_be idx). clear idx idx_wf. intro n.
+  destruct n, vec; try crush.
   unfold RawBV.bitOf.
-  rewrite RawBV.shr_be_nicify. simp nice_nshr_be. simpl. clear b.
+  rewrite RawBV.shr_be_nicify. simp nice_nshr_be. rewrite Nat2N.id. simpl.
+  clear b vec_wf.
   funelim (RawBV.nice_nshr_be vec n); simp nice_nshr_be; try crush.
   destruct (RawBV.nice_nshr_be bs n); crush.
+Qed.
+
+Lemma to_N_convert_bv_extn from to (bv : BV.bitvector from) :
+  (to >= from)%N ->
+  BV.to_N (convert_bv to bv) = BV.to_N bv.
+Proof.
+  intros H.
+  funelim (convert_bv to bv); try lia.
+  - destruct_rew. rewrite <- Heqcall in *. clear Heqcall.
+    apply BV.bv_zextn_to_N.
+  - destruct_rew. rewrite <- Heqcall in *. clear Heqcall.
+    reflexivity.
+Qed.
+
+
+Lemma bitOf_concat_low idx w1 w2 (extn : BV.bitvector w2) (bv : BV.bitvector w1) :
+  (N.of_nat idx < w1)%N ->
+  BV.bitOf idx (BV.bv_concat extn bv) = BV.bitOf idx bv.
+Proof.
+  destruct bv as [bv bv_wf].
+  destruct extn as [extn extn_wf].
+  unfold BV.bitOf, BV.bv_concat, RawBV.bitOf, RawBV.bv_concat, RawBV.size in *.
+  simpl.
+  intros.
+  rewrite List.app_nth1 by lia.
+  reflexivity.
+Qed.
+
+Lemma nth_rawbv_extract bv : forall idx w,
+  idx < w ->
+  List.nth idx (BVList.RAWBITVECTOR_LIST.extract bv 0 w) false =
+    List.nth idx bv false.
+Proof.
+  induction bv.
+  - crush.
+  - intros.
+    cbn [List.nth].
+    destruct idx.
+    + crush.
+    + simpl.
+      destruct w; [lia|].
+      simpl.
+      apply IHbv.
+      lia.
+Qed.
+
+Lemma bitOf_extr_inbounds idx sz w (bv : BV.bitvector w) :
+  (sz <= w)%N ->
+  (N.of_nat idx < sz)%N ->
+  BV.bitOf idx (BV.bv_extr 0 sz bv) = BV.bitOf idx bv.
+Proof.
+  intros.
+  destruct bv as [bv bv_wf].
+  unfold BV.bitOf, BV.bv_extr, RawBV.bitOf, RawBV.bv_extr, RawBV.size in *.
+  simpl in *.
+  autodestruct_eqn E; try crush.
+  apply nth_rawbv_extract.
+  lia.
+Qed.
+
+Lemma bitOf_convert_bv_extn idx from to (bv : BV.bitvector from) :
+  (idx < from)%N ->
+  (idx < to)%N ->
+  BV.bitOf (N.to_nat idx) (convert_bv to bv) = BV.bitOf (N.to_nat idx) bv.
+Proof.
+  intros.
+  funelim (convert_bv to bv).
+  - destruct_rew. rewrite <- Heqcall in *. clear Heqcall.
+    now rewrite bitOf_concat_low by lia.
+  - rewrite <- Heqcall in *. clear Heqcall.
+    apply bitOf_extr_inbounds; try crush.
+  - destruct_rew. rewrite <- Heqcall in *. clear Heqcall.
+    reflexivity.
 Qed.
 
 Lemma smt_select_bit_value ρ w_vec w_idx smt_vec smt_idx val_vec val_idx val :
@@ -692,18 +796,19 @@ Proof.
   erewrite ! cast_from_to_value; cycle 1;
     try eassumption; try lia; [idtac].
   destruct (N.eq_dec (N.max w_vec w_idx) (N.max w_vec w_idx)); [|crush].
-  f_equal.
-  apply value_bitvec_bits_equal.
-  destruct_rew.
-  rewrite rawbv_shr_as_select by admit.
+  rewrite bv_shr_as_select by lia.
   rewrite bit_of_as_bv in Heval by lia.
-  fold (List.map RawXBV.bool_to_bit [BV.bitOf (n:=w_vec) (N.to_nat (BV.to_N val_idx)) val_vec]) in Heval.
-  fold (RawXBV.from_bv [BV.bitOf (n:=w_vec) (N.to_nat (BV.to_N val_idx)) val_vec]) in Heval.
-  destruct val as [[ | hd [ | ? ? ] ] val_wf]; [crush| |crush].
-  apply XBV.bv_xbv_inverse in Heval.
-  simpl in *.
-  admit.
-Admitted.
+  do 2 f_equal.
+  destruct_rew.
+  rewrite to_N_convert_bv_extn by lia.
+  rewrite bitOf_convert_bv_extn by lia.
+  (* Ugly, but it's hard to extract a lemma - the widths don't match up *)
+  apply to_bv_some_raw_iff in Heval. simpl in Heval.
+  apply BV.of_bits_equal. simpl.
+  unfold RawXBV.to_bv, RawBV.of_bits in *; simpl in *.
+  rewrite RawXBV.bit_to_bool_inverse in Heval.
+  inv Heval. reflexivity.
+Qed.
 
 Lemma expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ t,
     expr_to_smt tag m expr = inr t ->
@@ -860,10 +965,7 @@ Proof.
     rewrite XBV.xbv_bv_inverse in *.
     rewrite convert_no_exes.
     rewrite XBV.xbv_bv_inverse.
-    erewrite cast_from_to_value; eauto; [idtac].
-    rewrite convert_no_exes.
-    rewrite XBV.xbv_bv_inverse.
-    reflexivity.
+    apply cast_from_to_value; eauto.
 Qed.
 
 Lemma expr_to_smt_valid w tag m expr t regs ρ val :
