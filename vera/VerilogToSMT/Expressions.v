@@ -145,25 +145,6 @@ Proof.
   rewrite IHn; crush.
 Qed.
 
-Equations nice_nshr_be : list bool -> nat -> list bool :=
-  nice_nshr_be [] _ := [];
-  nice_nshr_be bs 0 := bs;
-  nice_nshr_be (b :: bs) (S n) := nice_nshr_be bs n ++ [false].
-
-Lemma shr_be_nicify bs n :
-  RawBV.nshr_be bs n = nice_nshr_be bs n.
-Proof.
-  funelim (nice_nshr_be bs n); simp nice_nshr_be in *; simpl in *.
-  - induction n; crush.
-  - reflexivity.
-  - rewrite <- H. clear b H. revert bs.
-    induction n; intros; try crush.
-    simpl.
-    replace (RawBV._shr_be (bs ++ [false])) with (RawBV._shr_be bs ++ [false])%list
-      by (destruct bs; crush).
-    eapply IHn.
-Qed.
-
 Lemma rawbv_shr_as_select vec idx :
   (RawBV.size vec >= 1)%N ->
   RawBV.size vec = RawBV.size idx ->
@@ -182,9 +163,9 @@ Proof.
   generalize (RawBV.list2nat_be idx). clear idx H2 H. intro n.
   destruct n, vec; try crush. clear H1.
   unfold RawBV.bitOf.
-  rewrite shr_be_nicify. simp nice_nshr_be. simpl. clear b.
-  funelim (nice_nshr_be vec n); simp nice_nshr_be; try crush.
-  destruct (nice_nshr_be bs n); crush.
+  rewrite RawBV.shr_be_nicify. simp nice_nshr_be. simpl. clear b.
+  funelim (RawBV.nice_nshr_be vec n); simp nice_nshr_be; try crush.
+  destruct (RawBV.nice_nshr_be bs n); crush.
 Qed.
 
 Lemma select_bit_to_bv w (vec idx : BV.bitvector w) :
@@ -471,14 +452,15 @@ Proof.
   apply XBV.of_bits_equal; simpl.
   rewrite vec_wf, shamt_wf. clear vec_wf shamt_wf.
   rewrite N.eqb_refl. rewrite Nat2N.id. clear n.
+  rewrite RawBV.shl_be_nicify.
   generalize (RawBV.list2nat_be shamt). clear shamt. intro i.
-  revert vec.
-  induction i; intros.
-  - simp shl. crush.
-  - simpl.
-    rewrite <- IHi. clear IHi.
-    admit.
-Admitted.
+  funelim (RawBV.nice_nshl_be vec i);
+    repeat progress (simpl in *; simp shl nice_nshl_be in * );
+    [crush|crush|].
+  rewrite <- H. clear H.
+  repeat f_equal.
+  induction l; destruct b; crush.
+Qed.
 
 Lemma shr_to_bv n vec shamt :
   XBV.to_bv (XBV.shr (XBV.from_bv vec) (BV.to_N shamt)) = Some (BV.bv_shr (n:=n) vec shamt).

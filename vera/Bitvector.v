@@ -185,6 +185,45 @@ Module RawBV.
     generalize dependent bv2.
     induction bv1; destruct bv2; intros; simp map2; try crush.
   Qed.
+
+  Equations nice_nshl_be : list bool -> nat -> list bool :=
+    nice_nshl_be bs 0 := bs;
+    nice_nshl_be [] _ := [];
+    nice_nshl_be bs (S n) := false :: nice_nshl_be (List.removelast bs) n.
+
+  Lemma shl_be_nicify bs n :
+    RawBV.nshl_be bs n = nice_nshl_be bs n.
+  Proof.
+    funelim (nice_nshl_be bs n); simp nice_nshl_be in *; simpl in *.
+    - reflexivity.
+    - induction n; crush.
+    - rewrite <- H. clear H.
+      revert b l.
+      induction n; intros.
+      + crush.
+      + simpl.
+        now rewrite IHn.
+  Qed.
+
+  Equations nice_nshr_be : list bool -> nat -> list bool :=
+    nice_nshr_be [] _ := [];
+    nice_nshr_be bs 0 := bs;
+    nice_nshr_be (b :: bs) (S n) := nice_nshr_be bs n ++ [false].
+
+  Lemma shr_be_nicify bs n :
+    RawBV.nshr_be bs n = nice_nshr_be bs n.
+  Proof.
+    funelim (nice_nshr_be bs n); simp nice_nshr_be in *; simpl in *.
+    - induction n; crush.
+    - reflexivity.
+    - rewrite <- H. clear b H. revert bs.
+      induction n; intros; try crush.
+      simpl.
+      replace (RawBV._shr_be (bs ++ [false])) with (RawBV._shr_be bs ++ [false])%list
+        by (destruct bs; crush).
+      eapply IHn.
+  Qed.
+
 End RawBV.
 
 Module BV.
@@ -514,7 +553,7 @@ Module RawXBV.
   Equations shl (bv : xbv) (shamt : nat) : xbv :=
     shl bv 0 := bv;
     shl [] n := [];
-    shl bv (S n) := O :: List.removelast bv
+    shl bv (S n) := O :: shl (List.removelast bv) n
   .
 
   Lemma removelast_cons_length {A} (a : A) (l : list A) :
@@ -526,7 +565,9 @@ Module RawXBV.
   Proof.
     unfold size. f_equal.
     funelim (shl bv n); simp shl; try crush.
-    induction l; crush.
+    cbn [Datatypes.length]. f_equal.
+    rewrite H.
+    apply removelast_cons_length.
   Qed.
 
   Equations shr (bv : xbv) (shamt : nat) : xbv :=
