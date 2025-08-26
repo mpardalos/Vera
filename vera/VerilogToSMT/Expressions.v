@@ -145,56 +145,43 @@ Proof.
   rewrite IHn; crush.
 Qed.
 
-Lemma rawbv_shr_as_select vec idx :
-  (RawBV.size vec >= 1)%N ->
-  RawBV.size vec = RawBV.size idx ->
-  RawBV.bv_extr 0 1 (RawBV.size vec) (RawBV.bv_shr vec idx) =
-    [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list.
+Definition bit_of_as_bv i w (bv : BV.bitvector w) :
+  i < N.to_nat w ->
+  XBV.bitOf i (XBV.from_bv bv) = RawXBV.bool_to_bit (BV.bitOf i bv).
 Proof.
-  intros H1 H2.
-  assert (RawBV.size (RawBV.bv_shr vec idx) = RawBV.size vec) as H
-      by eauto using RawBV.bv_shr_size.
-  rewrite <- H.
-  rewrite rawbv_extr_one_bit; try crush.
-  f_equal.
-  unfold RawBV.bv_shr. replace (RawBV.size idx). rewrite N.eqb_refl.
-  unfold RawBV.shr_be. simpl.
-  unfold RawBV.size in *.
-  generalize (RawBV.list2nat_be idx). clear idx H2 H. intro n.
-  destruct n, vec; try crush. clear H1.
-  unfold RawBV.bitOf.
-  rewrite RawBV.shr_be_nicify. simp nice_nshr_be. simpl. clear b.
-  funelim (RawBV.nice_nshr_be vec n); simp nice_nshr_be; try crush.
-  destruct (RawBV.nice_nshr_be bs n); crush.
-Qed.
-
-Lemma select_bit_to_bv w (vec idx : BV.bitvector w) :
-  (BV.to_N idx < w)%N ->
-  XBV.to_bv (select_bit (XBV.from_bv vec) (XBV.from_bv idx)) =
-    Some (BV.bv_extr 0 1 (BV.bv_shr vec idx)).
-Proof.
-  intros Hidx.
-  unfold select_bit.
-  rewrite XBV.to_N_from_bv.
-  repeat match goal with
-         | [ bv : BV.bitvector _ |- _ ] => destruct bv
-         end.
-  rewrite <- XBV.xbv_bv_inverse. f_equal.
-  apply XBV.of_bits_equal; simpl.
-  rewrite <- wf0.
-  rewrite rawbv_shr_as_select; try lia.
-  unfold XBV.bitOf, BV.to_N, RawBV.to_N in *. simpl in *.
-  rewrite Nat2N.id.
-  f_equal.
-  unfold RawBV.size in *.
-  generalize dependent (RawBV.list2nat_be bv). clear wf bv. intros.
-  unfold RawXBV.from_bv, RawXBV.bitOf, RawBV.bitOf in *.
-  subst.
+  destruct bv as [bv bv_wf]. unfold RawBV.size in *.
+  unfold XBV.bitOf, RawXBV.bitOf, XBV.from_bv, RawXBV.from_bv, BV.bitOf, RawBV.bitOf;
+    simpl.
+  intros.
   rewrite List.nth_indep with (d':=O)
     by (rewrite List.map_length; lia).
   replace O with (RawXBV.bool_to_bit false)
     by reflexivity.
   apply List.map_nth.
+Qed.
+
+Definition select_bit_bv {w1 w2} (vec : BV.bitvector w1) (idx : BV.bitvector w2) : BV.bitvector 1 :=
+  BV.of_bits [BV.bitOf (N.to_nat (BV.to_N idx)) vec].
+
+Lemma to_bv_some_raw_iff w (xbv : XBV.xbv w) (bv : BV.bitvector w) :
+  XBV.to_bv xbv = Some bv <-> RawXBV.to_bv (XBV.bits xbv) = Some (BV.bits bv).
+Proof. Admitted.
+
+Lemma select_bit_to_bv w_vec w_idx (vec : BV.bitvector w_vec) (idx : BV.bitvector w_idx) :
+  (BV.to_N idx < w_vec)%N ->
+  XBV.to_bv (select_bit (XBV.from_bv vec) (XBV.from_bv idx)) =
+    Some (select_bit_bv vec idx).
+Proof.
+  intros H.
+  unfold select_bit, select_bit_bv.
+  rewrite XBV.to_N_from_bv.
+  rewrite bit_of_as_bv by lia.
+  generalize (BV.bitOf (n:=w_vec) (N.to_nat (BV.to_N idx)) vec). intro b.
+  apply to_bv_some_raw_iff.
+  simpl.
+  unfold RawXBV.to_bv. simpl.
+  rewrite RawXBV.bit_to_bool_inverse.
+  reflexivity.
 Qed.
 
 Lemma value_bitvec_bits_equal n1 n2 bv1 bv2 :
@@ -207,73 +194,6 @@ Proof.
   assert (n1 = n2) by crush.
   subst.
   reflexivity.
-Qed.
-
-Lemma cast_from_to_zextn ρ (from to : N) bv_from t :
-  (to >= from)%N ->
-  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) ->
-  SMTLib.interp_term ρ (cast_from_to from to t) = Some (SMTLib.Value_BitVec _ (BV.bv_concat (BV.zeros (to - from)) bv_from)).
-Proof.
-  intros.
-  destruct bv_from as [bv_from bv_from_wf].
-  funelim (cast_from_to from to t); rewrite <- Heqcall in *; clear Heqcall.
-  - rewrite N.compare_eq_iff in *. subst.
-    replace (SMTLib.interp_term ρ t).
-    f_equal. apply value_bitvec_bits_equal.
-    rewrite ! N.sub_diag. cbn.
-    now rewrite List.app_nil_r.
-  - rewrite N.compare_lt_iff in *. crush.
-  - rewrite N.compare_gt_iff in *. crush.
-Qed.
-
-Corollary cast_from_to_zextn_inv ρ
-  (from to : N)
-  (bv_from : BV.bitvector from)
-  bv_to t :
-  (to >= from)%N ->
-  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) ->
-  SMTLib.interp_term ρ (cast_from_to from to t) =
-    Some (SMTLib.Value_BitVec _ bv_to) ->
-  bv_to = BV.bv_concat (BV.zeros (to - from)) bv_from.
-Proof.
-  intros Hcmp Ht Hcast.
-  erewrite cast_from_to_zextn in Hcast; try crush.
-  inv Hcast. inversion_sigma. subst.
-  now rewrite <- eq_rect_eq.
-Qed.
-
-Corollary cast_from_to_zextn_inv_bits ρ
-  (from to : N)
-  (bv_from : BV.bitvector from)
-  (bv_to : BV.bitvector to)
-  t :
-  (to >= from)%N ->
-  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) ->
-  SMTLib.interp_term ρ (cast_from_to from to t) =
-    Some (SMTLib.Value_BitVec _ bv_to) ->
-  BV.bits bv_to = BV.bits (BV.bv_concat (BV.zeros (to - from)) bv_from).
-Proof.
-  intros Hcmp Ht Hcast.
-  erewrite cast_from_to_zextn in Hcast; try crush.
-  inv Hcast. crush.
-Qed.
-
-Corollary cast_from_to_zextn_inv_width ρ
-  (from to1 to2 : N)
-  (bv_from : BV.bitvector from)
-  (bv_to : BV.bitvector to2)
-  t :
-  (to1 > 0)%N ->
-  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv_from) ->
-  SMTLib.interp_term ρ (cast_from_to from to1 t) =
-    Some (SMTLib.Value_BitVec to2 bv_to) ->
-  to1 = to2.
-Proof.
-  intros Hcmp Ht Hcast.
-  funelim (cast_from_to from to1 t); rewrite <- Heqcall in *; clear Heqcall.
-  - rewrite N.compare_eq_iff in *. crush.
-  - rewrite N.compare_lt_iff in *. crush.
-  - rewrite N.compare_gt_iff in *. crush.
 Qed.
 
 Lemma statically_in_bounds_max_bound {w} max_bound e regs (xbv : XBV.xbv w) val :
@@ -291,150 +211,6 @@ Proof.
     crush.
   - enough (val < 2 ^ w)%N by lia.
     eauto using XBV.to_N_max_bound.
-Qed.
-
-Lemma xbv_bitof_concat n1 n2 b (xbv1 : XBV.xbv n1) (xbv2 : XBV.xbv n2) :
-  (N.of_nat b < n1)%N ->
-  XBV.bitOf b (XBV.concat xbv2 xbv1) =
-    XBV.bitOf b xbv1.
-Proof.
-  destruct xbv1 as [xbv1 wf1].
-  subst.
-  unfold XBV.bitOf, RawXBV.bitOf. simpl.
-  intros.
-  rewrite List.app_nth1; crush.
-Qed.
-
-Lemma select_bit_concat1
-  n1 n2 n3 (vec1 : XBV.xbv n1) (vec2 : XBV.xbv n2) (idx : XBV.xbv n3) :
-  opt_prop (fun n => n < n1)%N (XBV.to_N idx) ->
-  select_bit (XBV.concat vec2 vec1) idx = select_bit vec1 idx.
-Proof.
-  unfold select_bit. intros H.
-  destruct (XBV.to_N idx); simpl in *; try crush.
-  rewrite xbv_bitof_concat by lia.
-  reflexivity.
-Qed.
-
-Lemma select_bit_index_same_value
-  n1 n2 n3 (vec : XBV.xbv n1) (idx1 : XBV.xbv n2) (idx2 : XBV.xbv n3) :
-  XBV.to_N idx1 = XBV.to_N idx2 ->
-  select_bit vec idx1 = select_bit vec idx2.
-Proof. unfold select_bit. intros. crush. Qed.
-
-Lemma from_bv_concat n1 n2 (bv1 : BV.bitvector n1) (bv2 : BV.bitvector n2) :
-  XBV.from_bv (BV.bv_concat bv1 bv2) = XBV.concat (XBV.from_bv bv1) (XBV.from_bv bv2).
-Proof.
-  repeat match goal with
-         | [ bv : BV.bitvector _ |- _ ] => destruct bv
-         end.
-  subst.
-  apply XBV.of_bits_equal. simpl.
-  unfold RawBV.bv_concat, RawXBV.from_bv.
-  apply List.map_app.
-Qed.
-
-Lemma cast_from_to_up_same_value ρ t from to1 to2 bv1 bv2 :
-  (to1 >= from)%N ->
-  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv1) ->
-  SMTLib.interp_term ρ (cast_from_to from to1 t) = Some (SMTLib.Value_BitVec to2 bv2) ->
-  BV.to_N bv1 = BV.to_N bv2.
-Proof.
-  intros.
-  erewrite cast_from_to_zextn in *; try crush.
-  some_inv; rewrite BV.bv_zextn_to_N; crush.
-Qed.
-
-Lemma cast_from_to_up_as_concat ρ t from to1 to2 bv1 bv2 :
-  (to1 >= from)%N ->
-  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv1) ->
-  SMTLib.interp_term ρ (cast_from_to from to1 t) = Some (SMTLib.Value_BitVec to2 bv2) ->
-  exists w, (_; bv2) = (_; BV.bv_concat (BV.zeros w) bv1).
-Proof.
-  intros Hcmp H1 H2.
-  funelim (cast_from_to from to1 t); rewrite <- Heqcall in *; clear Heqcall;
-    rewrite N.compare_eq_iff in * || rewrite  N.compare_lt_iff in * || rewrite N.compare_gt_iff in *.
-  - subst.
-    rewrite H1 in H2. clear H1. inv H2.
-    exists 0%N. cbn. f_equal.
-    apply BV.of_bits_equal. destruct bv1.
-    cbn. now rewrite List.app_nil_r.
-  - crush.
-  - crush.
-Qed.
-
-Lemma bitselect_impl_correct:
-  forall (w0 w1 : N) (t0 t1 : SMTLib.term) (ρ : SMTLib.valuation)
-    (w : N) (bv1ext bv0ext : BVList.BITVECTOR_LIST.bitvector w) (bv1 : BV.bitvector w1) (bv0 : BV.bitvector w0),
-    (BV.to_N bv1 < w0)%N ->
-    SMTLib.interp_term ρ t0 = Some (SMTLib.Value_BitVec w0 bv0) ->
-    SMTLib.interp_term ρ t1 = Some (SMTLib.Value_BitVec w1 bv1) ->
-    SMTLib.interp_term ρ (cast_from_to w0 (N.max w0 w1) t0) = Some (SMTLib.Value_BitVec w bv0ext) ->
-    SMTLib.interp_term ρ (cast_from_to w1 (N.max w0 w1) t1) = Some (SMTLib.Value_BitVec w bv1ext) ->
-    XBV.to_bv (select_bit (XBV.from_bv bv0) (XBV.from_bv bv1)) =
-      Some (BVList.BITVECTOR_LIST.bv_extr 0 1  (BVList.BITVECTOR_LIST.bv_shr bv0ext bv1ext)).
-Proof.
-  intros * Hbounds Ht0 Ht1 Hcast0 Hcast1.
-  rewrite <- select_bit_to_bv; cycle 1. {
-    erewrite <- cast_from_to_up_same_value with (bv1:=bv1) (bv2:=bv1ext);
-      try crush; try lia.
-    replace w with (N.max w0 w1)
-      by (eapply cast_from_to_zextn_inv_width with (t:=t0); crush).
-    lia.
-  }
-
-  f_equal.
-
-  transitivity (select_bit (XBV.from_bv bv0ext) (XBV.from_bv bv1)). {
-    edestruct cast_from_to_up_as_concat with (t:=t0); [|eassumption|eassumption|]. lia.
-    inv H.
-    repeat (apply_somewhere inj_pair2; subst).
-    rewrite from_bv_concat.
-    symmetry. apply select_bit_concat1.
-    rewrite XBV.to_N_from_bv. simpl.
-    lia.
-  }
-
-  eapply select_bit_index_same_value. {
-    erewrite cast_from_to_zextn in *; try crush.
-    some_inv; now rewrite ! XBV.to_N_from_bv, BV.bv_zextn_to_N.
-  }
-Qed.
-
-Lemma cast_from_to_correct ρ t from to bv1 v2 :
-  (to > 0)%N ->
-  SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec from bv1) ->
-  SMTLib.interp_term ρ (cast_from_to from to t) = Some v2 ->
-  verilog_smt_match_value (convert to (XBV.from_bv bv1)) v2.
-Proof.
-  intros Hnz Ht Hcast.
-
-  (* expr_begin_tac. *)
-  funelim (convert to (XBV.from_bv bv1)); destruct_rew; rewrite <- Heqcall; clear Heqcall.
-  + (* Extension *)
-    funelim (cast_from_to from to t); rewrite <- Heqcall in *; clear Heqcall;
-      (rewrite N.compare_eq_iff in *|| rewrite N.compare_lt_iff in * || rewrite N.compare_gt_iff in * );
-      try crush.
-    cbn in *; autodestruct_eqn E.
-    apply_somewhere inj_pair2. subst.
-    eapply verilog_smt_match_to_bv_bits; eauto.
-    rewrite XBV.zeros_from_bv.
-    apply XBV.concat_to_bv.
-  + (* Truncation *)
-    funelim (cast_from_to from to t); rewrite <- Heqcall in *; clear Heqcall;
-      (rewrite N.compare_eq_iff in *|| rewrite N.compare_lt_iff in * || rewrite N.compare_gt_iff in * );
-      try crush.
-    cbn in *; autodestruct_eqn E.
-    apply_somewhere inj_pair2. subst.
-    eapply verilog_smt_match_to_bv_bits.
-    * rewrite XBV.extr_no_exes by lia.
-      apply XBV.xbv_bv_inverse.
-    * simpl. f_equal. lia.
-  + funelim (cast_from_to from from t); rewrite <- Heqcall in *; clear Heqcall;
-      (rewrite N.compare_eq_iff in *|| rewrite N.compare_lt_iff in * || rewrite N.compare_gt_iff in * );
-      try crush.
-    rewrite Ht in Hcast. inv Hcast.
-    constructor.
 Qed.
 
 Lemma rawxbv_from_bv_app b1 b2 :
@@ -558,24 +334,46 @@ Qed.
 Lemma select_bit_no_exes:
   forall (w_val w_sel : N) (vec : BV.bitvector w_val) (idx : BV.bitvector w_sel),
     (BV.to_N idx < w_val)%N ->
-    exists bv : BV.bitvector 1, select_bit (XBV.from_bv vec) (XBV.from_bv idx) = XBV.from_bv bv.
+    select_bit (XBV.from_bv vec) (XBV.from_bv idx) = XBV.from_bv (select_bit_bv vec idx).
 Proof.
-  intros * Hmax.
-  unfold select_bit.
-  pose proof bitOf_in_bounds.
-Admitted.
+  intros.
+  eapply XBV.to_bv_injective.
+  - apply select_bit_to_bv.
+    assumption.
+  - apply XBV.xbv_bv_inverse.
+Qed.
+
+Equations convert_bv {from} (to : N) (value : BV.bitvector from) : BV.bitvector to :=
+  convert_bv to value with dec (from < to)%N := {
+    | left Hlt => rew _ in BV.bv_concat (BV.zeros (to - from)%N) value
+    | right Hge with dec (from > to)%N => {
+      | left Hgr => BV.bv_extr 0 to value;
+      | right Hle => rew _ in value
+      }
+    }.
+Next Obligation. lia. Qed.
+Next Obligation. lia. Qed.
 
 Lemma convert_no_exes w_from w_to (from : BV.bitvector w_from) :
-  exists bv : BV.bitvector w_to, convert w_to (XBV.from_bv from) = XBV.from_bv bv.
+  convert w_to (XBV.from_bv from) = XBV.from_bv (convert_bv w_to from).
 Proof.
   funelim (convert w_to (XBV.from_bv from));
     destruct_rew; rewrite <- Heqcall; clear Heqcall.
   - rewrite XBV.zeros_from_bv.
     rewrite xbv_concat_no_exes.
-    eauto.
+    funelim (convert_bv (to - from + from) from0); [|lia|lia].
+    rewrite <- Heqcall in *; clear Heqcall.
+    apply XBV.of_bits_equal.
+    destruct_rew.
+    repeat f_equal.
+    crush.
   - rewrite XBV.extr_no_exes by crush.
-    eauto.
-  - eauto.
+    funelim (convert_bv to from0); [lia| |lia].
+    rewrite <- Heqcall in *; clear Heqcall.
+    reflexivity.
+  - funelim (convert_bv from from0); [lia|lia|].
+    rewrite <- Heqcall in *; clear Heqcall.
+    now rewrite <- eq_rect_eq.
 Qed.
 
 Lemma convert_from_bv w_from w_to (from : BV.bitvector w_from) :
@@ -705,10 +503,9 @@ Proof.
     edestruct eval_conditional_no_exes as [bv Hbv].
     exists bv. now rewrite Hbv.
   - (* bit select *)
-    edestruct select_bit_no_exes as [bv Hbv]. {
-      eapply statically_in_bounds_max_bound in s; eauto using XBV.to_N_from_bv.
-    }
-    exists bv. now rewrite Hbv.
+    eapply statically_in_bounds_max_bound in s; eauto using XBV.to_N_from_bv.
+    rewrite select_bit_no_exes by assumption.
+    eauto.
   - (* concat *)
     rewrite xbv_concat_no_exes.
     eauto.
@@ -721,8 +518,7 @@ Proof.
     destruct H2 as [bv Hbv].
     apply XBV.to_from_bv_inverse in Hbv. subst.
     eauto.
-  - edestruct convert_no_exes as [? H].
-    rewrite H.
+  - rewrite convert_no_exes.
     eauto.
 Qed.
 
@@ -814,14 +610,71 @@ Proof.
     crush.
 Qed.
 
-Lemma cast_from_to_value ρ w_from w_to smt_from val_from val :
+Lemma cast_from_to_value ρ w_from w_to smt_from val_from :
+    (w_to > 0)%N ->
     SMTLib.interp_term ρ smt_from = Some (SMTLib.Value_BitVec w_from val_from) ->
-    XBV.to_bv (convert w_to (XBV.from_bv val_from)) = Some val ->
     SMTLib.interp_term ρ (cast_from_to w_from w_to smt_from) =
-      Some (SMTLib.Value_BitVec w_to val).
+      Some (SMTLib.Value_BitVec w_to (convert_bv w_to val_from)).
 Proof.
-  intros Hinterp_from Heval.
-Admitted.
+  intros Hnot_zero Hinterp_from.
+  funelim (convert_bv w_to val_from);
+    rewrite <- Heqcall in *; clear Heqcall.
+  - funelim (cast_from_to from to smt_from);
+      rewrite <- Heqcall in *; clear Heqcall;
+      [ rewrite N.compare_eq_iff in *; lia
+      | rewrite N.compare_lt_iff in *; lia
+      |idtac].
+    rewrite N.compare_gt_iff in *.
+    simpl. rewrite Hinterp_from.
+    f_equal.
+    apply value_bitvec_bits_equal.
+    destruct_rew.
+    repeat f_equal. lia.
+  - funelim (cast_from_to from to smt_from);
+      rewrite <- Heqcall in *; clear Heqcall;
+      [ rewrite N.compare_eq_iff in *; lia
+      | rewrite N.compare_lt_iff in *
+      | rewrite N.compare_gt_iff in *; lia ].
+    simpl. rewrite Hinterp_from.
+    f_equal.
+    apply value_bitvec_bits_equal.
+    simpl.
+    repeat f_equal. lia.
+  - funelim (cast_from_to from to smt_from);
+      rewrite <- Heqcall in *; clear Heqcall;
+      [ rewrite N.compare_eq_iff in *
+      | rewrite N.compare_lt_iff in *; lia
+      | rewrite N.compare_gt_iff in *; lia ].
+    simpl. rewrite Hinterp_from.
+    f_equal.
+    apply value_bitvec_bits_equal.
+    destruct_rew.
+    reflexivity.
+Qed.
+
+Lemma rawbv_shr_as_select w vec idx :
+  (RawBV.size vec >= 1)%N ->
+  RawBV.size vec = RawBV.size idx ->
+  w = RawBV.size vec ->
+  RawBV.bv_extr 0 1 w (RawBV.bv_shr vec idx) =
+    [RawBV.bitOf (RawBV.list2nat_be idx) vec]%list.
+Proof.
+  intros H1 H2 Heq. subst w.
+  assert (RawBV.size (RawBV.bv_shr vec idx) = RawBV.size vec) as H
+      by eauto using RawBV.bv_shr_size.
+  rewrite <- H.
+  rewrite rawbv_extr_one_bit; try crush.
+  f_equal.
+  unfold RawBV.bv_shr. replace (RawBV.size idx). rewrite N.eqb_refl.
+  unfold RawBV.shr_be. simpl.
+  unfold RawBV.size in *.
+  generalize (RawBV.list2nat_be idx). clear idx H2 H. intro n.
+  destruct n, vec; try crush. clear H1.
+  unfold RawBV.bitOf.
+  rewrite RawBV.shr_be_nicify. simp nice_nshr_be. simpl. clear b.
+  funelim (RawBV.nice_nshr_be vec n); simp nice_nshr_be; try crush.
+  destruct (RawBV.nice_nshr_be bs n); crush.
+Qed.
 
 Lemma smt_select_bit_value ρ w_vec w_idx smt_vec smt_idx val_vec val_idx val :
     SMTLib.interp_term ρ smt_vec = Some (SMTLib.Value_BitVec w_vec val_vec) ->
@@ -835,6 +688,20 @@ Proof.
   intros Hinterp_vec Hinterp_idx Heval Hbound.
   unfold select_bit, smt_select_bit in *.
   rewrite XBV.to_N_from_bv in *.
+  simpl.
+  erewrite ! cast_from_to_value; cycle 1;
+    try eassumption; try lia; [idtac].
+  destruct (N.eq_dec (N.max w_vec w_idx) (N.max w_vec w_idx)); [|crush].
+  f_equal.
+  apply value_bitvec_bits_equal.
+  destruct_rew.
+  rewrite rawbv_shr_as_select by admit.
+  rewrite bit_of_as_bv in Heval by lia.
+  fold (List.map RawXBV.bool_to_bit [BV.bitOf (n:=w_vec) (N.to_nat (BV.to_N val_idx)) val_vec]) in Heval.
+  fold (RawXBV.from_bv [BV.bitOf (n:=w_vec) (N.to_nat (BV.to_N val_idx)) val_vec]) in Heval.
+  destruct val as [[ | hd [ | ? ? ] ] val_wf]; [crush| |crush].
+  apply XBV.bv_xbv_inverse in Heval.
+  simpl in *.
   admit.
 Admitted.
 
@@ -926,14 +793,18 @@ Proof.
       eauto using verilog_smt_match_states_partial_defined_value_for.
     replace (eval_expr regs expr2) in *.
     simpl in * |-. rewrite XBV.xbv_bv_inverse in *.
-    destruct select_bit_no_exes with (vec := x) (idx := x0) as [bv Hbv]. {
-      eauto using statically_in_bounds_max_bound, XBV.to_N_from_bv.
-    }
-    rewrite smt_select_bit_value
-      with (val_vec := x) (val_idx := x0) (val := bv);
+    erewrite smt_select_bit_value
+      with (val_vec := x) (val_idx := x0);
       eauto.
-    + simpl. now rewrite Hbv, XBV.xbv_bv_inverse.
-    + now rewrite Hbv, XBV.xbv_bv_inverse.
+    + simpl.
+      rewrite select_bit_no_exes; cycle 1. {
+        eauto using statically_in_bounds_max_bound, XBV.to_N_from_bv.
+      }
+      now rewrite XBV.xbv_bv_inverse.
+    + rewrite select_bit_no_exes; cycle 1. {
+        eauto using statically_in_bounds_max_bound, XBV.to_N_from_bv.
+      }
+      now rewrite XBV.xbv_bv_inverse.
     + eauto using statically_in_bounds_max_bound, XBV.to_N_from_bv.
   - (* concat *)
     simpl in Hexpr_to_smt.
@@ -987,11 +858,12 @@ Proof.
     replace (eval_expr regs expr) in *.
     simpl in *.
     rewrite XBV.xbv_bv_inverse in *.
-    edestruct convert_no_exes as [bv Hbv].
-    rewrite Hbv, XBV.xbv_bv_inverse.
-    rewrite cast_from_to_value
-      with (val_from := x) (val := bv); eauto.
-    now rewrite Hbv, XBV.xbv_bv_inverse.
+    rewrite convert_no_exes.
+    rewrite XBV.xbv_bv_inverse.
+    erewrite cast_from_to_value; eauto; [idtac].
+    rewrite convert_no_exes.
+    rewrite XBV.xbv_bv_inverse.
+    reflexivity.
 Qed.
 
 Lemma expr_to_smt_valid w tag m expr t regs ρ val :
