@@ -467,6 +467,17 @@ Proof.
     intuition assumption.
 Qed.
 
+Lemma FAKE_body_reads_inputs v var :
+  List.In var (Verilog.module_body_reads (Verilog.modBody v)) ->
+  List.In var (Verilog.module_inputs v).
+Proof. Admitted.
+
+Lemma execution_match_on_impl C1 C2 e1 e2:
+  (forall var, C2 var -> C1 var) ->
+  execution_match_on C1 e1 e2 ->
+  execution_match_on C2 e1 e2.
+Proof. unfold execution_match_on. crush. Qed.
+
 Lemma transfer_module_body_satisfiable v :
   forall tag (m : VerilogSMTBijection.t) e q,
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
@@ -475,8 +486,10 @@ Lemma transfer_module_body_satisfiable v :
     SMTLib.satisfied_by (SMT.valuation_of_execution m e) q.
 Proof.
   intros * Hdisjoint Htransfer Hvalid.
-  inv Hvalid.
-  eapply transfer_module_body_run_multistep_satisfiable; eauto using verilog_smt_match_states_valuation_of_execution_same.
+  destruct Hvalid as [e' [? ?]].
+  eapply transfer_module_body_run_multistep_satisfiable; eauto; [idtac].
+  apply verilog_smt_match_states_valuation_of_execution_same.
+  eassumption.
 Qed.
 
 Lemma transfer_module_body_run_multistep_valid v : forall tag m ρ q,
@@ -548,23 +561,6 @@ Proof.
     intuition assumption.
 Qed.
 
-Lemma FAKE_verilog_smt_match_states_partial_valid_execution v tag m final ρ :
-  verilog_smt_match_states_partial
-         (fun var : Verilog.variable =>
-          List.In var
-            (Verilog.module_body_reads (Verilog.modBody v) ++ Verilog.module_body_writes (Verilog.modBody v)))
-         tag m final ρ ->
-  valid_execution v (SMT.execution_of_valuation tag m ρ).
-Proof. Admitted.
-
-Lemma FAKE_body_reads_inputs_same v :
-  Verilog.module_body_reads (Verilog.modBody v) = Verilog.module_inputs v.
-Proof. Admitted.
-
-Lemma FAKE_body_writes_outputs_same v :
-  Verilog.module_body_reads (Verilog.modBody v) = Verilog.module_inputs v.
-Proof. Admitted.
-
 Lemma transfer_module_body_valid tag m v ρ q :
   disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
   transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
@@ -578,21 +574,19 @@ Proof.
   - eassumption.
   - eassumption.
   - eassumption.
-  - rewrite FAKE_body_reads_inputs_same.
-    eapply verilog_smt_match_states_partial_change_regs
+  - eapply verilog_smt_match_states_partial_change_regs
       with (r1 := SMT.execution_of_valuation tag m ρ). {
       intros.
       unfold limit_to_regs.
+      apply FAKE_body_reads_inputs in H.
       now autodestruct.
     }
     apply verilog_smt_match_states_execution_of_valuation_same.
-  - eapply FAKE_verilog_smt_match_states_partial_valid_execution.
-    eassumption.
+  - unfold valid_execution.
+    eexists. split; [eassumption|].
+    apply verilog_smt_match_states_partial_execution_match_on.
+    assumption.
 Qed.
-
-Lemma valuation_of_execution_of_valuation m tag ρ :
-  SMT.valuation_of_execution m (SMT.execution_of_valuation tag m ρ) = ρ.
-Proof. Admitted.
 
 Lemma transfer_module_body_correct v :
   forall tag (m : VerilogSMTBijection.t) q,
@@ -604,7 +598,7 @@ Proof.
   split; intro.
   - eapply transfer_module_body_valid; eassumption.
   - replace ρ with (SMT.valuation_of_execution m (SMT.execution_of_valuation tag m ρ))
-      by apply valuation_of_execution_of_valuation.
+      by apply SMT.valuation_of_execution_of_valuation.
     eapply transfer_module_body_satisfiable; eassumption.
 Qed.
 
@@ -621,5 +615,3 @@ Proof.
 Qed.
 
 Print Assumptions verilog_to_smt_correct.
-Print Assumptions transfer_module_body_satisfiable.
-Print Assumptions transfer_module_body_valid.

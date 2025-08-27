@@ -8,6 +8,7 @@ From Coq Require Import Relations.
 From Coq Require Import Structures.Equalities.
 From Coq Require Import Psatz.
 From Coq Require Import Program.Equality.
+From Coq Require Import Morphisms.
 
 From vera Require Import Verilog.
 From vera Require Import Common.
@@ -330,6 +331,13 @@ Module CombinationalOnly.
   (** The values of the final state of the execution of module *)
   Definition execution := RegisterState.
 
+  Definition execution_match_on (C : Verilog.variable -> Prop) (e1 e2 : execution) : Prop :=
+    forall var, C var -> e1 var = e2 var.
+
+  Global Instance execution_match_on_proper :
+    Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) execution_match_on.
+  Proof. repeat intro. subst. crush. Qed.
+
   Definition limit_to_regs (vars : list Verilog.variable) (regs : RegisterState) : RegisterState :=
     fun var =>
       match dec (In var vars) with
@@ -338,9 +346,14 @@ Module CombinationalOnly.
       end.
 
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
-    run_multistep
-      {| regState := limit_to_regs (Verilog.module_inputs v) e; pendingProcesses := Verilog.modBody v |} =
-      Some {| regState := e; pendingProcesses := [] |}.
+    exists e' : execution,
+      run_multistep
+        {| regState := limit_to_regs (Verilog.module_inputs v) e; pendingProcesses := Verilog.modBody v |} =
+        Some {| regState := e'; pendingProcesses := [] |}
+      /\ execution_match_on
+          (fun var => In var (Verilog.module_body_reads (Verilog.modBody v) ++
+                             Verilog.module_body_writes (Verilog.modBody v)))
+          e' e.
 
   Definition complete_execution (v : Verilog.vmodule) (e : execution) :=
     forall var, In var (Verilog.modVariables v) <-> exists bv, e var = Some bv.

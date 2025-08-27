@@ -96,8 +96,9 @@ Proof.
   crush.
 Qed.
 
-Lemma verilog_smt_match_states_valuation_of_execution_same C tag m r :
-  verilog_smt_match_states_partial C tag m r (SMT.valuation_of_execution m r).
+Lemma verilog_smt_match_states_valuation_of_execution_same C tag m e e' :
+  execution_match_on C e e' ->
+  verilog_smt_match_states_partial C tag m e (SMT.valuation_of_execution m e').
 Proof. Admitted.
 
 Lemma verilog_smt_match_states_execution_of_valuation_same C tag m ρ :
@@ -221,3 +222,8 @@ Proof.
   apply XBV.not_has_x_to_bv.
   eexists. eapply XBV.xbv_bv_inverse.
 Qed.
+
+Lemma verilog_smt_match_states_partial_execution_match_on C tag m ρ e :
+    verilog_smt_match_states_partial C tag m e ρ ->
+    execution_match_on C e (SMT.execution_of_valuation tag m ρ).
+Proof. Admitted.

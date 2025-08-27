@@ -351,4 +351,9 @@ Module SMT.
         eauto.
     Qed.
   End inverse.
+
+  Lemma valuation_of_execution_of_valuation m tag ρ :
+    SMT.valuation_of_execution m (SMT.execution_of_valuation tag m ρ) = ρ.
+  Proof. Admitted.
+
 End SMT.
