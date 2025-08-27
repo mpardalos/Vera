@@ -120,21 +120,24 @@ Module SMT.
   Definition max_var (q : SMTLib.query) : nat :=
     List.list_max (SMTLibFacts.domain q).
 
-  Program Definition valuation_of_execution (m : VerilogSMTBijection.t) (e : execution) : SMTLib.valuation :=
+  Program Definition valuation_of_execution (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (e : execution) : SMTLib.valuation :=
     fun n =>
-    match bij_inverse m n with
-    | None => None
-    | Some (_, vname) =>
-        match e vname with
-        | None => None
-        | Some x =>
-            match XBV.to_bv x with
-            (* TODO: Fix handling of Xs *)
+      match bij_inverse m n with
+      | None => None
+      | Some (t, vname) =>
+          if dec (t = tag)
+          then
+            match e vname with
             | None => None
-            | Some val => Some (SMTLib.Value_BitVec _ val)
+            | Some x =>
+                match XBV.to_bv x with
+                (* TODO: Fix handling of Xs *)
+                | None => None
+                | Some val => Some (SMTLib.Value_BitVec _ val)
+                end
             end
-        end
-    end.
+          else None
+      end.
 
   Import EqNotations.
 
@@ -292,7 +295,7 @@ Module SMT.
       e var = Some (xbv) ->
       XBV.to_bv xbv = Some bv ->
       m (tag, var) = Some nameSMT ->
-      (valuation_of_execution m e) nameSMT =
+      (valuation_of_execution tag m e) nameSMT =
         Some (SMTLib.Value_BitVec (Verilog.varType var) bv).
     Proof.
       intros Hexec Hexes Hname.
@@ -303,6 +306,8 @@ Module SMT.
       apply Hinverse in Hname.
       rewrite Hname.
 
+      destruct (dec (tag = tag)); [|contradiction].
+
       rewrite Hexec.
       rewrite Hexes.
       reflexivity.
@@ -311,7 +316,7 @@ Module SMT.
     Lemma execution_of_valuation_of_execution :
       (* TODO: Remove assumption *)
       (forall n xbv, e n = Some xbv -> ~ XBV.has_x xbv) ->
-      execution_of_valuation tag m (valuation_of_execution m e) = e.
+      execution_of_valuation tag m (valuation_of_execution tag m e) = e.
     Proof.
       intros Hno_exes.
       apply functional_extensionality_dep. intros var.
@@ -337,6 +342,7 @@ Module SMT.
         apply XBV.not_has_x_to_bv in Hno_exes.
         destruct Hno_exes as [bv Hno_exes].
         rewrite Hno_exes.
+        destruct (dec (tag = tag)); [|contradiction].
         autodestruct; [|contradiction].
         rewrite <- eq_rect_eq.
         now erewrite XBV.bv_xbv_inverse.
@@ -353,7 +359,25 @@ Module SMT.
   End inverse.
 
   Lemma valuation_of_execution_of_valuation m tag ρ :
-    SMT.valuation_of_execution m (SMT.execution_of_valuation tag m ρ) = ρ.
-  Proof. Admitted.
-
+    SMT.valuation_of_execution tag m (SMT.execution_of_valuation tag m ρ) = ρ.
+  Proof.
+    unfold valuation_of_execution. simpl.
+    apply functional_extensionality. intros smtName.
+    (* assume the smtName is in the bijection *)
+    destruct (bij_inverse m smtName) as [[tag' var]| ] eqn:E1; [|admit].
+    apply bij_wf in E1.
+    (* assume the tag in the bijection matches the given tag *)
+    destruct (dec (tag' = tag)); [|admit].
+    subst.
+    unfold execution_of_valuation.
+    rewrite E1.
+    destruct (ρ smtName) as [v | ] eqn:E2; cycle 1. { reflexivity. }
+    (* assume that the valuation has a bitvector at the name *)
+    destruct v; [admit|admit|].
+    (* ...with the correct width *)
+    destruct (dec (w = Verilog.varType var)); [|admit].
+    subst. simpl.
+    rewrite XBV.xbv_bv_inverse.
+    reflexivity.
+  Admitted.
 End SMT.

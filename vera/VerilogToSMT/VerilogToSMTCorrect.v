@@ -483,7 +483,7 @@ Lemma transfer_module_body_satisfiable v :
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
     transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
     valid_execution v e ->
-    SMTLib.satisfied_by (SMT.valuation_of_execution m e) q.
+    SMTLib.satisfied_by (SMT.valuation_of_execution tag m e) q.
 Proof.
   intros * Hdisjoint Htransfer Hvalid.
   destruct Hvalid as [e' [? ?]].
@@ -597,9 +597,10 @@ Proof.
   intros * Hdisjoint Htransfer_body.
   split; intro.
   - eapply transfer_module_body_valid; eassumption.
-  - replace ρ with (SMT.valuation_of_execution m (SMT.execution_of_valuation tag m ρ))
-      by apply SMT.valuation_of_execution_of_valuation.
-    eapply transfer_module_body_satisfiable; eassumption.
+  - replace ρ with (SMT.valuation_of_execution tag m (SMT.execution_of_valuation tag m ρ)); cycle 1. {
+      eapply SMT.valuation_of_execution_of_valuation.
+    }
+    eapply transfer_module_body_satisfiable; eauto.
 Qed.
 
 Theorem verilog_to_smt_correct tag start v smt :

@@ -98,7 +98,7 @@ Qed.
 
 Lemma verilog_smt_match_states_valuation_of_execution_same C tag m e e' :
   execution_match_on C e e' ->
-  verilog_smt_match_states_partial C tag m e (SMT.valuation_of_execution m e').
+  verilog_smt_match_states_partial C tag m e (SMT.valuation_of_execution tag m e').
 Proof. Admitted.
 
 Lemma verilog_smt_match_states_execution_of_valuation_same C tag m ρ :
