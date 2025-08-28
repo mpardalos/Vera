@@ -223,7 +223,12 @@ Proof.
   eexists. eapply XBV.xbv_bv_inverse.
 Qed.
 
-Lemma verilog_smt_match_states_partial_execution_match_on C tag m ρ e :
+Lemma TODO_verilog_smt_match_states_partial_execution_match_on C tag m ρ e :
     verilog_smt_match_states_partial C tag m e ρ ->
     execution_match_on C e (SMT.execution_of_valuation tag m ρ).
+Proof. Admitted.
+
+Lemma TODO_execution_match_on_verilog_smt_match_states_partial C tag m ρ e :
+    execution_match_on C e (SMT.execution_of_valuation tag m ρ) ->
+    verilog_smt_match_states_partial C tag m e ρ.
 Proof. Admitted.

@@ -157,6 +157,19 @@ Module SMT.
         end
     .
 
+  Lemma execution_of_valuation_no_exes tag m ρ n xbv :
+    SMT.execution_of_valuation tag m ρ n = Some xbv ->
+    ~ XBV.has_x xbv.
+  Proof.
+    unfold execution_of_valuation.
+    intros.
+    autodestruct.
+    simpl.
+    rewrite XBV.has_x_to_bv.
+    rewrite XBV.xbv_bv_inverse.
+    discriminate.
+  Qed.
+
   Lemma execution_of_valuation_some tag (m : VerilogSMTBijection.t) ρ smtName var bv :
     m (tag, var) = Some smtName ->
     ρ smtName = Some (SMTLib.Value_BitVec (Verilog.varType var) bv) ->
@@ -357,27 +370,4 @@ Module SMT.
         eauto.
     Qed.
   End inverse.
-
-  Lemma valuation_of_execution_of_valuation m tag ρ :
-    SMT.valuation_of_execution tag m (SMT.execution_of_valuation tag m ρ) = ρ.
-  Proof.
-    unfold valuation_of_execution. simpl.
-    apply functional_extensionality. intros smtName.
-    (* assume the smtName is in the bijection *)
-    destruct (bij_inverse m smtName) as [[tag' var]| ] eqn:E1; [|admit].
-    apply bij_wf in E1.
-    (* assume the tag in the bijection matches the given tag *)
-    destruct (dec (tag' = tag)); [|admit].
-    subst.
-    unfold execution_of_valuation.
-    rewrite E1.
-    destruct (ρ smtName) as [v | ] eqn:E2; cycle 1. { reflexivity. }
-    (* assume that the valuation has a bitvector at the name *)
-    destruct v; [admit|admit|].
-    (* ...with the correct width *)
-    destruct (dec (w = Verilog.varType var)); [|admit].
-    subst. simpl.
-    rewrite XBV.xbv_bv_inverse.
-    reflexivity.
-  Admitted.
 End SMT.
