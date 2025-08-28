@@ -142,20 +142,20 @@ Module SMT.
   Import EqNotations.
 
   Definition execution_of_valuation (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (v : SMTLib.valuation) : execution :=
-      fun var =>
-        match m (tag, var) with
-        | Some smtName =>
-            match v smtName with
-            | Some (SMTLib.Value_BitVec w bv) =>
-                match dec (w = Verilog.varType var) with
-                | left e => Some (rew e in (XBV.from_bv bv))
-                | _ => None
-                end
-            | _ => None
-            end
-        | None => None
-        end
-    .
+    fun var =>
+      match m (tag, var) with
+      | Some smtName =>
+          match v smtName with
+          | Some (SMTLib.Value_BitVec w bv) =>
+              match dec (w = Verilog.varType var) with
+              | left e => Some (rew e in (XBV.from_bv bv))
+              | _ => None
+              end
+          | _ => None
+          end
+      | None => None
+      end
+  .
 
   Lemma execution_of_valuation_no_exes tag m ρ n xbv :
     SMT.execution_of_valuation tag m ρ n = Some xbv ->
@@ -184,25 +184,25 @@ Module SMT.
 
   Definition valuation_of_executions (m : VerilogSMTBijection.t) (e1 e2 : execution) : SMTLib.valuation :=
     fun n =>
-    match bij_inverse m n with
-    | None => None
-    | Some (tag, var) =>
-        let e :=
-          match tag with
-          | TaggedVariable.VerilogLeft => e1
-          | TaggedVariable.VerilogRight => e2
-          end
-        in
-        match e var with
-        | None => None
-        | Some xbv =>
-            match XBV.to_bv xbv with
-            (* TODO: Fix handling of Xs *)
-            | None => None
-            | Some val => Some (SMTLib.Value_BitVec _ val)
+      match bij_inverse m n with
+      | None => None
+      | Some (tag, var) =>
+          let e :=
+            match tag with
+            | TaggedVariable.VerilogLeft => e1
+            | TaggedVariable.VerilogRight => e2
             end
-        end
-    end.
+          in
+          match e var with
+          | None => None
+          | Some xbv =>
+              match XBV.to_bv xbv with
+              (* TODO: Fix handling of Xs *)
+              | None => None
+              | Some val => Some (SMTLib.Value_BitVec _ val)
+              end
+          end
+      end.
 
   Lemma execution_left_of_valuation_of_executions m v e1 e2 :
     (* TODO: Remove assumption *)
