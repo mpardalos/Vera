@@ -332,7 +332,7 @@ Module CombinationalOnly.
   Definition execution := RegisterState.
 
   Definition execution_match_on (C : Verilog.variable -> Prop) (e1 e2 : execution) : Prop :=
-    forall var, C var -> e1 var = e2 var.
+    forall var, C var -> exists xbv, e1 var = Some xbv /\ e2 var = Some xbv.
 
   Global Instance execution_match_on_proper :
     Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) execution_match_on.

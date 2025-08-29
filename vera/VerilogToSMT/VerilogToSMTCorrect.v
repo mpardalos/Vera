@@ -488,7 +488,7 @@ Proof.
   intros * Hdisjoint Htransfer Hvalid.
   destruct Hvalid as [e' [? ?]].
   eapply transfer_module_body_run_multistep_satisfiable; eauto; [idtac].
-  apply TODO_execution_match_on_verilog_smt_match_states_partial.
+  apply execution_match_on_verilog_smt_match_states_partial.
   assumption.
 Qed.
 
@@ -574,7 +574,9 @@ Proof.
     [idtac].
   monad_inv.
   simp module_item_reads statement_reads in *.
-  eapply expr_to_smt_has_read_vars; eassumption.
+  unfold SMTLib.term_satisfied_by in *. simpl in *.
+  autodestruct_eqn E.
+  eapply expr_to_smt_has_read_vars; try eassumption.
 Qed.
 
 Lemma transfer_module_has_read_vars tag m inputs outputs body : forall q ρ var,
@@ -618,7 +620,7 @@ Proof.
     eapply transfer_module_has_read_vars; eassumption.
   - unfold valid_execution.
     eexists. split; [eassumption|].
-    apply TODO_verilog_smt_match_states_partial_execution_match_on.
+    apply verilog_smt_match_states_partial_execution_match_on.
     assumption.
 Qed.
 

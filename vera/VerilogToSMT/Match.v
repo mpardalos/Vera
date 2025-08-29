@@ -241,12 +241,32 @@ Proof.
   eexists. eapply XBV.xbv_bv_inverse.
 Qed.
 
-Lemma TODO_verilog_smt_match_states_partial_execution_match_on C tag m ρ e :
+Lemma verilog_smt_match_states_partial_execution_match_on C tag m ρ e :
     verilog_smt_match_states_partial C tag m e ρ ->
     execution_match_on C e (SMT.execution_of_valuation tag m ρ).
-Proof. Admitted.
+Proof.
+  unfold verilog_smt_match_states_partial, execution_match_on.
+  intros H var Hvar.
+  edestruct H as [? [H1 H2]]; [eauto|].
+  inv H2. inv Hmatchvals.
+  unfold SMT.execution_of_valuation.
+  rewrite H1, Hsmtval.
+  autodestruct; [|contradiction].
+  rewrite <- eq_rect_eq.
+  crush.
+Qed.
 
-Lemma TODO_execution_match_on_verilog_smt_match_states_partial C tag m ρ e :
+Lemma execution_match_on_verilog_smt_match_states_partial C tag m ρ e :
     execution_match_on C e (SMT.execution_of_valuation tag m ρ) ->
     verilog_smt_match_states_partial C tag m e ρ.
-Proof. Admitted.
+Proof.
+  unfold verilog_smt_match_states_partial, execution_match_on.
+  intros H var Hvar.
+  edestruct H as [? [H1 H2]]; [eassumption|].
+  unfold SMT.execution_of_valuation in H2.
+  autodestruct_eqn E.
+  eexists. split; [reflexivity|].
+  econstructor; eauto.
+  simpl.
+  constructor.
+Qed.
