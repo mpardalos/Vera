@@ -561,6 +561,38 @@ Proof.
     intuition assumption.
 Qed.
 
+Lemma transfer_module_item_has_read_vars tag m inputs outputs it : forall t ρ var,
+  List.In var (Verilog.module_item_reads it) ->
+  transfer_module_item tag m inputs outputs it = inr t ->
+  SMTLib.term_satisfied_by ρ t ->
+  valuation_has_var tag m ρ var.
+Proof.
+  intros.
+  funelim (transfer_module_item tag m inputs outputs it);
+    simp transfer_module_item in *;
+    try discriminate;
+    [idtac].
+  monad_inv.
+  simp module_item_reads statement_reads in *.
+  eapply expr_to_smt_has_read_vars; eassumption.
+Qed.
+
+Lemma transfer_module_has_read_vars tag m inputs outputs body : forall q ρ var,
+  transfer_module_body tag m inputs outputs body = inr q ->
+  SMTLib.satisfied_by ρ q ->
+  List.In var (Verilog.module_body_reads body) ->
+  valuation_has_var tag m ρ var.
+Proof.
+  induction body; intros * Htransf Hsat Hin; [now some_inv|].
+  simp module_body_reads transfer_module_body in *.
+  monad_inv.
+  inv Hsat.
+  apply List.in_app_iff in Hin.
+  destruct Hin as [Hin|Hin]; [|solve[eauto]].
+  clear IHbody.
+  eapply transfer_module_item_has_read_vars; eassumption.
+Qed.
+
 Lemma transfer_module_body_valid tag m v ρ q :
   disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
   transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
@@ -582,6 +614,8 @@ Proof.
       now autodestruct.
     }
     apply verilog_smt_match_states_execution_of_valuation_same.
+    intros.
+    eapply transfer_module_has_read_vars; eassumption.
   - unfold valid_execution.
     eexists. split; [eassumption|].
     apply TODO_verilog_smt_match_states_partial_execution_match_on.
@@ -598,16 +632,7 @@ Proof.
   intros * Hmatch Hdisjoint Htransfer_body.
   split; intro.
   - eapply transfer_module_body_valid; eassumption.
-  - replace ρ with (SMT.valuation_of_execution tag m (SMT.execution_of_valuation tag m ρ)); cycle 1. {
-      eapply SMT.valuation_of_execution_of_valuation.
-    }
-    eapply transfer_module_body_satisfiable; eauto.
-    erewrite SMT.execution_of_valuation_of_execution.
-    + assumption.
-    + apply valid_execution_complete. eassumption.
-    + assumption.
-    + intros.
-      eapply SMT.execution_of_valuation_no_exes; eassumption.
+  - eapply transfer_module_body_satisfiable; eauto.
 Qed.
 
 Theorem verilog_to_smt_correct tag start v smt :

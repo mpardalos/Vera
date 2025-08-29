@@ -23,6 +23,8 @@ From Coq Require Import PeanoNat.
 From Coq Require Import Morphisms.
 From Coq Require Import Setoid.
 
+Import EqNotations.
+
 From Equations Require Import Equations.
 
 Import List.ListNotations.
@@ -58,6 +60,11 @@ Proof.
   subst.
   constructor.
 Qed.
+
+Definition valuation_has_var tag (m : VerilogSMTBijection.t) ρ var : Prop :=
+  exists smtName bv,
+    m (tag, var) = Some smtName /\
+      ρ smtName = Some (SMTLib.Value_BitVec (Verilog.varType var) bv).
 
 Inductive verilog_smt_match_on_name (regs : RegisterState) (ρ : SMTLib.valuation) var smtName : Prop :=
 | verilog_smt_match_on_names_intro xbv val
@@ -96,14 +103,25 @@ Proof.
   crush.
 Qed.
 
-Lemma verilog_smt_match_states_valuation_of_execution_same C tag m e e' :
-  execution_match_on C e e' ->
-  verilog_smt_match_states_partial C tag m e (SMT.valuation_of_execution tag m e').
-Proof. Admitted.
-
-Lemma verilog_smt_match_states_execution_of_valuation_same C tag m ρ :
+Lemma verilog_smt_match_states_execution_of_valuation_same C tag (m : VerilogSMTBijection.t) ρ :
+  (forall var, C var -> valuation_has_var tag m ρ var) ->
   verilog_smt_match_states_partial C tag m (SMT.execution_of_valuation tag m ρ) ρ.
-Proof. Admitted.
+Proof.
+  intros Hhas_var.
+  unfold verilog_smt_match_states_partial, SMT.execution_of_valuation.
+  intros var HC.
+  edestruct Hhas_var as [smtName [bv [HsmtName HsmtVal]]]; eauto.
+  exists smtName. split; [eassumption|].
+  econstructor.
+  - eassumption.
+  - rewrite HsmtName.
+    rewrite HsmtVal.
+    autodestruct; [|contradiction].
+    f_equal.
+    rewrite <- eq_rect_eq.
+    reflexivity.
+  - constructor.
+Qed.
 
 Lemma verilog_smt_match_states_partial_impl P1 P2 tag m regs ρ :
   (forall x, P2 x -> P1 x) ->

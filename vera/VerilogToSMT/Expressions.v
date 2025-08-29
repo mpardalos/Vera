@@ -508,6 +508,74 @@ Ltac unpack_verilog_smt_match_states_partial :=
         setoid_rewrite List.in_app_iff in H
     end.
 
+Lemma cast_from_to_part_eval ρ from to t w1 bv1:
+  SMTLib.interp_term ρ (cast_from_to from to t) = Some (SMTLib.Value_BitVec w1 bv1) ->
+  exists w2 bv2, SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w2 bv2).
+Proof.
+  funelim (cast_from_to from to t);
+    rewrite <- Heqcall; clear Heqcall;
+    crush.
+Qed.
+
+Lemma expr_to_smt_has_read_vars tag m w e : forall t ρ var val,
+  List.In var (Verilog.expr_reads e) ->
+  expr_to_smt (w:=w) tag m e = inr t ->
+  SMTLib.interp_term ρ t = Some val ->
+  valuation_has_var tag m ρ var.
+Proof.
+  induction e; intros;
+    simp expr_to_smt expr_reads in *;
+    monad_inv; simpl in *.
+  - (* binop left *)
+    apply List.in_app_iff in H.
+    destruct H, op;
+      simp binop_to_smt in *;
+      monad_inv;
+      crush.
+  - (* unop *)
+    destruct op; crush.
+  - (* conditional *)
+    rewrite ! List.in_app_iff in H.
+    unfold conditional_to_smt in *.
+    autodestruct.
+    destruct H as [? | [? | ?]];
+      crush.
+  - (* select *)
+    rewrite ! List.in_app_iff in H.
+    unfold smt_select_bit in *.
+    autodestruct. simpl in *.
+    simpl in *.
+    autodestruct_eqn E.
+    repeat match goal with
+           | [ H : SMTLib.interp_term _ _ = Some _ |- _ ] =>
+               apply cast_from_to_part_eval in H; destruct H as [? [? ?]]
+           end.
+    destruct H; autodestruct_eqn E; eauto.
+  - (* concat *)
+    autodestruct_eqn E.
+    rewrite ! List.in_app_iff in H.
+    destruct H; autodestruct_eqn E; eauto.
+  - (* literal *)
+    contradiction.
+  - (* variable *)
+    inv H; [|contradiction].
+    unfold valuation_has_var.
+    funelim (var_to_smt tag m var0);
+      rewrite <- Heqcall in *; clear Heqcall;
+      [|discriminate].
+    inv H0.
+    unfold SMTLib.term_satisfied_by in *. simpl in *.
+    autodestruct_eqn E.
+    exists n__smt. eexists. split; [eassumption|].
+    rewrite H1. f_equal.
+    (* FIXME:
+       The SMT query by itself does not guarantee that vars will have the
+       correct type. It also needs the declarations
+     *)
+    admit.
+Admitted.
+
+
 Lemma eval_expr_defined w regs e :
   forall tag m t,
     expr_to_smt tag m e = inr t ->
