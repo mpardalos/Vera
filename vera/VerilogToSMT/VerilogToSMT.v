@@ -174,6 +174,9 @@ Section expr_to_smt.
            (Verilog.module_item_writes hd)
            (Verilog.module_body_writes tl))
         "Multiply-driven net"%string ;;
+      assert_dec
+        (list_subset (Verilog.module_item_reads hd) inputs)
+        "Read from non-module-input"%string ;;
       a <- transfer_module_item hd ;;
       b <- transfer_module_body tl ;;
       ret (a :: b)
@@ -199,21 +202,33 @@ Equations mk_bijection (tag : TaggedVariable.Tag) (vars : list (Verilog.variable
     ret (VerilogSMTBijection.insert (tag, var) name__smt tail_bijection prf1 prf2);
   mk_bijection tag [] := ret VerilogSMTBijection.empty.
 
+Definition mk_declarations : list (Verilog.variable * smtname) -> list SMTLib.declaration :=
+  map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Verilog.varType var))).
+
 Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smt_with_namemap :=
   assert_dec
     (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
     "Overlapping inputs and outputs"%string ;;
+  assert_dec
+    (list_subset (Verilog.module_body_reads (Verilog.modBody vmodule)) (Verilog.module_inputs vmodule))
+    "Read from non-module-input"%string ;;
   let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
   nameMap <- mk_bijection name_tag var_assignment ;;
-  body_smt <- transfer_module_body
+  assertions <- transfer_module_body
                name_tag
                nameMap
                (Verilog.module_inputs vmodule)
                (Verilog.module_outputs vmodule)
                (Verilog.modBody vmodule) ;;
+  query_wf <- assert_dec _ "Query not well-formed"%string ;;
   inr {|
       SMT.nameMap := nameMap;
       SMT.widths := List.map (fun '(var, smtname) => (smtname, Verilog.varType var)) var_assignment;
-      SMT.query := body_smt;
+      SMT.query :=
+        {|
+          SMTLib.declarations := mk_declarations var_assignment;
+          SMTLib.assertions := assertions;
+          SMTLib.wf := query_wf;
+        |};
     |}
 .

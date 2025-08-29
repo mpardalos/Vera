@@ -6,6 +6,8 @@ From Coq Require Import BinInt.
 From Coq Require Import PeanoNat.
 From Coq Require Import Lia.
 
+From SMTCoqApi Require SMTLib.
+
 Class DecProp (P : Prop) := dec : { P } + { ~ P } .
 
 Arguments dec _ {_}.
@@ -98,6 +100,9 @@ Instance dec_eq_pair {A B}
 Instance dec_eq_list {A} `{forall (x y : A), DecProp (x = y)} (x y : list A) : DecProp (x = y) :=
   mk_dec_eq!(list_eq_dec).
 
+Instance dec_eq_sort (x y : SMTLib.sort) : DecProp (x = y) :=
+  mk_dec_eq(SMTLib.dec_sort).
+
 Instance dec_Forall {A} {P : A -> Prop} {decP : forall x, DecProp (P x)} l :
   DecProp (Forall P l).
 Proof.
@@ -140,6 +145,43 @@ Proof.
       * left. constructor; assumption.
     + right. inversion 1. contradiction.
 Qed.
+
+Lemma exists_impl A (P Q : A -> Prop) :
+  (forall x, P x -> Q x) ->
+  (exists x, P x) ->
+  (exists x, Q x).
+Proof. firstorder. Qed.
+
+Instance dec_exists_In_pair_l {A B} `{forall (x y : A), DecProp (x = y)} `{forall (x y : B), DecProp (x = y)} (b : B) l :
+  DecProp (exists (a : A), In (a, b) l).
+Proof.
+  induction l as [|[a' b']].
+  - firstorder.
+  - destruct (dec (b = b')).
+    + left. subst. eauto with datatypes.
+    + destruct IHl.
+      * left. eapply exists_impl; [|eapply e].
+        firstorder.
+      * right. intro contra. apply n0. clear n0.
+        eapply exists_impl; [|eapply contra].
+        firstorder; congruence.
+Qed.
+
+Instance dec_exists_In_pair_r {A B} `{forall (x y : A), DecProp (x = y)} `{forall (x y : B), DecProp (x = y)} (a : A) l :
+  DecProp (exists (b : B), In (a, b) l).
+Proof.
+  induction l as [|[a' b']].
+  - firstorder.
+  - destruct (dec (a = a')).
+    + left. subst. eauto with datatypes.
+    + destruct IHl.
+      * left. eapply exists_impl; [|eapply e].
+        firstorder; congruence.
+      * right. intro contra. apply n0. clear n0.
+        eapply exists_impl; [|eapply contra].
+        firstorder; congruence.
+Qed.
+
 
 Definition assert_dec {E} (P : Prop) `{ DecProp P } (err : E) : sum E P :=
   match dec P with

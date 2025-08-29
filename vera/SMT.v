@@ -118,7 +118,7 @@ Module SMT.
       }.
 
   Definition max_var (q : SMTLib.query) : nat :=
-    List.list_max (SMTLibFacts.domain q).
+    List.list_max (SMTLib.domain q).
 
   Program Definition valuation_of_execution (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (e : execution) : SMTLib.valuation :=
     fun n =>

@@ -428,7 +428,7 @@ Lemma transfer_module_body_run_multistep_satisfiable v :
     verilog_smt_match_states_partial
       (fun var => List.In var (Verilog.module_body_reads (Verilog.modBody v) ++ Verilog.module_body_writes (Verilog.modBody v)))
       tag m r2 ρ ->
-    SMTLib.satisfied_by ρ q.
+    List.Forall (SMTLib.term_satisfied_by ρ) q.
 Proof.
   generalize dependent (Verilog.module_outputs v). intro outputs.
   generalize dependent (Verilog.module_inputs v). intro inputs.
@@ -467,11 +467,6 @@ Proof.
     intuition assumption.
 Qed.
 
-Lemma FAKE_body_reads_inputs v var :
-  List.In var (Verilog.module_body_reads (Verilog.modBody v)) ->
-  List.In var (Verilog.module_inputs v).
-Proof. Admitted.
-
 Lemma execution_match_on_impl C1 C2 e1 e2:
   (forall var, C2 var -> C1 var) ->
   execution_match_on C1 e1 e2 ->
@@ -483,7 +478,7 @@ Lemma transfer_module_body_satisfiable v :
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
     transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
     valid_execution v (SMT.execution_of_valuation tag m ρ) ->
-    SMTLib.satisfied_by ρ q.
+    List.Forall (SMTLib.term_satisfied_by ρ) q.
 Proof.
   intros * Hdisjoint Htransfer Hvalid.
   destruct Hvalid as [e' [? ?]].
@@ -495,7 +490,7 @@ Qed.
 Lemma transfer_module_body_run_multistep_valid v : forall tag m ρ q,
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
     transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
-    SMTLib.satisfied_by ρ q ->
+    List.Forall (SMTLib.term_satisfied_by ρ) q ->
     forall r1,
       verilog_smt_match_states_partial
         (fun var => List.In var (Verilog.module_body_reads (Verilog.modBody v)))
@@ -561,47 +556,15 @@ Proof.
     intuition assumption.
 Qed.
 
-Lemma transfer_module_item_has_read_vars tag m inputs outputs it : forall t ρ var,
-  List.In var (Verilog.module_item_reads it) ->
-  transfer_module_item tag m inputs outputs it = inr t ->
-  SMTLib.term_satisfied_by ρ t ->
-  valuation_has_var tag m ρ var.
-Proof.
-  intros.
-  funelim (transfer_module_item tag m inputs outputs it);
-    simp transfer_module_item in *;
-    try discriminate;
-    [idtac].
-  monad_inv.
-  simp module_item_reads statement_reads in *.
-  unfold SMTLib.term_satisfied_by in *. simpl in *.
-  autodestruct_eqn E.
-  eapply expr_to_smt_has_read_vars; try eassumption.
-Qed.
-
-Lemma transfer_module_has_read_vars tag m inputs outputs body : forall q ρ var,
-  transfer_module_body tag m inputs outputs body = inr q ->
-  SMTLib.satisfied_by ρ q ->
-  List.In var (Verilog.module_body_reads body) ->
-  valuation_has_var tag m ρ var.
-Proof.
-  induction body; intros * Htransf Hsat Hin; [now some_inv|].
-  simp module_body_reads transfer_module_body in *.
-  monad_inv.
-  inv Hsat.
-  apply List.in_app_iff in Hin.
-  destruct Hin as [Hin|Hin]; [|solve[eauto]].
-  clear IHbody.
-  eapply transfer_module_item_has_read_vars; eassumption.
-Qed.
-
 Lemma transfer_module_body_valid tag m v ρ q :
+  list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v) ->
   disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
   transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
-  SMTLib.satisfied_by ρ q ->
+  (forall var : Verilog.variable, List.In var (Verilog.module_body_reads (Verilog.modBody v)) -> valuation_has_var tag m ρ var) ->
+  List.Forall (SMTLib.term_satisfied_by ρ) q ->
   valid_execution v (SMT.execution_of_valuation tag m ρ).
 Proof.
-  intros * Hdisjoint Htransfer_body Hsat.
+  intros * Hsubset Hdisjoint Htransfer_body Hhas_vars Hsat.
   edestruct transfer_module_body_run_multistep_valid
     with (r1 := limit_to_regs (Verilog.module_inputs v) (SMT.execution_of_valuation tag m ρ))
     as [final [H1 H2]].
@@ -611,30 +574,41 @@ Proof.
   - eapply verilog_smt_match_states_partial_change_regs
       with (r1 := SMT.execution_of_valuation tag m ρ). {
       intros.
+      unfold list_subset in Hsubset.
+      rewrite List.Forall_forall in Hsubset.
       unfold limit_to_regs.
-      apply FAKE_body_reads_inputs in H.
-      now autodestruct.
+      autodestruct; crush.
     }
     apply verilog_smt_match_states_execution_of_valuation_same.
-    intros.
-    eapply transfer_module_has_read_vars; eassumption.
+    assumption.
   - unfold valid_execution.
     eexists. split; [eassumption|].
     apply verilog_smt_match_states_partial_execution_match_on.
     assumption.
 Qed.
 
-Lemma transfer_module_body_correct v :
-  forall tag (m : VerilogSMTBijection.t) q,
-    SMT.match_map_verilog tag m v ->
-    disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
-    transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
-    SMTLibFacts.smt_reflect q (fun ρ => valid_execution v (SMT.execution_of_valuation tag m ρ)).
+Lemma declarations_satisfied_valuation_has_var tag m start var vars ρ :
+  List.Forall
+    (fun '(n, s) => exists v : SMTLib.value, ρ n = Some v /\ SMTLib.value_has_sort v s)
+    (mk_declarations (assign_vars start vars)) ->
+  List.In var vars ->
+  valuation_has_var tag m ρ var.
+Proof. Admitted.
+
+Lemma complete_execution_valuation_satisfied_declarations tag m v ρ start :
+  complete_execution v (SMT.execution_of_valuation tag m ρ) ->
+  List.Forall
+    (fun '(n, s) => exists v0 : SMTLib.value, ρ n = Some v0 /\ SMTLib.value_has_sort v0 s)
+    (mk_declarations (assign_vars start (Verilog.modVariables v))).
+Proof. Admitted.
+
+(* TODO: This should be more general, or at least moved to Verilog.v *)
+Lemma module_input_in_vars v : forall var,
+  List.In var (Verilog.module_inputs v) ->
+  List.In var (Verilog.modVariables v).
 Proof.
-  intros * Hmatch Hdisjoint Htransfer_body.
-  split; intro.
-  - eapply transfer_module_body_valid; eassumption.
-  - eapply transfer_module_body_satisfiable; eauto.
+  unfold Verilog.module_inputs, Verilog.modVariables.
+  induction (Verilog.modVariableDecls v); crush.
 Qed.
 
 Theorem verilog_to_smt_correct tag start v smt :
@@ -646,11 +620,22 @@ Proof.
   unfold verilog_to_smt.
   intros H.
   inv H. autodestruct_eqn E. cbn in *.
-  eapply transfer_module_body_correct.
-  - eapply mk_bijection_smt_map_match.
-    eassumption.
-  - eassumption.
-  - eassumption.
+  split; intros.
+  - inv H. simpl in *.
+    eapply transfer_module_body_valid; try eassumption.
+    intros.
+    eapply declarations_satisfied_valuation_has_var; try eassumption.
+    unfold list_subset in *.
+    cleanup.
+    rewrite ! List.Forall_forall in *.
+    eauto using module_input_in_vars.
+  - simpl.
+    unfold SMTLib.satisfied_by. simpl.
+    split.
+    + eapply complete_execution_valuation_satisfied_declarations.
+      apply valid_execution_complete.
+      eassumption.
+    + eapply transfer_module_body_satisfiable; eassumption.
 Qed.
 
 Print Assumptions verilog_to_smt_correct.

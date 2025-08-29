@@ -224,7 +224,8 @@ Module Verilog.
       { modName : name
       ; modVariableDecls : list variable_declaration
       ; modBody : list module_item
-      }.
+      }
+  .
 
   Definition modVariables (v : vmodule) : list variable :=
     map variable_of_decl (modVariableDecls v).

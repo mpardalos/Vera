@@ -478,3 +478,9 @@ Proof. unfold disjoint. setoid_rewrite Forall_forall. firstorder. Qed.
 
 (* Just checking that typeclasses eauto can indeed figure out DecProp (disjoint l r) *)
 Goal (forall (l r : list nat), DecProp (disjoint l r)). typeclasses eauto. Qed.
+
+Definition list_subset {A} (sub sup : list A) : Prop :=
+  Forall (fun x => In x sup) sub.
+
+(* Same for subset *)
+Goal (forall (sub sup : list nat), DecProp (list_subset sub sup)). typeclasses eauto. Qed.
