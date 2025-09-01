@@ -3,6 +3,18 @@ Import EqNotations.
 
 From vera Require Import Decidable.
 
+From ExtLib Require Import Structures.Monads.
+
+Import MonadNotation.
+Import SigTNotations.
+
+(* This needs to be defined here, because monad_inv depends on it *)
+Program Definition sum_with_eqn {A B} (s : sum A B) : sum A { x : B & s = inr x } :=
+  match s with
+  | inr x => inr (x; _)
+  | inl e => inl e
+  end.
+
 (* This tactic due to Clement Pit-Claudel with some minor additions by JDP to
    allow the result to be named: https://pit-claudel.fr/clement/MSc/#org96a1b5f *)
 Inductive Learnt {A: Type} (a: A) :=
@@ -84,6 +96,31 @@ Ltac autodestruct_eqn name :=
     | [ |- context[sumbool_rec _ _ _  (?d ?a ?b)] ] =>
         destruct (d a b); try (congruence || contradiction || discriminate)
     end.
+
+Ltac monad_cleanup :=
+  repeat match goal with
+    | [ H : assert_dec _ _ = inr _ |- _ ] => clear H
+    end.
+
+Ltac monad_inv :=
+  try discriminate;
+  repeat match goal with
+    | [ H : (_ ;; _)%monad = _ |- _ ] => inv H
+    | [ H : _ = (_ ;; _)%monad |- _ ] => inv H
+    | [ H : inl _ = inl _ |- _ ] => inv H
+    | [ H : inr _ = inr _ |- _ ] => inv H
+    | [ H : ret _ = inr _ |- _ ] => inv H
+    | [ H : inr _ = ret _ |- _ ] => inv H
+    end;
+  let E := fresh "E" in
+  autodestruct_eqn E;
+  repeat match goal with
+    | [ E : sum_with_eqn ?x = inr _, e : ?x = inr _ |- _ ] =>
+        rewrite e in E; simpl in E; inv E
+    end;
+  monad_cleanup
+.
+
 
 Ltac reductio_ad_absurdum :=
   match goal with

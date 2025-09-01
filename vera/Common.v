@@ -329,6 +329,23 @@ Module PartialBijection(A: UsualDecidableType)(B: UsualDecidableType).
       firstorder (try apply_somewhere bij_wf; congruence).
   Qed.
 
+  Lemma lookup_insert_in k v m prf1 prf2 :
+    insert k v m prf1 prf2 k = Some v.
+  Proof.
+    simpl. destruct (A.eq_dec k k).
+    - reflexivity.
+    - contradiction.
+  Qed.
+
+  Lemma lookup_insert_out k v k' m prf1 prf2 :
+    k <> k' ->
+    insert k v m prf1 prf2 k' = m k'.
+  Proof.
+    simpl. intros H. destruct (A.eq_dec k' k).
+    - subst. contradiction.
+    - reflexivity.
+  Qed.
+
   Program Definition from_pairs
     (pairs : list (A.t * B.t))
     (nodup_left : NoDup (List.map fst pairs))

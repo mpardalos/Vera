@@ -2,7 +2,8 @@ From vera Require Import Common.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require Import VerilogToSMT.
-From vera Require Import SMT.
+From vera Require Import VerilogSMT.
+From vera Require SMTQueries.
 Import (coercions) VerilogSMTBijection.
 From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
@@ -66,7 +67,7 @@ Definition valuation_has_var tag (m : VerilogSMTBijection.t) ρ var : Prop :=
     m (tag, var) = Some smtName /\
       ρ smtName = Some (SMTLib.Value_BitVec (Verilog.varType var) bv).
 
-Inductive verilog_smt_match_on_name (regs : RegisterState) (ρ : SMTLib.valuation) var smtName : Prop :=
+Inductive verilog_smt_match_on_name (regs : RegisterState) (ρ : SMTQueries.valuation) var smtName : Prop :=
 | verilog_smt_match_on_names_intro xbv val
     (Hsmtval : ρ smtName = Some val)
     (Hverilogval : regs var = Some xbv)
@@ -77,7 +78,7 @@ Definition verilog_smt_match_states
   (tag : TaggedVariable.Tag)
   (m : VerilogSMTBijection.t)
   (regs : RegisterState)
-  (ρ : SMTLib.valuation) : Prop :=
+  (ρ : SMTQueries.valuation) : Prop :=
   forall verilogName smtName,
     m (tag, verilogName) = Some smtName ->
     verilog_smt_match_on_name regs ρ verilogName smtName.
@@ -87,7 +88,7 @@ Definition verilog_smt_match_states_partial
   (tag : TaggedVariable.Tag)
   (m : VerilogSMTBijection.t)
   (regs : RegisterState)
-  (ρ : SMTLib.valuation) : Prop :=
+  (ρ : SMTQueries.valuation) : Prop :=
   forall var,
     cond var ->
     exists smtName,

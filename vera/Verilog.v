@@ -254,6 +254,22 @@ Module Verilog.
          end)
       (modVariableDecls v).
 
+  Lemma module_input_in_vars v : forall var,
+      List.In var (Verilog.module_inputs v) ->
+      List.In var (Verilog.modVariables v).
+  Proof.
+    unfold Verilog.module_inputs, Verilog.modVariables.
+    induction (Verilog.modVariableDecls v); crush.
+  Qed.
+
+  Lemma module_outputs_in_vars v : forall var,
+      List.In var (Verilog.module_outputs v) ->
+      List.In var (Verilog.modVariables v).
+  Proof.
+    unfold Verilog.module_outputs, Verilog.modVariables.
+    induction (Verilog.modVariableDecls v); crush.
+  Qed.
+
   Definition var_names : list variable -> list name :=
     map varName.
 

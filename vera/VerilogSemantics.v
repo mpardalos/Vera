@@ -334,6 +334,9 @@ Module CombinationalOnly.
   Definition execution_match_on (C : Verilog.variable -> Prop) (e1 e2 : execution) : Prop :=
     forall var, C var -> exists xbv, e1 var = Some xbv /\ e2 var = Some xbv.
 
+  Definition execution_defined_match_on (C : Verilog.variable -> Prop) (e1 e2 : execution) : Prop :=
+    forall var, C var -> exists xbv, e1 var = Some xbv /\ e2 var = Some xbv /\ ~ XBV.has_x xbv.
+
   Global Instance execution_match_on_proper :
     Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) execution_match_on.
   Proof. repeat intro. subst. crush. Qed.
@@ -361,7 +364,15 @@ Module CombinationalOnly.
 
   (** All variables of v, *and no other variables*, have a value in the execution *)
   Definition exact_execution (v : Verilog.vmodule) (e : execution) :=
-    forall var, In var (Verilog.modVariables v) -> exists bv, e var = Some bv.
+    forall var, In var (Verilog.modVariables v) <-> exists bv, e var = Some bv.
+
+  Definition execution_not_x (e : execution) name :=
+    forall v, e name = Some v -> ~ XBV.has_x v.
+
+  Definition execution_no_exes_for C (e : execution) :=
+    forall var, C var -> execution_not_x e var.
+
+  Definition execution_no_exes := execution_no_exes_for (fun _ => True).
 
   Definition no_errors (v : Verilog.vmodule) :=
     forall (initial : RegisterState)

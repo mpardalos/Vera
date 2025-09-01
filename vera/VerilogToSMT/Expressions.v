@@ -2,7 +2,8 @@ From vera Require Import Common.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require Import VerilogToSMT.
-From vera Require Import SMT.
+From vera Require Import VerilogSMT.
+From vera Require SMTQueries.
 Import (coercions) VerilogSMTBijection.
 From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
@@ -298,26 +299,6 @@ Proof.
         destruct i; simpl; simp shr; try crush.
 Qed.
 
-Ltac cleanup :=
-  repeat match goal with
-    | [ H : assert_dec _ _ = inr _ |- _ ] => clear H
-    end.
-
-Ltac monad_inv :=
-  try discriminate;
-  repeat match goal with
-    | [ H : (_ ;; _)%monad = _ |- _ ] => inv H
-    | [ H : _ = (_ ;; _)%monad |- _ ] => inv H
-    | [ H : inl _ = inl _ |- _ ] => inv H
-    | [ H : inr _ = inr _ |- _ ] => inv H
-    | [ H : ret _ = inr _ |- _ ] => inv H
-    | [ H : inr _ = ret _ |- _ ] => inv H
-    end;
-  let E := fresh "E" in
-  autodestruct_eqn E;
-  cleanup
-.
-
 Lemma var_to_smt_value var (m : VerilogSMTBijection.t) tag regs ρ t :
     var_to_smt tag m var = inr t ->
     verilog_smt_match_states_partial (fun v => v = var) tag m regs ρ ->
@@ -516,65 +497,6 @@ Proof.
     rewrite <- Heqcall; clear Heqcall;
     crush.
 Qed.
-
-Lemma expr_to_smt_has_read_vars tag m w e : forall t ρ var val,
-  List.In var (Verilog.expr_reads e) ->
-  expr_to_smt (w:=w) tag m e = inr t ->
-  SMTLib.interp_term ρ t = Some val ->
-  valuation_has_var tag m ρ var.
-Proof.
-  induction e; intros;
-    simp expr_to_smt expr_reads in *;
-    monad_inv; simpl in *.
-  - (* binop left *)
-    apply List.in_app_iff in H.
-    destruct H, op;
-      simp binop_to_smt in *;
-      monad_inv;
-      crush.
-  - (* unop *)
-    destruct op; crush.
-  - (* conditional *)
-    rewrite ! List.in_app_iff in H.
-    unfold conditional_to_smt in *.
-    autodestruct.
-    destruct H as [? | [? | ?]];
-      crush.
-  - (* select *)
-    rewrite ! List.in_app_iff in H.
-    unfold smt_select_bit in *.
-    autodestruct. simpl in *.
-    simpl in *.
-    autodestruct_eqn E.
-    repeat match goal with
-           | [ H : SMTLib.interp_term _ _ = Some _ |- _ ] =>
-               apply cast_from_to_part_eval in H; destruct H as [? [? ?]]
-           end.
-    destruct H; autodestruct_eqn E; eauto.
-  - (* concat *)
-    autodestruct_eqn E.
-    rewrite ! List.in_app_iff in H.
-    destruct H; autodestruct_eqn E; eauto.
-  - (* literal *)
-    contradiction.
-  - (* variable *)
-    inv H; [|contradiction].
-    unfold valuation_has_var.
-    funelim (var_to_smt tag m var0);
-      rewrite <- Heqcall in *; clear Heqcall;
-      [|discriminate].
-    inv H0.
-    unfold SMTLib.term_satisfied_by in *. simpl in *.
-    autodestruct_eqn E.
-    exists n__smt. eexists. split; [eassumption|].
-    rewrite H1. f_equal.
-    (* FIXME:
-       The SMT query by itself does not guarantee that vars will have the
-       correct type. It also needs the declarations
-     *)
-    admit.
-Admitted.
-
 
 Lemma eval_expr_defined w regs e :
   forall tag m t,

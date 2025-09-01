@@ -1,5 +1,5 @@
 From vera Require Import Verilog.
-From vera Require Import SMT.
+From vera Require Import VerilogSMT.
 Import (coercions) SMT.
 From vera Require Import Common.
 Import (coercions) VerilogSMTBijection.
@@ -7,7 +7,9 @@ Import VerilogSMTBijection (bij_inverse, bij_apply, bij_wf).
 From vera Require VerilogTypecheck.
 From vera Require VerilogCanonicalize.
 From vera Require VerilogToSMT.
+From vera Require SMTQueries.
 From vera Require Import Decidable.
+From vera Require Import Tactics.
 
 From ExtLib Require Import Data.List.
 From ExtLib Require Import Data.Monads.EitherMonad.
@@ -28,6 +30,9 @@ From Coq Require Import List.
 From Coq Require Import Sorting.Permutation.
 From Coq Require Import Structures.Equalities.
 
+From Equations Require Import Equations.
+
+Import SigTNotations.
 Import ListNotations.
 Import CommonNotations.
 Import MonadNotation.
@@ -35,9 +40,9 @@ Import FunctorNotation.
 Local Open Scope monad_scope.
 Local Open Scope string.
 
-Equations mk_var_same (var : Verilog.variable) (namemap : VerilogSMTBijection.t)
+Equations mk_var_same (var : Verilog.variable) (m : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
-  | var, namemap with namemap (TaggedVariable.VerilogLeft, var), namemap (TaggedVariable.VerilogRight, var) => {
+  | var, m with m (TaggedVariable.VerilogLeft, var), m (TaggedVariable.VerilogRight, var) => {
     | Some smt_name1, Some smt_name2 =>
         inr (SMTLib.Term_Eq (SMTLib.Term_Const smt_name1) (SMTLib.Term_Const smt_name2))
     | _, _ => inl "mk_var_same"%string
@@ -45,7 +50,7 @@ Equations mk_var_same (var : Verilog.variable) (namemap : VerilogSMTBijection.t)
   }
   .
 
-Equations mk_inputs_same (inputs : list Verilog.variable) (namemap : VerilogSMTBijection.t)
+Equations mk_inputs_same (inputs : list Verilog.variable) (m : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
   | [], m => inr SMTLib.Term_True
   | (var :: vars), m =>
@@ -59,9 +64,9 @@ Equations mk_inputs_same (inputs : list Verilog.variable) (namemap : VerilogSMTB
       end
   }.
 
-Equations mk_var_distinct (var : Verilog.variable) (namemap : VerilogSMTBijection.t)
+Equations mk_var_distinct (var : Verilog.variable) (m : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
-  | var, namemap with namemap (TaggedVariable.VerilogLeft, var), namemap (TaggedVariable.VerilogRight, var) => {
+  | var, m with m (TaggedVariable.VerilogLeft, var), m (TaggedVariable.VerilogRight, var) => {
     | Some smt_name1, Some smt_name2 =>
         inr (SMTLib.Term_Not (SMTLib.Term_Eq (SMTLib.Term_Const smt_name1) (SMTLib.Term_Const smt_name2)))
     | _, _ => inl "mk_var_distinct"%string
@@ -69,7 +74,7 @@ Equations mk_var_distinct (var : Verilog.variable) (namemap : VerilogSMTBijectio
   }
   .
 
-Equations mk_outputs_distinct (inputs : list Verilog.variable) (namemap : VerilogSMTBijection.t)
+Equations mk_outputs_distinct (inputs : list Verilog.variable) (m : VerilogSMTBijection.t)
   : sum string SMTLib.term := {
   | [], m => inr SMTLib.Term_False
   | (var :: vars), m =>
@@ -83,36 +88,138 @@ Equations mk_outputs_distinct (inputs : list Verilog.variable) (namemap : Verilo
       end
   }.
 
-Program Definition equivalence_query_canonical
-  (canonical_verilog1 canonical_verilog2 : Verilog.vmodule)
-  : sum string (SMT.smt_with_namemap) :=
+Lemma mk_bijection_only_tag tag vars m :
+  VerilogToSMT.mk_bijection tag vars = inr m ->
+  VerilogSMTBijection.only_tag tag m.
+Proof.
+  revert m.
+  funelim (VerilogToSMT.mk_bijection tag vars); intros.
+  - inv H. apply VerilogSMTBijection.only_tag_empty.
+  - simp mk_bijection in H0; inv H0; autodestruct.
+    eauto using VerilogSMTBijection.only_tag_insert.
+Qed.
 
-  inputs_ok1 <- assert_dec (Verilog.module_inputs canonical_verilog1 = Verilog.module_inputs canonical_verilog2) "Inputs don't match" ;;
-  outputs_ok1 <- assert_dec (Verilog.module_outputs canonical_verilog1 = Verilog.module_outputs canonical_verilog2) "Outputs don't match" ;;
+Lemma verilog_to_smt_only_tag tag start v s :
+  VerilogToSMT.verilog_to_smt tag start v = inr s ->
+  VerilogSMTBijection.only_tag tag (SMT.nameMap s).
+Proof.
+  intros.
+  unfold VerilogToSMT.verilog_to_smt in *. simpl in *.
+  autodestruct_eqn E. cbn.
+  eauto using mk_bijection_only_tag.
+Qed.
 
-  smt1 <- VerilogToSMT.verilog_to_smt TaggedVariable.VerilogLeft 0 canonical_verilog1 ;;
-  smt2 <- VerilogToSMT.verilog_to_smt TaggedVariable.VerilogRight (1 + SMT.max_var (SMT.query smt1)) canonical_verilog2 ;;
+Lemma mk_bijection_min_name tag start vars m var name :
+  VerilogToSMT.mk_bijection tag (VerilogToSMT.assign_vars start vars) = inr m ->
+  m (tag, var) = Some name ->
+  name >= start.
+Proof.
+  revert m start.
+  induction vars; intros * Hfunc Hm; simp assign_vars mk_bijection in *.
+  - inv Hfunc. discriminate.
+  - monad_inv.
+    destruct (dec (a = var)).
+    + subst a.
+      rewrite VerilogSMTBijection.lookup_insert_in in Hm. inv Hm.
+      lia.
+    + rewrite VerilogSMTBijection.lookup_insert_out in Hm by crush.
+      insterU IHvars.
+      crush.
+Qed.
+
+Lemma verilog_to_smt_min_name tag start v s var name :
+  VerilogToSMT.verilog_to_smt tag start v = inr s ->
+  SMT.nameMap s (tag, var) = Some name ->
+  name >= start.
+Proof.
+  intros.
+  unfold VerilogToSMT.verilog_to_smt in *. simpl in *.
+  autodestruct_eqn E. simpl in *.
+  eauto using mk_bijection_min_name.
+Qed.
+
+Lemma mk_bijection_max_name vars : forall tag start m var name,
+  VerilogToSMT.mk_bijection tag (VerilogToSMT.assign_vars start vars) = inr m ->
+  m (tag, var) = Some name ->
+  name <= start + length vars.
+Proof.
+  induction vars;
+    intros * Hfunc Hm;
+    simp assign_vars mk_bijection in *; simpl in *;
+    monad_inv.
+  - discriminate.
+  - destruct (dec (a = var)).
+    + subst a.
+      rewrite VerilogSMTBijection.lookup_insert_in in Hm. inv Hm.
+      lia.
+    + rewrite VerilogSMTBijection.lookup_insert_out in Hm by crush.
+      insterU IHvars.
+      crush.
+Qed.
+
+Lemma verilog_to_smt_max_name tag start s v var name :
+  VerilogToSMT.verilog_to_smt tag start v = inr s ->
+  SMT.nameMap s (tag, var) = Some name ->
+  name <= start + length (Verilog.modVariables v).
+Proof.
+  intros Hfunc Hm.
+  unfold VerilogToSMT.verilog_to_smt in Hfunc.
+  monad_inv.
+  eapply mk_bijection_max_name; eassumption.
+Qed.
+
+Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string (SMT.smt_with_namemap) :=
+  inputs_ok1 <- assert_dec (Verilog.module_inputs verilog1 = Verilog.module_inputs verilog2) "Inputs don't match" ;;
+  outputs_ok1 <- assert_dec (Verilog.module_outputs verilog1 = Verilog.module_outputs verilog2) "Outputs don't match" ;;
+
+  '( smt1 ; prf1 ) <- sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogLeft 0 verilog1) ;;
+  '( smt2 ; prf2 ) <- sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogRight (S (length (Verilog.modVariables verilog1))) verilog2) ;;
 
   let nameMap := VerilogSMTBijection.combine (SMT.nameMap smt1) (SMT.nameMap smt2) _ _ in
 
-  inputs_same <- mk_inputs_same (Verilog.module_inputs canonical_verilog1) nameMap ;;
-  outputs_distinct <- mk_outputs_distinct (Verilog.module_outputs canonical_verilog1) nameMap ;;
+  inputs_same <- mk_inputs_same (Verilog.module_inputs verilog1) nameMap ;;
+  outputs_distinct <- mk_outputs_distinct (Verilog.module_outputs verilog1) nameMap ;;
+
+  prf1 <- assert_dec _ "Unknown variables in inputs_same assertion" ;;
+  prf2 <- assert_dec _ "Unknown variables in outputs_distinct assertion" ;;
 
   ret {|
       SMT.nameMap := nameMap ;
-      SMT.widths := SMT.widths smt1 ++ SMT.widths smt2;
-      SMT.query := (SMT.query smt1 ++ SMT.query smt2 ++ [inputs_same] ++ [outputs_distinct])%list
+      SMT.query :=
+        SMTQueries.add_assertion outputs_distinct
+          (SMTQueries.add_assertion inputs_same
+             (SMTQueries.combine (SMT.query smt1) (SMT.query smt2))
+             prf1
+          )
+          prf2
     |}
 .
-Next Obligation. (* No shared verilog names *) Admitted.
-Next Obligation. (* No shared SMT names *) Admitted.
-
-Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string SMT.smt_with_namemap :=
-  VerilogTypecheck.tc_vmodule verilog1 ;;
-  VerilogTypecheck.tc_vmodule verilog2 ;;
-
-  canonical_verilog1 <- VerilogCanonicalize.canonicalize_verilog verilog1 ;;
-  canonical_verilog2 <- VerilogCanonicalize.canonicalize_verilog verilog2 ;;
-
-  equivalence_query_canonical canonical_verilog1 canonical_verilog2
-.
+Next Obligation.
+  (* No shared verilog names *)
+  repeat apply_somewhere verilog_to_smt_only_tag.
+  unfold VerilogSMTBijection.only_tag in *.
+  destruct (SMT.nameMap x (t, v)) eqn:E; [|reflexivity].
+  rewrite VerilogSMTBijection.bij_wf in H, E.
+  apply (f_equal (option_map fst)) in H, E.
+  insterU X. insterU X0.
+  crush.
+Qed.
+Next Obligation.
+  (* No shared smt names *)
+  destruct (bij_inverse (SMT.nameMap x) b) as [[t' v']|] eqn:E; [|reflexivity].
+  replace t with TaggedVariable.VerilogLeft in *; cycle 1. {
+    symmetry.
+    eapply verilog_to_smt_only_tag. eassumption.
+    rewrite H. reflexivity.
+  }
+  replace t' with TaggedVariable.VerilogRight in *; cycle 1. {
+    symmetry.
+    eapply verilog_to_smt_only_tag. eassumption.
+    rewrite E. reflexivity.
+  }
+  rewrite <- VerilogSMTBijection.bij_wf in H, E.
+  pose proof (verilog_to_smt_min_name TaggedVariable.VerilogLeft) as Hmin_left. insterU Hmin_left.
+  pose proof (verilog_to_smt_min_name TaggedVariable.VerilogRight) as Hmin_right. insterU Hmin_right.
+  pose proof (verilog_to_smt_max_name TaggedVariable.VerilogLeft) as Hmax_left. insterU Hmax_left.
+  lia.
+Qed.
