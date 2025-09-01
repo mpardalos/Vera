@@ -78,13 +78,12 @@ Proof.
   induction vars; intros; simp assign_vars in *; crush.
 Qed.
 
-Lemma mk_bijection_smt_map_match tag start v m :
-  mk_bijection tag (assign_vars start (Verilog.modVariables v)) = inr m ->
-  SMT.match_map_verilog tag m v.
+Lemma mk_bijection_smt_map_match tag start m vars :
+  mk_bijection tag (assign_vars start vars) = inr m ->
+  SMT.match_map_vars tag m vars.
 Proof.
   Opaque VerilogSMTBijection.lookup_left.
-  unfold SMT.match_map_verilog.
-  generalize (Verilog.modVariables v). clear v. intro vars.
+  unfold SMT.match_map_vars.
   remember (assign_vars start vars) as assignment.
   epose proof (assign_vars_smtname_nodup _ _) as Hnodup;
     rewrite <- Heqassignment in Hnodup.
@@ -114,7 +113,7 @@ Qed.
 
 Lemma verilog_to_smt_map_match tag start v smt :
   verilog_to_smt tag start v = inr smt ->
-  SMT.match_map_verilog tag (SMT.nameMap smt) v.
+  SMT.match_map_vars tag (SMT.nameMap smt) (Verilog.modVariables v).
 Proof.
   intros.
   unfold verilog_to_smt in *. simpl in *.
@@ -587,20 +586,108 @@ Proof.
     assumption.
 Qed.
 
+Lemma bij_gsi (m : VerilogSMTBijection.t) tag var smtName prf1 prf2 :
+  VerilogSMTBijection.insert (tag, var) smtName m prf1 prf2 (tag, var) = Some smtName.
+Proof. crush. Qed.
+
+Lemma bij_gso (m : VerilogSMTBijection.t) x1 x2 smtName prf1 prf2 :
+  x1 <> x2 ->
+  VerilogSMTBijection.insert x1 smtName m prf1 prf2 x2 = m x2.
+Proof. crush. Qed.
+
+Lemma mk_bijection_lookup tag assignments : forall m var smtName,
+  mk_bijection tag assignments = inr m ->
+  List.In (var, smtName) assignments ->
+  m (tag, var) = Some smtName.
+Proof.
+  induction assignments as [|[var smtName]]; intros * H Hin.
+  - simp mk_bijection in H. inv H.
+    crush.
+  - simp mk_bijection in H.
+    monad_inv.
+    inv Hin.
+    + inv H.
+      apply bij_gsi.
+    + insterU IHassignments.
+      rewrite bij_gso; crush.
+Qed.
+
 Lemma declarations_satisfied_valuation_has_var tag m start var vars ρ :
   List.Forall
     (fun '(n, s) => exists v : SMTLib.value, ρ n = Some v /\ SMTLib.value_has_sort v s)
     (mk_declarations (assign_vars start vars)) ->
+  mk_bijection tag (assign_vars start vars) = inr m ->
   List.In var vars ->
   valuation_has_var tag m ρ var.
-Proof. Admitted.
+Proof.
+  intros H Hbijection Hin.
+  rewrite <- assign_vars_vars with (start:=start) in Hin.
+  generalize dependent (assign_vars start vars).
+  clear vars.
+  intro assignments. intros.
+
+  unfold mk_declarations in H.
+  rewrite List.Forall_map, List.Forall_forall in H.
+
+  rewrite List.in_map_iff in Hin.
+  destruct Hin as [[var' smtName] [Heq Hin]].
+  simpl in Heq. subst var'.
+
+  specialize (H (var, smtName) ltac:(assumption)).
+  simpl in H. destruct H as [v [Hv Hhas_sort]].
+
+  inv Hhas_sort.
+  unfold valuation_has_var.
+  exists smtName, bv. split; [|eassumption].
+
+  eauto using mk_bijection_lookup.
+Qed.
+
+Import EqNotations.
+
+Lemma execution_of_valuation_inv tag m ρ var xbv :
+  SMT.execution_of_valuation tag m ρ var = Some xbv ->
+  exists smtName bv,
+    m (tag, var) = Some smtName /\
+      XBV.to_bv xbv = Some bv /\
+      ρ smtName = Some (SMTLib.Value_BitVec (Verilog.varType var) bv).
+Proof.
+  unfold SMT.execution_of_valuation.
+  intros H.
+  autodestruct_eqn E.
+  simpl.
+  rewrite XBV.xbv_bv_inverse.
+  eauto.
+Qed.
 
 Lemma complete_execution_valuation_satisfied_declarations tag m v ρ start :
+  mk_bijection tag (assign_vars start (Verilog.modVariables v)) = inr m ->
   complete_execution v (SMT.execution_of_valuation tag m ρ) ->
   List.Forall
     (fun '(n, s) => exists v0 : SMTLib.value, ρ n = Some v0 /\ SMTLib.value_has_sort v0 s)
     (mk_declarations (assign_vars start (Verilog.modVariables v))).
-Proof. Admitted.
+Proof.
+  unfold mk_declarations.
+  rewrite Lists.List.Forall_map.
+  rewrite List.Forall_forall.
+  unfold complete_execution.
+  intros Hbijection H [var smtName] Hin.
+  assert (List.In var (Verilog.modVariables v)) as Hin2. {
+    replace var with (fst (var, smtName)) by reflexivity.
+    erewrite <- assign_vars_vars with (start:=start).
+    apply List.in_map.
+    assumption.
+  }
+  apply H in Hin2.
+  destruct Hin2 as [xbv Hlookup].
+  apply execution_of_valuation_inv in Hlookup.
+  destruct Hlookup as [smtName' [bv Hlookup]].
+  decompose record Hlookup. clear Hlookup.
+  assert (m (tag, var) = Some smtName)
+    by eauto using mk_bijection_lookup.
+  replace smtName' with smtName in * by congruence.
+  eexists. split; [eassumption|constructor].
+Qed.
 
 (* TODO: This should be more general, or at least moved to Verilog.v *)
 Lemma module_input_in_vars v : forall var,
@@ -624,7 +711,9 @@ Proof.
   - inv H. simpl in *.
     eapply transfer_module_body_valid; try eassumption.
     intros.
-    eapply declarations_satisfied_valuation_has_var; try eassumption.
+    eapply declarations_satisfied_valuation_has_var;
+      try eauto using mk_bijection_smt_map_match;
+      [idtac].
     unfold list_subset in *.
     cleanup.
     rewrite ! List.Forall_forall in *.
@@ -633,8 +722,9 @@ Proof.
     unfold SMTLib.satisfied_by. simpl.
     split.
     + eapply complete_execution_valuation_satisfied_declarations.
-      apply valid_execution_complete.
-      eassumption.
+      * eassumption.
+      * apply valid_execution_complete.
+        eassumption.
     + eapply transfer_module_body_satisfiable; eassumption.
 Qed.
 

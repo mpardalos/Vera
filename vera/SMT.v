@@ -107,8 +107,8 @@ Module SMT.
   Import VerilogSMTBijection (bij_inverse, bij_apply, bij_wf).
   Import (coercions) VerilogSMTBijection.
 
-  Definition match_map_verilog (tag : TaggedVariable.Tag) (map : VerilogSMTBijection.t) verilog :=
-    forall var, (exists smtName, map (tag, var) = Some smtName) <-> (In var (Verilog.modVariables verilog)).
+  Definition match_map_vars (tag : TaggedVariable.Tag) (map : VerilogSMTBijection.t) vars :=
+    forall var, (exists smtName, map (tag, var) = Some smtName) <-> (In var vars).
 
   Record smt_with_namemap :=
     MkSMTWithNameMap
@@ -208,7 +208,7 @@ Module SMT.
     (* TODO: Remove assumption *)
     (forall n xbv, e1 n = Some xbv -> ~ XBV.has_x xbv) ->
     (forall n xbv, e2 n = Some xbv -> ~ XBV.has_x xbv) ->
-    match_map_verilog TaggedVariable.VerilogLeft m v ->
+    match_map_vars TaggedVariable.VerilogLeft m (Verilog.modVariables v) ->
     complete_execution v e1 ->
     execution_of_valuation TaggedVariable.VerilogLeft m (valuation_of_executions m e1 e2) = e1.
   Proof.
@@ -251,7 +251,7 @@ Module SMT.
     (* TODO: Remove assumption *)
     (forall n xbv, e1 n = Some xbv -> ~ XBV.has_x xbv) ->
     (forall n xbv, e2 n = Some xbv -> ~ XBV.has_x xbv) ->
-    match_map_verilog TaggedVariable.VerilogRight m v ->
+    match_map_vars TaggedVariable.VerilogRight m (Verilog.modVariables v) ->
     complete_execution v e2 ->
     execution_of_valuation TaggedVariable.VerilogRight m (valuation_of_executions m e1 e2) = e2.
   Proof. Admitted.
@@ -302,7 +302,7 @@ Module SMT.
     Variable e : execution.
     Variable tag : TaggedVariable.Tag.
     Context (Hcomplete : complete_execution v e).
-    Context (Hmatch : match_map_verilog tag m v).
+    Context (Hmatch : match_map_vars tag m (Verilog.modVariables v)).
 
     Lemma valuation_of_execution_some var nameSMT xbv bv :
       e var = Some (xbv) ->
@@ -336,7 +336,7 @@ Module SMT.
       unfold execution_of_valuation.
       destruct (m (tag, var)) as [name | ] eqn:Hname; try discriminate.
       - unfold complete_execution in *. 
-        unfold match_map_verilog in Hmatch.
+        unfold match_map_vars in Hmatch.
         specialize (Hcomplete var). simpl in *.
         destruct Hcomplete as [Hcomplete' _]; clear Hcomplete.
         edestruct Hcomplete' as [[w xbv] Hxbv_val]. { firstorder. }
