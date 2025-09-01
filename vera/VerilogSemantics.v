@@ -7,7 +7,7 @@ From Coq Require Import ssreflect.
 From Coq Require Import Relations.
 From Coq Require Import Structures.Equalities.
 From Coq Require Import Psatz.
-From Coq Require Import Program.Equality.
+From Coq Require Import Logic.ProofIrrelevance.
 From Coq Require Import Morphisms.
 
 From vera Require Import Verilog.
@@ -79,7 +79,7 @@ Module CombinationalOnly.
   Proof.
     unfold set_reg, VariableDepMap.insert.
     autodestruct; [|contradiction].
-    dependent destruction e.
+    rewrite (proof_irrelevance _ e eq_refl).
     reflexivity.
   Qed.
 

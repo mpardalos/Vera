@@ -5,6 +5,7 @@ From Coq Require Import List.
 From Coq Require Import Psatz.
 From Coq Require Import String.
 From Coq Require Import Logic.Decidable.
+From Coq Require Import Logic.ProofIrrelevance.
 
 From SMTCoq Require Import BVList.
 
@@ -17,13 +18,8 @@ From vera Require Import Common.
 From vera Require Import Decidable.
 
 From Equations Require Import Equations.
-Set Equations With UIP.
 
-(* Import after Equations, conflicting "UIP" *)
-From Coq Require Import Eqdep.
-Import EqdepTheory.
 Import EqNotations.
-
 Import SigTNotations.
 Import ListNotations.
 Local Open Scope nat_scope.
@@ -665,7 +661,7 @@ Module XBV.
     generalize dependent wf1.
     rewrite H. clear H.
     intros. f_equal.
-    apply UIP.
+    apply proof_irrelevance.
   Qed.
 
   Lemma xbv_bv_inverse n (bv : BV.bitvector n) :
