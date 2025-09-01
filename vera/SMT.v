@@ -325,49 +325,5 @@ Module SMT.
       rewrite Hexes.
       reflexivity.
     Qed.
-
-    Lemma execution_of_valuation_of_execution :
-      (* TODO: Remove assumption *)
-      (forall n xbv, e n = Some xbv -> ~ XBV.has_x xbv) ->
-      execution_of_valuation tag m (valuation_of_execution tag m e) = e.
-    Proof.
-      intros Hno_exes.
-      apply functional_extensionality_dep. intros var.
-      unfold execution_of_valuation.
-      destruct (m (tag, var)) as [name | ] eqn:Hname; try discriminate.
-      - unfold complete_execution in *. 
-        unfold match_map_vars in Hmatch.
-        specialize (Hcomplete var). simpl in *.
-        destruct Hcomplete as [Hcomplete' _]; clear Hcomplete.
-        edestruct Hcomplete' as [[w xbv] Hxbv_val]. { firstorder. }
-        clear Hcomplete'.
-
-        unfold valuation_of_execution.
-
-        pose proof (bij_wf m) as Hinverse.
-        specialize (Hinverse (tag, var) name).
-        apply Hinverse in Hname.
-        rewrite Hname.
-
-        rewrite Hxbv_val.
-
-        insterU Hno_exes.
-        apply XBV.not_has_x_to_bv in Hno_exes.
-        destruct Hno_exes as [bv Hno_exes].
-        rewrite Hno_exes.
-        destruct (dec (tag = tag)); [|contradiction].
-        autodestruct; [|contradiction].
-        rewrite <- eq_rect_eq.
-        now erewrite XBV.bv_xbv_inverse.
-      - destruct (e var) as [xbv |] eqn:E; try reflexivity.
-        enough (exists xbv', m (tag, var) = Some xbv')
-          as [? ?] by congruence.
-        destruct (Hmatch var) as [_ H].
-        edestruct H as [smtName HsmtName]. {
-          unfold complete_execution in Hcomplete.
-          apply Hcomplete. exists xbv. auto.
-        }
-        eauto.
-    Qed.
   End inverse.
 End SMT.

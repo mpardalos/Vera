@@ -205,6 +205,12 @@ Equations mk_bijection (tag : TaggedVariable.Tag) (vars : list (Verilog.variable
 Definition mk_declarations : list (Verilog.variable * smtname) -> list SMTLib.declaration :=
   map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Verilog.varType var))).
 
+Definition all_vars_driven v :=
+  Forall
+    (fun var => List.In var (Verilog.module_inputs v) \/
+               List.In var (Verilog.module_body_writes (Verilog.modBody v)))
+    (Verilog.modVariables v).
+
 Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smt_with_namemap :=
   assert_dec
     (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
@@ -212,6 +218,7 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
   assert_dec
     (list_subset (Verilog.module_body_reads (Verilog.modBody vmodule)) (Verilog.module_inputs vmodule))
     "Read from non-module-input"%string ;;
+  assert_dec (all_vars_driven vmodule) "Undriven variables"%string ;;
   let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
   nameMap <- mk_bijection name_tag var_assignment ;;
   assertions <- transfer_module_body

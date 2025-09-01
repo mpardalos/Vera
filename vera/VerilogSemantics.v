@@ -351,16 +351,17 @@ Module CombinationalOnly.
         {| regState := limit_to_regs (Verilog.module_inputs v) e; pendingProcesses := Verilog.modBody v |} =
         Some {| regState := e'; pendingProcesses := [] |}
       /\ execution_match_on
-          (fun var => In var (Verilog.module_body_reads (Verilog.modBody v) ++
+          (fun var => In var (Verilog.module_inputs v ++
                              Verilog.module_body_writes (Verilog.modBody v)))
           e' e.
 
+  (** All variables of v have a value in the execution *)
   Definition complete_execution (v : Verilog.vmodule) (e : execution) :=
-    forall var, In var (Verilog.modVariables v) <-> exists bv, e var = Some bv.
+    forall var, In var (Verilog.modVariables v) -> exists bv, e var = Some bv.
 
-  Lemma valid_execution_complete : forall v e,
-      valid_execution v e -> complete_execution v e.
-  Admitted.
+  (** All variables of v, *and no other variables*, have a value in the execution *)
+  Definition exact_execution (v : Verilog.vmodule) (e : execution) :=
+    forall var, In var (Verilog.modVariables v) -> exists bv, e var = Some bv.
 
   Definition no_errors (v : Verilog.vmodule) :=
     forall (initial : RegisterState)
