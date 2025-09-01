@@ -230,7 +230,6 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
   query_wf <- assert_dec _ "Query not well-formed"%string ;;
   inr {|
       SMT.nameMap := nameMap;
-      SMT.widths := List.map (fun '(var, smtname) => (smtname, Verilog.varType var)) var_assignment;
       SMT.query :=
         {|
           SMTLib.declarations := mk_declarations var_assignment;

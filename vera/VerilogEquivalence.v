@@ -83,6 +83,32 @@ Equations mk_outputs_distinct (inputs : list Verilog.variable) (namemap : Verilo
       end
   }.
 
+  Lemma lst_domain_app xs ys :
+    SMTLib.lst_domain (xs ++ ys) = (SMTLib.lst_domain xs ++ SMTLib.lst_domain ys)%list.
+  Proof.
+    unfold SMTLib.lst_domain.
+    now rewrite List.map_app, List.concat_app.
+  Qed.
+
+  Program Definition add_assertion
+    (a : SMTLib.term)
+    (q : SMTLib.query)
+    (wf : list_subset (SMTLib.term_domain a) (SMTLib.domain q))
+    : SMTLib.query :=
+    {|
+      SMTLib.assertions := SMTLib.assertions q ++ [a]%list;
+      SMTLib.declarations := SMTLib.declarations q
+    |}.
+  Next Obligation.
+    rewrite lst_domain_app.
+    unfold list_subset in wf.
+    rewrite List.Forall_app in *.
+    destruct q. cbn in *.
+    rewrite List.app_nil_r.
+    rewrite ! List.Forall_forall in *.
+    firstorder.
+  Qed.
+
 Program Definition equivalence_query_canonical
   (canonical_verilog1 canonical_verilog2 : Verilog.vmodule)
   : sum string (SMT.smt_with_namemap) :=
@@ -98,10 +124,18 @@ Program Definition equivalence_query_canonical
   inputs_same <- mk_inputs_same (Verilog.module_inputs canonical_verilog1) nameMap ;;
   outputs_distinct <- mk_outputs_distinct (Verilog.module_outputs canonical_verilog1) nameMap ;;
 
+  prf1 <- assert_dec _ "Unknown variables in inputs_same assertion" ;;
+  prf2 <- assert_dec _ "Unknown variables in outputs_distinct assertion" ;;
+
   ret {|
       SMT.nameMap := nameMap ;
-      SMT.widths := SMT.widths smt1 ++ SMT.widths smt2;
-      SMT.query := (SMT.query smt1 ++ SMT.query smt2 ++ [inputs_same] ++ [outputs_distinct])%list
+      SMT.query :=
+        add_assertion outputs_distinct
+          (add_assertion inputs_same
+             (SMTLibFacts.combine (SMT.query smt1) (SMT.query smt2))
+             prf1
+          )
+          prf2
     |}
 .
 Next Obligation. (* No shared verilog names *) Admitted.

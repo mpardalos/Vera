@@ -113,7 +113,6 @@ Module SMT.
   Record smt_with_namemap :=
     MkSMTWithNameMap
       { query : SMTLib.query;
-        widths : list (nat * N);
         nameMap : VerilogSMTBijection.t;
       }.
 
