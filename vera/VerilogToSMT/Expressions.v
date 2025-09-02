@@ -2,7 +2,8 @@ From vera Require Import Common.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require Import VerilogToSMT.
-From vera Require Import SMT.
+From vera Require Import VerilogSMT.
+From vera Require SMTQueries.
 Import (coercions) VerilogSMTBijection.
 From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
@@ -564,7 +565,7 @@ Proof.
       rewrite <- Heqcall in *; clear Heqcall;
       [|discriminate].
     inv H0.
-    unfold SMTLib.term_satisfied_by in *. simpl in *.
+    unfold SMTQueries.term_satisfied_by in *. simpl in *.
     autodestruct_eqn E.
     exists n__smt. eexists. split; [eassumption|].
     rewrite H1. f_equal.

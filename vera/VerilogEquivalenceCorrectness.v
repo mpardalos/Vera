@@ -1,5 +1,6 @@
 From vera Require Import Verilog.
-From vera Require Import SMT.
+From vera Require Import VerilogSMT.
+From vera Require Import SMTQueries.
 Import (coercions) SMT.
 From vera Require Import Common.
 Import (coercions) VerilogSMTBijection.
@@ -40,7 +41,7 @@ Local Open Scope Z_scope.
 
 Import SigTNotations.
 
-Definition smt_same_value var (m : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
+Definition smt_same_value var (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
   exists smtName1 smtName2 v,
     m (TaggedVariable.VerilogLeft, var) = Some smtName1 /\
       m (TaggedVariable.VerilogRight, var) = Some smtName2 /\
@@ -48,10 +49,10 @@ Definition smt_same_value var (m : VerilogSMTBijection.t) (ρ : SMTLib.valuation
       ρ smtName2 = Some v.
 
 Definition smt_all_same_values
-  (vars : list Verilog.variable) (m : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
+  (vars : list Verilog.variable) (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
   Forall (fun verilogName => smt_same_value verilogName m ρ) vars.
 
-Definition smt_distinct_value (var : Verilog.variable) (m : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
+Definition smt_distinct_value (var : Verilog.variable) (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
   exists smtName1 smtName2 v1 v2,
     m (TaggedVariable.VerilogLeft, var) = Some smtName1 /\
       m (TaggedVariable.VerilogRight, var) = Some smtName2 /\
@@ -59,22 +60,22 @@ Definition smt_distinct_value (var : Verilog.variable) (m : VerilogSMTBijection.
       ρ smtName2 = Some v2 /\
       v1 <> v2.
 
-Definition smt_has_value tag (m : VerilogSMTBijection.t) var (ρ : SMTLib.valuation) :=
+Definition smt_has_value tag (m : VerilogSMTBijection.t) var (ρ : SMTQueries.valuation) :=
   exists smtName v, m (tag, var) = Some smtName /\ ρ smtName = Some v.
 
 Definition smt_all_have_values
-  tag vars (m : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
+  tag vars (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
   Forall (fun var => smt_has_value tag m var ρ) vars.
 
 Definition smt_some_distinct_values
-  vars (m : VerilogSMTBijection.t) (ρ : SMTLib.valuation) :=
+  vars (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
   Exists (fun verilogName => smt_distinct_value verilogName m ρ) vars.
 
-Definition term_reflect (t : SMTLib.term) (P : SMTLib.valuation -> Prop) :=
-  forall ρ, SMTLib.term_satisfied_by ρ t <-> P ρ.
+Definition term_reflect (t : SMTLib.term) (P : SMTQueries.valuation -> Prop) :=
+  forall ρ, SMTQueries.term_satisfied_by ρ t <-> P ρ.
 
 Instance term_reflect_proper :
-  Proper (eq ==> pointwise_relation SMTLib.valuation iff ==> iff) term_reflect.
+  Proper (eq ==> pointwise_relation SMTQueries.valuation iff ==> iff) term_reflect.
 Proof.
   intros x y [] P1 P2 H.
   unfold term_reflect.
@@ -97,7 +98,7 @@ Lemma term_reflect_and t1 t2 P1 P2 :
   term_reflect t2 P2 ->
   term_reflect (SMTLib.Term_And t1 t2) (fun ρ => P1 ρ /\ P2 ρ).
 Proof.
-  unfold term_reflect, SMTLib.term_satisfied_by.
+  unfold term_reflect, SMTQueries.term_satisfied_by.
   intros Hreflect1 Hreflect2. simpl.
   split.
   - intros H.
@@ -132,7 +133,7 @@ Lemma term_reflect_or t1 t2 P1 P2 :
     (SMTLib.Term_Or t1 t2)
     (fun ρ => term_is_bool ρ t1 /\ term_is_bool ρ t2 /\ (P1 ρ \/ P2 ρ)).
 Proof.
-  unfold term_reflect, SMTLib.term_satisfied_by.
+  unfold term_reflect, SMTQueries.term_satisfied_by.
   intros Hreflect1 Hreflect2. simpl.
   split.
   - intros H.
@@ -143,7 +144,7 @@ Proof.
     + left. crush.
     + right. crush.
   - unfold term_is_bool.
-    intros [[b1 H1] [b2 H2] [H3|H3]].
+    intros [[b1 H1] [[b2 H2] [H3|H3]]].
     + apply Hreflect1 in H3.
       rewrite H3, H2.
       reflexivity.
@@ -156,7 +157,7 @@ Qed.
 Lemma term_reflect_false P :
   (forall ρ, ~ P ρ) ->
   term_reflect SMTLib.Term_False P.
-Proof. unfold term_reflect, SMTLib.term_satisfied_by. crush. Qed.
+Proof. unfold term_reflect, SMTQueries.term_satisfied_by. crush. Qed.
 
 Lemma mk_var_same_spec : forall name m q,
   mk_var_same name m = inr q ->
@@ -170,7 +171,7 @@ Proof.
     unfold smt_same_value.
     rewrite SMTLib.value_eqb_eq in *. subst.
     eauto 7.
-  - unfold SMTLib.term_satisfied_by. simpl.
+  - unfold SMTQueries.term_satisfied_by. simpl.
     destruct H as [smt_name1' [smt_name2' [w [v [H0 [H1 H2]]]]]].
     replace smt_name1' with smt_name1 in * by congruence.
     replace smt_name2' with smt_name2 in * by congruence.
@@ -221,7 +222,7 @@ Proof.
     apply_somewhere value_eqb_neq. subst.
     unfold smt_distinct_value.
     eauto 10.
-  - unfold SMTLib.term_satisfied_by. simpl.
+  - unfold SMTQueries.term_satisfied_by. simpl.
     destruct H as [smt_name1' [smt_name2' [w [v [v0 [H0 [H1 [H2 H3]]]]]]]].
     replace smt_name1' with smt_name1 in * by congruence.
     replace smt_name2' with smt_name2 in * by congruence.
@@ -597,7 +598,7 @@ Definition counterexample_execution v1 e1 v2 e2 :=
   /\ execution_all_have_values e1 (Verilog.outputs v1)
   /\ execution_all_have_values e2 (Verilog.outputs v1).
 
-Definition only_bitvectors (ρ : SMTLib.valuation) :=
+Definition only_bitvectors (ρ : SMTQueries.valuation) :=
   forall n v, ρ n = Some v -> (exists w bv, v = SMTLib.Value_BitVec w bv).
 
 Remark complete_execution_outputs_have_values e v :

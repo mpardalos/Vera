@@ -15,13 +15,13 @@ From vera Require Import Bitvector.
 From vera Require VerilogSemantics.
 From vera Require Import Verilog.
 From vera Require Import Tactics.
+From vera Require SMTQueries.
 Import VerilogSemantics.CombinationalOnly.
 
 From SMTCoq Require Import bva.BVList.
 Import BITVECTOR_LIST.
 
 From SMTCoqApi Require SMTLib.
-From SMTCoqApi Require SMTLibFacts.
 
 Import SigTNotations.
 
@@ -112,14 +112,14 @@ Module SMT.
 
   Record smt_with_namemap :=
     MkSMTWithNameMap
-      { query : SMTLib.query;
+      { query : SMTQueries.query;
         nameMap : VerilogSMTBijection.t;
       }.
 
-  Definition max_var (q : SMTLib.query) : nat :=
-    List.list_max (SMTLib.domain q).
+  Definition max_var (q : SMTQueries.query) : nat :=
+    List.list_max (SMTQueries.domain q).
 
-  Program Definition valuation_of_execution (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (e : execution) : SMTLib.valuation :=
+  Program Definition valuation_of_execution (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (e : execution) : SMTQueries.valuation :=
     fun n =>
       match bij_inverse m n with
       | None => None
@@ -140,7 +140,7 @@ Module SMT.
 
   Import EqNotations.
 
-  Definition execution_of_valuation (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (v : SMTLib.valuation) : execution :=
+  Definition execution_of_valuation (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (v : SMTQueries.valuation) : execution :=
     fun var =>
       match m (tag, var) with
       | Some smtName =>
@@ -181,7 +181,7 @@ Module SMT.
     now rewrite <- eq_rect_eq.
   Qed.
 
-  Definition valuation_of_executions (m : VerilogSMTBijection.t) (e1 e2 : execution) : SMTLib.valuation :=
+  Definition valuation_of_executions (m : VerilogSMTBijection.t) (e1 e2 : execution) : SMTQueries.valuation :=
     fun n =>
       match bij_inverse m n with
       | None => None

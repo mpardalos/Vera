@@ -27,7 +27,8 @@ From vera Require Import Verilog.
 From vera Require Import Common.
 From vera Require EnvStack.
 From vera Require Import Bitvector.
-From vera Require Import SMT.
+From vera Require Import VerilogSMT.
+From vera Require Import SMTQueries.
 Import (coercions) VerilogSMTBijection.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
@@ -202,7 +203,7 @@ Equations mk_bijection (tag : TaggedVariable.Tag) (vars : list (Verilog.variable
     ret (VerilogSMTBijection.insert (tag, var) name__smt tail_bijection prf1 prf2);
   mk_bijection tag [] := ret VerilogSMTBijection.empty.
 
-Definition mk_declarations : list (Verilog.variable * smtname) -> list SMTLib.declaration :=
+Definition mk_declarations : list (Verilog.variable * smtname) -> list SMTQueries.declaration :=
   map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Verilog.varType var))).
 
 Definition all_vars_driven v :=
@@ -232,9 +233,9 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
       SMT.nameMap := nameMap;
       SMT.query :=
         {|
-          SMTLib.declarations := mk_declarations var_assignment;
-          SMTLib.assertions := assertions;
-          SMTLib.wf := query_wf;
+          SMTQueries.declarations := mk_declarations var_assignment;
+          SMTQueries.assertions := assertions;
+          SMTQueries.wf := query_wf;
         |};
     |}
 .

@@ -1,5 +1,5 @@
 From vera Require Import Verilog.
-From vera Require Import SMT.
+From vera Require Import VerilogSMT.
 Import (coercions) SMT.
 From vera Require Import Common.
 Import (coercions) VerilogSMTBijection.
@@ -7,6 +7,7 @@ Import VerilogSMTBijection (bij_inverse, bij_apply, bij_wf).
 From vera Require VerilogTypecheck.
 From vera Require VerilogCanonicalize.
 From vera Require VerilogToSMT.
+From vera Require SMTQueries.
 From vera Require Import Decidable.
 
 From ExtLib Require Import Data.List.
@@ -84,20 +85,20 @@ Equations mk_outputs_distinct (inputs : list Verilog.variable) (m : VerilogSMTBi
   }.
 
   Lemma lst_domain_app xs ys :
-    SMTLib.lst_domain (xs ++ ys) = (SMTLib.lst_domain xs ++ SMTLib.lst_domain ys)%list.
+    SMTQueries.lst_domain (xs ++ ys) = (SMTQueries.lst_domain xs ++ SMTQueries.lst_domain ys)%list.
   Proof.
-    unfold SMTLib.lst_domain.
+    unfold SMTQueries.lst_domain.
     now rewrite List.map_app, List.concat_app.
   Qed.
 
   Program Definition add_assertion
     (a : SMTLib.term)
-    (q : SMTLib.query)
-    (wf : list_subset (SMTLib.term_domain a) (SMTLib.domain q))
-    : SMTLib.query :=
+    (q : SMTQueries.query)
+    (wf : list_subset (SMTQueries.term_domain a) (SMTQueries.domain q))
+    : SMTQueries.query :=
     {|
-      SMTLib.assertions := SMTLib.assertions q ++ [a]%list;
-      SMTLib.declarations := SMTLib.declarations q
+      SMTQueries.assertions := SMTQueries.assertions q ++ [a]%list;
+      SMTQueries.declarations := SMTQueries.declarations q
     |}.
   Next Obligation.
     rewrite lst_domain_app.
@@ -129,7 +130,7 @@ Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum
       SMT.query :=
         add_assertion outputs_distinct
           (add_assertion inputs_same
-             (SMTLibFacts.combine (SMT.query smt1) (SMT.query smt2))
+             (SMTQueries.combine (SMT.query smt1) (SMT.query smt2))
              prf1
           )
           prf2
