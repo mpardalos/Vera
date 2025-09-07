@@ -3,6 +3,9 @@ From Coq Require Import Logic.FunctionalExtensionality.
 From Coq Require Import Logic.ProofIrrelevance.
 From Coq Require Import BinNums.
 From Coq Require Import ZArith.
+From Coq Require Import Morphisms.
+
+From vera Require Import Tactics.
 
 From SMTCoqApi Require SMTLib.
 
@@ -125,6 +128,90 @@ Definition or_decl_term (t1 t2 : decl_term) : decl_term :=
     dtWf := decl_term_app_wf t1 t2
   |}
 .
+
+Definition term_reflect_if
+  (C : valuation -> Prop)
+  (t: SMTLib.term)
+  (P : valuation -> Prop) : Prop :=
+  forall ρ, C ρ -> term_satisfied_by ρ t <-> P ρ.
+
+Definition term_reflect := term_reflect_if (fun _ => True).
+
+Global Typeclasses Transparent term_reflect.
+
+Global Instance term_reflect_if_proper :
+  Proper
+    (pointwise_relation valuation iff ==> eq ==> pointwise_relation valuation iff ==> iff)
+    term_reflect_if.
+Proof.
+  unfold
+    pointwise_relation,
+    term_reflect_if.
+  repeat intro.
+  setoid_rewrite H.
+  setoid_rewrite H0.
+  setoid_rewrite H1.
+  reflexivity.
+Qed.
+
+Lemma term_reflect_iff t C P1 P2 :
+  (pointwise_relation _ iff P1 P2) ->
+  term_reflect_if C t P1 ->
+  term_reflect_if C t P2.
+Proof.
+  intros H Hreflect.
+  setoid_rewrite <- H.
+  assumption.
+Qed.
+
+Lemma term_reflect_and q1 q2 P1 P2 :
+  term_reflect q1 P1 ->
+  term_reflect q2 P2 ->
+  term_reflect (SMTLib.Term_And q1 q2) (fun ρ => P1 ρ /\ P2 ρ).
+Proof.
+  unfold term_reflect, term_reflect_if, term_satisfied_by.
+  intros Hrefl1 Hrefl2.
+  simpl.
+  intros ρ _.
+  split; intros * H.
+  - autodestruct_eqn E.
+    Bool.destr_bool.
+    crush.
+  - setoid_rewrite <- Hrefl1 in H; trivial; [].
+    setoid_rewrite <- Hrefl2 in H; trivial; [].
+    destruct H as [H1 H2].
+    rewrite H1, H2.
+    reflexivity.
+Qed.
+
+Lemma term_reflect_or C1 C2 q1 q2 P1 P2 :
+  term_reflect_if C1 q1 P1 ->
+  term_reflect_if C2 q2 P2 ->
+  term_reflect_if
+    (fun ρ =>
+       (exists b, SMTLib.interp_term ρ q1 = Some (SMTLib.Value_Bool b))
+       /\ (exists b, SMTLib.interp_term ρ q2 = Some (SMTLib.Value_Bool b))
+       /\ C1 ρ
+       /\ C2 ρ
+    )
+    (SMTLib.Term_Or q1 q2)
+    (fun ρ => P1 ρ \/ P2 ρ).
+Proof.
+  unfold term_reflect, term_reflect_if, term_satisfied_by.
+  simpl.
+  intros Hrefl1 Hrefl2 ρ [[b1 Hb1] [[b2 Hb2] [HC1 HC2]]].
+  specialize (Hrefl1 ρ ltac:(trivial)).
+  specialize (Hrefl2 ρ ltac:(trivial)).
+  rewrite Hb1, Hb2 in *. clear Hb1 Hb2.
+  split; intros * H.
+  - inv H.
+    Bool.destr_bool; crush.
+  - setoid_rewrite <- Hrefl1 in H; trivial; [].
+    setoid_rewrite <- Hrefl2 in H; trivial; [].
+    destruct H as [H|H];
+      inv H;
+      Bool.destr_bool.
+Qed.
 
 Definition satisfiable (q: query) : Prop :=
   exists ρ, satisfied_by ρ q.

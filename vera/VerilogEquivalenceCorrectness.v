@@ -8,7 +8,6 @@ From vera Require Import Bitvector.
 From vera Require VerilogTypecheck.
 From vera Require VerilogCanonicalize.
 From vera Require VerilogToSMT.
-From vera Require VerilogToSMTCorrect.
 From vera Require Import VerilogEquivalence.
 From vera Require VerilogSemantics.
 From vera Require Import Tactics.
@@ -52,13 +51,10 @@ Definition smt_all_same_values
   (vars : list Verilog.variable) (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
   Forall (fun verilogName => smt_same_value verilogName m ρ) vars.
 
-Definition smt_distinct_value (var : Verilog.variable) (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
-  exists smtName1 smtName2 v1 v2,
-    m (TaggedVariable.VerilogLeft, var) = Some smtName1 /\
-      m (TaggedVariable.VerilogRight, var) = Some smtName2 /\
-      ρ smtName1 = Some v1 /\
-      ρ smtName2 = Some v2 /\
-      v1 <> v2.
+Lemma smt_all_same_values_cons var vars m ρ :
+  smt_all_same_values (var :: vars) m ρ <->
+    smt_same_value var m ρ /\ smt_all_same_values vars m ρ.
+Proof. apply List.Forall_cons_iff. Qed.
 
 Definition smt_has_value tag (m : VerilogSMTBijection.t) var (ρ : SMTQueries.valuation) :=
   exists smtName v, m (tag, var) = Some smtName /\ ρ smtName = Some v.
@@ -67,97 +63,32 @@ Definition smt_all_have_values
   tag vars (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
   Forall (fun var => smt_has_value tag m var ρ) vars.
 
+Lemma smt_all_have_values_cons tag var vars m ρ :
+  smt_all_have_values tag (var :: vars) m ρ <->
+    smt_has_value tag m var ρ /\ smt_all_have_values tag vars m ρ.
+Proof. apply List.Forall_cons_iff. Qed.
+
+Definition smt_distinct_value (var : Verilog.variable) (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
+  exists smtName1 smtName2 v1 v2,
+    m (TaggedVariable.VerilogLeft, var) = Some smtName1 /\
+      m (TaggedVariable.VerilogRight, var) = Some smtName2 /\
+      ρ smtName1 = Some v1 /\
+      ρ smtName2 = Some v2 /\
+      v1 <> v2.
+
 Definition smt_some_distinct_values
   vars (m : VerilogSMTBijection.t) (ρ : SMTQueries.valuation) :=
   Exists (fun verilogName => smt_distinct_value verilogName m ρ) vars.
 
-Definition term_reflect (t : SMTLib.term) (P : SMTQueries.valuation -> Prop) :=
-  forall ρ, SMTQueries.term_satisfied_by ρ t <-> P ρ.
+Lemma smt_some_distinct_values_cons var vars m ρ :
+  smt_some_distinct_values (var :: vars) m ρ <->
+    smt_distinct_value var m ρ \/ smt_some_distinct_values vars m ρ.
+Proof. apply List.Exists_cons. Qed.
 
-Instance term_reflect_proper :
-  Proper (eq ==> pointwise_relation SMTQueries.valuation iff ==> iff) term_reflect.
-Proof.
-  intros x y [] P1 P2 H.
-  unfold term_reflect.
-  setoid_rewrite H.
-  reflexivity.
-Qed.
-
-Lemma term_reflect_iff t P1 P2 :
-  (pointwise_relation _ iff P1 P2) ->
-  term_reflect t P1 ->
-  term_reflect t P2.
-Proof.
-  intros H Hreflect.
-  setoid_rewrite <- H.
-  assumption.
-Qed.
-
-Lemma term_reflect_and t1 t2 P1 P2 :
-  term_reflect t1 P1 ->
-  term_reflect t2 P2 ->
-  term_reflect (SMTLib.Term_And t1 t2) (fun ρ => P1 ρ /\ P2 ρ).
-Proof.
-  unfold term_reflect, SMTQueries.term_satisfied_by.
-  intros Hreflect1 Hreflect2. simpl.
-  split.
-  - intros H.
-    autodestruct_eqn E.
-    Bool.destr_bool.
-    crush.
-  - intros [H1 H2].
-    apply Hreflect1 in H1.
-    apply Hreflect2 in H2.
-    now rewrite H1, H2.
-Qed.
-
-Definition term_is_bool ρ q := exists b, SMTLib.interp_term ρ q = Some (SMTLib.Value_Bool b).
-
-Lemma term_is_bool_or ρ t1 t2:
-  term_is_bool ρ t1 /\ term_is_bool ρ t2 <-> term_is_bool ρ (SMTLib.Term_Or t1 t2).
-Proof.
-  unfold term_is_bool in *. simpl.
-  split.
-  - intros * [[v1 H1] [v2 H2]].
-    rewrite H1, H2.
-    eauto.
-  - intros [v H].
-    autodestruct_eqn E.
-    eauto.
-Qed.
-
-Lemma term_reflect_or t1 t2 P1 P2 :
-  term_reflect t1 P1 ->
-  term_reflect t2 P2 ->
-  term_reflect
-    (SMTLib.Term_Or t1 t2)
-    (fun ρ => term_is_bool ρ t1 /\ term_is_bool ρ t2 /\ (P1 ρ \/ P2 ρ)).
-Proof.
-  unfold term_reflect, SMTQueries.term_satisfied_by.
-  intros Hreflect1 Hreflect2. simpl.
-  split.
-  - intros H.
-    autodestruct_eqn E.
-    unfold term_is_bool.
-    repeat split; eauto.
-    destruct (Bool.orb_true_elim _ _ H1); subst.
-    + left. crush.
-    + right. crush.
-  - unfold term_is_bool.
-    intros [[b1 H1] [[b2 H2] [H3|H3]]].
-    + apply Hreflect1 in H3.
-      rewrite H3, H2.
-      reflexivity.
-    + apply Hreflect2 in H3.
-      rewrite H1, H3.
-      rewrite Bool.orb_true_r.
-      reflexivity.
-Qed.
-
-Lemma term_reflect_false P :
-  (forall ρ, ~ P ρ) ->
-  term_reflect SMTLib.Term_False P.
-Proof. unfold term_reflect, SMTQueries.term_satisfied_by. crush. Qed.
+Lemma term_reflect_false C P :
+  (forall ρ, C ρ -> ~ P ρ) ->
+  term_reflect_if C SMTLib.Term_False P.
+Proof. unfold term_reflect_if, term_satisfied_by. crush. Qed.
 
 Lemma mk_var_same_spec : forall name m q,
   mk_var_same name m = inr q ->
@@ -166,6 +97,7 @@ Proof.
   intros * Hfunc.
   funelim (mk_var_same name m); try congruence.
   rewrite <- Heqcall in *. clear Heqcall. inv Hfunc.
+  intros ρ _.
   split; intros * H.
   - inv H. autodestruct_eqn E.
     unfold smt_same_value.
@@ -177,6 +109,15 @@ Proof.
     replace smt_name2' with smt_name2 in * by congruence.
     rewrite H1, H2, SMTLib.value_eqb_refl.
     reflexivity.
+Qed.
+
+Global Instance term_reflect_proper :
+  Proper
+    (eq ==> pointwise_relation valuation iff ==> iff)
+    term_reflect.
+Proof.
+  unfold term_reflect.
+  typeclasses eauto.
 Qed.
 
 Lemma mk_inputs_same_spec : forall inputs m q,
@@ -216,6 +157,7 @@ Proof.
   intros * Hfunc.
   funelim (mk_var_distinct name m); try congruence.
   rewrite <- Heqcall in *. clear Heqcall. inv Hfunc.
+  intros ρ _.
   split; intros * H.
   - inv H. autodestruct_eqn E.
     rewrite Bool.negb_true_iff in *.
@@ -231,59 +173,86 @@ Proof.
     reflexivity.
 Qed.
 
+
+Lemma term_reflect_if_cond_impl C1 C2 t P :
+  (forall ρ, C2 ρ -> C1 ρ) ->
+  term_reflect_if C1 t P ->
+  term_reflect_if C2 t P.
+Proof. unfold term_reflect_if. crush. Qed.
+
+Lemma mk_var_distinct_eval_spec var m ρ t :
+  mk_var_distinct var m = inr t ->
+  smt_has_value TaggedVariable.VerilogLeft m var ρ ->
+  smt_has_value TaggedVariable.VerilogRight m var ρ ->
+  exists b, SMTLib.interp_term ρ t = Some (SMTLib.Value_Bool b).
+Proof.
+  intros Hfunc Hhas_value_left Hhas_value_right.
+  funelim (mk_var_distinct var m); try congruence.
+  rewrite <- Heqcall in *. clear Heqcall. inv Hfunc.
+  destruct Hhas_value_left as [smtName_l [v_l [Hmatch_l Hv_l]]].
+  destruct Hhas_value_right as [smtName_r [v_r [Hmatch_r Hv_r]]].
+  replace smt_name1 with smtName_l in * by congruence.
+  replace smt_name2 with smtName_r in * by congruence.
+  simpl.
+  replace (ρ smtName_l). replace (ρ smtName_r).
+  eauto.
+Qed.
+
+Lemma mk_outputs_distinct_eval_spec outputs m ρ t :
+  mk_outputs_distinct outputs m = inr t ->
+  smt_all_have_values TaggedVariable.VerilogLeft outputs m ρ ->
+  smt_all_have_values TaggedVariable.VerilogRight outputs m ρ ->
+  exists b, SMTLib.interp_term ρ t = Some (SMTLib.Value_Bool b).
+Proof.
+  revert t.
+  induction outputs; simp mk_outputs_distinct;
+    intros t Hfunc Hhave_values_left Hhave_values_right.
+  - inv Hfunc. simpl. eauto.
+  - autodestruct_eqn E.
+    rewrite smt_all_have_values_cons in Hhave_values_left, Hhave_values_right.
+    destruct Hhave_values_left as [Hhas_value_left Hhave_values_left].
+    destruct Hhave_values_right as [Hhas_value_right Hhave_values_right].
+    edestruct mk_var_distinct_eval_spec as [b1 Hb1]; eauto.
+    edestruct IHoutputs as [b2 Hb2]; eauto.
+    simpl. rewrite Hb1, Hb2.
+    eauto.
+Qed.
+
 Lemma mk_outputs_distinct_spec outputs m t :
   mk_outputs_distinct outputs m = inr t ->
-  term_reflect t
-    (fun ρ => smt_some_distinct_values outputs m ρ
-           /\ smt_all_have_values TaggedVariable.VerilogLeft outputs m ρ
-           /\ smt_all_have_values TaggedVariable.VerilogRight outputs m ρ).
+  term_reflect_if
+    (fun ρ =>
+       smt_all_have_values TaggedVariable.VerilogLeft outputs m ρ
+       /\ smt_all_have_values TaggedVariable.VerilogRight outputs m ρ)
+    t
+    (smt_some_distinct_values outputs m).
 Proof.
   revert t m. induction outputs.
   - intros * H. simp mk_outputs_distinct in H. inv H.
     apply term_reflect_false.
-    intros ρ [contra1 [contra2 contra3]].
-    inv contra1.
+    intros ρ _ contra.
+    inv contra.
   - intros.
     simp mk_outputs_distinct in H.
     autodestruct_eqn E.
-    apply mk_var_distinct_spec in E.
     insterU IHoutputs.
-    pose proof (term_reflect_or t0 t1) as H.
-    insterU H. simpl in H.
-    eapply term_reflect_iff; [|eassumption].
-    unfold pointwise_relation.
-    intuition eauto.
-(********************************************)
-(** Only checked to here                   **)
-(********************************************)
-
-
-
-
-    (* specialize (IHoutputs _ _ ltac:(eassumption)). *)
-    (* unfold smt_some_distinct_values. *)
-    (* unshelve (epose proof *)
-    (*             (smtlib_or_disj t t0 *)
-    (*                (smt_distinct_value a m) *)
-    (*                (fun ρ => smt_some_distinct_values outputs m ρ *)
-    (*                       /\ smt_all_have_values TaggedVariable.VerilogLeft  outputs m ρ *)
-    (*                       /\ smt_all_have_values TaggedVariable.VerilogRight outputs m ρ) _ _) as Hreflect). *)
-    (* { auto using mk_var_distinct_spec. } *)
-    (* { assumption. } *)
-    (* eapply SMTLibFacts.smt_reflect_rewrite. 2: apply Hreflect. *)
-    (* intros. simpl. *)
-    (* unfold smt_all_have_values. *)
-    (* rewrite Exists_cons. *)
-    (* rewrite 2 Forall_cons_iff. *)
-    (* fold (smt_all_have_values TaggedVariable.VerilogLeft  outputs m ρ) in *. *)
-    (* fold (smt_all_have_values TaggedVariable.VerilogRight outputs m ρ) in *. *)
-    (* fold (smt_some_distinct_values outputs m ρ) in *. *)
-    (* intuition (eauto using mk_outputs_distinct_is_bool, *)
-    (*             mk_var_distinct_is_bool, *)
-    (*             smt_distinct_value_has_value, *)
-    (*             mk_outputs_distinct_have_values, *)
-    (*             mk_var_distinct_has_value). *)
+    unfold smt_some_distinct_values.
+    setoid_rewrite List.Exists_cons.
+    eapply term_reflect_if_cond_impl; cycle 1. {
+      eapply term_reflect_or.
+      - apply mk_var_distinct_spec.
+        eassumption.
+      - eapply IHoutputs.
+    }
+    simpl.
+    setoid_rewrite smt_all_have_values_cons.
+    intros ρ [[Hvals1 Hvals2] [Hvals3 Hvals4]].
+    (intuition try assumption); [|].
+    + eapply mk_var_distinct_eval_spec; eauto.
+    + eapply mk_outputs_distinct_eval_spec; eauto.
 Qed.
+
+(*********************** CHECKED TO HERE *******************)
 
 Definition match_on_regs
   (regs : list string)
