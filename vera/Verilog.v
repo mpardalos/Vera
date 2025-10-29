@@ -3,6 +3,7 @@ From Coq Require Import ZArith.
 From Coq Require Import BinNums.
 
 From ExtLib Require Import Programming.Show.
+From ExtLib Require Import Structures.Monads.
 
 From vera Require Import Common.
 From vera Require Import Tactics.
@@ -17,7 +18,9 @@ From Coq Require Arith.PeanoNat.
 From Equations Require Import Equations.
 
 Import ListNotations.
+Import MonadLetNotation.
 Import SigTNotations.
+Local Open Scope monad_scope.
 
 Module VerilogCommon.
   Variant binop :=
@@ -131,10 +134,6 @@ Module VerilogCommon.
       }.
 
   Definition varDeclWidth (v : variable_declaration) : N := vector_declaration_width (varDeclVectorDeclaration v).
-End VerilogCommon.
-
-Module Verilog.
-  Include VerilogCommon.
 
   Definition vtype := N.
 
@@ -146,14 +145,19 @@ Module Verilog.
       ; varType : vtype
       }.
 
-  #[global]
-  Instance dec_eq_variable (x y : variable) : DecProp (x = y) :=
-    mk_dec_eq.
-
   Definition variable_of_decl (decl : variable_declaration) : variable :=
     {| varName := varDeclName decl
     ; varType := varDeclWidth decl
     |}.
+
+End VerilogCommon.
+
+Module Verilog.
+  Include VerilogCommon.
+
+  #[global]
+  Instance dec_eq_variable (x y : variable) : DecProp (x = y) :=
+    mk_dec_eq.
 
   Equations binop_width : Verilog.binop -> N -> N :=
     binop_width BinaryPlus n := n; (* "+" *)
@@ -351,3 +355,193 @@ Module Verilog.
   .
 
 End Verilog.
+
+Module RawVerilog.
+  Include VerilogCommon.
+
+  Inductive expression : Type :=
+  | BinaryOp (op : binop) (lhs rhs : expression)
+  | UnaryOp (op : unaryop) (expr : expression)
+  | Conditional (cond ifT ifF : expression)
+  | BitSelect (vec idx : expression)
+  (* We break up the concatenation to make the type more convenient *)
+  | Concatenation (lhs rhs : expression)
+  | IntegerLiteral {w} (val : BV.bitvector w)
+  | NamedExpression (var : variable)
+  | Resize (from to : N) (expr : expression)
+  .
+
+  Inductive statement :=
+  | Block (body : list statement)
+  | BlockingAssign (lhs rhs : expression)
+  | NonBlockingAssign (lhs rhs : expression)
+  | If (condition : expression) (trueBranch falseBranch : statement)
+  .
+
+  Inductive module_item :=
+  | AlwaysComb : statement -> module_item
+  | AlwaysFF : statement -> module_item
+  | Initial : statement -> module_item
+  .
+
+  (** Verilog modules *)
+  Record vmodule :=
+    MkMod
+      { modName : name
+      ; modVariableDecls : list variable_declaration
+      ; modBody : list module_item
+      }
+  .
+
+  Definition modVariables (v : vmodule) : list variable :=
+    map variable_of_decl (modVariableDecls v).
+
+  Definition module_inputs (v : vmodule) : list variable :=
+    map_opt
+      (fun decl =>
+         match varDeclPort decl with
+         | Some PortIn => Some (variable_of_decl decl)
+         | _ => None
+         end)
+      (modVariableDecls v).
+
+  Definition module_outputs (v : vmodule) : list variable :=
+    map_opt
+      (fun decl =>
+         match varDeclPort decl with
+         | Some PortOut => Some (variable_of_decl decl)
+         | _ => None
+         end)
+      (modVariableDecls v).
+
+  Lemma module_input_in_vars v : forall var,
+      List.In var (module_inputs v) ->
+      List.In var (modVariables v).
+  Proof.
+    unfold module_inputs, modVariables.
+    induction (modVariableDecls v); crush.
+  Qed.
+
+  Lemma module_outputs_in_vars v : forall var,
+      List.In var (module_outputs v) ->
+      List.In var (modVariables v).
+  Proof.
+    unfold module_outputs, modVariables.
+    induction (modVariableDecls v); crush.
+  Qed.
+End RawVerilog.
+
+Module Typecheck.
+
+Equations cast_width {w1} (w2 : N) (e : Verilog.expression w1)
+  : option (Verilog.expression w2) :=
+| w2, e with (N.eq_dec w1 w2) => {
+  | left eq_refl => Some e
+  | right _ => None
+}.
+
+Equations tc_expr (expr : RawVerilog.expression) : option { w & Verilog.expression w } := {
+| RawVerilog.BinaryOp op lhs rhs =>
+  let* (w_lhs; t_lhs) := tc_expr lhs in
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width w_lhs t_rhs in
+  Some (_; Verilog.BinaryOp op t_lhs t_rhs')
+| RawVerilog.UnaryOp op expr =>
+  let* (w_expr; t_expr) := tc_expr expr in
+  Some (_; Verilog.UnaryOp op t_expr)
+| RawVerilog.Conditional cond ifTrue ifFalse =>
+  let* (w_cond; t_cond) := tc_expr cond in
+  let* (w_ifTrue; t_ifTrue) := tc_expr ifTrue in
+  let* (w_ifFalse; t_ifFalse) := tc_expr ifFalse in
+  let* t_ifFalse' := cast_width w_ifTrue t_ifFalse in
+  Some (_; Verilog.Conditional t_cond t_ifTrue t_ifFalse')
+| RawVerilog.BitSelect vec idx =>
+  let* (w_vec; t_vec) := tc_expr vec in
+  let* (w_idx; t_idx) := tc_expr idx in
+  Some (_; Verilog.BitSelect t_vec t_idx)
+| RawVerilog.Concatenation lhs rhs =>
+  let* (w_lhs; t_lhs) := tc_expr lhs in
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  Some (_; Verilog.BitSelect t_lhs t_rhs)
+| RawVerilog.IntegerLiteral val =>
+  Some (_; Verilog.IntegerLiteral _ val)
+| RawVerilog.NamedExpression var =>
+  Some (_; Verilog.NamedExpression var)
+| RawVerilog.Resize from to expr =>
+  let* (w_expr; t_expr) := tc_expr expr in
+  if (N.eqb w_expr from)
+  then Some (_; Verilog.Resize to t_expr)
+  else None
+}.
+
+
+Equations tc_blocking_assign {w_lhs w_rhs}
+  (lhs : Verilog.expression w_lhs)
+  (rhs : Verilog.expression w_rhs) : option Verilog.statement := {
+| lhs, rhs with (N.eq_dec w_lhs w_rhs) => {
+  | left eq_refl => Some (Verilog.BlockingAssign lhs rhs)
+  | right _ => None
+}
+}.
+
+Equations tc_statement : RawVerilog.statement -> option Verilog.statement := {
+| RawVerilog.Block body =>
+  let* t_body := tc_statement_lst body in
+  Some (Verilog.Block t_body)
+    where
+      tc_statement_lst : list RawVerilog.statement -> option (list Verilog.statement) := {
+      | [] := Some []
+      | (stmt :: stmts) :=
+      	let* t_stmt := tc_statement stmt in
+	let* t_stmts := tc_statement_lst stmts in
+	Some (t_stmt :: t_stmts)
+      }
+| RawVerilog.BlockingAssign lhs rhs =>
+  let* (w_lhs; t_lhs) := tc_expr lhs in
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width w_lhs t_rhs in
+  Some (Verilog.BlockingAssign t_lhs t_rhs')
+| RawVerilog.NonBlockingAssign lhs rhs =>
+  let* (w_lhs; t_lhs) := tc_expr lhs in
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width w_lhs t_rhs in
+  Some (Verilog.BlockingAssign t_lhs t_rhs')
+| RawVerilog.If condition trueBranch falseBranch =>
+  let* (_; t_cond) := tc_expr condition in
+  let* t_trueBranch := tc_statement trueBranch in
+  let* t_falseBranch := tc_statement falseBranch in
+  Some (Verilog.If t_cond t_trueBranch t_falseBranch)
+}
+.
+
+Equations tc_module_item : RawVerilog.module_item -> option Verilog.module_item := {
+| RawVerilog.AlwaysComb stmt =>
+  let* t_stmt := tc_statement stmt in
+  Some (Verilog.AlwaysComb t_stmt)
+| RawVerilog.AlwaysFF stmt =>
+  let* t_stmt := tc_statement stmt in
+  Some (Verilog.AlwaysFF t_stmt)
+| RawVerilog.Initial stmt =>
+  let* t_stmt := tc_statement stmt in
+  Some (Verilog.Initial t_stmt)
+}.
+
+
+Equations tc_module_item_lst : list RawVerilog.module_item -> option (list Verilog.module_item) := {
+| [] => Some []
+| (mi :: mis) =>
+  let* t_mi := tc_module_item mi in
+  let* t_mis := tc_module_item_lst mis in
+  Some (t_mi :: t_mis)
+}.
+
+Equations tc_vmodule : RawVerilog.vmodule -> option Verilog.vmodule := {
+| m =>
+  let* t_modBody := tc_module_item_lst (RawVerilog.modBody m) in
+  Some {|
+      Verilog.modName := RawVerilog.modName m;
+      Verilog.modVariableDecls := RawVerilog.modVariableDecls m;
+      Verilog.modBody := t_modBody
+  |}
+}.
+End Typecheck.
