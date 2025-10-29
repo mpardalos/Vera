@@ -81,6 +81,7 @@
           (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
           pkgs.z3
           pkgs.cvc5
+	  coqPackages.coq-lsp
         ];
       in {
         devShells.default = pkgs.mkShell {
