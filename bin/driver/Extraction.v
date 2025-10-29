@@ -1,4 +1,4 @@
-From vera Require SMT.
+From vera Require VerilogSMT.
 From vera Require Verilog.
 From vera Require VerilogEquivalence.
 From vera Require VerilogToSMT.
@@ -47,6 +47,6 @@ Extraction "Vera.ml"
   Verilog.Verilog
   VerilogToSMT.expr_to_smt
   VerilogCanonicalize.canonicalize_verilog
-  SMT.SMT
+  VerilogSMT.SMT
   (* Common.NameMap *)
   .
