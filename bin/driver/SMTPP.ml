@@ -4,8 +4,8 @@ open Vera
 module SMTLib = struct
  let var (nameMap : VerilogSMTBijection.t) fmt nameIdx =
     match nameMap.bij_inverse nameIdx with
-    | Some (VerilogLeft, n) -> fprintf fmt "|l_%s|" (Util.lst_to_string n)
-    | Some (VerilogRight, n) -> fprintf fmt "|r_%s|" (Util.lst_to_string n)
+    | Some (VerilogLeft, n) -> fprintf fmt "|l_%s|" (Util.lst_to_string n.varName)
+    | Some (VerilogRight, n) -> fprintf fmt "|r_%s|" (Util.lst_to_string n.varName)
     | None -> fprintf fmt "|v%d|" (int_from_nat nameIdx)
 
   let bitvector fmt bits =
@@ -43,7 +43,7 @@ module SMTLib = struct
           (term varNames) t3
     | Term_True -> fprintf fmt "true"
     | Term_False -> fprintf fmt "false"
-    | Term_BVLit bv -> bitvector fmt bv
+    | Term_BVLit (_, bv) -> bitvector fmt bv
     | Term_BVConcat (l, r) ->
         fprintf fmt "(concat %a %a)" (term varNames) l (term varNames) r
     | Term_BVExtract (lo, hi, t) ->
@@ -57,15 +57,19 @@ module SMTLib = struct
     | Term_BVUlt (t1, t2) ->
         fprintf fmt "(bvult %a %a)" (term varNames) t1 (term varNames) t2
 
-  let declaration varNames fmt (name, w) =
-    fprintf fmt "(declare-const %a (_ BitVec %d))" (var varNames) name w
+  let sort fmt = function
+    | Sort_BitVec n -> fprintf fmt "(_ BitVec %d)" n
+    | _ -> failwith "Unexpected sort"
+
+  let declaration varNames fmt (v, s) =
+    fprintf fmt "(declare-const %a %a)" (var varNames) v sort s
 
   let assertion varNames fmt t =
     fprintf fmt "(assert %a)" (term varNames) t
 
   let rec query fmt (query : SMT.smt_with_namemap) =
-    pp_print_list (declaration query.nameMap) fmt query.widths ~pp_sep:pp_force_newline;
+    pp_print_list (declaration query.nameMap) fmt query.query.declarations ~pp_sep:pp_force_newline;
     pp_force_newline fmt ();
     pp_force_newline fmt ();
-    pp_print_list (assertion query.nameMap) fmt query.query ~pp_sep:pp_force_newline
+    pp_print_list (assertion query.nameMap) fmt query.query.assertions ~pp_sep:pp_force_newline
 end

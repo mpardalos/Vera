@@ -5,36 +5,36 @@ let binop fmt = function
   | Verilog.BinaryPlus -> fprintf fmt "+"
   | Verilog.BinaryMinus -> fprintf fmt "-"
   | Verilog.BinaryStar -> fprintf fmt "*"
-  | Verilog.BinarySlash -> fprintf fmt "/"
-  | Verilog.BinaryPercent -> fprintf fmt "%%"
-  | Verilog.BinaryEqualsEquals -> fprintf fmt "=="
-  | Verilog.BinaryNotEquals -> fprintf fmt "!="
-  | Verilog.BinaryEqualsEqualsEquals -> fprintf fmt "==="
-  | Verilog.BinaryNotEqualsEquals -> fprintf fmt "!=="
-  | Verilog.BinaryWildcardEqual -> fprintf fmt "==?"
-  | Verilog.BinaryWildcardNotEqual -> fprintf fmt "!=?"
-  | Verilog.BinaryLogicalAnd -> fprintf fmt "&&"
-  | Verilog.BinaryLogicalOr -> fprintf fmt "||"
-  | Verilog.BinaryExponent -> fprintf fmt "**"
-  | Verilog.BinaryLessThan -> fprintf fmt "<"
-  | Verilog.BinaryLessThanEqual -> fprintf fmt "<="
-  | Verilog.BinaryGreaterThan -> fprintf fmt ">"
-  | Verilog.BinaryGreaterThanEqual -> fprintf fmt ">="
+  (* | Verilog.BinarySlash -> fprintf fmt "/" *)
+  (* | Verilog.BinaryPercent -> fprintf fmt "%%" *)
+  (* | Verilog.BinaryEqualsEquals -> fprintf fmt "==" *)
+  (* | Verilog.BinaryNotEquals -> fprintf fmt "!=" *)
+  (* | Verilog.BinaryEqualsEqualsEquals -> fprintf fmt "===" *)
+  (* | Verilog.BinaryNotEqualsEquals -> fprintf fmt "!==" *)
+  (* | Verilog.BinaryWildcardEqual -> fprintf fmt "==?" *)
+  (* | Verilog.BinaryWildcardNotEqual -> fprintf fmt "!=?" *)
+  (* | Verilog.BinaryLogicalAnd -> fprintf fmt "&&" *)
+  (* | Verilog.BinaryLogicalOr -> fprintf fmt "||" *)
+  (* | Verilog.BinaryExponent -> fprintf fmt "**" *)
+  (* | Verilog.BinaryLessThan -> fprintf fmt "<" *)
+  (* | Verilog.BinaryLessThanEqual -> fprintf fmt "<=" *)
+  (* | Verilog.BinaryGreaterThan -> fprintf fmt ">" *)
+  (* | Verilog.BinaryGreaterThanEqual -> fprintf fmt ">=" *)
   | Verilog.BinaryBitwiseAnd -> fprintf fmt "&"
   | Verilog.BinaryBitwiseOr -> fprintf fmt "|"
-  | Verilog.BinaryBitwiseXor -> fprintf fmt "^"
-  | Verilog.BinaryXNor -> fprintf fmt "^~"
+  (* | Verilog.BinaryBitwiseXor -> fprintf fmt "^" *)
+  (* | Verilog.BinaryXNor -> fprintf fmt "^~" *)
   | Verilog.BinaryShiftRight -> fprintf fmt ">>"
   | Verilog.BinaryShiftLeft -> fprintf fmt "<<"
-  | Verilog.BinaryShiftRightArithmetic -> fprintf fmt ">>>"
+  (* | Verilog.BinaryShiftRightArithmetic -> fprintf fmt ">>>" *)
   | Verilog.BinaryShiftLeftArithmetic -> fprintf fmt "<<<"
-  | Verilog.BinaryLogicalImplication -> fprintf fmt "->"
-  | Verilog.BinaryLogicalEquivalence -> fprintf fmt "<->"
+  (* | Verilog.BinaryLogicalImplication -> fprintf fmt "->" *)
+  (* | Verilog.BinaryLogicalEquivalence -> fprintf fmt "<->" *)
 
-let unaryop fmt = function
-  | Verilog.UnaryPlus -> fprintf fmt "+"
-  | Verilog.UnaryMinus -> fprintf fmt "-"
-  | Verilog.UnaryNegation -> fprintf fmt "!"
+(* let unaryop fmt = function *)
+(*   | Verilog.UnaryPlus -> fprintf fmt "+" *)
+(*   | Verilog.UnaryMinus -> fprintf fmt "-" *)
+(*   | Verilog.UnaryNegation -> fprintf fmt "!" *)
 
 let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"
@@ -46,74 +46,74 @@ let vector_declaration fmt t =
   | Verilog.Vector (high, low) -> fprintf fmt "[%d:%d]" high low
   | Verilog.Scalar -> ()
 
-let port (fmt : formatter) (p : Verilog.port) =
-  fprintf fmt "%a %s" direction p.portDirection (Util.lst_to_string p.portName)
+let port_declaration fmt = function
+  | None -> ()
+  | Some Vera.PortIn -> fprintf fmt "input"
+  | Some Vera.PortOut -> fprintf fmt "output"
 
-let variable (fmt : formatter) (p : UntypedVerilog.variable) =
-  fprintf fmt "%s%a"
-    (Util.lst_to_string p.varName)
-    vector_declaration p.varVectorDeclaration
+let variable_declaration (fmt : formatter) (var : Verilog.variable_declaration) =
+  fprintf fmt "%s%a %a"
+    (Util.lst_to_string var.varDeclName)
+    vector_declaration var.varDeclVectorDeclaration
+    port_declaration var.varDeclPort
 
-let net_type (fmt : formatter) (t : UntypedVerilog.coq_StorageType) =
+let net_type (fmt : formatter) (t : Verilog.coq_StorageType) =
   match t with
   | Verilog.Reg -> fprintf fmt "reg"
   | Verilog.Wire -> fprintf fmt "wire"
 
-module Untyped = struct
+module Raw = struct
   let rec expression fmt e =
     Format.fprintf fmt "@[";
     (match e with
-    | UntypedVerilog.IntegerLiteral v ->
+    | RawVerilog.IntegerLiteral v ->
         fprintf fmt "%d'b%s" (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
-    | UntypedVerilog.BitSelect (target, index) ->
+    | RawVerilog.BitSelect (target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
-    | UntypedVerilog.Concatenation exprs ->
-        fprintf fmt "{%a}" (pp_print_list expression ~pp_sep:Util.comma_sep) exprs
-    | UntypedVerilog.Conditional (cond, t, f) ->
+    | RawVerilog.Concatenation (lhs, rhs) ->
+        fprintf fmt "{%a %a}" expression lhs expression rhs
+    | RawVerilog.Conditional (cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f
-    | UntypedVerilog.BinaryOp (op, l, r) ->
+    | RawVerilog.BinaryOp (op, l, r) ->
         fprintf fmt "( %a@ %a@ %a )" expression l binop op expression r
-    | UntypedVerilog.UnaryOp (op, e) ->
-        fprintf fmt "( %a@ %a )" unaryop op expression e
-    | UntypedVerilog.NamedExpression (_, name) ->
-        fprintf fmt "%s" (Util.lst_to_string name)
-    | UntypedVerilog.Resize (n, e) ->
+    | RawVerilog.UnaryOp ((* op, *) e) ->
+        (* fprintf fmt "( %a@ %a )" unaryop op expression e *)
+        fprintf fmt "( +@ %a )" expression e
+    | RawVerilog.NamedExpression var ->
+        fprintf fmt "%s" (Util.lst_to_string var.varName)
+    | RawVerilog.Resize (n, e) ->
         fprintf fmt "( %a@ as@ %a )" expression e vtype n);
     Format.fprintf fmt "@]"
 
-  let rec statement (fmt : formatter) (s : UntypedVerilog.statement) =
+  let rec statement (fmt : formatter) (s : RawVerilog.statement) =
     match s with
-    | UntypedVerilog.Block body ->
+    | RawVerilog.Block body ->
         fprintf fmt "begin @,    @[<v>%a@]@,end"
           (pp_print_list statement ~pp_sep:Util.colon_sep)
           body
-    | UntypedVerilog.BlockingAssign (lhs, rhs) ->
+    | RawVerilog.BlockingAssign (lhs, rhs) ->
         fprintf fmt "%a = %a" expression lhs expression rhs
-    | UntypedVerilog.NonBlockingAssign (lhs, rhs) ->
+    | RawVerilog.NonBlockingAssign (lhs, rhs) ->
         fprintf fmt "%a <= %a" expression lhs expression rhs
-    | UntypedVerilog.If (cond, trueBranch, falseBranch) ->
+    | RawVerilog.If (cond, trueBranch, falseBranch) ->
         fprintf fmt "if %a then %a else %a" expression cond statement trueBranch
           statement falseBranch
 
-  let mod_item (fmt : formatter) (i : UntypedVerilog.module_item) =
+  let mod_item (fmt : formatter) (i : RawVerilog.module_item) =
     match i with
-    | UntypedVerilog.Initial body -> fprintf fmt "initial %a" statement body
-    | UntypedVerilog.AlwaysComb body ->
+    | RawVerilog.Initial body -> fprintf fmt "initial %a" statement body
+    | RawVerilog.AlwaysComb body ->
         fprintf fmt "always_comb %a" statement body
-    | UntypedVerilog.AlwaysFF body ->
+    | RawVerilog.AlwaysFF body ->
         fprintf fmt "always_ff @(posedge clk) %a" statement body
 
-  let vmodule (fmt : formatter) (m : UntypedVerilog.vmodule) =
-    fprintf fmt "UntypedVerilog.module %s {@." (Util.lst_to_string m.modName);
+  let vmodule (fmt : formatter) (m : RawVerilog.vmodule) =
+    fprintf fmt "RawVerilog.module %s {@." (Util.lst_to_string m.modName);
     fprintf fmt "    @[<v>";
-    fprintf fmt "ports = [@,    @[<v>%a@]@,];"
-      (pp_print_list port ~pp_sep:Util.colon_sep)
-      m.modPorts;
-    fprintf fmt "@,";
     fprintf fmt "variables = [@,    @[<v>%a@]@,];"
-      (pp_print_list variable ~pp_sep:Util.colon_sep)
-      m.modVariables;
+      (pp_print_list variable_declaration ~pp_sep:Util.colon_sep)
+      m.modVariableDecls;
     fprintf fmt "@,";
     fprintf fmt "body = [@,    @[<v>%a@]@,];"
       (pp_print_list mod_item ~pp_sep:Util.colon_sep)
@@ -139,23 +139,24 @@ module Typed = struct
   let rec expression fmt e =
     Format.fprintf fmt "@[";
     (match e with
-    | Verilog.IntegerLiteral v ->
+    | Verilog.IntegerLiteral (_, v) ->
         fprintf fmt "%d'b%s" (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
-    | Verilog.Resize (t, e) ->
+    | Verilog.Resize (_, t, e) ->
         fprintf fmt "( %a@ as@ %a )" expression e vtype t
-    | Verilog.BinaryOp (op, l, r) ->
+    | Verilog.BinaryOp (_, op, l, r) ->
         fprintf fmt "( %a@ %a@ %a )" expression l binop op expression r
-    | Verilog.UnaryOp (op, e) ->
-        fprintf fmt "( %a@ %a )" unaryop op expression e
-    | Verilog.BitSelect (target, index) ->
+    | Verilog.UnaryOp (_, e) ->
+        (* fprintf fmt "( %a@ %a )" unaryop op expression e *)
+        fprintf fmt "( +@ %a )" expression e
+    | Verilog.BitSelect (_, _, target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
-    | Verilog.Concatenation exprs ->
-        fprintf fmt "{%a}" (pp_print_list expression ~pp_sep:Util.comma_sep) exprs
-    | Verilog.Conditional (cond, t, f) ->
+    | Verilog.Concatenation (_, _, lhs, rhs) ->
+        fprintf fmt "{%a %a}" expression lhs expression rhs
+    | Verilog.Conditional (_, _, cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f
-    | Verilog.NamedExpression (t, name) ->
-        fprintf fmt "%s%a" (Util.lst_to_string name) vtype t);
+    | Verilog.NamedExpression {varName; varType} ->
+        fprintf fmt "%s%a" (Util.lst_to_string varName) vtype varType);
     Format.fprintf fmt "@]"
 
   let rec statement (fmt : formatter) (s : Verilog.statement) =
@@ -164,11 +165,11 @@ module Typed = struct
         fprintf fmt "begin @,    @[<v>%a@]@,end"
           (pp_print_list statement ~pp_sep:Util.colon_sep)
           body
-    | Verilog.BlockingAssign (lhs, rhs) ->
+    | Verilog.BlockingAssign (_, lhs, rhs) ->
         fprintf fmt "%a = %a" expression lhs expression rhs
-    | Verilog.NonBlockingAssign (lhs, rhs) ->
+    | Verilog.NonBlockingAssign (_, lhs, rhs) ->
         fprintf fmt "%a <= %a" expression lhs expression rhs
-    | Verilog.If (cond, trueBranch, falseBranch) ->
+    | Verilog.If (_, cond, trueBranch, falseBranch) ->
         fprintf fmt "if %a then %a else %a" expression cond statement trueBranch
           statement falseBranch
 
@@ -183,13 +184,10 @@ module Typed = struct
   let vmodule (fmt : formatter) (m : Verilog.vmodule) =
     fprintf fmt "Verilog.module %s {@." (Util.lst_to_string m.modName);
     fprintf fmt "    @[<v>";
-    fprintf fmt "ports = [@,    @[<v>%a@]@,];"
-      (pp_print_list port ~pp_sep:Util.colon_sep)
-      m.modPorts;
     fprintf fmt "@,";
     fprintf fmt "variables = [@,    @[<v>%a@]@,];"
-      (pp_print_list variable ~pp_sep:Util.colon_sep)
-      m.modVariables;
+      (pp_print_list variable_declaration ~pp_sep:Util.colon_sep)
+      m.modVariableDecls;
     fprintf fmt "@,";
     fprintf fmt "body = [@,    @[<v>%a@]@,];"
       (pp_print_list mod_item ~pp_sep:Util.colon_sep)

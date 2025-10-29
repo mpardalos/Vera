@@ -34,72 +34,25 @@ let usage_and_exit () =
   eprintf "  level: parsed|typed|netlist|smt_netlist|smt\n";
   exit 1
 
-module VerilogParser (P : sig
-  type parsed
-
-  val pp : formatter -> parsed -> unit
-  val parse_file : string -> parsed
-end) =
-struct
-  include P
-
-  let run_parser_command = function
-    | [ filename ] ->
-        let m = P.parse_file filename in
-        printf "%a\n" P.pp m
-    | _ -> usage_and_exit ()
-end
-
-module MyVerilogParser = VerilogParser (struct
-  type parsed = Vera.UntypedVerilog.vmodule
-
-  let pp = VerilogPP.Untyped.vmodule
-
-  let parse_file filename =
-    let print_position outx (lexbuf : Lexing.lexbuf) =
-      let pos = lexbuf.lex_curr_p in
-      fprintf outx "%s:%d:%d" pos.pos_fname pos.pos_lnum
-        (pos.pos_cnum - pos.pos_bol + 1)
-    in
-    let lexbuf = Lexing.from_channel (open_in filename) in
-    Lexing.set_filename lexbuf filename;
-    try
-      ParseRawVerilog.parse_raw_verilog (Parser.vmodule_only Lexer.read lexbuf)
-    with
-    | Lexer.SyntaxError msg ->
-        printf "%a: %s\n" print_position lexbuf msg;
-        exit (-1)
-    | Parser.Error ->
-        printf "%a: syntax error\n" print_position lexbuf;
-        exit (-1)
-end)
-
-module SlangVerilogParser = VerilogParser (struct
-  type parsed = Vera.Verilog.vmodule
-
-  let pp = VerilogPP.Typed.vmodule
-  let parse_file = ParseSlang.parse_verilog_file
-end)
-
-let module_of_file = SlangVerilogParser.parse_file
+let module_of_file = ParseSlang.parse_verilog_file
 
 let typed_module_of_file f =
   let m = module_of_file f in
-  let* () = Vera.tc_vmodule m in
-  ret m
-
-let canonical_module_of_file =
-  typed_module_of_file >=> Vera.canonicalize_verilog
+  match Vera.Typecheck.tc_vmodule m with
+  | None -> Vera.Inl (Util.string_to_lst "Typechecking failed")
+  | Some x -> Vera.Inr x
 
 let smt_of_file filename =
   (* Need to tag it as left or right, doesn't matter here because we only
       translate one module *)
   Vera.verilog_to_smt VerilogLeft (Vera.int_to_nat 0)
-  =<< canonical_module_of_file filename
+  =<< typed_module_of_file filename
 
 let compare solver filename1 filename2 =
   let queryResult =
-    Vera.equivalence_query (module_of_file filename1) (module_of_file filename2)
+    let* m1 = typed_module_of_file filename1 in
+    let* m2 = typed_module_of_file filename2 in
+    Vera.equivalence_query m1 m2
   in
   match queryResult with
   | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
@@ -123,21 +76,16 @@ let rec lower level filename =
   in
   match level with
   | `Parsed ->
-      display_or_error VerilogPP.Typed.vmodule
+      display_or_error VerilogPP.Raw.vmodule
         (Vera.Inr (module_of_file filename))
   | `Typed ->
       display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename)
-  | `Canonical ->
-      display_or_error VerilogPP.Typed.vmodule
-        (canonical_module_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
   | `All ->
       printf "\n-- parsed -- \n";
       lower `Parsed filename;
       printf "\n-- typed --\n";
       lower `Typed filename;
-      printf "\n-- canonical --\n";
-      lower `Canonical filename;
       printf "\n-- smt --\n";
       lower `SMT filename
 
@@ -178,7 +126,6 @@ let lower_cmd =
       [
         ("parsed", `Parsed);
         ("typed", `Typed);
-        ("canonical", `Canonical);
         ("smt", `SMT);
         ("all", `All);
       ]

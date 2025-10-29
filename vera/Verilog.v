@@ -366,9 +366,9 @@ Module RawVerilog.
   | BitSelect (vec idx : expression)
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation (lhs rhs : expression)
-  | IntegerLiteral {w} (val : BV.bitvector w)
+  | IntegerLiteral (val : RawBV.bitvector)
   | NamedExpression (var : variable)
-  | Resize (from to : N) (expr : expression)
+  | Resize (to : N) (expr : expression)
   .
 
   Inductive statement :=
@@ -463,15 +463,13 @@ Equations tc_expr (expr : RawVerilog.expression) : option { w & Verilog.expressi
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
   Some (_; Verilog.BitSelect t_lhs t_rhs)
-| RawVerilog.IntegerLiteral val =>
-  Some (_; Verilog.IntegerLiteral _ val)
+| RawVerilog.IntegerLiteral bits =>
+  Some (_; Verilog.IntegerLiteral _ (BV.of_bits bits))
 | RawVerilog.NamedExpression var =>
   Some (_; Verilog.NamedExpression var)
-| RawVerilog.Resize from to expr =>
+| RawVerilog.Resize to expr =>
   let* (w_expr; t_expr) := tc_expr expr in
-  if (N.eqb w_expr from)
-  then Some (_; Verilog.Resize to t_expr)
-  else None
+  Some (_; Verilog.Resize to t_expr)
 }.
 
 

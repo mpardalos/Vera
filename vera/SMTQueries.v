@@ -38,6 +38,8 @@ Definition lst_domain (q : list SMTLib.term) : list SMTLib.const_sym :=
 
 Definition declaration := (nat * SMTLib.sort)%type.
 
+Print SMTLib.sort.
+
 Record query :=
   MkQuery
     {

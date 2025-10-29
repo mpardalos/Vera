@@ -55,9 +55,11 @@ let expect_kind a json =
   not_null a json;
   json |> member "kind" |> to_string |> expect_value a
 
-let parse_port json =
+type port = { direction : Vera.port_direction; name : string }
+
+let parse_port json : port =
   expect_kind "Port" json;
-  let name = json |> member "name" |> to_string |> Util.string_to_lst in
+  let name = json |> member "name" |> to_string in
   let direction =
     match json |> member "direction" |> to_string with
     | "In" -> Vera.PortIn
@@ -65,14 +67,14 @@ let parse_port json =
     | str ->
         raise (Failure (Format.sprintf "Unexpected port direction: %s" str))
   in
-  { Vera.Verilog.portDirection = direction; Vera.Verilog.portName = name }
+  { direction; name }
 
 let read_type_as_vector = function
-  | "logic" -> Vera.Verilog.Scalar
+  | "logic" -> Vera.RawVerilog.Scalar
   | str -> (
       try
         Scanf.sscanf str "logic[%d:%d]" (fun hi lo ->
-            Vera.Verilog.Vector (hi, lo))
+            Vera.RawVerilog.Vector (hi, lo))
       with Scanf.Scan_failure _ ->
         raise (SlangUnexpectedValue ("logic[%d:%d]", str)))
 
@@ -84,28 +86,30 @@ let read_type_as_width = function
       with Scanf.Scan_failure _ ->
         raise (SlangUnexpectedValue ("logic[%d:%d]", str)))
 
-let parse_variable json =
+let parse_variable json : Vera.RawVerilog.variable_declaration =
   expect_kind "Variable" json;
   let name = json |> member "name" |> to_string |> Util.string_to_lst in
   let vector_declaration =
     json |> member "type" |> to_string |> read_type_as_vector
   in
   {
-    Vera.Verilog.varName = name;
-    Vera.Verilog.varStorageType = Vera.Verilog.Reg;
-    Vera.Verilog.varVectorDeclaration = vector_declaration;
+    Vera.RawVerilog.varDeclPort = None;
+    Vera.RawVerilog.varDeclName = name;
+    Vera.RawVerilog.varDeclStorageType = Vera.RawVerilog.Reg;
+    Vera.RawVerilog.varDeclVectorDeclaration = vector_declaration;
   }
 
-let parse_net json =
+let parse_net json : Vera.RawVerilog.variable_declaration =
   expect_kind "Net" json;
   let name = json |> member "name" |> to_string |> Util.string_to_lst in
   let vector_declaration =
     json |> member "type" |> to_string |> read_type_as_vector
   in
   {
-    Vera.Verilog.varName = name;
-    Vera.Verilog.varStorageType = Vera.Verilog.Wire;
-    Vera.Verilog.varVectorDeclaration = vector_declaration;
+    Vera.RawVerilog.varDeclPort = None;
+    Vera.RawVerilog.varDeclName = name;
+    Vera.RawVerilog.varDeclStorageType = Vera.RawVerilog.Wire;
+    Vera.RawVerilog.varDeclVectorDeclaration = vector_declaration;
   }
 
 let rec hex_to_bits width hex : bool list =
@@ -116,9 +120,9 @@ let rec hex_to_bits width hex : bool list =
            if w <= 0 then (0, acc)
            else
              ( w - 4,
-               List.append
-                 acc
-                 (Vera.bits_from_int 4 (int_of_string ("0x" ^ String.make 1 c)))))
+               List.append acc
+                 (Vera.bits_from_int 4 (int_of_string ("0x" ^ String.make 1 c)))
+             ))
          (width, []) hex)
   in
   if List.length r < width then
@@ -168,34 +172,41 @@ let read_constant const_str =
   | Failure _ -> raise (SlangUnexpectedValue ("constant", const_str))
   | Not_found -> raise (SlangUnexpectedValue ("constant", const_str))
 
-let read_binary_op = function
-  | "LogicalShiftLeft" -> Vera.Verilog.BinaryShiftLeft
-  | "Add" -> Vera.Verilog.BinaryPlus
-  | "Subtract" -> Vera.Verilog.BinaryMinus
-  | "Multiply" -> Vera.Verilog.BinaryStar
-  | "LessThan" -> Vera.Verilog.BinaryLessThan
-  | "LessThanEqual" -> Vera.Verilog.BinaryLessThanEqual
-  | "GreaterThan" -> Vera.Verilog.BinaryGreaterThan
-  | "Equality" -> Vera.Verilog.BinaryEqualsEquals
-  | "LogicalAnd" -> Vera.Verilog.BinaryLogicalAnd
-  | "BinaryAnd" -> Vera.Verilog.BinaryBitwiseAnd
-  | "BinaryOr" -> Vera.Verilog.BinaryBitwiseOr
-  | "LogicalShiftRight" -> Vera.Verilog.BinaryShiftRight
+let read_binary_op : string -> Vera.RawVerilog.binop = function
+  | "LogicalShiftLeft" -> Vera.RawVerilog.BinaryShiftLeft
+  | "Add" -> Vera.RawVerilog.BinaryPlus
+  | "Subtract" -> Vera.RawVerilog.BinaryMinus
+  | "Multiply" -> Vera.RawVerilog.BinaryStar
+  (* | "LessThan" -> Vera.RawVerilog.BinaryLessThan *)
+  (* | "LessThanEqual" -> Vera.RawVerilog.BinaryLessThanEqual *)
+  (* | "GreaterThan" -> Vera.RawVerilog.BinaryGreaterThan *)
+  (* | "Equality" -> Vera.RawVerilog.BinaryEqualsEquals *)
+  (* | "LogicalAnd" -> Vera.RawVerilog.BinaryLogicalAnd *)
+  | "BinaryAnd" -> Vera.RawVerilog.BinaryBitwiseAnd
+  | "BinaryOr" -> Vera.RawVerilog.BinaryBitwiseOr
+  | "LogicalShiftRight" -> Vera.RawVerilog.BinaryShiftRight
   | str -> raise (SlangUnexpectedValue ("binary operator", str))
 
 let read_unary_op = function
-  | "BitwiseNot" -> Vera.Verilog.UnaryNegation
+  (* | "BitwiseNot" -> Vera.RawVerilog.UnaryNegation *)
   | str -> raise (SlangUnexpectedValue ("unary operator", str))
 
 let read_name str = Scanf.sscanf str "%d %s" (fun _ n -> n)
+
+(* TODO: Do this in Rocq *)
+let rec fold_concat = function
+  | [] -> raise (SlangUnexpectedValue ("concatenation", "0-input concatenatation"))
+  | [_] -> raise (SlangUnexpectedValue ("concatenation", "1-input concatenatation"))
+  | [l; r] -> Vera.RawVerilog.Concatenation(l, r)
+  | (hd :: tl) -> Vera.RawVerilog.Concatenation(hd, fold_concat tl)
 
 let rec parse_expression json =
   not_null "expression" json;
   match json |> member "kind" |> to_string with
   | "NamedValue" ->
-      let name = read_name (json |> member "symbol" |> to_string) in
-      let name_type = read_type_as_width (json |> member "type" |> to_string) in
-      Vera.Verilog.NamedExpression (name_type, Util.string_to_lst name)
+      let varName = read_name (json |> member "symbol" |> to_string) |> Util.string_to_lst in
+      let varType = read_type_as_width (json |> member "type" |> to_string) in
+      Vera.RawVerilog.NamedExpression { varName; varType }
   | "ConditionalOp" ->
       let cond =
         json |> member "conditions" |> to_list |> List.hd |> member "expr"
@@ -203,36 +214,36 @@ let rec parse_expression json =
       in
       let ifTrue = json |> member "left" |> parse_expression in
       let ifFalse = json |> member "left" |> parse_expression in
-      Vera.Verilog.Conditional (cond, ifTrue, ifFalse)
+      Vera.RawVerilog.Conditional (cond, ifTrue, ifFalse)
   | "ElementSelect" ->
       let value = json |> member "value" |> parse_expression in
       let selector = json |> member "selector" |> parse_expression in
-      Vera.Verilog.BitSelect (value, selector)
+      Vera.RawVerilog.BitSelect (value, selector)
   | "IntegerLiteral" ->
       let constant_str = json |> member "constant" |> to_string in
-      Vera.Verilog.IntegerLiteral (read_constant constant_str)
+      Vera.RawVerilog.IntegerLiteral (read_constant constant_str)
   | "Conversion" ->
       let conversion_type =
         json |> member "type" |> to_string |> read_type_as_width
       in
       let operand = json |> member "operand" |> parse_expression in
-      Vera.Verilog.Resize (conversion_type, operand)
+      Vera.RawVerilog.Resize (conversion_type, operand)
   | "Concatenation" ->
       let exprs =
         json |> member "operands" |> to_list |> List.map parse_expression
       in
-      Vera.Verilog.Concatenation exprs
+      fold_concat exprs
   | "BinaryOp" ->
       let op = json |> member "op" |> to_string |> read_binary_op in
       let lhs = json |> member "left" |> parse_expression in
       let rhs = json |> member "right" |> parse_expression in
-      Vera.Verilog.BinaryOp (op, lhs, rhs)
+      Vera.RawVerilog.BinaryOp (op, lhs, rhs)
   | "UnaryOp" ->
-      let op = json |> member "op" |> to_string |> read_unary_op in
+      (* let op = json |> member "op" |> to_string |> read_unary_op in *)
       let operand = json |> member "operand" |> parse_expression in
-      Vera.Verilog.UnaryOp (op, operand)
+      Vera.RawVerilog.UnaryOp ((* op, *) operand)
   | kind ->
-      (* Vera.Verilog.NamedExpression ((), Util.string_to_lst kind) *)
+      (* Vera.RawVerilog.NamedExpression ((), Util.string_to_lst kind) *)
       raise (SlangUnexpectedValue ("expression kind", kind))
 
 let rec parse_statement json =
@@ -243,7 +254,7 @@ let rec parse_statement json =
       expect_kind "Assignment" expr;
       let lhs = parse_expression (expr |> member "left") in
       let rhs = parse_expression (expr |> member "right") in
-      Vera.Verilog.BlockingAssign (lhs, rhs)
+      Vera.RawVerilog.BlockingAssign (lhs, rhs)
   | "Block" ->
       json |> member "blockKind" |> to_string |> expect_value "Sequential";
       let body =
@@ -253,7 +264,7 @@ let rec parse_statement json =
             |> List.map parse_statement
         | _ -> [ parse_statement (json |> member "body") ]
       in
-      Vera.Verilog.Block body
+      Vera.RawVerilog.Block body
   | "Conditional" ->
       let cond =
         json |> member "conditions" |> to_list |> List.hd |> member "expr"
@@ -262,10 +273,10 @@ let rec parse_statement json =
       let ifTrue = json |> member "ifTrue" |> parse_statement in
       let ifFalse =
         match json |> member "ifFalse" with
-        | `Null -> Vera.Verilog.Block []
+        | `Null -> Vera.RawVerilog.Block []
         | stmt -> parse_statement stmt
       in
-      Vera.Verilog.If (cond, ifTrue, ifFalse)
+      Vera.RawVerilog.If (cond, ifTrue, ifFalse)
   | str -> raise (SlangUnexpectedValue ("statement kind", str))
 
 let parse_continuous_assign json =
@@ -274,29 +285,30 @@ let parse_continuous_assign json =
   expect_kind "Assignment" assignment;
   let lhs = parse_expression (assignment |> member "left") in
   let rhs = parse_expression (assignment |> member "right") in
-  Vera.Verilog.AlwaysComb (Vera.Verilog.BlockingAssign (lhs, rhs))
+  Vera.RawVerilog.AlwaysComb (Vera.RawVerilog.BlockingAssign (lhs, rhs))
 
 let parse_procedural_block json =
   expect_kind "ProceduralBlock" json;
   let body = json |> member "body" in
   match json |> member "procedureKind" |> to_string with
-  | "AlwaysComb" -> Vera.Verilog.AlwaysComb (parse_statement body)
+  | "AlwaysComb" -> Vera.RawVerilog.AlwaysComb (parse_statement body)
   | "AlwaysFF" | "Always" ->
       expect_kind "Timed" body;
       expect_kind "SignalEvent" (body |> member "timing");
       expect_kind "NamedValue" (body |> member "timing" |> member "expr");
       body |> member "timing" |> member "expr" |> member "symbol" |> to_string
       |> read_name |> expect_value "clk";
-      Vera.Verilog.AlwaysFF (parse_statement (body |> member "stmt"))
+      Vera.RawVerilog.AlwaysFF (parse_statement (body |> member "stmt"))
   | "Initial" ->
       let body = json |> member "body" |> parse_statement in
-      Vera.Verilog.Initial body
+      Vera.RawVerilog.Initial body
   | str ->
       raise (SlangUnexpectedValue ("AlwaysComb, AlwaysFF, or Initial", str))
 
-let collect_instance_member (ports : Vera.Verilog.port list ref)
-    (variables : Vera.Verilog.variable list ref)
-    (body : Vera.Verilog.module_item list ref) json =
+let collect_instance_member
+      (ports : port list ref)
+      (variables : Vera.RawVerilog.variable_declaration list ref)
+      (body : Vera.RawVerilog.module_item list ref) json =
   match to_string (member "kind" json) with
   | "Port" -> ports := List.append !ports [ parse_port json ]
   | "Variable" -> variables := List.append !variables [ parse_variable json ]
@@ -309,14 +321,19 @@ let collect_instance_member (ports : Vera.Verilog.port list ref)
       raise
         (Failure (Format.sprintf "Unexpected instance member kind: %s" kind))
 
-let compare_ports (p1 : Vera.Verilog.port) (p2 : Vera.Verilog.port) =
-  let open Vera in
-  match p1.portDirection, p2.portDirection with
-  | PortIn, PortOut -> -1
-  | PortOut, PortIn -> 1
-  | _, _ -> compare p1.portName p2.portName
+let apply_ports
+      (ports : port list)
+      (variables : Vera.RawVerilog.variable_declaration list ref) =
+  List.iter (fun port ->
+      variables :=
+        List.map (fun var ->
+            if ((Util.lst_to_string (Vera.RawVerilog.varDeclName var)) = port.name)
+            then {var with varDeclPort = Some port.direction}
+            else var
+          ) !variables
+    ) ports
 
-let parse_instance_body (json : Yojson.Safe.t) : Vera.Verilog.vmodule =
+let parse_instance_body (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
   expect_kind "InstanceBody" json;
   let name = json |> member "name" |> to_string in
   let ports_ref = ref [] in
@@ -325,22 +342,21 @@ let parse_instance_body (json : Yojson.Safe.t) : Vera.Verilog.vmodule =
   List.iter
     (collect_instance_member ports_ref variables_ref body_ref)
     (json |> member "members" |> to_list);
-  let sorted_ports = List.sort compare_ports !ports_ref in
+  apply_ports !ports_ref variables_ref;
   {
     modName = Util.string_to_lst name;
-    modPorts = sorted_ports;
-    modVariables = !variables_ref;
+    modVariableDecls = !variables_ref;
     modBody = !body_ref;
   }
 
-let parse_slang (json : Yojson.Safe.t) : Vera.Verilog.vmodule =
+let parse_slang (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
   expect_kind "Root" json;
   parse_instance_body
     (json |> member "members" |> to_list
     |> List.filter (fun m -> to_string (member "kind" m) = "Instance")
     |> List.hd |> member "body")
 
-let parse_verilog_file (path : string) : Vera.Verilog.vmodule =
+let parse_verilog_file (path : string) : Vera.RawVerilog.vmodule =
   let slang_out =
     Unix.open_process_in (Format.sprintf "slang --quiet --ast-json - %s" path)
   in

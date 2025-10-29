@@ -3,9 +3,6 @@
  (extracted_modules Vera)
  (theories vera Equations ExtLib SMTCoq SMTCoqApi Ltac2))
 
-(ocamllex Lexer)
-(menhir (modules Parser))
-
 (library
  (name driver)
  (synopsis "Verified verilog equivalence checker - driver module")

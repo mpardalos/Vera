@@ -31,7 +31,7 @@ Definition bits_from_int (w : N) (n : N) :=
   Bitvector.RawBV.of_N_fixed w n.
 
 (** There is deliberately no bits_to_int. Bitvectors are unbounded where ints
-are 3-bit. We provide bits_to_binary_string as an alternative for
+are 63-bit. We provide bits_to_binary_string as an alternative for
 pretty-printing *)
 
 Definition bits_to_binary_string (v: RAWBITVECTOR_LIST.bitvector) : string :=
@@ -43,8 +43,8 @@ Extraction "Vera.ml"
   int_from_nat
   int_to_nat
   VerilogEquivalence.equivalence_query
-  VerilogTypecheck.tc_vmodule
-  Verilog.Verilog
+  Verilog.Typecheck.tc_vmodule
+  Verilog.RawVerilog
   VerilogToSMT.expr_to_smt
   VerilogCanonicalize.canonicalize_verilog
   VerilogSMT.SMT
