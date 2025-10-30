@@ -69,22 +69,27 @@ let parse_port json : port =
   in
   { direction; name }
 
-let read_type_as_vector = function
-  | "logic" -> Vera.RawVerilog.Scalar
-  | str -> (
-      try
-        Scanf.sscanf str "logic[%d:%d]" (fun hi lo ->
-            Vera.RawVerilog.Vector (hi, lo))
-      with Scanf.Scan_failure _ ->
-        raise (SlangUnexpectedValue ("logic[%d:%d]", str)))
+let type_regexp =
+  Str.regexp {|\(logic\|reg\)\( signed\)?\[\([0-9]+\):\([0-9]+\)\]|}
 
-let read_type_as_width = function
-  | "logic" -> 1
-  | str -> (
+let read_type_as_vector str =
+  if Str.string_match type_regexp str 0 then
+    let is_signed =
       try
-        Scanf.sscanf str "logic[%d:%d]" (fun hi lo -> max hi lo - min hi lo + 1)
-      with Scanf.Scan_failure _ ->
-        raise (SlangUnexpectedValue ("logic[%d:%d]", str)))
+        let _ = Str.matched_group 2 str in
+        true
+      with Not_found -> false
+    in
+    let hi = int_of_string (Str.matched_group 3 str) in
+    let lo = int_of_string (Str.matched_group 4 str) in
+    if is_signed then failwith (Printf.sprintf "Signed types not implemented (Got '%s')" str)
+    else Vera.RawVerilog.Vector (hi, lo)
+  else raise (SlangUnexpectedValue ("Verilog type", str))
+
+let read_type_as_width str =
+  match read_type_as_vector str with
+  | Vera.RawVerilog.Vector (hi, lo) -> abs (hi - lo) + 1
+  | Vera.RawVerilog.Scalar -> 1
 
 let parse_variable json : Vera.RawVerilog.variable_declaration =
   expect_kind "Variable" json;
