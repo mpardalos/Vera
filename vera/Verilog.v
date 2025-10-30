@@ -4,6 +4,9 @@ From Coq Require Import BinNums.
 
 From ExtLib Require Import Programming.Show.
 From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Data.Monads.EitherMonad.
+From ExtLib Require Import Structures.MonadExc.
+From ExtLib Require Import Structures.Monads.
 
 From vera Require Import Common.
 From vera Require Import Tactics.
@@ -433,110 +436,104 @@ End RawVerilog.
 
 Module Typecheck.
 
-Equations cast_width {w1} (w2 : N) (e : Verilog.expression w1)
-  : option (Verilog.expression w2) :=
-| w2, e with (N.eq_dec w1 w2) => {
-  | left eq_refl => Some e
-  | right _ => None
+Definition transf := sum string.
+
+Equations cast_width {w1} (err : string) (w2 : N) (e : Verilog.expression w1)
+  : transf (Verilog.expression w2) :=
+| err, w2, e with (N.eq_dec w1 w2) => {
+  | left eq_refl => inr e
+  | right _ => inl (err
+    ++ " (Tried to use expression of width "
+    ++ to_string (N.to_nat w1) ++ " as width " ++ to_string (N.to_nat w2) ++ ")")%string
 }.
 
-Equations tc_expr (expr : RawVerilog.expression) : option { w & Verilog.expression w } := {
+Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expression w } := {
 | RawVerilog.BinaryOp op lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width w_lhs t_rhs in
-  Some (_; Verilog.BinaryOp op t_lhs t_rhs')
+  let* t_rhs' := cast_width "Different widths in binop" w_lhs t_rhs in
+  inr (_; Verilog.BinaryOp op t_lhs t_rhs')
 | RawVerilog.UnaryOp op expr =>
   let* (w_expr; t_expr) := tc_expr expr in
-  Some (_; Verilog.UnaryOp op t_expr)
+  inr (_; Verilog.UnaryOp op t_expr)
 | RawVerilog.Conditional cond ifTrue ifFalse =>
   let* (w_cond; t_cond) := tc_expr cond in
   let* (w_ifTrue; t_ifTrue) := tc_expr ifTrue in
   let* (w_ifFalse; t_ifFalse) := tc_expr ifFalse in
-  let* t_ifFalse' := cast_width w_ifTrue t_ifFalse in
-  Some (_; Verilog.Conditional t_cond t_ifTrue t_ifFalse')
+  let* t_ifFalse' := cast_width "Different widths in conditional" w_ifTrue t_ifFalse in
+  inr (_; Verilog.Conditional t_cond t_ifTrue t_ifFalse')
 | RawVerilog.BitSelect vec idx =>
   let* (w_vec; t_vec) := tc_expr vec in
   let* (w_idx; t_idx) := tc_expr idx in
-  Some (_; Verilog.BitSelect t_vec t_idx)
+  inr (_; Verilog.BitSelect t_vec t_idx)
 | RawVerilog.Concatenation lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
-  Some (_; Verilog.BitSelect t_lhs t_rhs)
+  inr (_; Verilog.BitSelect t_lhs t_rhs)
 | RawVerilog.IntegerLiteral bits =>
-  Some (_; Verilog.IntegerLiteral _ (BV.of_bits bits))
+  inr (_; Verilog.IntegerLiteral _ (BV.of_bits bits))
 | RawVerilog.NamedExpression var =>
-  Some (_; Verilog.NamedExpression var)
+  inr (_; Verilog.NamedExpression var)
 | RawVerilog.Resize to expr =>
   let* (w_expr; t_expr) := tc_expr expr in
-  Some (_; Verilog.Resize to t_expr)
+  inr (_; Verilog.Resize to t_expr)
 }.
 
 
-Equations tc_blocking_assign {w_lhs w_rhs}
-  (lhs : Verilog.expression w_lhs)
-  (rhs : Verilog.expression w_rhs) : option Verilog.statement := {
-| lhs, rhs with (N.eq_dec w_lhs w_rhs) => {
-  | left eq_refl => Some (Verilog.BlockingAssign lhs rhs)
-  | right _ => None
-}
-}.
-
-Equations tc_statement : RawVerilog.statement -> option Verilog.statement := {
+Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
 | RawVerilog.Block body =>
   let* t_body := tc_statement_lst body in
-  Some (Verilog.Block t_body)
+  inr (Verilog.Block t_body)
     where
-      tc_statement_lst : list RawVerilog.statement -> option (list Verilog.statement) := {
-      | [] := Some []
+      tc_statement_lst : list RawVerilog.statement -> transf (list Verilog.statement) := {
+      | [] := inr []
       | (stmt :: stmts) :=
       	let* t_stmt := tc_statement stmt in
 	let* t_stmts := tc_statement_lst stmts in
-	Some (t_stmt :: t_stmts)
+	inr (t_stmt :: t_stmts)
       }
 | RawVerilog.BlockingAssign lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width w_lhs t_rhs in
-  Some (Verilog.BlockingAssign t_lhs t_rhs')
+  let* t_rhs' := cast_width "Different widths in blocking assign" w_lhs t_rhs in
+  inr (Verilog.BlockingAssign t_lhs t_rhs')
 | RawVerilog.NonBlockingAssign lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width w_lhs t_rhs in
-  Some (Verilog.BlockingAssign t_lhs t_rhs')
+  let* t_rhs' := cast_width "Different widths in nonblocking assign" w_lhs t_rhs in
+  inr (Verilog.BlockingAssign t_lhs t_rhs')
 | RawVerilog.If condition trueBranch falseBranch =>
   let* (_; t_cond) := tc_expr condition in
   let* t_trueBranch := tc_statement trueBranch in
   let* t_falseBranch := tc_statement falseBranch in
-  Some (Verilog.If t_cond t_trueBranch t_falseBranch)
+  inr (Verilog.If t_cond t_trueBranch t_falseBranch)
 }
 .
 
-Equations tc_module_item : RawVerilog.module_item -> option Verilog.module_item := {
+Equations tc_module_item : RawVerilog.module_item -> transf Verilog.module_item := {
 | RawVerilog.AlwaysComb stmt =>
   let* t_stmt := tc_statement stmt in
-  Some (Verilog.AlwaysComb t_stmt)
+  inr (Verilog.AlwaysComb t_stmt)
 | RawVerilog.AlwaysFF stmt =>
   let* t_stmt := tc_statement stmt in
-  Some (Verilog.AlwaysFF t_stmt)
+  inr (Verilog.AlwaysFF t_stmt)
 | RawVerilog.Initial stmt =>
   let* t_stmt := tc_statement stmt in
-  Some (Verilog.Initial t_stmt)
+  inr (Verilog.Initial t_stmt)
 }.
 
-
-Equations tc_module_item_lst : list RawVerilog.module_item -> option (list Verilog.module_item) := {
-| [] => Some []
+Equations tc_module_item_lst : list RawVerilog.module_item -> transf (list Verilog.module_item) := {
+| [] => inr []
 | (mi :: mis) =>
   let* t_mi := tc_module_item mi in
   let* t_mis := tc_module_item_lst mis in
-  Some (t_mi :: t_mis)
+  inr (t_mi :: t_mis)
 }.
 
-Equations tc_vmodule : RawVerilog.vmodule -> option Verilog.vmodule := {
+Equations tc_vmodule : RawVerilog.vmodule -> transf Verilog.vmodule := {
 | m =>
   let* t_modBody := tc_module_item_lst (RawVerilog.modBody m) in
-  Some {|
+  inr {|
       Verilog.modName := RawVerilog.modName m;
       Verilog.modVariableDecls := RawVerilog.modVariableDecls m;
       Verilog.modBody := t_modBody

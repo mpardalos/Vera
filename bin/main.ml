@@ -38,9 +38,7 @@ let module_of_file = ParseSlang.parse_verilog_file
 
 let typed_module_of_file f =
   let m = module_of_file f in
-  match Vera.Typecheck.tc_vmodule m with
-  | None -> Vera.Inl (Util.string_to_lst "Typechecking failed")
-  | Some x -> Vera.Inr x
+  Vera.Typecheck.tc_vmodule m
 
 let smt_of_file filename =
   (* Need to tag it as left or right, doesn't matter here because we only
