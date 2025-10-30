@@ -199,6 +199,7 @@ Module Verilog.
   Global Transparent binop_width unop_width.
 
   Inductive expression : N -> Type :=
+  (* THIS IS WRONG FOR SHIFTS! The two sides don't need to have the same width *)
   | BinaryOp {w} (op : binop) : expression w -> expression w -> expression (binop_width op w)
   | UnaryOp {w} (op : unaryop) : expression w -> expression (unop_width op w)
   | Conditional {w_val w_cond : N} : expression w_cond -> expression w_val -> expression w_val -> expression w_val
