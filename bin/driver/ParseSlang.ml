@@ -200,16 +200,20 @@ let read_name str = Scanf.sscanf str "%d %s" (fun _ n -> n)
 
 (* TODO: Do this in Rocq *)
 let rec fold_concat = function
-  | [] -> raise (SlangUnexpectedValue ("concatenation", "0-input concatenatation"))
-  | [_] -> raise (SlangUnexpectedValue ("concatenation", "1-input concatenatation"))
-  | [l; r] -> Vera.RawVerilog.Concatenation(l, r)
-  | (hd :: tl) -> Vera.RawVerilog.Concatenation(hd, fold_concat tl)
+  | [] ->
+      raise (SlangUnexpectedValue ("concatenation", "0-input concatenatation"))
+  | [ _ ] ->
+      raise (SlangUnexpectedValue ("concatenation", "1-input concatenatation"))
+  | [ l; r ] -> Vera.RawVerilog.Concatenation (l, r)
+  | hd :: tl -> Vera.RawVerilog.Concatenation (hd, fold_concat tl)
 
 let rec parse_expression json =
   not_null "expression" json;
   match json |> member "kind" |> to_string with
   | "NamedValue" ->
-      let varName = read_name (json |> member "symbol" |> to_string) |> Util.string_to_lst in
+      let varName =
+        read_name (json |> member "symbol" |> to_string) |> Util.string_to_lst
+      in
       let varType = read_type_as_width (json |> member "type" |> to_string) in
       Vera.RawVerilog.NamedExpression { varName; varType }
   | "ConditionalOp" ->
@@ -246,7 +250,7 @@ let rec parse_expression json =
   | "UnaryOp" ->
       (* let op = json |> member "op" |> to_string |> read_unary_op in *)
       let operand = json |> member "operand" |> parse_expression in
-      Vera.RawVerilog.UnaryOp ((* op, *) operand)
+      Vera.RawVerilog.UnaryOp (* op, *) operand
   | kind ->
       (* Vera.RawVerilog.NamedExpression ((), Util.string_to_lst kind) *)
       raise (SlangUnexpectedValue ("expression kind", kind))
@@ -310,10 +314,9 @@ let parse_procedural_block json =
   | str ->
       raise (SlangUnexpectedValue ("AlwaysComb, AlwaysFF, or Initial", str))
 
-let collect_instance_member
-      (ports : port list ref)
-      (variables : Vera.RawVerilog.variable_declaration list ref)
-      (body : Vera.RawVerilog.module_item list ref) json =
+let collect_instance_member (ports : port list ref)
+    (variables : Vera.RawVerilog.variable_declaration list ref)
+    (body : Vera.RawVerilog.module_item list ref) json =
   match to_string (member "kind" json) with
   | "Port" -> ports := List.append !ports [ parse_port json ]
   | "Variable" -> variables := List.append !variables [ parse_variable json ]
@@ -326,17 +329,18 @@ let collect_instance_member
       raise
         (Failure (Format.sprintf "Unexpected instance member kind: %s" kind))
 
-let apply_ports
-      (ports : port list)
-      (variables : Vera.RawVerilog.variable_declaration list ref) =
-  List.iter (fun port ->
+let apply_ports (ports : port list)
+    (variables : Vera.RawVerilog.variable_declaration list ref) =
+  List.iter
+    (fun port ->
       variables :=
-        List.map (fun var ->
-            if ((Util.lst_to_string (Vera.RawVerilog.varDeclName var)) = port.name)
-            then {var with varDeclPort = Some port.direction}
-            else var
-          ) !variables
-    ) ports
+        List.map
+          (fun var ->
+            if Util.lst_to_string (Vera.RawVerilog.varDeclName var) = port.name
+            then { var with varDeclPort = Some port.direction }
+            else var)
+          !variables)
+    ports
 
 let parse_instance_body (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
   expect_kind "InstanceBody" json;
