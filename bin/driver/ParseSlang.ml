@@ -222,7 +222,7 @@ let rec parse_expression json =
         |> parse_expression
       in
       let ifTrue = json |> member "left" |> parse_expression in
-      let ifFalse = json |> member "left" |> parse_expression in
+      let ifFalse = json |> member "right" |> parse_expression in
       Vera.RawVerilog.Conditional (cond, ifTrue, ifFalse)
   | "ElementSelect" ->
       let value = json |> member "value" |> parse_expression in
