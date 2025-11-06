@@ -10,7 +10,7 @@ module SMTLib = struct
 
   let bitvector fmt bits =
     fprintf fmt "#b%s"
-      (Util.lst_to_string (map (function true -> '1' | false -> '0') bits))
+      (Util.lst_to_string (map (function true -> '1' | false -> '0') (List.rev bits)))
 
   let unaryOp fmt = function
     | BVNot -> fprintf fmt "bvnot"
