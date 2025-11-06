@@ -1,0 +1,741 @@
+{
+  "name": "$root",
+  "kind": "Root",
+  "addr": 451172160,
+  "members": [
+    {
+      "name": "",
+      "kind": "CompilationUnit",
+      "addr": 451286768
+    },
+    {
+      "name": "combinational_single_cycle",
+      "kind": "Instance",
+      "addr": 451292144,
+      "body": {
+        "name": "combinational_single_cycle",
+        "kind": "InstanceBody",
+        "addr": 451287040,
+        "members": [
+          {
+            "name": "in1",
+            "kind": "Port",
+            "addr": 451292264,
+            "type": "logic[7:0]",
+            "direction": "In",
+            "internalSymbol": "451292392 in1"
+          },
+          {
+            "name": "in1",
+            "kind": "Variable",
+            "addr": 451292392,
+            "type": "logic[7:0]",
+            "lifetime": "Static"
+          },
+          {
+            "name": "in2",
+            "kind": "Port",
+            "addr": 451292736,
+            "type": "logic[7:0]",
+            "direction": "In",
+            "internalSymbol": "451292864 in2"
+          },
+          {
+            "name": "in2",
+            "kind": "Variable",
+            "addr": 451292864,
+            "type": "logic[7:0]",
+            "lifetime": "Static"
+          },
+          {
+            "name": "out",
+            "kind": "Port",
+            "addr": 451293208,
+            "type": "logic[15:0]",
+            "direction": "Out",
+            "internalSymbol": "451294128 out"
+          },
+          {
+            "name": "out",
+            "kind": "Variable",
+            "addr": 451294128,
+            "type": "logic[15:0]",
+            "lifetime": "Static"
+          },
+          {
+            "name": "part1",
+            "kind": "Net",
+            "addr": 451287288,
+            "type": "logic[15:0]",
+            "netType": {
+              "name": "wire",
+              "kind": "NetType",
+              "addr": 450966032,
+              "type": "logic"
+            }
+          },
+          {
+            "name": "part2",
+            "kind": "Net",
+            "addr": 451287656,
+            "type": "logic[15:0]",
+            "netType": {
+              "name": "wire",
+              "kind": "NetType",
+              "addr": 450966032,
+              "type": "logic"
+            }
+          },
+          {
+            "name": "part3",
+            "kind": "Net",
+            "addr": 451289360,
+            "type": "logic[15:0]",
+            "netType": {
+              "name": "wire",
+              "kind": "NetType",
+              "addr": 450966032,
+              "type": "logic"
+            }
+          },
+          {
+            "name": "part4",
+            "kind": "Net",
+            "addr": 451289728,
+            "type": "logic[15:0]",
+            "netType": {
+              "name": "wire",
+              "kind": "NetType",
+              "addr": 450966032,
+              "type": "logic"
+            }
+          },
+          {
+            "name": "part5",
+            "kind": "Net",
+            "addr": 451290096,
+            "type": "logic[15:0]",
+            "netType": {
+              "name": "wire",
+              "kind": "NetType",
+              "addr": 450966032,
+              "type": "logic"
+            }
+          },
+          {
+            "name": "part6",
+            "kind": "Net",
+            "addr": 451290464,
+            "type": "logic[15:0]",
+            "netType": {
+              "name": "wire",
+              "kind": "NetType",
+              "addr": 450966032,
+              "type": "logic"
+            }
+          },
+          {
+            "name": "part7",
+            "kind": "Net",
+            "addr": 451290832,
+            "type": "logic[15:0]",
+            "netType": {
+              "name": "wire",
+              "kind": "NetType",
+              "addr": 450966032,
+              "type": "logic"
+            }
+          },
+          {
+            "name": "part8",
+            "kind": "Net",
+            "addr": 451291200,
+            "type": "logic[15:0]",
+            "netType": {
+              "name": "wire",
+              "kind": "NetType",
+              "addr": 450966032,
+              "type": "logic"
+            }
+          },
+          {
+            "name": "",
+            "kind": "ContinuousAssign",
+            "addr": 451294496,
+            "assignment": {
+              "kind": "Assignment",
+              "type": "logic[15:0]",
+              "left": {
+                "kind": "NamedValue",
+                "type": "logic[15:0]",
+                "symbol": "451287656 part2"
+              },
+              "right": {
+                "kind": "ConditionalOp",
+                "type": "logic[15:0]",
+                "conditions": [
+                  {
+                    "expr": {
+                      "kind": "ElementSelect",
+                      "type": "logic",
+                      "value": {
+                        "kind": "NamedValue",
+                        "type": "logic[7:0]",
+                        "symbol": "451292392 in1"
+                      },
+                      "selector": {
+                        "kind": "IntegerLiteral",
+                        "type": "int",
+                        "value": "1",
+                        "constant": "1"
+                      }
+                    }
+                  }
+                ],
+                "left": {
+                  "kind": "BinaryOp",
+                  "type": "logic[15:0]",
+                  "op": "LogicalShiftLeft",
+                  "left": {
+                    "kind": "Conversion",
+                    "type": "logic[15:0]",
+                    "operand": {
+                      "kind": "NamedValue",
+                      "type": "logic[7:0]",
+                      "symbol": "451292864 in2"
+                    }
+                  },
+                  "right": {
+                    "kind": "IntegerLiteral",
+                    "type": "int",
+                    "value": "8388608",
+                    "constant": "8388608"
+                  }
+                },
+                "right": {
+                  "kind": "Conversion",
+                  "type": "logic[15:0]",
+                  "operand": {
+                    "kind": "IntegerLiteral",
+                    "type": "bit[7:0]",
+                    "value": "8'd0",
+                    "constant": "8'd0"
+                  },
+                  "constant": "16'd0"
+                }
+              },
+              "isNonBlocking": false
+            }
+          },
+          {
+            "name": "",
+            "kind": "ContinuousAssign",
+            "addr": 451294584,
+            "assignment": {
+              "kind": "Assignment",
+              "type": "logic[15:0]",
+              "left": {
+                "kind": "NamedValue",
+                "type": "logic[15:0]",
+                "symbol": "451289360 part3"
+              },
+              "right": {
+                "kind": "ConditionalOp",
+                "type": "logic[15:0]",
+                "conditions": [
+                  {
+                    "expr": {
+                      "kind": "ElementSelect",
+                      "type": "logic",
+                      "value": {
+                        "kind": "NamedValue",
+                        "type": "logic[7:0]",
+                        "symbol": "451292392 in1"
+                      },
+                      "selector": {
+                        "kind": "IntegerLiteral",
+                        "type": "int",
+                        "value": "2",
+                        "constant": "2"
+                      }
+                    }
+                  }
+                ],
+                "left": {
+                  "kind": "BinaryOp",
+                  "type": "logic[15:0]",
+                  "op": "LogicalShiftLeft",
+                  "left": {
+                    "kind": "Conversion",
+                    "type": "logic[15:0]",
+                    "operand": {
+                      "kind": "NamedValue",
+                      "type": "logic[7:0]",
+                      "symbol": "451292864 in2"
+                    }
+                  },
+                  "right": {
+                    "kind": "IntegerLiteral",
+                    "type": "int",
+                    "value": "2",
+                    "constant": "2"
+                  }
+                },
+                "right": {
+                  "kind": "Conversion",
+                  "type": "logic[15:0]",
+                  "operand": {
+                    "kind": "IntegerLiteral",
+                    "type": "bit[7:0]",
+                    "value": "8'd0",
+                    "constant": "8'd0"
+                  },
+                  "constant": "16'd0"
+                }
+              },
+              "isNonBlocking": false
+            }
+          },
+          {
+            "name": "",
+            "kind": "ContinuousAssign",
+            "addr": 451294672,
+            "assignment": {
+              "kind": "Assignment",
+              "type": "logic[15:0]",
+              "left": {
+                "kind": "NamedValue",
+                "type": "logic[15:0]",
+                "symbol": "451289728 part4"
+              },
+              "right": {
+                "kind": "ConditionalOp",
+                "type": "logic[15:0]",
+                "conditions": [
+                  {
+                    "expr": {
+                      "kind": "ElementSelect",
+                      "type": "logic",
+                      "value": {
+                        "kind": "NamedValue",
+                        "type": "logic[7:0]",
+                        "symbol": "451292392 in1"
+                      },
+                      "selector": {
+                        "kind": "IntegerLiteral",
+                        "type": "int",
+                        "value": "3",
+                        "constant": "3"
+                      }
+                    }
+                  }
+                ],
+                "left": {
+                  "kind": "BinaryOp",
+                  "type": "logic[15:0]",
+                  "op": "LogicalShiftLeft",
+                  "left": {
+                    "kind": "Conversion",
+                    "type": "logic[15:0]",
+                    "operand": {
+                      "kind": "NamedValue",
+                      "type": "logic[7:0]",
+                      "symbol": "451292864 in2"
+                    }
+                  },
+                  "right": {
+                    "kind": "IntegerLiteral",
+                    "type": "int",
+                    "value": "3",
+                    "constant": "3"
+                  }
+                },
+                "right": {
+                  "kind": "Conversion",
+                  "type": "logic[15:0]",
+                  "operand": {
+                    "kind": "IntegerLiteral",
+                    "type": "bit[7:0]",
+                    "value": "8'd0",
+                    "constant": "8'd0"
+                  },
+                  "constant": "16'd0"
+                }
+              },
+              "isNonBlocking": false
+            }
+          },
+          {
+            "name": "",
+            "kind": "ContinuousAssign",
+            "addr": 451294760,
+            "assignment": {
+              "kind": "Assignment",
+              "type": "logic[15:0]",
+              "left": {
+                "kind": "NamedValue",
+                "type": "logic[15:0]",
+                "symbol": "451290096 part5"
+              },
+              "right": {
+                "kind": "ConditionalOp",
+                "type": "logic[15:0]",
+                "conditions": [
+                  {
+                    "expr": {
+                      "kind": "ElementSelect",
+                      "type": "logic",
+                      "value": {
+                        "kind": "NamedValue",
+                        "type": "logic[7:0]",
+                        "symbol": "451292392 in1"
+                      },
+                      "selector": {
+                        "kind": "IntegerLiteral",
+                        "type": "int",
+                        "value": "4",
+                        "constant": "4"
+                      }
+                    }
+                  }
+                ],
+                "left": {
+                  "kind": "BinaryOp",
+                  "type": "logic[15:0]",
+                  "op": "LogicalShiftLeft",
+                  "left": {
+                    "kind": "Conversion",
+                    "type": "logic[15:0]",
+                    "operand": {
+                      "kind": "NamedValue",
+                      "type": "logic[7:0]",
+                      "symbol": "451292864 in2"
+                    }
+                  },
+                  "right": {
+                    "kind": "IntegerLiteral",
+                    "type": "int",
+                    "value": "4",
+                    "constant": "4"
+                  }
+                },
+                "right": {
+                  "kind": "Conversion",
+                  "type": "logic[15:0]",
+                  "operand": {
+                    "kind": "IntegerLiteral",
+                    "type": "bit[7:0]",
+                    "value": "8'd0",
+                    "constant": "8'd0"
+                  },
+                  "constant": "16'd0"
+                }
+              },
+              "isNonBlocking": false
+            }
+          },
+          {
+            "name": "",
+            "kind": "ContinuousAssign",
+            "addr": 451294848,
+            "assignment": {
+              "kind": "Assignment",
+              "type": "logic[15:0]",
+              "left": {
+                "kind": "NamedValue",
+                "type": "logic[15:0]",
+                "symbol": "451290464 part6"
+              },
+              "right": {
+                "kind": "ConditionalOp",
+                "type": "logic[15:0]",
+                "conditions": [
+                  {
+                    "expr": {
+                      "kind": "ElementSelect",
+                      "type": "logic",
+                      "value": {
+                        "kind": "NamedValue",
+                        "type": "logic[7:0]",
+                        "symbol": "451292392 in1"
+                      },
+                      "selector": {
+                        "kind": "IntegerLiteral",
+                        "type": "int",
+                        "value": "5",
+                        "constant": "5"
+                      }
+                    }
+                  }
+                ],
+                "left": {
+                  "kind": "BinaryOp",
+                  "type": "logic[15:0]",
+                  "op": "LogicalShiftLeft",
+                  "left": {
+                    "kind": "Conversion",
+                    "type": "logic[15:0]",
+                    "operand": {
+                      "kind": "NamedValue",
+                      "type": "logic[7:0]",
+                      "symbol": "451292864 in2"
+                    }
+                  },
+                  "right": {
+                    "kind": "IntegerLiteral",
+                    "type": "int",
+                    "value": "5",
+                    "constant": "5"
+                  }
+                },
+                "right": {
+                  "kind": "Conversion",
+                  "type": "logic[15:0]",
+                  "operand": {
+                    "kind": "IntegerLiteral",
+                    "type": "bit[7:0]",
+                    "value": "8'd0",
+                    "constant": "8'd0"
+                  },
+                  "constant": "16'd0"
+                }
+              },
+              "isNonBlocking": false
+            }
+          },
+          {
+            "name": "",
+            "kind": "ContinuousAssign",
+            "addr": 451294936,
+            "assignment": {
+              "kind": "Assignment",
+              "type": "logic[15:0]",
+              "left": {
+                "kind": "NamedValue",
+                "type": "logic[15:0]",
+                "symbol": "451290832 part7"
+              },
+              "right": {
+                "kind": "ConditionalOp",
+                "type": "logic[15:0]",
+                "conditions": [
+                  {
+                    "expr": {
+                      "kind": "ElementSelect",
+                      "type": "logic",
+                      "value": {
+                        "kind": "NamedValue",
+                        "type": "logic[7:0]",
+                        "symbol": "451292392 in1"
+                      },
+                      "selector": {
+                        "kind": "IntegerLiteral",
+                        "type": "int",
+                        "value": "6",
+                        "constant": "6"
+                      }
+                    }
+                  }
+                ],
+                "left": {
+                  "kind": "BinaryOp",
+                  "type": "logic[15:0]",
+                  "op": "LogicalShiftLeft",
+                  "left": {
+                    "kind": "Conversion",
+                    "type": "logic[15:0]",
+                    "operand": {
+                      "kind": "NamedValue",
+                      "type": "logic[7:0]",
+                      "symbol": "451292864 in2"
+                    }
+                  },
+                  "right": {
+                    "kind": "IntegerLiteral",
+                    "type": "int",
+                    "value": "6",
+                    "constant": "6"
+                  }
+                },
+                "right": {
+                  "kind": "Conversion",
+                  "type": "logic[15:0]",
+                  "operand": {
+                    "kind": "IntegerLiteral",
+                    "type": "bit[7:0]",
+                    "value": "8'd0",
+                    "constant": "8'd0"
+                  },
+                  "constant": "16'd0"
+                }
+              },
+              "isNonBlocking": false
+            }
+          },
+          {
+            "name": "",
+            "kind": "ContinuousAssign",
+            "addr": 451295024,
+            "assignment": {
+              "kind": "Assignment",
+              "type": "logic[15:0]",
+              "left": {
+                "kind": "NamedValue",
+                "type": "logic[15:0]",
+                "symbol": "451291200 part8"
+              },
+              "right": {
+                "kind": "ConditionalOp",
+                "type": "logic[15:0]",
+                "conditions": [
+                  {
+                    "expr": {
+                      "kind": "ElementSelect",
+                      "type": "logic",
+                      "value": {
+                        "kind": "NamedValue",
+                        "type": "logic[7:0]",
+                        "symbol": "451292392 in1"
+                      },
+                      "selector": {
+                        "kind": "IntegerLiteral",
+                        "type": "int",
+                        "value": "7",
+                        "constant": "7"
+                      }
+                    }
+                  }
+                ],
+                "left": {
+                  "kind": "BinaryOp",
+                  "type": "logic[15:0]",
+                  "op": "LogicalShiftLeft",
+                  "left": {
+                    "kind": "Conversion",
+                    "type": "logic[15:0]",
+                    "operand": {
+                      "kind": "NamedValue",
+                      "type": "logic[7:0]",
+                      "symbol": "451292864 in2"
+                    }
+                  },
+                  "right": {
+                    "kind": "IntegerLiteral",
+                    "type": "int",
+                    "value": "7",
+                    "constant": "7"
+                  }
+                },
+                "right": {
+                  "kind": "Conversion",
+                  "type": "logic[15:0]",
+                  "operand": {
+                    "kind": "IntegerLiteral",
+                    "type": "bit[7:0]",
+                    "value": "8'd0",
+                    "constant": "8'd0"
+                  },
+                  "constant": "16'd0"
+                }
+              },
+              "isNonBlocking": false
+            }
+          },
+          {
+            "name": "",
+            "kind": "ContinuousAssign",
+            "addr": 451295112,
+            "assignment": {
+              "kind": "Assignment",
+              "type": "logic[15:0]",
+              "left": {
+                "kind": "NamedValue",
+                "type": "logic[15:0]",
+                "symbol": "451294128 out"
+              },
+              "right": {
+                "kind": "BinaryOp",
+                "type": "logic[15:0]",
+                "op": "Add",
+                "left": {
+                  "kind": "BinaryOp",
+                  "type": "logic[15:0]",
+                  "op": "Add",
+                  "left": {
+                    "kind": "BinaryOp",
+                    "type": "logic[15:0]",
+                    "op": "Add",
+                    "left": {
+                      "kind": "BinaryOp",
+                      "type": "logic[15:0]",
+                      "op": "Add",
+                      "left": {
+                        "kind": "BinaryOp",
+                        "type": "logic[15:0]",
+                        "op": "Add",
+                        "left": {
+                          "kind": "BinaryOp",
+                          "type": "logic[15:0]",
+                          "op": "Add",
+                          "left": {
+                            "kind": "BinaryOp",
+                            "type": "logic[15:0]",
+                            "op": "Add",
+                            "left": {
+                              "kind": "NamedValue",
+                              "type": "logic[15:0]",
+                              "symbol": "451287288 part1"
+                            },
+                            "right": {
+                              "kind": "NamedValue",
+                              "type": "logic[15:0]",
+                              "symbol": "451287656 part2"
+                            }
+                          },
+                          "right": {
+                            "kind": "NamedValue",
+                            "type": "logic[15:0]",
+                            "symbol": "451289360 part3"
+                          }
+                        },
+                        "right": {
+                          "kind": "NamedValue",
+                          "type": "logic[15:0]",
+                          "symbol": "451289728 part4"
+                        }
+                      },
+                      "right": {
+                        "kind": "NamedValue",
+                        "type": "logic[15:0]",
+                        "symbol": "451290096 part5"
+                      }
+                    },
+                    "right": {
+                      "kind": "NamedValue",
+                      "type": "logic[15:0]",
+                      "symbol": "451290464 part6"
+                    }
+                  },
+                  "right": {
+                    "kind": "NamedValue",
+                    "type": "logic[15:0]",
+                    "symbol": "451290832 part7"
+                  }
+                },
+                "right": {
+                  "kind": "NamedValue",
+                  "type": "logic[15:0]",
+                  "symbol": "451291200 part8"
+                }
+              },
+              "isNonBlocking": false
+            }
+          }
+        ],
+        "definition": "combinational_single_cycle"
+      },
+      "connections": [
+      ]
+    }
+  ]
+}
