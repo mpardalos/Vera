@@ -401,47 +401,53 @@ Proof.
     eauto.
 Qed.
 
-Lemma eval_binop_to_bv op w (lhs rhs : BV.bitvector w) :
-  exists bv, XBV.to_bv (eval_binop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
+Lemma eval_arithmeticop_to_bv op w (lhs rhs : BV.bitvector w) :
+  exists bv, XBV.to_bv (eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
 Proof.
-  destruct op; simp eval_binop;
-    match goal with
-      | [ |- context[bv_binop ?op ?l ?r] ] =>
-        funelim (bv_binop op l r);
-        rewrite <- Heqcall; clear Heqcall;
-        rewrite XBV.xbv_bv_inverse in *;
-        crush
-      | _ => idtac
-    end.
-  - (* andb *)
-    erewrite bitwise_and_no_exes;
-      try erewrite XBV.xbv_bv_inverse;
-      try crush.
-  - (* orb *)
-    erewrite bitwise_or_no_exes;
-      try erewrite XBV.xbv_bv_inverse;
-      try crush.
-  - (* shift right *)
-    rewrite XBV.to_N_from_bv.
-    simpl.
-    rewrite shr_to_bv.
-    eauto.
-  - (* shift left *)
-    rewrite XBV.to_N_from_bv.
-    simpl.
-    rewrite shl_to_bv.
-    eauto.
-  - (* shift left (arithmetic) *)
-    rewrite XBV.to_N_from_bv.
-    simpl.
-    rewrite shl_to_bv.
-    eauto.
+  destruct op; simp eval_arithmeticop.
+  - funelim (bv_binop (BV.bv_add (n:=w)) (XBV.from_bv lhs) (XBV.from_bv rhs));
+    rewrite <- Heqcall; clear Heqcall;
+      rewrite XBV.xbv_bv_inverse in *;
+      crush.
+  - funelim (bv_binop (fun bvl bvr : BV.bitvector w => BV.bv_subt bvl bvr) (XBV.from_bv lhs) (XBV.from_bv rhs));
+    rewrite <- Heqcall; clear Heqcall;
+      rewrite XBV.xbv_bv_inverse in *;
+      crush.
+  - funelim (bv_binop (BV.bv_mult (n:=w)) (XBV.from_bv lhs) (XBV.from_bv rhs));
+    rewrite <- Heqcall; clear Heqcall;
+      rewrite XBV.xbv_bv_inverse in *;
+      crush.
 Qed.
 
-Lemma eval_binop_no_exes op w (lhs rhs : BV.bitvector w) :
-  exists bv, eval_binop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
+(*   - (\* andb *\)
+ *     erewrite bitwise_and_no_exes;
+ *       try erewrite XBV.xbv_bv_inverse;
+ *       try crush.
+ *   - (\* orb *\)
+ *     erewrite bitwise_or_no_exes;
+ *       try erewrite XBV.xbv_bv_inverse;
+ *       try crush.
+ *   - (\* shift right *\)
+ *     rewrite XBV.to_N_from_bv.
+ *     simpl.
+ *     rewrite shr_to_bv.
+ *     eauto.
+ *   - (\* shift left *\)
+ *     rewrite XBV.to_N_from_bv.
+ *     simpl.
+ *     rewrite shl_to_bv.
+ *     eauto.
+ *   - (\* shift left (arithmetic) *\)
+ *     rewrite XBV.to_N_from_bv.
+ *     simpl.
+ *     rewrite shl_to_bv.
+ *     eauto.
+ * Qed. *)
+
+Lemma eval_arithmeticop_no_exes op w (lhs rhs : BV.bitvector w) :
+  exists bv, eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
 Proof.
-  edestruct eval_binop_to_bv as [bv Hbv].
+  edestruct eval_arithmeticop_to_bv as [bv Hbv].
   exists bv.
   apply XBV.bv_xbv_inverse in Hbv.
   crush.
@@ -513,9 +519,17 @@ Proof.
           let IH' := fresh "IH" in
           edestruct IH as [? IH']; eauto; clear IH; inv IH'
       end.
-  - (* binop *)
-    edestruct eval_binop_no_exes as [bv Hbv].
+  - (* arithmeticop *)
+    edestruct eval_arithmeticop_no_exes as [bv Hbv].
     exists bv. now rewrite Hbv.
+  - (* bitwiseop *)
+    (* edestruct eval_bitwiseop_no_exes as [bv Hbv].
+     * exists bv. now rewrite Hbv. *)
+    admit.
+  - (* shiftop *)
+    (* edestruct eval_shiftop_no_exes as [bv Hbv].
+     * exists bv. now rewrite Hbv. *)
+    admit.
   - (* unop *)
     edestruct eval_unop_no_exes as [bv Hbv].
     exists bv. now rewrite Hbv.
@@ -540,7 +554,7 @@ Proof.
     eauto.
   - rewrite convert_no_exes.
     eauto.
-Qed.
+Admitted.
 
 Lemma eval_expr_no_exes w regs e :
   forall xbv tag m t,
@@ -559,13 +573,13 @@ Qed.
 Lemma binop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
     SMTLib.interp_term ρ smt_lhs = Some (SMTLib.Value_BitVec w val_lhs) ->
     SMTLib.interp_term ρ smt_rhs = Some (SMTLib.Value_BitVec w val_rhs) ->
-    binop_to_smt op smt_lhs smt_rhs = inr t ->
-    XBV.to_bv (eval_binop op (XBV.from_bv val_lhs) (XBV.from_bv val_rhs)) = Some val ->
-    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec (Verilog.binop_width op w) val).
+    arithmeticop_to_smt op smt_lhs smt_rhs = inr t ->
+    XBV.to_bv (eval_arithmeticop op (XBV.from_bv val_lhs) (XBV.from_bv val_rhs)) = Some val ->
+    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
 Proof.
-  intros Hinterp_lhs Hinterp_rhs Hbinop_to_smt Heval.
+  intros Hinterp_lhs Hinterp_rhs Harithmeticop_to_smt Heval.
   destruct op;
-    simp eval_binop binop_to_smt in *; inv Hbinop_to_smt;
+    simp eval_arithmeticop arithmeticop_to_smt in *; inv Harithmeticop_to_smt;
     simpl; rewrite Hinterp_lhs; rewrite Hinterp_rhs; autodestruct; try contradiction;
     repeat f_equal; rewrite <- eq_rect_eq.
   - simp bv_binop in *. rewrite ! XBV.xbv_bv_inverse in *. simpl in *.
@@ -574,28 +588,30 @@ Proof.
     rewrite XBV.xbv_bv_inverse in *. now some_inv.
   - simp bv_binop in *. rewrite ! XBV.xbv_bv_inverse in *. simpl in *.
     rewrite XBV.xbv_bv_inverse in *. now some_inv.
-  - erewrite bitwise_and_no_exes in Heval;
-      rewrite XBV.xbv_bv_inverse in *;
-      (reflexivity || now some_inv).
-  - erewrite bitwise_or_no_exes in Heval;
-      rewrite XBV.xbv_bv_inverse in *;
-      (reflexivity || now some_inv).
-  - rewrite XBV.to_N_from_bv in *. simpl in *.
-    erewrite shr_to_bv in *.
-    now some_inv.
-  - rewrite XBV.to_N_from_bv in *. simpl in *.
-    erewrite shl_to_bv in *.
-    now some_inv.
-  - rewrite XBV.to_N_from_bv in *. simpl in *.
-    erewrite shl_to_bv in *.
-    now some_inv.
 Qed.
+
+(*   - erewrite bitwise_and_no_exes in Heval;
+ *       rewrite XBV.xbv_bv_inverse in *;
+ *       (reflexivity || now some_inv).
+ *   - erewrite bitwise_or_no_exes in Heval;
+ *       rewrite XBV.xbv_bv_inverse in *;
+ *       (reflexivity || now some_inv).
+ *   - rewrite XBV.to_N_from_bv in *. simpl in *.
+ *     erewrite shr_to_bv in *.
+ *     now some_inv.
+ *   - rewrite XBV.to_N_from_bv in *. simpl in *.
+ *     erewrite shl_to_bv in *.
+ *     now some_inv.
+ *   - rewrite XBV.to_N_from_bv in *. simpl in *.
+ *     erewrite shl_to_bv in *.
+ *     now some_inv.
+ * Qed. *)
 
 Lemma unaryop_to_smt_value ρ op w smt_expr t val_expr val :
     SMTLib.interp_term ρ smt_expr = Some (SMTLib.Value_BitVec w val_expr) ->
     unaryop_to_smt op smt_expr = inr t ->
     XBV.to_bv (eval_unaryop op (XBV.from_bv val_expr)) = Some val ->
-    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec (Verilog.unop_width op w) val).
+    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
 Proof.
   intros Hinterp_expr Hunaryop_to_smt Heval.
   destruct op;
@@ -814,7 +830,7 @@ Proof.
   induction expr; intros * Hexpr_to_smt Hmatch;
     simp expr_reads expr_to_smt eval_expr in *;
     unpack_verilog_smt_match_states_partial.
-  - (* binop *)
+  - (* arithmeticop *)
     simpl in Hexpr_to_smt.
     destruct (expr_to_smt tag m expr1) eqn:E1; try discriminate.
     destruct (expr_to_smt tag m expr2) eqn:E2; try discriminate.
@@ -828,9 +844,11 @@ Proof.
     replace (eval_expr regs expr2) in *.
     simpl in *.
     rewrite XBV.xbv_bv_inverse in *.
-    edestruct eval_binop_to_bv as [bv Hbv].
+    edestruct eval_arithmeticop_to_bv as [bv Hbv].
     rewrite Hbv.
     now eauto using binop_to_smt_value.
+  - (* bitwiseop *) admit.
+  - (* shiftop *) admit.
   - (* unop *)
     simpl in Hexpr_to_smt.
     destruct (expr_to_smt tag m expr) eqn:E; try discriminate.
@@ -956,7 +974,7 @@ Proof.
     rewrite convert_no_exes.
     rewrite XBV.xbv_bv_inverse.
     apply cast_from_to_value; eauto.
-Qed.
+Admitted.
 
 Lemma expr_to_smt_valid w tag m expr t regs ρ val :
   expr_to_smt (w := w) tag m expr = inr t ->

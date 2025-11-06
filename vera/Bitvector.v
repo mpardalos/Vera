@@ -34,6 +34,8 @@ Module RawBV.
   Definition is_zero (a : bitvector) :=
     bv_eq a (zeros (size a)).
 
+  Definition ones (n : N) := List.repeat true (N.to_nat n).
+
   Fixpoint of_pos_full (value : positive) : bitvector :=
     match value with
     | xH => [true]
@@ -224,6 +226,16 @@ End RawBV.
 
 Module BV.
   Include BITVECTOR_LIST.
+
+  Program Definition ones (n : N) : bitvector n :=
+    {|
+      bv := RawBV.ones n;
+    |}.
+  Next Obligation.
+    unfold RawBV.ones, RawBV.size.
+    rewrite List.repeat_length.
+    apply N2Nat.id.
+  Qed.
 
   Lemma of_bits_equal n (bv1 bv2 : bitvector n) :
     bits bv1 = bits bv2 ->

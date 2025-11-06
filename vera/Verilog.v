@@ -26,35 +26,44 @@ Import SigTNotations.
 Local Open Scope monad_scope.
 
 Module VerilogCommon.
-  Variant binop :=
-    | BinaryPlus (* '+' *)
-    | BinaryMinus (* '-' *)
-    | BinaryStar (* '*' *)
-    (* | BinarySlash (* '/' *) *)
-    (* | BinaryPercent (* '%' *) *)
-    (* | BinaryEqualsEquals (* '==' *) *)
-    (* | BinaryNotEquals (* '!=' *) *)
-    (* | BinaryEqualsEqualsEquals (* '===' *) *)
-    (* | BinaryNotEqualsEquals (* '!==' *) *)
-    (* | BinaryWildcardEqual (* '==?' *) *)
-    (* | BinaryWildcardNotEqual (* '!=?' *) *)
-    (* | BinaryLogicalAnd (* '&&' *) *)
-    (* | BinaryLogicalOr (* '||' *) *)
+  Variant arithmeticop :=
+    | ArithmeticPlus (* '+' *)
+    | ArithmeticMinus (* '-' *)
+    | ArithmeticStar (* '*' *)
+    (* | ArithmeticSlash (* '/' *) *)
+    (* | ArithmeticPercent (* '%' *) *)
     (* | BinaryExponent (* '**' *) *)
-    (* | BinaryLessThan (* '<' *) *)
-    (* | BinaryLessThanEqual (* '<=' *) *)
-    (* | BinaryGreaterThan (* '>' *) *)
-    (* | BinaryGreaterThanEqual (* '>=' *) *)
+    .
+
+Variant bitwiseop :=
     | BinaryBitwiseAnd (* '&' *)
     | BinaryBitwiseOr (* '|' *)
     (* | BinaryBitwiseXor (* '^' *) *)
-    (* | BinaryXNor (* '^~', '~^' *) *)
+  .
+
+  (* Variant logicalop :=
+   *   | BinaryEqualsEquals (\* '==' *\)
+   *   | BinaryEqualsEqualsEquals (\* '===' *\)
+   *   | BinaryGreaterThan (\* '>' *\)
+   *   | BinaryGreaterThanEqual (\* '>=' *\)
+   *   | BinaryLessThan (\* '<' *\)
+   *   | BinaryLessThanEqual (\* '<=' *\)
+   *   | BinaryLogicalAnd (\* '&&' *\)
+   *   | BinaryLogicalEquivalence (\* '<->' *\)
+   *   | BinaryLogicalImplication (\* '->' *\)
+   *   | BinaryLogicalOr (\* '||' *\)
+   *   | BinaryNotEquals (\* '!=' *\)
+   *   | BinaryNotEqualsEquals (\* '!==' *\)
+   *   | BinaryWildcardEqual (\* '==?' *\)
+   *   | BinaryWildcardNotEqual (\* '!=?' *\)
+   *   | BinaryXNor (\* '^~', '~^' *\)
+   * . *)
+
+  Variant shiftop :=
     | BinaryShiftRight (* '>>' *)
     | BinaryShiftLeft (* '<<' *)
     (* | BinaryShiftRightArithmetic (* '>>>' *) *)
     | BinaryShiftLeftArithmetic (* '<<<' *)
-    (* | BinaryLogicalImplication (* '->' *) *)
-    (* | BinaryLogicalEquivalence (* '<->' *) *)
   .
 
 
@@ -75,39 +84,37 @@ Module VerilogCommon.
   Section op_show.
     Local Open Scope string.
     Import ShowNotation.
-    Global Instance binop_Show : Show binop :=
+    Global Instance arithmeticop_Show : Show arithmeticop :=
       { show u :=
           match u with
-          | BinaryPlus => "+"
-          | BinaryMinus => "-"
-          | BinaryStar => "*"
+          | ArithmeticPlus => "+"
+          | ArithmeticMinus => "-"
+          | ArithmeticStar => "*"
           (* | BinarySlash => "/" *)
           (* | BinaryPercent => "%" *)
-          (* | BinaryEqualsEquals => "==" *)
-          (* | BinaryNotEquals => "!=" *)
-          (* | BinaryEqualsEqualsEquals => "===" *)
-          (* | BinaryNotEqualsEquals => "!==" *)
-          (* | BinaryWildcardEqual => "==?" *)
-          (* | BinaryWildcardNotEqual => "!=?" *)
-          (* | BinaryLogicalAnd => "&&" *)
-          (* | BinaryLogicalOr => "||" *)
           (* | BinaryExponent => "**" *)
-          (* | BinaryLessThan => "<" *)
-          (* | BinaryLessThanEqual => "<=" *)
-          (* | BinaryGreaterThan => ">" *)
-          (* | BinaryGreaterThanEqual => ">=" *)
-          | BinaryBitwiseAnd => "&"
-          | BinaryBitwiseOr => "|"
-          (* | BinaryBitwiseXor => "^" *)
-          (* | BinaryXNor => "^~" *)
+          end
+      }.
+
+    Global Instance shiftop_Show : Show shiftop :=
+      { show u :=
+          match u with
           | BinaryShiftRight => ">>"
           | BinaryShiftLeft => "<<"
           (* | BinaryShiftRightArithmetic => ">>>" *)
           | BinaryShiftLeftArithmetic => "<<<"
-          (* | BinaryLogicalImplication => "->" *)
-          (* | BinaryLogicalEquivalence => "<->" *)
           end
       }.
+
+    Global Instance bitwiseop_Show : Show bitwiseop :=
+      { show u :=
+          match u with
+          | BinaryBitwiseAnd => "&"
+          | BinaryBitwiseOr => "|"
+          (* | BinaryBitwiseXor => "^" *)
+          end
+      }.
+
     Global Instance unaryop_Show : Show unaryop :=
       { show u :=
           match u with
@@ -162,46 +169,11 @@ Module Verilog.
   Instance dec_eq_variable (x y : variable) : DecProp (x = y) :=
     mk_dec_eq.
 
-  Equations binop_width : Verilog.binop -> N -> N :=
-    binop_width BinaryPlus n := n; (* "+" *)
-    binop_width BinaryMinus n := n; (* "-" *)
-    binop_width BinaryStar n := n; (* "*" *)
-    (* binop_width BinarySlash n := n; (* "/" *) *)
-    (* binop_width BinaryPercent n := n; (* "%" *) *)
-    (* binop_width BinaryExponent n := n; (* "**" *) *)
-    (* binop_width BinaryEqualsEquals n := 1; (* "==" *) *)
-    (* binop_width BinaryNotEquals n := 1; (* "!=" *) *)
-    (* binop_width BinaryEqualsEqualsEquals n := 1; (* "===" *) *)
-    (* binop_width BinaryNotEqualsEquals n := 1; (* "!==" *) *)
-    (* binop_width BinaryWildcardEqual n := 1; (* "==?" *) *)
-    (* binop_width BinaryWildcardNotEqual n := 1; (* "!=?" *) *)
-    (* binop_width BinaryLogicalAnd n := 1; (* "&&" *) *)
-    (* binop_width BinaryLogicalOr n := 1; (* "||" *) *)
-    (* binop_width BinaryLessThan n := 1; (* "<" *) *)
-    (* binop_width BinaryLessThanEqual n := 1; (* "<=" *) *)
-    (* binop_width BinaryGreaterThan n := 1; (* ">" *) *)
-    (* binop_width BinaryGreaterThanEqual n := 1; (* ">=" *) *)
-    binop_width BinaryBitwiseAnd n := n; (* "&" *)
-    binop_width BinaryBitwiseOr n := n; (* "|" *)
-    (* binop_width BinaryBitwiseXor n := n; (* "^" *) *)
-    (* binop_width BinaryXNor n := n; (* "^~" *) *)
-    binop_width BinaryShiftRight n := n; (* ">>" *)
-    binop_width BinaryShiftLeft n := n; (* "<<" *)
-    (* binop_width BinaryShiftRightArithmetic n := n; (* ">>>" *) *)
-    binop_width BinaryShiftLeftArithmetic n := n; (* "<<<" *)
-    (* binop_width BinaryLogicalImplication n := 1; (* "->" *) *)
-    (* binop_width BinaryLogicalEquivalence n := 1 (* "<->" *) *)
-  .
-
-  Equations unop_width : Verilog.unaryop -> N -> N :=
-    unop_width UnaryPlus n := n.
-
-  Global Transparent binop_width unop_width.
-
   Inductive expression : N -> Type :=
-  (* THIS IS WRONG FOR SHIFTS! The two sides don't need to have the same width *)
-  | BinaryOp {w} (op : binop) : expression w -> expression w -> expression (binop_width op w)
-  | UnaryOp {w} (op : unaryop) : expression w -> expression (unop_width op w)
+  | ArithmeticOp {w} (op : arithmeticop) : expression w -> expression w -> expression w
+  | BitwiseOp {w} (op : bitwiseop) : expression w -> expression w -> expression w
+  | ShiftOp {w1 w2} (op : shiftop) : expression w1 -> expression w2 -> expression w1
+  | UnaryOp {w} (op : unaryop) : expression w -> expression w
   | Conditional {w_val w_cond : N} : expression w_cond -> expression w_val -> expression w_val -> expression w_val
   | BitSelect {w_val w_sel} : expression w_val -> expression w_sel -> expression 1
   (* We break up the concatenation to make the type more convenient *)
@@ -285,7 +257,11 @@ Module Verilog.
     expr_reads {w} : Verilog.expression w -> list Verilog.variable :=
     expr_reads (Verilog.UnaryOp op operand) :=
       expr_reads operand ;
-    expr_reads (Verilog.BinaryOp op lhs rhs) :=
+    expr_reads (Verilog.ArithmeticOp op lhs rhs) :=
+      expr_reads lhs ++ expr_reads rhs ;
+    expr_reads (Verilog.BitwiseOp op lhs rhs) :=
+      expr_reads lhs ++ expr_reads rhs ;
+    expr_reads (Verilog.ShiftOp op lhs rhs) :=
       expr_reads lhs ++ expr_reads rhs ;
     expr_reads (Verilog.Conditional cond tBranch fBranch) :=
       expr_reads cond ++ expr_reads tBranch ++ expr_reads fBranch ;
@@ -364,7 +340,9 @@ Module RawVerilog.
   Include VerilogCommon.
 
   Inductive expression : Type :=
-  | BinaryOp (op : binop) (lhs rhs : expression)
+  | ArithmeticOp (op : arithmeticop) (lhs rhs : expression)
+  | BitwiseOp (op : bitwiseop) (lhs rhs : expression)
+  | ShiftOp (op : shiftop) (lhs rhs : expression)
   | UnaryOp (op : unaryop) (expr : expression)
   | Conditional (cond ifT ifF : expression)
   | BitSelect (vec idx : expression)
@@ -449,11 +427,20 @@ Equations cast_width {w1} (err : string) (w2 : N) (e : Verilog.expression w1)
 }.
 
 Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expression w } := {
-| RawVerilog.BinaryOp op lhs rhs =>
+| RawVerilog.ArithmeticOp op lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width "Different widths in binop" w_lhs t_rhs in
-  inr (_; Verilog.BinaryOp op t_lhs t_rhs')
+  let* t_rhs' := cast_width ("Different widths in " ++ to_string op) w_lhs t_rhs in
+  inr (_; Verilog.ArithmeticOp op t_lhs t_rhs')
+| RawVerilog.BitwiseOp op lhs rhs =>
+  let* (w_lhs; t_lhs) := tc_expr lhs in
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width ("Different widths in " ++ to_string op) w_lhs t_rhs in
+  inr (_; Verilog.BitwiseOp op t_lhs t_rhs')
+| RawVerilog.ShiftOp op lhs rhs =>
+  let* (w_lhs; t_lhs) := tc_expr lhs in
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  inr (_; Verilog.ShiftOp op t_lhs t_rhs)
 | RawVerilog.UnaryOp op expr =>
   let* (w_expr; t_expr) := tc_expr expr in
   inr (_; Verilog.UnaryOp op t_expr)

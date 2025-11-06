@@ -84,22 +84,28 @@ Section expr_to_smt.
          (cast_from_to vec_width (N.max vec_width idx_width) vec_smt)
          (cast_from_to idx_width (N.max vec_width idx_width) idx_smt)).
 
-  Equations binop_to_smt : Verilog.binop -> SMTLib.term -> SMTLib.term -> transf SMTLib.term :=
-    binop_to_smt Verilog.BinaryPlus lhs rhs :=
+  Equations arithmeticop_to_smt : Verilog.arithmeticop -> SMTLib.term -> SMTLib.term -> transf SMTLib.term :=
+    arithmeticop_to_smt Verilog.ArithmeticPlus lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVAdd lhs rhs);
-    binop_to_smt Verilog.BinaryMinus lhs rhs :=
+    arithmeticop_to_smt Verilog.ArithmeticMinus lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVAdd lhs (SMTLib.Term_BVUnaryOp SMTLib.BVNeg rhs));
-    binop_to_smt Verilog.BinaryStar lhs rhs :=
+    arithmeticop_to_smt Verilog.ArithmeticStar lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVMul lhs rhs);
-    binop_to_smt Verilog.BinaryShiftLeft lhs rhs :=
+    .
+
+  Equations shiftop_to_smt : Verilog.shiftop -> SMTLib.term -> SMTLib.term -> transf SMTLib.term :=
+    shiftop_to_smt Verilog.BinaryShiftLeft lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVShl lhs rhs);
-    binop_to_smt Verilog.BinaryShiftLeftArithmetic lhs rhs :=
+    shiftop_to_smt Verilog.BinaryShiftLeftArithmetic lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVShl lhs rhs);
-    binop_to_smt Verilog.BinaryShiftRight lhs rhs :=
+    shiftop_to_smt Verilog.BinaryShiftRight lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVShr lhs rhs);
-    binop_to_smt Verilog.BinaryBitwiseOr lhs rhs :=
+  .
+
+  Equations bitwiseop_to_smt : Verilog.bitwiseop -> SMTLib.term -> SMTLib.term -> transf SMTLib.term :=
+    bitwiseop_to_smt Verilog.BinaryBitwiseOr lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVOr lhs rhs);
-    binop_to_smt Verilog.BinaryBitwiseAnd lhs rhs :=
+    bitwiseop_to_smt Verilog.BinaryBitwiseAnd lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVAnd lhs rhs)
   .
 
@@ -119,14 +125,40 @@ Section expr_to_smt.
       ifT ifF
   .
 
+  Definition sign_extend (from to : N) (term : SMTLib.term) :=
+    let added_width := (to - from)%N in
+    let msb := N.to_nat (from - 1)%N in
+    if (N.eqb added_width 0%N)
+    then term
+    else
+    SMTLib.Term_ITE
+      (SMTLib.Term_Eq (SMTLib.Term_BVExtract msb msb term) (SMTLib.Term_BVLit 1 (BV.zeros 1)))
+      (SMTLib.Term_BVConcat term (SMTLib.Term_BVLit _ (BV.zeros added_width)))
+      (SMTLib.Term_BVConcat term (SMTLib.Term_BVLit _ (BV.ones added_width)))
+      .
+
   Equations expr_to_smt {w} : Verilog.expression w -> transf SMTLib.term :=
     expr_to_smt (Verilog.UnaryOp op operand) :=
       operand__smt <- expr_to_smt operand ;;
       unaryop_to_smt op operand__smt ;
-    expr_to_smt (Verilog.BinaryOp op lhs rhs) :=
+    expr_to_smt (Verilog.ArithmeticOp op lhs rhs) :=
       lhs__smt <- expr_to_smt lhs ;;
       rhs__smt <- expr_to_smt rhs ;;
-      binop_to_smt op lhs__smt rhs__smt;
+      arithmeticop_to_smt op lhs__smt rhs__smt;
+    expr_to_smt (Verilog.BitwiseOp op lhs rhs) :=
+      lhs__smt <- expr_to_smt lhs ;;
+      rhs__smt <- expr_to_smt rhs ;;
+      bitwiseop_to_smt op lhs__smt rhs__smt;
+    expr_to_smt (Verilog.ShiftOp op lhs rhs) :=
+      lhs__smt_short <- expr_to_smt lhs ;;
+      rhs__smt_short <- expr_to_smt rhs ;;
+      let lhs_width := Verilog.expr_type lhs in
+      let rhs_width := Verilog.expr_type rhs in
+      let op_width := N.max lhs_width rhs_width in
+      let lhs__smt := cast_from_to lhs_width op_width lhs__smt_short in
+      let rhs__smt := cast_from_to rhs_width op_width rhs__smt_short in
+      long_result <- shiftop_to_smt op lhs__smt rhs__smt ;;
+      ret (cast_from_to op_width lhs_width long_result);
     expr_to_smt (Verilog.Concatenation e1 e2) :=
       e1_smt <- expr_to_smt e1 ;;
       e2_smt <- expr_to_smt e2 ;;

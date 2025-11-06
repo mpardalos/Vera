@@ -82,7 +82,8 @@ let read_type_as_vector str =
     in
     let hi = int_of_string (Str.matched_group 3 str) in
     let lo = int_of_string (Str.matched_group 4 str) in
-    if is_signed then failwith (Printf.sprintf "Signed types not implemented (Got '%s')" str)
+    if is_signed then
+      failwith (Printf.sprintf "Signed types not implemented (Got '%s')" str)
     else Vera.RawVerilog.Vector (hi, lo)
   else raise (SlangUnexpectedValue ("Verilog type", str))
 
@@ -177,19 +178,19 @@ let read_constant const_str =
   | Failure _ -> raise (SlangUnexpectedValue ("constant", const_str))
   | Not_found -> raise (SlangUnexpectedValue ("constant", const_str))
 
-let read_binary_op : string -> Vera.RawVerilog.binop = function
-  | "LogicalShiftLeft" -> Vera.RawVerilog.BinaryShiftLeft
-  | "Add" -> Vera.RawVerilog.BinaryPlus
-  | "Subtract" -> Vera.RawVerilog.BinaryMinus
-  | "Multiply" -> Vera.RawVerilog.BinaryStar
+let read_binary_op = function
+  | "Add" -> `Arithmetic Vera.RawVerilog.ArithmeticPlus
+  | "Subtract" -> `Arithmetic Vera.RawVerilog.ArithmeticMinus
+  | "Multiply" -> `Arithmetic Vera.RawVerilog.ArithmeticStar
   (* | "LessThan" -> Vera.RawVerilog.BinaryLessThan *)
   (* | "LessThanEqual" -> Vera.RawVerilog.BinaryLessThanEqual *)
   (* | "GreaterThan" -> Vera.RawVerilog.BinaryGreaterThan *)
   (* | "Equality" -> Vera.RawVerilog.BinaryEqualsEquals *)
   (* | "LogicalAnd" -> Vera.RawVerilog.BinaryLogicalAnd *)
-  | "BinaryAnd" -> Vera.RawVerilog.BinaryBitwiseAnd
-  | "BinaryOr" -> Vera.RawVerilog.BinaryBitwiseOr
-  | "LogicalShiftRight" -> Vera.RawVerilog.BinaryShiftRight
+  | "BinaryAnd" -> `Bitwise Vera.RawVerilog.BinaryBitwiseAnd
+  | "BinaryOr" -> `Bitwise Vera.RawVerilog.BinaryBitwiseOr
+  | "LogicalShiftLeft" -> `Shift Vera.RawVerilog.BinaryShiftLeft
+  | "LogicalShiftRight" -> `Shift Vera.RawVerilog.BinaryShiftRight
   | str -> raise (SlangUnexpectedValue ("binary operator", str))
 
 let read_unary_op = function
@@ -242,11 +243,14 @@ let rec parse_expression json =
         json |> member "operands" |> to_list |> List.map parse_expression
       in
       fold_concat exprs
-  | "BinaryOp" ->
+  | "BinaryOp" -> (
       let op = json |> member "op" |> to_string |> read_binary_op in
       let lhs = json |> member "left" |> parse_expression in
       let rhs = json |> member "right" |> parse_expression in
-      Vera.RawVerilog.BinaryOp (op, lhs, rhs)
+      match op with
+      | `Arithmetic op -> Vera.RawVerilog.ArithmeticOp (op, lhs, rhs)
+      | `Bitwise op -> Vera.RawVerilog.BitwiseOp (op, lhs, rhs)
+      | `Shift op -> Vera.RawVerilog.ShiftOp (op, lhs, rhs))
   | "UnaryOp" ->
       (* let op = json |> member "op" |> to_string |> read_unary_op in *)
       let operand = json |> member "operand" |> parse_expression in

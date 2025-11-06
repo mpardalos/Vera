@@ -149,27 +149,33 @@ Module CombinationalOnly.
     or_bit X _ := X;
     or_bit _ X := X.
 
-  Equations eval_binop {n} (op : Verilog.binop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv (Verilog.binop_width op n) :=
-    eval_binop Verilog.BinaryPlus l r := bv_binop (@BV.bv_add _) l r;
-    eval_binop Verilog.BinaryMinus l r := bv_binop (fun bvl bvr => BV.bv_add bvl (BV.bv_neg bvr)) l r;
-    eval_binop Verilog.BinaryStar l r := bv_binop (@BV.bv_mult _) l r;
-    eval_binop Verilog.BinaryBitwiseAnd l r := bitwise_binop and_bit l r;
-    eval_binop Verilog.BinaryBitwiseOr l r := bitwise_binop or_bit l r;
-    eval_binop Verilog.BinaryShiftLeft l r with XBV.to_N r := {
+  Equations eval_arithmeticop {n} (op : Verilog.arithmeticop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv n :=
+    eval_arithmeticop Verilog.ArithmeticPlus l r := bv_binop (@BV.bv_add _) l r;
+    eval_arithmeticop Verilog.ArithmeticMinus l r := bv_binop (fun bvl bvr => BV.bv_add bvl (BV.bv_neg bvr)) l r;
+    eval_arithmeticop Verilog.ArithmeticStar l r := bv_binop (@BV.bv_mult _) l r;
+  .
+
+  Equations eval_bitwiseop {n} (op : Verilog.bitwiseop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv n :=
+    eval_bitwiseop Verilog.BinaryBitwiseAnd l r := bitwise_binop and_bit l r;
+    eval_bitwiseop Verilog.BinaryBitwiseOr l r := bitwise_binop or_bit l r;
+  .
+
+  Equations eval_shiftop {n1 n2} (op : Verilog.shiftop) : XBV.xbv n1 -> XBV.xbv n2 -> XBV.xbv n1 :=
+    eval_shiftop Verilog.BinaryShiftLeft l r with XBV.to_N r := {
       | Some shamt => XBV.shl l shamt
-      | None => XBV.exes n
+      | None => XBV.exes n1
       };
-    eval_binop Verilog.BinaryShiftRight l r with XBV.to_N r := {
+    eval_shiftop Verilog.BinaryShiftRight l r with XBV.to_N r := {
       | Some shamt => XBV.shr l shamt
-      | None => XBV.exes n
+      | None => XBV.exes n1
       };
-    eval_binop Verilog.BinaryShiftLeftArithmetic l r with XBV.to_N r := {
+    eval_shiftop Verilog.BinaryShiftLeftArithmetic l r with XBV.to_N r := {
       | Some shamt => XBV.shl l shamt
-      | None => XBV.exes n
+      | None => XBV.exes n1
       };
   .
 
-  Equations eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv (Verilog.unop_width op n) :=
+  Equations eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv n :=
     eval_unaryop Verilog.UnaryPlus x := x
   .
 
@@ -189,7 +195,6 @@ Module CombinationalOnly.
   Next Obligation. crush. Qed.
   Next Obligation. crush. Qed.
   Next Obligation. crush. Qed.
-  Next Obligation. crush. Defined.
 
   Definition select_bit {w1 w2} (vec : XBV.xbv w1) (idx : XBV.xbv w2) : XBV.xbv 1 :=
     match XBV.to_N idx with
@@ -212,10 +217,18 @@ Module CombinationalOnly.
     eval_expr regs (Verilog.UnaryOp op operand) :=
       let* operand_val := eval_expr regs operand in
       Some (eval_unaryop op operand_val);
-    eval_expr regs (Verilog.BinaryOp op lhs rhs) :=
+    eval_expr regs (Verilog.ArithmeticOp op lhs rhs) :=
       let* lhs__val := eval_expr regs lhs in
       let* rhs__val := eval_expr regs rhs in
-      Some (eval_binop op lhs__val rhs__val);
+      Some (eval_arithmeticop op lhs__val rhs__val);
+    eval_expr regs (Verilog.BitwiseOp op lhs rhs) :=
+      let* lhs__val := eval_expr regs lhs in
+      let* rhs__val := eval_expr regs rhs in
+      Some (eval_bitwiseop op lhs__val rhs__val);
+    eval_expr regs (Verilog.ShiftOp op lhs rhs) :=
+      let* lhs__val := eval_expr regs lhs in
+      let* rhs__val := eval_expr regs rhs in
+      Some (eval_shiftop op lhs__val rhs__val);
     eval_expr regs (Verilog.Conditional cond tBranch fBranch) :=
       let* cond__val := eval_expr regs cond in
       let* tBranch__val := eval_expr regs tBranch in
@@ -295,6 +308,7 @@ Module CombinationalOnly.
     run_multistep (MkVerilogState reg (p :: ps)) :=
       let* reg' := exec_module_item reg p in
       run_multistep (MkVerilogState reg' ps).
+  Next Obligation. crush. Defined.
   Next Obligation. crush. Qed.
 
   Definition step (st1 st2 : VerilogState) := run_step st1 = Some st2.

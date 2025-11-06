@@ -1,12 +1,25 @@
 open Format
 open Vera
 
-let binop fmt = function
-  | Verilog.BinaryPlus -> fprintf fmt "+"
-  | Verilog.BinaryMinus -> fprintf fmt "-"
-  | Verilog.BinaryStar -> fprintf fmt "*"
+let arithmeticop fmt = function
+  | Verilog.ArithmeticPlus -> fprintf fmt "+"
+  | Verilog.ArithmeticMinus -> fprintf fmt "-"
+  | Verilog.ArithmeticStar -> fprintf fmt "*"
   (* | Verilog.BinarySlash -> fprintf fmt "/" *)
   (* | Verilog.BinaryPercent -> fprintf fmt "%%" *)
+
+let bitwiseop fmt = function
+  | Verilog.BinaryBitwiseAnd -> fprintf fmt "&"
+  | Verilog.BinaryBitwiseOr -> fprintf fmt "|"
+  (* | Verilog.BinaryBitwiseXor -> fprintf fmt "^" *)
+  (* | Verilog.BinaryXNor -> fprintf fmt "^~" *)
+
+let shiftop fmt = function
+  | Verilog.BinaryShiftRight -> fprintf fmt ">>"
+  | Verilog.BinaryShiftLeft -> fprintf fmt "<<"
+  (* | Verilog.BinaryShiftRightArithmetic -> fprintf fmt ">>>" *)
+  | Verilog.BinaryShiftLeftArithmetic -> fprintf fmt "<<<"
+
   (* | Verilog.BinaryEqualsEquals -> fprintf fmt "==" *)
   (* | Verilog.BinaryNotEquals -> fprintf fmt "!=" *)
   (* | Verilog.BinaryEqualsEqualsEquals -> fprintf fmt "===" *)
@@ -20,14 +33,6 @@ let binop fmt = function
   (* | Verilog.BinaryLessThanEqual -> fprintf fmt "<=" *)
   (* | Verilog.BinaryGreaterThan -> fprintf fmt ">" *)
   (* | Verilog.BinaryGreaterThanEqual -> fprintf fmt ">=" *)
-  | Verilog.BinaryBitwiseAnd -> fprintf fmt "&"
-  | Verilog.BinaryBitwiseOr -> fprintf fmt "|"
-  (* | Verilog.BinaryBitwiseXor -> fprintf fmt "^" *)
-  (* | Verilog.BinaryXNor -> fprintf fmt "^~" *)
-  | Verilog.BinaryShiftRight -> fprintf fmt ">>"
-  | Verilog.BinaryShiftLeft -> fprintf fmt "<<"
-  (* | Verilog.BinaryShiftRightArithmetic -> fprintf fmt ">>>" *)
-  | Verilog.BinaryShiftLeftArithmetic -> fprintf fmt "<<<"
   (* | Verilog.BinaryLogicalImplication -> fprintf fmt "->" *)
   (* | Verilog.BinaryLogicalEquivalence -> fprintf fmt "<->" *)
 
@@ -75,8 +80,12 @@ module Raw = struct
     | RawVerilog.Conditional (cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f
-    | RawVerilog.BinaryOp (op, l, r) ->
-        fprintf fmt "( %a@ %a@ %a )" expression l binop op expression r
+    | RawVerilog.ArithmeticOp (op, l, r) ->
+        fprintf fmt "( %a@ %a@ %a )" expression l arithmeticop op expression r
+    | RawVerilog.BitwiseOp (op, l, r) ->
+        fprintf fmt "( %a@ %a@ %a )" expression l bitwiseop op expression r
+    | RawVerilog.ShiftOp (op, l, r) ->
+        fprintf fmt "( %a@ %a@ %a )" expression l shiftop op expression r
     | RawVerilog.UnaryOp ((* op, *) e) ->
         (* fprintf fmt "( %a@ %a )" unaryop op expression e *)
         fprintf fmt "( +@ %a )" expression e
@@ -143,8 +152,12 @@ module Typed = struct
         fprintf fmt "%d'b%s" (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
     | Verilog.Resize (_, t, e) ->
         fprintf fmt "( %a@ as@ %a )" expression e vtype t
-    | Verilog.BinaryOp (_, op, l, r) ->
-        fprintf fmt "( %a@ %a@ %a )" expression l binop op expression r
+    | Verilog.ArithmeticOp (_, op, l, r) ->
+        fprintf fmt "( %a@ %a@ %a )" expression l arithmeticop op expression r
+    | Verilog.BitwiseOp (_, op, l, r) ->
+        fprintf fmt "( %a@ %a@ %a )" expression l bitwiseop op expression r
+    | Verilog.ShiftOp (_, _, op, l, r) ->
+        fprintf fmt "( %a@ %a@ %a )" expression l shiftop op expression r
     | Verilog.UnaryOp (_, e) ->
         (* fprintf fmt "( %a@ %a )" unaryop op expression e *)
         fprintf fmt "( +@ %a )" expression e
