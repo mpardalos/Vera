@@ -6,16 +6,16 @@ From vera Require Common.
 From vera Require Bitvector.
 From vera Require AssignmentForwarding.
 
-From SMTCoq Require Import BVList.
-From SMTCoqApi Require SMTLib.
+From vera Require Import BVList.
+From vera Require SMTLib.
 
-From Coq Require Extraction.
-From Coq Require Import BinNat.
-From Coq Require Import extraction.ExtrOcamlBasic.
-From Coq Require Import extraction.ExtrOcamlString.
-From Coq Require Import extraction.ExtrOcamlZInt.
-From Coq Require Import BinInt.
-From Coq Require Import String.
+From Stdlib Require Extraction.
+From Stdlib Require Import BinNat.
+From Stdlib Require Import extraction.ExtrOcamlBasic.
+From Stdlib Require Import extraction.ExtrOcamlString.
+From Stdlib Require Import extraction.ExtrOcamlZInt.
+From Stdlib Require Import BinInt.
+From Stdlib Require Import String.
 
 Import SigTNotations.
 

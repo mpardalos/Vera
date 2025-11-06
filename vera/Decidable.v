@@ -1,12 +1,12 @@
-From Coq Require Import List.
-From Coq Require Import String.
-From Coq Require Import BinNums.
-From Coq Require Import BinNat.
-From Coq Require Import BinInt.
-From Coq Require Import PeanoNat.
-From Coq Require Import Lia.
+From Stdlib Require Import List.
+From Stdlib Require Import String.
+From Stdlib Require Import BinNums.
+From Stdlib Require Import BinNat.
+From Stdlib Require Import BinInt.
+From Stdlib Require Import PeanoNat.
+From Stdlib Require Import Lia.
 
-From SMTCoqApi Require SMTLib.
+From vera Require SMTLib.
 
 Class DecProp (P : Prop) := dec : { P } + { ~ P } .
 
@@ -101,7 +101,7 @@ Instance dec_eq_list {A} `{forall (x y : A), DecProp (x = y)} (x y : list A) : D
   mk_dec_eq!(list_eq_dec).
 
 Instance dec_eq_sort (x y : SMTLib.sort) : DecProp (x = y) :=
-  mk_dec_eq(SMTLib.dec_sort).
+  mk_dec_eq!(SMTLib.dec_sort).
 
 Instance dec_Forall {A} {P : A -> Prop} {decP : forall x, DecProp (P x)} l :
   DecProp (Forall P l).

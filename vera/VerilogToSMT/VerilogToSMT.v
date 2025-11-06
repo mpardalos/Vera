@@ -1,11 +1,11 @@
-From Coq Require Import BinIntDef.
-From Coq Require Import BinNums.
-From Coq Require Import FSets.
-From Coq Require Import List.
-From Coq Require Import Program.
-From Coq Require Import Psatz.
-From Coq Require Import String.
-From Coq Require Import ZArith.
+From Stdlib Require Import BinIntDef.
+From Stdlib Require Import BinNums.
+From Stdlib Require Import FSets.
+From Stdlib Require Import List.
+From Stdlib Require Import Program.
+From Stdlib Require Import Psatz.
+From Stdlib Require Import String.
+From Stdlib Require Import ZArith.
 
 From Equations Require Import Equations.
 From ExtLib Require Import Data.List.
@@ -21,7 +21,7 @@ From ExtLib Require Import Structures.Monoid.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Programming.Show.
 
-From SMTCoqApi Require SMTLib.
+From vera Require SMTLib.
 
 From vera Require Import Verilog.
 From vera Require Import Common.

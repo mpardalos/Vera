@@ -1,5 +1,4 @@
 open SMTPP
-open Format
 
 type sat_result = SAT | UNSAT | Error
 

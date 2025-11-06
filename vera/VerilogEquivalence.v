@@ -22,11 +22,11 @@ From ExtLib Require Import Structures.Monoid.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Programming.Show.
 
-From Coq Require Import ZArith.
-From Coq Require Import String.
-From Coq Require Import List.
-From Coq Require Import Sorting.Permutation.
-From Coq Require Import Structures.Equalities.
+From Stdlib Require Import ZArith.
+From Stdlib Require Import String.
+From Stdlib Require Import List.
+From Stdlib Require Import Sorting.Permutation.
+From Stdlib Require Import Structures.Equalities.
 
 From Equations Require Import Equations.
 

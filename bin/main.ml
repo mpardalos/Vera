@@ -7,32 +7,6 @@ let ( >>= ) (x : ('err, 'a) Vera.sum) (f : 'a -> ('err, 'b) Vera.sum) =
 
 let ( let* ) = ( >>= )
 let ( =<< ) a b = b >>= a
-let ret x = Vera.Inr x
-
-let fmap f x =
-  let* xval = x in
-  ret (f xval)
-
-let ( <$> ) = fmap
-let ( <&> ) x f = fmap f x
-
-let ( >=> ) (f : 'a -> ('err, 'b) Vera.sum) (g : 'b -> ('err, 'c) Vera.sum)
-    (x : 'a) : ('err, 'c) Vera.sum =
-  let* y = f x in
-  g y
-
-let usage_and_exit () =
-  eprintf "Usage: %s <command> [args]\n" Sys.argv.(0);
-  eprintf "\n";
-  eprintf "Commands:\n";
-  eprintf "  compare <filename1> <filename2>\n";
-  eprintf "  lower <level> <filename>\n";
-  eprintf "  parse_custom <filename>\n";
-  eprintf "  parse_slang <filename>\n";
-  eprintf "\n";
-  eprintf "Arguments:\n";
-  eprintf "  level: parsed|typed|netlist|smt_netlist|smt\n";
-  exit 1
 
 let module_of_file = ParseSlang.parse_verilog_file
 

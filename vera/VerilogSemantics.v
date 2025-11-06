@@ -1,14 +1,14 @@
-From Coq Require Import BinNat.
-From Coq Require Import String.
-From Coq Require Import Nat.
-From Coq Require Import Structures.OrderedTypeEx.
-From Coq Require Import List.
-From Coq Require Import ssreflect.
-From Coq Require Import Relations.
-From Coq Require Import Structures.Equalities.
-From Coq Require Import Psatz.
-From Coq Require Import Logic.ProofIrrelevance.
-From Coq Require Import Morphisms.
+From Stdlib Require Import BinNat.
+From Stdlib Require Import String.
+From Stdlib Require Import Nat.
+From Stdlib Require Import Structures.OrderedTypeEx.
+From Stdlib Require Import List.
+From Stdlib Require Import ssreflect.
+From Stdlib Require Import Relations.
+From Stdlib Require Import Structures.Equalities.
+From Stdlib Require Import Psatz.
+From Stdlib Require Import Logic.ProofIrrelevance.
+From Stdlib Require Import Morphisms.
 
 From vera Require Import Verilog.
 From vera Require Import Common.
@@ -188,11 +188,10 @@ Module CombinationalOnly.
     convert to value with dec (from < to)%N := {
       | left Hlt => rew _ in XBV.concat (XBV.zeros (to - from)%N) value
       | right Hge with dec (from > to)%N => {
-        | left Hgr => rew _ in XBV.extr value 0 to;
+        | left Hgr => XBV.extr value 0 to;
         | right Hle => rew _ in value
         }
       }.
-  Next Obligation. crush. Qed.
   Next Obligation. crush. Qed.
   Next Obligation. crush. Qed.
 
@@ -309,7 +308,6 @@ Module CombinationalOnly.
       let* reg' := exec_module_item reg p in
       run_multistep (MkVerilogState reg' ps).
   Next Obligation. crush. Defined.
-  Next Obligation. crush. Qed.
 
   Definition step (st1 st2 : VerilogState) := run_step st1 = Some st2.
 

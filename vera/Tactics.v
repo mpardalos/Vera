@@ -1,4 +1,4 @@
-From Coq Require Export Lia.
+From Stdlib Require Export Lia.
 Import EqNotations.
 
 From vera Require Import Decidable.

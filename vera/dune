@@ -2,4 +2,5 @@
 
 (coq.theory
  (name vera)
- (theories Equations ExtLib SMTCoq SMTCoqApi Ltac2))
+ (flags (-w -deprecated-coq-env-var))
+ (theories Stdlib Equations ExtLib Ltac2))

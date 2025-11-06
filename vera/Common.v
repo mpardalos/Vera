@@ -1,12 +1,12 @@
-Require Import BinNat.
-Require Import ZArith.
-Require Import BinNums.
-Require Import BinIntDef.
-Require Import FMapPositive.
-Require Import List.
-Require Import FMaps.
-Require Import FSets.
-Require Import Structures.Equalities.
+From Stdlib Require Import BinNat.
+From Stdlib Require Import ZArith.
+From Stdlib Require Import BinNums.
+From Stdlib Require Import BinIntDef.
+From Stdlib Require Import FMapPositive.
+From Stdlib Require Import List.
+From Stdlib Require Import FMaps.
+From Stdlib Require Import FSets.
+From Stdlib Require Import Structures.Equalities.
 
 From ExtLib Require Import Structures.Maps.
 From ExtLib Require Import Structures.Traversable.
@@ -19,11 +19,11 @@ Import ApplicativeNotation.
 Import FunctorNotation.
 
 From Equations Require Import Equations.
-From Coq Require Import Psatz.
-From Coq Require Import ssreflect.
-From Coq Require Import String.
-From Coq Require Import Logic.ProofIrrelevance.
-From Coq Require Import Arith.PeanoNat.
+From Stdlib Require Import Psatz.
+From Stdlib Require Import ssreflect.
+From Stdlib Require Import String.
+From Stdlib Require Import Logic.ProofIrrelevance.
+From Stdlib Require Import Arith.PeanoNat.
 
 From vera Require Import Tactics.
 From vera Require Import Decidable.

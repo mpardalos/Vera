@@ -1,10 +1,10 @@
-From Coq Require Import ZArith.
-From Coq Require Import BinNums.
-From Coq Require Import String.
-From Coq Require Import List.
-From Coq Require Import Logic.FunctionalExtensionality.
-From Coq Require Import Logic.ProofIrrelevance.
-From Coq Require Import Structures.Equalities.
+From Stdlib Require Import ZArith.
+From Stdlib Require Import BinNums.
+From Stdlib Require Import String.
+From Stdlib Require Import List.
+From Stdlib Require Import Logic.FunctionalExtensionality.
+From Stdlib Require Import Logic.ProofIrrelevance.
+From Stdlib Require Import Structures.Equalities.
 Import ListNotations.
 
 From Equations Require Import Equations.
@@ -18,10 +18,10 @@ From vera Require Import Tactics.
 From vera Require SMTQueries.
 Import VerilogSemantics.CombinationalOnly.
 
-From SMTCoq Require Import bva.BVList.
+From vera Require Import BVList.
 Import BITVECTOR_LIST.
 
-From SMTCoqApi Require SMTLib.
+From vera Require SMTLib.
 
 Import SigTNotations.
 

@@ -17,16 +17,16 @@ From ExtLib Require Import Structures.MonadState.
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.Functor.
 
-From Coq Require List.
-From Coq Require Import String.
-From Coq Require Import Logic.ProofIrrelevance.
-From Coq Require Import NArith.
-From Coq Require Import PeanoNat.
-From Coq Require Import Morphisms.
-From Coq Require Import Classes.Morphisms_Prop.
-From Coq Require Import Setoid.
-From Coq Require ZifyBool.
-From Coq Require Import Program.Equality.
+From Stdlib Require List.
+From Stdlib Require Import String.
+From Stdlib Require Import Logic.ProofIrrelevance.
+From Stdlib Require Import NArith.
+From Stdlib Require Import PeanoNat.
+From Stdlib Require Import Morphisms.
+From Stdlib Require Import Classes.Morphisms_Prop.
+From Stdlib Require Import Setoid.
+From Stdlib Require ZifyBool.
+From Stdlib Require Import Program.Equality.
 
 From Equations Require Import Equations.
 
@@ -159,7 +159,7 @@ Proof.
     simpl.
   intros.
   rewrite List.nth_indep with (d':=O)
-    by (rewrite List.map_length; lia).
+    by (rewrite List.length_map; lia).
   replace O with (RawXBV.bool_to_bit false)
     by reflexivity.
   apply List.map_nth.
@@ -182,7 +182,6 @@ Proof.
     funelim (XBV.to_bv xbv).
     + unfold XBV.raw_to_bv_with_proof in *.
       rewrite e in Heq. inv Heq.
-      rewrite <- Heqcall in *. clear Heqcall.
       f_equal.
       apply BV.of_bits_equal.
       simpl. destruct_rew.
@@ -339,7 +338,7 @@ Proof.
     BVList.RAWBITVECTOR_LIST.size in *.
   subst. simpl.
   erewrite List.nth_indep
-    by (rewrite List.map_length; lia).
+    by (rewrite List.length_map; lia).
   rewrite List.map_nth.
   rewrite RawXBV.bit_to_bool_inverse.
   reflexivity.
@@ -372,21 +371,19 @@ Lemma convert_no_exes w_from w_to (from : BV.bitvector w_from) :
   convert w_to (XBV.from_bv from) = XBV.from_bv (convert_bv w_to from).
 Proof.
   funelim (convert w_to (XBV.from_bv from));
-    destruct_rew; rewrite <- Heqcall; clear Heqcall.
+    try destruct_rew; clear Heqcall.
   - rewrite XBV.zeros_from_bv.
     rewrite xbv_concat_no_exes.
     funelim (convert_bv (to - from + from) from0); [|lia|lia].
-    rewrite <- Heqcall in *; clear Heqcall.
+    clear Heqcall.
     apply XBV.of_bits_equal.
     destruct_rew.
     repeat f_equal.
     crush.
   - rewrite XBV.extr_no_exes by crush.
     funelim (convert_bv to from0); [lia| |lia].
-    rewrite <- Heqcall in *; clear Heqcall.
     reflexivity.
   - funelim (convert_bv from from0); [lia|lia|].
-    rewrite <- Heqcall in *; clear Heqcall.
     now rewrite <- eq_rect_eq.
 Qed.
 
@@ -394,7 +391,7 @@ Lemma convert_from_bv w_from w_to (from : BV.bitvector w_from) :
   exists bv : BV.bitvector w_to, XBV.to_bv (convert w_to (XBV.from_bv from)) = Some bv.
 Proof.
   funelim (convert w_to (XBV.from_bv from));
-    destruct_rew; rewrite <- Heqcall; clear Heqcall.
+    try destruct_rew; try rewrite <- Heqcall; clear Heqcall; simpl.
   - rewrite XBV.zeros_from_bv, XBV.concat_to_bv.
     eauto.
   - rewrite XBV.extr_no_exes by crush.
@@ -409,15 +406,11 @@ Lemma eval_arithmeticop_to_bv op w (lhs rhs : BV.bitvector w) :
 Proof.
   destruct op; simp eval_arithmeticop.
   - funelim (bv_binop (BV.bv_add (n:=w)) (XBV.from_bv lhs) (XBV.from_bv rhs));
-    rewrite <- Heqcall; clear Heqcall;
-      rewrite XBV.xbv_bv_inverse in *;
-      crush.
+      rewrite XBV.xbv_bv_inverse in *; crush.
   - funelim (bv_binop (fun bvl bvr : BV.bitvector w => BV.bv_subt bvl bvr) (XBV.from_bv lhs) (XBV.from_bv rhs));
-    rewrite <- Heqcall; clear Heqcall;
       rewrite XBV.xbv_bv_inverse in *;
       crush.
   - funelim (bv_binop (BV.bv_mult (n:=w)) (XBV.from_bv lhs) (XBV.from_bv rhs));
-    rewrite <- Heqcall; clear Heqcall;
       rewrite XBV.xbv_bv_inverse in *;
       crush.
 Qed.
@@ -502,9 +495,7 @@ Lemma cast_from_to_part_eval ρ from to t w1 bv1:
   SMTLib.interp_term ρ (cast_from_to from to t) = Some (SMTLib.Value_BitVec w1 bv1) ->
   exists w2 bv2, SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w2 bv2).
 Proof.
-  funelim (cast_from_to from to t);
-    rewrite <- Heqcall; clear Heqcall;
-    crush.
+  funelim (cast_from_to from to t); crush.
 Qed.
 
 Lemma eval_expr_defined w regs e :
@@ -656,10 +647,8 @@ Lemma cast_from_to_value ρ w_from w_to smt_from val_from :
       Some (SMTLib.Value_BitVec w_to (convert_bv w_to val_from)).
 Proof.
   intros Hnot_zero Hinterp_from.
-  funelim (convert_bv w_to val_from);
-    rewrite <- Heqcall in *; clear Heqcall.
+  funelim (convert_bv w_to val_from).
   - funelim (cast_from_to from to smt_from);
-      rewrite <- Heqcall in *; clear Heqcall;
       [ rewrite N.compare_eq_iff in *; lia
       | rewrite N.compare_lt_iff in *; lia
       |idtac].
@@ -667,10 +656,9 @@ Proof.
     simpl. rewrite Hinterp_from.
     f_equal.
     apply value_bitvec_bits_equal.
-    destruct_rew.
+    destruct_rew. simpl.
     repeat f_equal. lia.
   - funelim (cast_from_to from to smt_from);
-      rewrite <- Heqcall in *; clear Heqcall;
       [ rewrite N.compare_eq_iff in *; lia
       | rewrite N.compare_lt_iff in *
       | rewrite N.compare_gt_iff in *; lia ].
@@ -680,7 +668,6 @@ Proof.
     simpl.
     repeat f_equal. lia.
   - funelim (cast_from_to from to smt_from);
-      rewrite <- Heqcall in *; clear Heqcall;
       [ rewrite N.compare_eq_iff in *
       | rewrite N.compare_lt_iff in *; lia
       | rewrite N.compare_gt_iff in *; lia ].
@@ -722,12 +709,9 @@ Lemma to_N_convert_bv_extn from to (bv : BV.bitvector from) :
 Proof.
   intros H.
   funelim (convert_bv to bv); try lia.
-  - destruct_rew. rewrite <- Heqcall in *. clear Heqcall.
-    apply BV.bv_zextn_to_N.
-  - destruct_rew. rewrite <- Heqcall in *. clear Heqcall.
-    reflexivity.
+  - destruct_rew. apply BV.bv_zextn_to_N.
+  - destruct_rew. reflexivity.
 Qed.
-
 
 Lemma bitOf_concat_low idx w1 w2 (extn : BV.bitvector w2) (bv : BV.bitvector w1) :
   (N.of_nat idx < w1)%N ->
@@ -781,12 +765,10 @@ Lemma bitOf_convert_bv_extn idx from to (bv : BV.bitvector from) :
 Proof.
   intros.
   funelim (convert_bv to bv).
-  - destruct_rew. rewrite <- Heqcall in *. clear Heqcall.
+  - destruct_rew. simpl.
     now rewrite bitOf_concat_low by lia.
-  - rewrite <- Heqcall in *. clear Heqcall.
-    apply bitOf_extr_inbounds; try crush.
-  - destruct_rew. rewrite <- Heqcall in *. clear Heqcall.
-    reflexivity.
+  - apply bitOf_extr_inbounds; try crush.
+  - destruct_rew. simpl. reflexivity.
 Qed.
 
 Lemma smt_select_bit_value ρ w_vec w_idx smt_vec smt_idx val_vec val_idx val :

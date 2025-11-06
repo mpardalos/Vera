@@ -1,60 +1,25 @@
 {
   description = "A verified verilog equivalence checker (minimum viable product)";
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, nixpkgs-stable, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        stable-pkgs = import nixpkgs-stable { inherit system; };
 
-        coq = pkgs.coq_8_19;
-        coqPackages = pkgs.coqPackages_8_19;
-
-        smtcoq-api = coqPackages.mkCoqDerivation {
-          pname = "smtcoq-api";
-          repo = "smtcoq-api";
-          owner = "smtcoq";
-          branch = "correctness";
-
-          version = "2024-12-12-correctness";
-          release = {
-            "2022-12-11" = {
-              rev = "1368e5d443677723f1ede70caedd392d0800c6a6";
-              sha256 = "sha256-rZcxUwtf8i70QNYuXctGufhI5+53yFBxRz2k6uA4gxo=";
-            };
-            "2024-12-12-correctness" = {
-              rev = "1f2e2169a74539ded2db50ae2161d666768388c5";
-              sha256 = "sha256-1Q/dXVXgYAn0MPJ/MdFRwB8jZkC76bACjmagZN9l08Q=";
-            };
-          };
-        };
-
-        smtcoq-api-bitvectors = coqPackages.mkCoqDerivation {
-          pname = "smtcoq-api";
-          repo = "smtcoq-api";
-          owner = "mpardalos";
-          branch = "extras";
-
-          version = "extras";
-          release = {
-            "extras" = {
-              rev = "71bf708a1bb25e2e9efc9213fc47ccd91dee6051";
-              sha256 = "sha256-0dB+tRSyWBN8ZcHAz9p5q8xM8jWA+xHi5skq163nSF8=";
-            };
-          };
-          nativeBuildInputs = [ coq.ocaml coqPackages.smtcoq ];
-        };
+        coq = pkgs.coq;
+        coqPackages = pkgs.coqPackages;
 
         deps = [
           coq
+          coqPackages.stdlib
           coqPackages.ExtLib
           coqPackages.equations
-          coqPackages.smtcoq
-          # smtcoq-api
-          smtcoq-api-bitvectors
 
           coq.ocaml
           coq.ocamlPackages.findlib
@@ -68,7 +33,7 @@
           coq.ocamlPackages.yojson
           coq.ocamlPackages.cmdliner
 
-          pkgs.sv-lang
+          stable-pkgs.sv-lang
         ];
 
         dev-deps = [
@@ -86,6 +51,12 @@
       in {
         devShells.default = pkgs.mkShell {
           packages = deps ++ dev-deps;
+          shellHook = ''
+            # Set ROCQPATH for Rocq 9.0+ (keep COQPATH for backwards compatibility with dune)
+            if [ -n "$COQPATH" ]; then
+              export ROCQPATH="$COQPATH"
+            fi
+          '';
         };
 
         packages.default = pkgs.stdenv.mkDerivation {
@@ -97,6 +68,10 @@
           buildInputs = deps ++ [ pkgs.makeWrapper ];
 
           buildPhase = ''
+            # Set ROCQPATH for Rocq 9.0+ (keep COQPATH for backwards compatibility with dune)
+            if [ -n "$COQPATH" ]; then
+              export ROCQPATH="$COQPATH"
+            fi
             dune build
           '';
 
@@ -106,7 +81,7 @@
 
             # Wrap the binary to add slang to PATH
             wrapProgram $out/bin/vera \
-              --prefix PATH : ${pkgs.sv-lang}/bin
+              --prefix PATH : ${stable-pkgs.sv-lang}/bin
           '';
 
           meta = with pkgs.lib; {

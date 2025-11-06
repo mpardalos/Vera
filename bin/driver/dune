@@ -1,10 +1,5 @@
-(coq.extraction
- (prelude Extraction)
- (extracted_modules Vera)
- (theories vera Equations ExtLib SMTCoq SMTCoqApi Ltac2))
-
 (library
  (name driver)
  (synopsis "Verified verilog equivalence checker - driver module")
- (libraries unix yojson str cmdliner)
+ (libraries unix yojson str cmdliner extracted)
  (preprocess (pps ppx_deriving.show)))

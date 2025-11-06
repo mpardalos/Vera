@@ -118,7 +118,7 @@ let parse_net json : Vera.RawVerilog.variable_declaration =
     Vera.RawVerilog.varDeclVectorDeclaration = vector_declaration;
   }
 
-let rec hex_to_bits width hex : bool list =
+let hex_to_bits width hex : bool list =
   let r =
     snd
       (String.fold_left
@@ -363,9 +363,9 @@ let parse_instance_body (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
   }
 
 let parse_slang (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
-  expect_kind "Root" json;
+  expect_kind "Root" (member "design" json);
   parse_instance_body
-    (json |> member "members" |> to_list
+    ((member "design" json) |> member "members" |> to_list
     |> List.filter (fun m -> to_string (member "kind" m) = "Instance")
     |> List.hd |> member "body")
 

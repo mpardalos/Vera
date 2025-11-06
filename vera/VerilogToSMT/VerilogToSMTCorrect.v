@@ -18,13 +18,13 @@ From ExtLib Require Import Structures.MonadState.
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.Functor.
 
-From Coq Require List.
-From Coq Require Import String.
-From Coq Require Import Logic.ProofIrrelevance.
-From Coq Require Import NArith.
-From Coq Require Import PeanoNat.
-From Coq Require Import Morphisms.
-From Coq Require Import Setoid.
+From Stdlib Require List.
+From Stdlib Require Import String.
+From Stdlib Require Import Logic.ProofIrrelevance.
+From Stdlib Require Import NArith.
+From Stdlib Require Import PeanoNat.
+From Stdlib Require Import Morphisms.
+From Stdlib Require Import Setoid.
 
 From Equations Require Import Equations.
 
@@ -316,6 +316,7 @@ Proof.
     simp statement_writes expr_reads in *;
     try rewrite List.in_app_iff in *;
     monad_inv.
+  - crush.
   - rewrite set_reg_get_out; crush.
   - crush.
   - crush.
@@ -360,7 +361,7 @@ Lemma transfer_module_item_inputs tag m inputs outputs mi t :
 Proof.
   funelim (transfer_module_item tag m inputs outputs mi); intros; try discriminate.
   monad_inv.
-  simp module_item_reads.
+  simp module_item_reads statement_reads.
 Qed.
 
 Lemma transfer_module_item_outputs tag m inputs outputs mi t :
@@ -759,8 +760,6 @@ Proof.
       * apply valid_execution_complete; eassumption.
     + eapply transfer_module_body_satisfiable; eassumption.
 Qed.
-
-Print Assumptions verilog_to_smt_correct.
 
 Lemma defined_value_for_impl C1 C2 e :
   (forall var, C2 var -> C1 var) ->

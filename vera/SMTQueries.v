@@ -1,14 +1,13 @@
-From Coq Require Import List.
-From Coq Require Import Logic.FunctionalExtensionality.
-From Coq Require Import Logic.ProofIrrelevance.
-From Coq Require Import BinNums.
-From Coq Require Import ZArith.
-From Coq Require Import Morphisms.
+From Stdlib Require Import List.
+From Stdlib Require Import Logic.FunctionalExtensionality.
+From Stdlib Require Import Logic.ProofIrrelevance.
+From Stdlib Require Import BinNums.
+From Stdlib Require Import ZArith.
+From Stdlib Require Import Morphisms.
 
 From vera Require Import Tactics.
 From vera Require Import Common.
-
-From SMTCoqApi Require SMTLib.
+From vera Require SMTLib.
 
 Import ListNotations.
 
@@ -37,8 +36,6 @@ Definition lst_domain (q : list SMTLib.term) : list SMTLib.const_sym :=
   List.concat (List.map term_domain q).
 
 Definition declaration := (nat * SMTLib.sort)%type.
-
-Print SMTLib.sort.
 
 Record query :=
   MkQuery

@@ -1,6 +1,6 @@
-From Coq Require Import String.
-From Coq Require Import ZArith.
-From Coq Require Import BinNums.
+From Stdlib Require Import String.
+From Stdlib Require Import ZArith.
+From Stdlib Require Import BinNums.
 
 From ExtLib Require Import Programming.Show.
 From ExtLib Require Import Structures.Monads.
@@ -14,10 +14,10 @@ From vera Require Import Bitvector.
 From vera Require Import Decidable.
 Import (notations) Bitvector.RawBV.
 
-Require Import List.
-From Coq Require Arith Lia Program.
-From Coq Require Import Structures.Equalities.
-From Coq Require Arith.PeanoNat.
+From Stdlib Require Import List.
+From Stdlib Require Arith Lia Program.
+From Stdlib Require Import Structures.Equalities.
+From Stdlib Require Arith.PeanoNat.
 From Equations Require Import Equations.
 
 Import ListNotations.

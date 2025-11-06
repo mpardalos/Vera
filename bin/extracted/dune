@@ -1,0 +1,14 @@
+(coq.extraction
+ (prelude Extraction)
+ (extracted_modules Vera)
+ (theories vera Stdlib Equations ExtLib Ltac2)
+ (flags (-w -deprecated-coq-env-var
+         -w -extraction-opaque-accessed
+	 -w -extraction-default-directory)))
+
+(library
+ (name extracted)
+ (synopsis "Extracted Rocq code")
+ (wrapped false)
+ (modules Vera)
+ (flags (:standard -w -20-32-39)))

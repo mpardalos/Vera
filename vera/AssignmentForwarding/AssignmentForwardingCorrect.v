@@ -1,4 +1,4 @@
-From Coq Require Import BinNums.
+From Stdlib Require Import BinNums.
 
 From Equations Require Import Equations.
 From ExtLib Require Import Structures.Monads.
@@ -26,10 +26,4 @@ Proof.
     try rewrite <- H0 by assumption;
     try rewrite <- H1 by assumption;
     try reflexivity.
-  - unfold expr_inline_var_clause_1.
-    rewrite Heq.
-    crush.
-  - unfold expr_inline_var_clause_1.
-    rewrite Heq.
-    now simp eval_expr.
 Qed.

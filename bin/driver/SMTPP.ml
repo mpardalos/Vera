@@ -67,7 +67,7 @@ module SMTLib = struct
   let assertion varNames fmt t =
     fprintf fmt "(assert %a)" (term varNames) t
 
-  let rec query fmt (query : SMT.smt_with_namemap) =
+  let query fmt (query : SMT.smt_with_namemap) =
     pp_print_list (declaration query.nameMap) fmt query.query.declarations ~pp_sep:pp_force_newline;
     pp_force_newline fmt ();
     pp_force_newline fmt ();

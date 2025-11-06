@@ -15,11 +15,14 @@ From vera Require Import Decidable.
 
 Import VerilogSemantics.CombinationalOnly.
 
-From Coq Require Import Relations.
-From Coq Require Import Sorting.Permutation.
-From Coq Require Import Lia.
-From Coq Require Import Morphisms.
-From Coq Require Import Classical.
+From Stdlib Require Import Relations.
+From Stdlib Require Import Sorting.Permutation.
+From Stdlib Require Import Lia.
+From Stdlib Require Import Morphisms.
+From Stdlib Require Import Classical.
+From Stdlib Require Import ZArith.
+From Stdlib Require Import String.
+From Stdlib Require Import List.
 
 From Equations Require Import Equations.
 From ExtLib Require Import Structures.Monads.
@@ -29,15 +32,11 @@ From ExtLib Require Import Data.Monads.OptionMonad.
 From ExtLib Require Import Data.List.
 
 Import MonadLetNotation.
-Open Scope monad_scope.
-Require Import ZArith.
-Require Import String.
-
-From Coq Require Import List.
 Import ListNotations.
 Import EqNotations.
 Local Open Scope string.
 Local Open Scope Z_scope.
+Local Open Scope monad_scope.
 
 Import SigTNotations.
 
@@ -1221,6 +1220,3 @@ Proof.
       * eassumption.
     + eapply Hmatch. assumption.
 Qed.
-
-Print Assumptions equivalence_query_unsat_correct.
-Print Assumptions equivalence_query_sat_correct.

@@ -1,6 +1,6 @@
-From Coq Require Import BinNums.
-From Coq Require List.
-From Coq Require Import String.
+From Stdlib Require Import BinNums.
+From Stdlib Require List.
+From Stdlib Require Import String.
 
 From Equations Require Import Equations.
 From ExtLib Require Import Structures.Monads.

@@ -16,13 +16,13 @@ From ExtLib Require Import Structures.MonadState.
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.Functor.
 
-From Coq Require List.
-From Coq Require Import String.
-From Coq Require Import Logic.ProofIrrelevance.
-From Coq Require Import NArith.
-From Coq Require Import PeanoNat.
-From Coq Require Import Morphisms.
-From Coq Require Import Setoid.
+From Stdlib Require List.
+From Stdlib Require Import String.
+From Stdlib Require Import Logic.ProofIrrelevance.
+From Stdlib Require Import NArith.
+From Stdlib Require Import PeanoNat.
+From Stdlib Require Import Morphisms.
+From Stdlib Require Import Setoid.
 
 Import EqNotations.
 

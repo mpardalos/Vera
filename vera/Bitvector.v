@@ -1,13 +1,12 @@
-From Coq Require Import Arith.
-From Coq Require Import NArith.
-From Coq Require Import ZArith.
-From Coq Require Import List.
-From Coq Require Import Psatz.
-From Coq Require Import String.
-From Coq Require Import Logic.Decidable.
-From Coq Require Import Logic.ProofIrrelevance.
+From Stdlib Require Import Arith.
+From Stdlib Require Import NArith.
+From Stdlib Require Import ZArith.
+From Stdlib Require Import List.
+From Stdlib Require Import Psatz.
+From Stdlib Require Import String.
+From Stdlib Require Import Logic.Decidable.
+From Stdlib Require Import Logic.ProofIrrelevance.
 
-From SMTCoq Require Import BVList.
 
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Data.Monads.OptionMonad.
@@ -15,6 +14,7 @@ From ExtLib Require Import Data.List.
 
 From vera Require Import Tactics.
 From vera Require Import Common.
+From vera Require Import BVList.
 From vera Require Import Decidable.
 
 From Equations Require Import Equations.
@@ -195,7 +195,7 @@ Module RawBV.
     funelim (nice_nshl_be bs n); simp nice_nshl_be in *; simpl in *.
     - reflexivity.
     - induction n; crush.
-    - rewrite <- H. clear H.
+    - rewrite <- H. clear H Heqcall.
       revert b l.
       induction n; intros.
       + crush.
@@ -214,7 +214,7 @@ Module RawBV.
     funelim (nice_nshr_be bs n); simp nice_nshr_be in *; simpl in *.
     - induction n; crush.
     - reflexivity.
-    - rewrite <- H. clear b H. revert bs.
+    - rewrite <- H. clear b H Heqcall. revert bs.
       induction n; intros; try crush.
       simpl.
       replace (RawBV._shr_be (bs ++ [false])) with (RawBV._shr_be bs ++ [false])%list
@@ -589,7 +589,7 @@ Module RawXBV.
   Proof.
     unfold size.
     funelim (shr bv n); simp shr; try crush.
-    rewrite List.app_length.
+    rewrite List.length_app.
     crush.
   Qed.
 
@@ -679,7 +679,7 @@ Module XBV.
   Lemma xbv_bv_inverse n (bv : BV.bitvector n) :
       to_bv (from_bv bv) = Some bv.
   Proof.
-    funelim (to_bv (from_bv bv)); rewrite <- Heqcall in *; clear Heqcall; clear Heq.
+    funelim (to_bv (from_bv bv)); try rewrite <- Heqcall in *; clear Heqcall; clear Heq.
     - f_equal.
       destruct (to_bv_obligations_obligation_1 n (from_bv bv1) bv0).
       simpl in *.
@@ -838,7 +838,7 @@ Module XBV.
     {| bv := bv r ++ bv l |}.
   Next Obligation.
     destruct l, r; simpl in *.
-    rewrite app_length.
+    rewrite length_app.
     lia.
   Qed.
 
