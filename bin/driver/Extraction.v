@@ -4,6 +4,7 @@ From vera Require VerilogEquivalence.
 From vera Require VerilogToSMT.
 From vera Require Common.
 From vera Require Bitvector.
+From vera Require AssignmentForwarding.
 
 From SMTCoq Require Import BVList.
 From SMTCoqApi Require SMTLib.
@@ -47,5 +48,6 @@ Extraction "Vera.ml"
   Verilog.RawVerilog
   VerilogToSMT.expr_to_smt
   VerilogSMT.SMT
+  AssignmentForwarding.forward_assignments
   (* Common.NameMap *)
   .
