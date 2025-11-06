@@ -45,9 +45,7 @@ Extraction "Vera.ml"
   int_to_nat
   VerilogEquivalence.equivalence_query
   Verilog.Typecheck.tc_vmodule
-  Verilog.RawVerilog
   VerilogToSMT.expr_to_smt
-  VerilogSMT.SMT
   AssignmentForwarding.forward_assignments
   (* Common.NameMap *)
   .

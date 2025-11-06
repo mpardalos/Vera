@@ -340,8 +340,8 @@ let apply_ports (ports : port list)
       variables :=
         List.map
           (fun var ->
-            if Util.lst_to_string (Vera.RawVerilog.varDeclName var) = port.name
-            then { var with varDeclPort = Some port.direction }
+            if Util.lst_to_string (var.Vera.VerilogCommon.varDeclName) = port.name
+            then { var with Vera.VerilogCommon.varDeclPort = Some port.direction }
             else var)
           !variables)
     ports
