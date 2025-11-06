@@ -4,7 +4,6 @@ Import (coercions) SMT.
 From vera Require Import Common.
 Import (coercions) VerilogSMTBijection.
 Import VerilogSMTBijection (bij_inverse, bij_apply, bij_wf).
-From vera Require VerilogCanonicalize.
 From vera Require VerilogToSMT.
 From vera Require SMTQueries.
 From vera Require Import Decidable.

@@ -5,7 +5,6 @@ Import (coercions) SMT.
 From vera Require Import Common.
 Import (coercions) VerilogSMTBijection.
 From vera Require Import Bitvector.
-From vera Require VerilogCanonicalize.
 From vera Require VerilogToSMT.
 From vera Require VerilogToSMT.VerilogToSMTCorrect.
 From vera Require Import VerilogToSMT.Match.

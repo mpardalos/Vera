@@ -46,7 +46,6 @@ Extraction "Vera.ml"
   Verilog.Typecheck.tc_vmodule
   Verilog.RawVerilog
   VerilogToSMT.expr_to_smt
-  VerilogCanonicalize.canonicalize_verilog
   VerilogSMT.SMT
   (* Common.NameMap *)
   .
