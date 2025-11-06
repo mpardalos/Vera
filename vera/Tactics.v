@@ -5,7 +5,7 @@ From vera Require Import Decidable.
 
 From ExtLib Require Import Structures.Monads.
 
-Import MonadNotation.
+Import MonadLetNotation.
 Import SigTNotations.
 
 (* This needs to be defined here, because monad_inv depends on it *)

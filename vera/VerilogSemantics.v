@@ -218,26 +218,26 @@ Module CombinationalOnly.
       let* operand_val := eval_expr regs operand in
       Some (eval_unaryop op operand_val);
     eval_expr regs (Verilog.ArithmeticOp op lhs rhs) :=
-      let* lhs__val := eval_expr regs lhs in
-      let* rhs__val := eval_expr regs rhs in
-      Some (eval_arithmeticop op lhs__val rhs__val);
+      let* lhs_val := eval_expr regs lhs in
+      let* rhs_val := eval_expr regs rhs in
+      Some (eval_arithmeticop op lhs_val rhs_val);
     eval_expr regs (Verilog.BitwiseOp op lhs rhs) :=
-      let* lhs__val := eval_expr regs lhs in
-      let* rhs__val := eval_expr regs rhs in
-      Some (eval_bitwiseop op lhs__val rhs__val);
+      let* lhs_val := eval_expr regs lhs in
+      let* rhs_val := eval_expr regs rhs in
+      Some (eval_bitwiseop op lhs_val rhs_val);
     eval_expr regs (Verilog.ShiftOp op lhs rhs) :=
-      let* lhs__val := eval_expr regs lhs in
-      let* rhs__val := eval_expr regs rhs in
-      Some (eval_shiftop op lhs__val rhs__val);
+      let* lhs_val := eval_expr regs lhs in
+      let* rhs_val := eval_expr regs rhs in
+      Some (eval_shiftop op lhs_val rhs_val);
     eval_expr regs (Verilog.Conditional cond tBranch fBranch) :=
-      let* cond__val := eval_expr regs cond in
-      let* tBranch__val := eval_expr regs tBranch in
-      let* fBranch__val := eval_expr regs fBranch in
-      Some (eval_conditional cond__val tBranch__val fBranch__val);
+      let* cond_val := eval_expr regs cond in
+      let* tBranch_val := eval_expr regs tBranch in
+      let* fBranch_val := eval_expr regs fBranch in
+      Some (eval_conditional cond_val tBranch_val fBranch_val);
     eval_expr regs (Verilog.BitSelect vec idx) :=
-      let* vec__val := eval_expr regs vec in
-      let* idx__val := eval_expr regs idx in
-      Some (select_bit vec__val idx__val);
+      let* vec_val := eval_expr regs vec in
+      let* idx_val := eval_expr regs idx in
+      Some (select_bit vec_val idx_val);
     eval_expr regs (Verilog.Resize t expr) :=
       let* val := eval_expr regs expr in
       Some (convert t val);
@@ -254,7 +254,7 @@ Module CombinationalOnly.
     exec_statement (regs : RegisterState) (stmt : Verilog.statement) : option RegisterState by struct :=
     exec_statement regs (Verilog.Block stmts) := exec_statements regs stmts ;
     exec_statement regs (Verilog.If cond trueBranch falseBranch) :=
-      let* cond__val := eval_expr regs cond in
+      let* cond_val := eval_expr regs cond in
       (*
        * If the cond_predicate expression evaluates to true (that is, has a
        * nonzero known value), the first statement shall be executed. If it
@@ -263,17 +263,17 @@ Module CombinationalOnly.
        * cond_predicate expression is false, the else statement shall be
        * executed.
        *)
-      match XBV.to_bv cond__val with
+      match XBV.to_bv cond_val with
       | None => exec_statement regs falseBranch
-      | Some cond__bv =>
-        if BV.is_zero cond__bv
+      | Some cond_bv =>
+        if BV.is_zero cond_bv
         then exec_statement regs falseBranch
         else exec_statement regs trueBranch
       end
     ;
     exec_statement regs (Verilog.BlockingAssign (Verilog.NamedExpression var) rhs) :=
-      let* rhs__val := eval_expr regs rhs in
-      Some (set_reg var rhs__val regs)
+      let* rhs_val := eval_expr regs rhs in
+      Some (set_reg var rhs_val regs)
     ;
     exec_statement regs (Verilog.BlockingAssign lhs rhs) :=
       None;

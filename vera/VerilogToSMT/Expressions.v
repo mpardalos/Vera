@@ -32,7 +32,7 @@ From Equations Require Import Equations.
 
 Import List.ListNotations.
 Import CommonNotations.
-Import MonadNotation.
+Import MonadLetNotation.
 Import FunctorNotation.
 Import SigTNotations.
 
@@ -302,7 +302,10 @@ Qed.
 Lemma var_to_smt_value var (m : VerilogSMTBijection.t) tag regs ρ t :
     var_to_smt tag m var = inr t ->
     verilog_smt_match_states_partial (fun v => v = var) tag m regs ρ ->
-    SMTLib.interp_term ρ t = (xbv <- regs var ;; bv <- XBV.to_bv xbv ;; ret (SMTLib.Value_BitVec _ bv))%monad.
+    SMTLib.interp_term ρ t =
+      (let* xbv := regs var in
+       let* bv := XBV.to_bv xbv in
+       ret (SMTLib.Value_BitVec _ bv))%monad.
 Proof.
   intros Hsmt Hmatch.
   funelim (var_to_smt tag m var); try rewrite <- Heqcall in *; clear Heqcall; monad_inv.
@@ -310,7 +313,7 @@ Proof.
   insterU Hmatch.
   destruct Hmatch as [smtName [Heq2 [? ? ? ? Hmatchvals]]].
   inv Hmatchvals.
-  replace n__smt with smtName in * by congruence.
+  replace n_smt with smtName in * by congruence.
   simpl.
   rewrite Hverilogval, XBV.xbv_bv_inverse.
   assumption.
@@ -822,8 +825,8 @@ Lemma expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ 
       (fun v => List.In v (Verilog.expr_reads expr))
       tag m regs ρ ->
     SMTLib.interp_term ρ t =
-      (xbv <- eval_expr (w:=w) regs expr ;;
-       bv <- XBV.to_bv xbv ;;
+      (let* xbv := eval_expr (w:=w) regs expr in
+       let* bv := XBV.to_bv xbv in
        ret (SMTLib.Value_BitVec _ bv))%monad
 .
 Proof.
@@ -954,7 +957,7 @@ Proof.
     edestruct Hmatch as [? [? []]]; [now repeat econstructor|].
     inv Hmatchvals.
     inv H0. simpl.
-    replace n__smt with smtName in * by congruence.
+    replace n_smt with smtName in * by congruence.
     now rewrite Hsmtval, XBV.xbv_bv_inverse.
   - (* resize *)
     simpl in Hexpr_to_smt.

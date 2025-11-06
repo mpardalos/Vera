@@ -25,7 +25,6 @@ From SMTCoqApi Require SMTLib.
 
 From vera Require Import Verilog.
 From vera Require Import Common.
-From vera Require EnvStack.
 From vera Require Import Bitvector.
 From vera Require Import VerilogSMT.
 From vera Require Import SMTQueries.
@@ -35,7 +34,7 @@ From vera Require Import Tactics.
 
 Import ListNotations.
 Import CommonNotations.
-Import MonadNotation.
+Import MonadLetNotation.
 Import FunctorNotation.
 Local Open Scope monad_scope.
 
@@ -75,7 +74,7 @@ Section expr_to_smt.
   Equations var_to_smt (var : Verilog.variable): transf SMTLib.term :=
     var_to_smt var with name_bijection (tag, var) := {
       | None => raise ("Name not declared: " ++ (Verilog.varName var))%string
-      | Some n__smt => ret (SMTLib.Term_Const n__smt)
+      | Some n_smt => ret (SMTLib.Term_Const n_smt)
       }.
 
   Definition smt_select_bit vec_width vec_smt idx_width idx_smt :=
@@ -139,48 +138,48 @@ Section expr_to_smt.
 
   Equations expr_to_smt {w} : Verilog.expression w -> transf SMTLib.term :=
     expr_to_smt (Verilog.UnaryOp op operand) :=
-      operand__smt <- expr_to_smt operand ;;
-      unaryop_to_smt op operand__smt ;
+      let* operand_smt := expr_to_smt operand in
+      unaryop_to_smt op operand_smt ;
     expr_to_smt (Verilog.ArithmeticOp op lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      arithmeticop_to_smt op lhs__smt rhs__smt;
+      let* lhs_smt := expr_to_smt lhs in
+      let* rhs_smt := expr_to_smt rhs in
+      arithmeticop_to_smt op lhs_smt rhs_smt;
     expr_to_smt (Verilog.BitwiseOp op lhs rhs) :=
-      lhs__smt <- expr_to_smt lhs ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      bitwiseop_to_smt op lhs__smt rhs__smt;
+      let* lhs_smt := expr_to_smt lhs in
+      let* rhs_smt := expr_to_smt rhs in
+      bitwiseop_to_smt op lhs_smt rhs_smt;
     expr_to_smt (Verilog.ShiftOp op lhs rhs) :=
-      lhs__smt_short <- expr_to_smt lhs ;;
-      rhs__smt_short <- expr_to_smt rhs ;;
+      let* lhs_smt_short := expr_to_smt lhs in
+      let* rhs_smt_short := expr_to_smt rhs in
       let lhs_width := Verilog.expr_type lhs in
       let rhs_width := Verilog.expr_type rhs in
       let op_width := N.max lhs_width rhs_width in
-      let lhs__smt := cast_from_to lhs_width op_width lhs__smt_short in
-      let rhs__smt := cast_from_to rhs_width op_width rhs__smt_short in
-      long_result <- shiftop_to_smt op lhs__smt rhs__smt ;;
+      let lhs_smt := cast_from_to lhs_width op_width lhs_smt_short in
+      let rhs_smt := cast_from_to rhs_width op_width rhs_smt_short in
+      let* long_result := shiftop_to_smt op lhs_smt rhs_smt in
       ret (cast_from_to op_width lhs_width long_result);
     expr_to_smt (Verilog.Concatenation e1 e2) :=
-      e1_smt <- expr_to_smt e1 ;;
-      e2_smt <- expr_to_smt e2 ;;
+      let* e1_smt := expr_to_smt e1 in
+      let* e2_smt := expr_to_smt e2 in
       ret (SMTLib.Term_BVConcat e1_smt e2_smt);
     expr_to_smt (Verilog.Conditional cond ifT ifF) :=
       let cond_type := Verilog.expr_type cond in
-      cond_smt <- expr_to_smt cond ;;
-      ifT_smt <- expr_to_smt ifT ;;
-      ifF_smt <- expr_to_smt ifF ;;
+      let* cond_smt := expr_to_smt cond in
+      let* ifT_smt := expr_to_smt ifT in
+      let* ifF_smt := expr_to_smt ifF in
       ret (conditional_to_smt cond_type cond_smt ifT_smt ifF_smt);
     expr_to_smt (Verilog.BitSelect vec idx) :=
-      let t__vec := Verilog.expr_type vec in
-      let t__idx := Verilog.expr_type idx in
-      inb <- assert_dec (statically_in_bounds t__vec idx) "Cannot statically determine if index is in bounds"%string;;
-      vec__smt <- expr_to_smt vec ;;
-      idx__smt <- expr_to_smt idx ;;
-      ret (smt_select_bit t__vec vec__smt t__idx idx__smt);
+      let t_vec := Verilog.expr_type vec in
+      let t_idx := Verilog.expr_type idx in
+      let* inb := assert_dec (statically_in_bounds t_vec idx) "Cannot statically determine if index is in bounds"%string in
+      let* vec_smt := expr_to_smt vec in
+      let* idx_smt := expr_to_smt idx in
+      ret (smt_select_bit t_vec vec_smt t_idx idx_smt);
     expr_to_smt (Verilog.Resize to expr) :=
       let from := Verilog.expr_type expr in
-      expr__smt <- expr_to_smt expr ;;
+      let* expr_smt := expr_to_smt expr in
       assert_dec (to > 0)%N "Resize to 0 is not allowed"%string;;
-      ret (cast_from_to from to expr__smt);
+      ret (cast_from_to from to expr_smt);
     expr_to_smt (Verilog.IntegerLiteral w val) :=
       ret (SMTLib.Term_BVLit w val);
     expr_to_smt (Verilog.NamedExpression var) :=
@@ -191,9 +190,9 @@ Section expr_to_smt.
     transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign (Verilog.NamedExpression var) rhs)) :=
       assert_dec (In var outputs) "Assignment target must be module outputs"%string ;;
       assert_dec (List.Forall (fun n => In n inputs) (Verilog.expr_reads rhs)) "Only reads from module inputs allowed"%string ;;
-      lhs__smt <- var_to_smt var ;;
-      rhs__smt <- expr_to_smt rhs ;;
-      ret (SMTLib.Term_Eq lhs__smt rhs__smt);
+      let* lhs_smt := var_to_smt var in
+      let* rhs_smt := expr_to_smt rhs in
+      ret (SMTLib.Term_Eq lhs_smt rhs_smt);
     transfer_module_item (Verilog.AlwaysComb _) := raise "Only single-assignment always_comb (assign) allowed"%string;
     transfer_module_item (Verilog.AlwaysFF stmt) := raise "always_ff not implemented"%string;
     transfer_module_item (Verilog.Initial stmt) := raise "initial not implemented"%string
@@ -210,8 +209,8 @@ Section expr_to_smt.
       assert_dec
         (list_subset (Verilog.module_item_reads hd) inputs)
         "Read from non-module-input"%string ;;
-      a <- transfer_module_item hd ;;
-      b <- transfer_module_body tl ;;
+      let* a := transfer_module_item hd in
+      let* b := transfer_module_body tl in
       ret (a :: b)
   .
 End expr_to_smt.
@@ -224,15 +223,15 @@ Equations assign_vars (start : smtname) (vars : list Verilog.variable) : list (V
 
 Definition mk_var_map (vars : list (Verilog.variable * smtname)) : StrFunMap.t smtname :=
   List.fold_right
-    (fun '(var, smt__name) acc => StrFunMap.insert (Verilog.varName var) smt__name acc)
+    (fun '(var, smt_name) acc => StrFunMap.insert (Verilog.varName var) smt_name acc)
     StrFunMap.empty vars.
 
 Equations mk_bijection (tag : TaggedVariable.Tag) (vars : list (Verilog.variable * smtname)) : transf VerilogSMTBijection.t :=
-  mk_bijection tag ((var, name__smt) :: xs) :=
-    tail_bijection <- mk_bijection tag xs ;;
-    prf1 <- assert_dec (tail_bijection (tag, var) = None) "Duplicate variable name"%string ;;
-    prf2 <- assert_dec (VerilogSMTBijection.bij_inverse tail_bijection name__smt = None) "Duplicate smt name"%string ;;
-    ret (VerilogSMTBijection.insert (tag, var) name__smt tail_bijection prf1 prf2);
+  mk_bijection tag ((var, name_smt) :: xs) :=
+    let* tail_bijection := mk_bijection tag xs in
+    let* prf1 := assert_dec (tail_bijection (tag, var) = None) "Duplicate variable name"%string in
+    let* prf2 := assert_dec (VerilogSMTBijection.bij_inverse tail_bijection name_smt = None) "Duplicate smt name"%string in
+    ret (VerilogSMTBijection.insert (tag, var) name_smt tail_bijection prf1 prf2);
   mk_bijection tag [] := ret VerilogSMTBijection.empty.
 
 Definition mk_declarations : list (Verilog.variable * smtname) -> list SMTQueries.declaration :=
@@ -256,14 +255,16 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
     (list_subset (Verilog.module_body_writes (Verilog.modBody vmodule)) (Verilog.modVariables vmodule))
     "Unknown variables written to"%string ;;
   let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
-  nameMap <- mk_bijection name_tag var_assignment ;;
-  assertions <- transfer_module_body
-               name_tag
-               nameMap
-               (Verilog.module_inputs vmodule)
-               (Verilog.module_outputs vmodule)
-               (Verilog.modBody vmodule) ;;
-  query_wf <- assert_dec _ "Query not well-formed"%string ;;
+  let* nameMap := mk_bijection name_tag var_assignment in
+  let* assertions :=
+    transfer_module_body
+      name_tag
+      nameMap
+      (Verilog.module_inputs vmodule)
+      (Verilog.module_outputs vmodule)
+      (Verilog.modBody vmodule)
+  in
+  let* query_wf := assert_dec _ "Query not well-formed"%string in
   inr {|
       SMT.nameMap := nameMap;
       SMT.query :=

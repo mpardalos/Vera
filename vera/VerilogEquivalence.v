@@ -33,7 +33,7 @@ From Equations Require Import Equations.
 Import SigTNotations.
 Import ListNotations.
 Import CommonNotations.
-Import MonadNotation.
+Import MonadLetNotation.
 Import FunctorNotation.
 Local Open Scope monad_scope.
 Local Open Scope string.
@@ -167,19 +167,19 @@ Proof.
 Qed.
 
 Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string (SMT.smt_with_namemap) :=
-  inputs_ok1 <- assert_dec (Verilog.module_inputs verilog1 = Verilog.module_inputs verilog2) "Inputs don't match" ;;
-  outputs_ok1 <- assert_dec (Verilog.module_outputs verilog1 = Verilog.module_outputs verilog2) "Outputs don't match" ;;
+  let* inputs_ok1 := assert_dec (Verilog.module_inputs verilog1 = Verilog.module_inputs verilog2) "Inputs don't match" in
+  let* outputs_ok1 := assert_dec (Verilog.module_outputs verilog1 = Verilog.module_outputs verilog2) "Outputs don't match" in
 
-  '( smt1 ; prf1 ) <- sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogLeft 0 verilog1) ;;
-  '( smt2 ; prf2 ) <- sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogRight (S (length (Verilog.modVariables verilog1))) verilog2) ;;
+  let* ( smt1 ; prf1 ) := sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogLeft 0 verilog1) in
+  let* ( smt2 ; prf2 ) := sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogRight (S (length (Verilog.modVariables verilog1))) verilog2) in
 
   let nameMap := VerilogSMTBijection.combine (SMT.nameMap smt1) (SMT.nameMap smt2) _ _ in
 
-  inputs_same <- mk_inputs_same (Verilog.module_inputs verilog1) nameMap ;;
-  outputs_distinct <- mk_outputs_distinct (Verilog.module_outputs verilog1) nameMap ;;
+  let* inputs_same := mk_inputs_same (Verilog.module_inputs verilog1) nameMap in
+  let* outputs_distinct := mk_outputs_distinct (Verilog.module_outputs verilog1) nameMap in
 
-  prf1 <- assert_dec _ "Unknown variables in inputs_same assertion" ;;
-  prf2 <- assert_dec _ "Unknown variables in outputs_distinct assertion" ;;
+  let* prf1 := assert_dec _ "Unknown variables in inputs_same assertion" in
+  let* prf2 := assert_dec _ "Unknown variables in outputs_distinct assertion" in
 
   ret {|
       SMT.nameMap := nameMap ;
@@ -196,7 +196,9 @@ Next Obligation.
   (* No shared verilog names *)
   repeat apply_somewhere verilog_to_smt_only_tag.
   unfold VerilogSMTBijection.only_tag in *.
-  destruct (SMT.nameMap x (t, v)) eqn:E; [|reflexivity].
+  match goal with
+  [ |- ?x = None ] => destruct x eqn:E; [|reflexivity]
+  end.
   rewrite VerilogSMTBijection.bij_wf in H, E.
   apply (f_equal (option_map fst)) in H, E.
   insterU X. insterU X0.
@@ -204,7 +206,9 @@ Next Obligation.
 Qed.
 Next Obligation.
   (* No shared smt names *)
-  destruct (bij_inverse (SMT.nameMap x) b) as [[t' v']|] eqn:E; [|reflexivity].
+  match goal with
+  [ |- ?x = None ] => destruct x as [[t' v']|] eqn:E; [|reflexivity]
+  end.
   replace t with TaggedVariable.VerilogLeft in *; cycle 1. {
     symmetry.
     eapply verilog_to_smt_only_tag. eassumption.

@@ -28,7 +28,7 @@ From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Data.Monads.OptionMonad.
 From ExtLib Require Import Data.List.
 
-Import MonadNotation.
+Import MonadLetNotation.
 Open Scope monad_scope.
 Require Import ZArith.
 Require Import String.

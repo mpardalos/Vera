@@ -30,7 +30,7 @@ From Equations Require Import Equations.
 
 Import List.ListNotations.
 Import CommonNotations.
-Import MonadNotation.
+Import MonadLetNotation.
 Import FunctorNotation.
 Import SigTNotations.
 
