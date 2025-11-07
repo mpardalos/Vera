@@ -36,7 +36,8 @@ let compare solver filename1 filename2 =
       match solver query with
       | SMTLIB.UNSAT, out ->
           printf "Equivalent (UNSAT)\n";
-          printf "%s\n" out
+          if (out != "unsat")
+          then printf "%s\n" out
       | SMTLIB.SAT, out ->
           printf "Non-equivalent (SAT)\n";
           printf "%s\n" out
