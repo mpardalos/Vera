@@ -152,6 +152,14 @@ Lemma exists_impl A (P Q : A -> Prop) :
   (exists x, Q x).
 Proof. firstorder. Qed.
 
+Instance dec_exists_Some {A} `{forall (x y : A), DecProp (x = y)} (o : option A) :
+  DecProp (exists (x : A), o = Some x).
+Proof.
+  destruct o.
+  - left. eauto.
+  - right. intros []. discriminate.
+Qed.
+
 Instance dec_exists_In_pair_l {A B} `{forall (x y : A), DecProp (x = y)} `{forall (x y : B), DecProp (x = y)} (b : B) l :
   DecProp (exists (a : A), In (a, b) l).
 Proof.

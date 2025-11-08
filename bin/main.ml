@@ -14,6 +14,18 @@ let typed_module_of_file f =
   let m = module_of_file f in
   Vera.Typecheck.tc_vmodule m
 
+let sort_module_items m =
+  let open Vera in
+  let open Vera.Verilog in
+  let inputs = module_inputs m in
+  match sort_module_items inputs m.modBody with
+  | None -> Inl (Util.string_to_lst "Sorting failed")
+  | Some modBody -> Inr { m with modBody }
+
+let sorted_module_of_file f =
+  let* m = typed_module_of_file f in
+  sort_module_items m
+
 let inlined_module_of_file f =
   let* m = typed_module_of_file f in
   Vera.forward_assignments m
@@ -36,8 +48,7 @@ let compare solver filename1 filename2 =
       match solver query with
       | SMTLIB.UNSAT, out ->
           printf "Equivalent (UNSAT)\n";
-          if (out != "unsat")
-          then printf "%s\n" out
+          if out != "unsat" then printf "%s\n" out
       | SMTLIB.SAT, out ->
           printf "Non-equivalent (SAT)\n";
           printf "%s\n" out
@@ -59,6 +70,8 @@ let rec lower level filename =
       display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename)
   | `Inlined ->
       display_or_error VerilogPP.Typed.vmodule (inlined_module_of_file filename)
+  | `Sorted ->
+      display_or_error VerilogPP.Typed.vmodule (sorted_module_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
   | `All ->
       printf "\n-- parsed -- \n";
@@ -106,6 +119,7 @@ let lower_cmd =
         ("parsed", `Parsed);
         ("typed", `Typed);
         ("inlined", `Inlined);
+        ("sorted", `Sorted);
         ("smt", `SMT);
         ("all", `All);
       ]

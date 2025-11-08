@@ -5,6 +5,7 @@ From vera Require VerilogToSMT.
 From vera Require Common.
 From vera Require Bitvector.
 From vera Require AssignmentForwarding.
+From vera Require VerilogSort.
 
 From vera Require Import BVList.
 From vera Require SMTLib.
@@ -47,5 +48,6 @@ Extraction "Vera.ml"
   Verilog.Typecheck.tc_vmodule
   VerilogToSMT.expr_to_smt
   AssignmentForwarding.forward_assignments
+  VerilogSort.sort_module_items
   (* Common.NameMap *)
   .
