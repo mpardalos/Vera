@@ -158,6 +158,16 @@ Proof.
   destruct o.
   - left. eauto.
   - right. intros []. discriminate.
+  (* induction l as [|[a' b']].
+   * - firstorder.
+   * - destruct (dec (a = a')).
+   *   + left. subst. eauto with datatypes.
+   *   + destruct IHl.
+   *     * left. eapply exists_impl; [|eapply e].
+   *       firstorder; congruence.
+   *     * right. intro contra. apply n0. clear n0.
+   *       eapply exists_impl; [|eapply contra].
+   *       firstorder; congruence. *)
 Qed.
 
 Instance dec_exists_In_pair_l {A B} `{forall (x y : A), DecProp (x = y)} `{forall (x y : B), DecProp (x = y)} (b : B) l :

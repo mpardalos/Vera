@@ -1,6 +1,7 @@
 From Stdlib Require Import String.
 From Stdlib Require Import ZArith.
 From Stdlib Require Import BinNums.
+From Stdlib Require Import Program.Equality.
 
 From ExtLib Require Import Programming.Show.
 From ExtLib Require Import Structures.Monads.

@@ -17,6 +17,7 @@ Import (notations) XBV.
 Import RawXBV (bit(..)).
 From vera Require Import Tactics.
 From vera Require Import Decidable.
+From vera Require Import VerilogSort.
 
 From Equations Require Import Equations.
 
@@ -360,11 +361,21 @@ Module CombinationalOnly.
       | right prf => None
       end.
 
+  Definition mk_initial_state (v : Verilog.vmodule) (regs : RegisterState) : option VerilogState :=
+    let* pendingProcesses := sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) in
+    Some {|
+      regState := limit_to_regs (Verilog.module_inputs v) regs ;
+      pendingProcesses := pendingProcesses
+    |}.
+
+  Definition run_vmodule (v : Verilog.vmodule) (inputs : RegisterState) : option VerilogState :=
+    let* initial_state := mk_initial_state v inputs in
+    run_multistep initial_state
+  .
+
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
-    exists e' : execution,
-      run_multistep
-        {| regState := limit_to_regs (Verilog.module_inputs v) e; pendingProcesses := Verilog.modBody v |} =
-        Some {| regState := e'; pendingProcesses := [] |}
+    exists (e' : execution),
+      run_vmodule v e = Some {| regState := e'; pendingProcesses := [] |}
       /\ execution_match_on
           (fun var => In var (Verilog.module_inputs v ++
                              Verilog.module_body_writes (Verilog.modBody v)))
@@ -389,5 +400,5 @@ Module CombinationalOnly.
   Definition no_errors (v : Verilog.vmodule) :=
     forall (initial : RegisterState)
       (input_defined : forall var, exists xbv, initial var = Some xbv -> ~ XBV.has_x xbv),
-    exists final, run_multistep {| regState := initial; pendingProcesses := Verilog.modBody v |} = Some final.
+    exists final, run_vmodule v initial = Some final.
 End CombinationalOnly.

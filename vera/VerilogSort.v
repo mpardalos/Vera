@@ -8,8 +8,6 @@ From vera Require Import Common.
 From vera Require Import Decidable.
 From vera Require Import Verilog.
 Import Verilog.
-From vera Require Import VerilogSemantics.
-Import CombinationalOnly.
 
 Import CommonNotations.
 Import List.ListNotations.
