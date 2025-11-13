@@ -384,10 +384,12 @@ Module Facts.
     Proper
       (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff)
       register_state_match_partial.
-  Proof.
-    repeat intro. subst.
-    crush.
-  Qed.
+  Proof. repeat intro. subst. crush. Qed.
+
+  Lemma register_state_match_partial_empty C regs1 regs2 :
+    (forall var, ~ (C var)) ->
+    register_state_match_partial C regs1 regs2.
+  Proof. unfold register_state_match_partial. crush. Qed.
 
   Lemma register_state_match_partial_split_iff C1 C2 regs1 regs2 :
     register_state_match_partial (fun var => C1 var \/ C2 var) regs1 regs2 <->
@@ -446,4 +448,102 @@ Module Facts.
     rewrite ! set_reg_get_in.
     crush.
   Qed.
+
+  Lemma exec_module_item_change_regs mi regs1 regs2 : forall regs1' regs2',
+    register_state_match_partial
+      (fun var => List.In var (Verilog.module_item_reads mi))
+      regs1 regs2 ->
+    exec_module_item regs1 mi = Some regs1' ->
+    exec_module_item regs2 mi = Some regs2' ->
+    register_state_match_partial
+      (fun var => List.In var (Verilog.module_item_writes mi))
+      regs1' regs2'.
+  Proof.
+    intros * Hmatch Hexec1 Hexec2.
+    funelim (exec_module_item regs1 mi);
+      rewrite <- Heqcall in *; try discriminate;
+      [idtac].
+    simp exec_module_item module_item_reads module_item_writes in *.
+    eauto using exec_statement_change_regs.
+  Qed.
+
+  Equations run_independent
+    (regs : RegisterState) (st : VerilogState) : option VerilogState
+      by wf (List.length (pendingProcesses st)) := {
+    | regs, MkVerilogState stRegs [] =>
+      Some (MkVerilogState stRegs [])
+    | regs, MkVerilogState stRegs (mi :: mis) =>
+      let* stRegs1 := exec_module_item regs mi in
+      run_independent regs (MkVerilogState (VariableDepMap.combine stRegs1 stRegs) mis)
+  }.
+
+  Lemma run_independent_change_regs : forall st regs1 regs2 st1 st2,
+    register_state_match_partial
+      (fun var => List.In var (Verilog.module_body_reads (pendingProcesses st)))
+      regs1 regs2 ->
+    run_independent regs1 st = Some st1 ->
+    run_independent regs2 st = Some st2 ->
+    register_state_match_partial
+      (fun var => List.In var (Verilog.module_body_writes (pendingProcesses st)))
+      (regState st1) (regState st2).
+  Proof.
+    intros [regs0 procs]. revert regs0.
+    induction procs; intros; simp run_independent in *; simpl in *.
+    - eapply register_state_match_partial_empty. crush.
+    - monad_inv.
+      simp module_body_reads module_body_writes in *.
+      unpack_verilog_smt_match_states_partial.
+      + admit.
+      + admit.
+  Admitted.
+
+  (* TODO: This equality needs to be partial *)
+
+  Lemma run_multistep_independent st :
+    disjoint
+      (Verilog.module_body_writes (pendingProcesses st))
+      (Verilog.module_body_reads (pendingProcesses st)) ->
+    run_multistep st = run_independent (regState st) st.
+  Proof.
+    destruct st as [regs procs]. simpl.
+    revert regs.
+    induction procs.
+    - intros. simp run_multistep run_independent.
+      repeat f_equal.
+    - intros. simp run_multistep run_independent.
+      destruct (exec_module_item regs a) eqn:E; simpl; [|reflexivity].
+      simp module_body_writes module_body_reads in *.
+      apply disjoint_app in H. destruct H as [H0 H1].
+      apply disjoint_sym in H0. apply disjoint_app in H0. destruct H0.
+      apply disjoint_sym in H1. apply disjoint_app in H1. destruct H1.
+      erewrite IHprocs by (apply disjoint_sym; assumption).
+      clear IHprocs. admit.
+  Admitted.
+
+  (* Lemma run_multistep_has_error :
+   *   In mi body ->
+   *   exec_module_item
+   * run_multistep {| regState := regState; pendingProcesses := body |} *)
+
+  Lemma run_multistep_permute body : forall regState body',
+    disjoint (Verilog.module_body_writes body) (Verilog.module_body_reads body) ->
+    permutation body body' ->
+    run_multistep {| regState := regState; pendingProcesses := body |} =
+      run_multistep {| regState := regState; pendingProcesses := body' |}.
+  Proof.
+    induction body. intros.
+    - rewrite permutation_nil with (l := body') by assumption. reflexivity.
+    - intros * Hdisjoint Hpermutation.
+      eapply permutation_cons in Hpermutation.
+      inv Hpermutation.
+      simp module_body_writes in *. apply disjoint_app in Hdisjoint. inv Hdisjoint.
+      simp run_multistep.
+  Admitted.
+
+  Lemma sort_module_items_permutation mis1 : forall vars_ready mis2,
+    sort_module_items vars_ready mis1 = Some mis2 ->
+    permutation mis1 mis2.
+  Proof. Admitted.
+
+
 End Facts.
