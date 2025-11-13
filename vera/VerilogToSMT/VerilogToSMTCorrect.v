@@ -34,6 +34,7 @@ Import CommonNotations.
 Import MonadLetNotation.
 Import FunctorNotation.
 Import SigTNotations.
+Local Open Scope monad_scope.
 
 Local Open Scope list.
 
@@ -400,20 +401,145 @@ Proof.
 Qed.
 
 Definition permutation {A} (l1 l2 : list A) : Prop :=
-  List.Forall (fun x => List.In x l2) l1.
+  forall x, List.In x l1 <-> List.In x l2.
 
 Lemma permutation_nil {A} (l : list A) : permutation [] l -> l = [].
-Proof. Admitted.
+Proof.
+  unfold permutation. intros H.
+  destruct l; [reflexivity|].
+  exfalso. eapply List.in_nil.
+  eapply H. constructor. reflexivity.
+Qed.
+
+Lemma permutation_cons {A} a (l1 l2 : list A) :
+  permutation (a :: l1) l2 ->
+  (List.In a l2 /\ List.Forall (fun x => List.In x l2) l1).
+Proof.
+  unfold permutation. intros H.
+  rewrite List.Forall_forall.
+  destruct l1; crush.
+Qed.
+
+Lemma permutation_refl {A} (l : list A) : permutation l l.
+Proof. crush. Qed.
+
+Lemma permutation_sym {A} (l1 l2 : list A) : permutation l1 l2 <-> permutation l2 l1.
+Proof. crush. Qed.
+
+Lemma permutation_trans {A} (l1 l2 l3 : list A) :
+  permutation l1 l2 ->
+  permutation l2 l3 ->
+  permutation l1 l3.
+Proof. crush. Qed.
+
+(* TODO: Move me to common *)
+Lemma disjoint_app_l {A} (l1 l2 l3 : list A):
+  disjoint (l1 ++ l2) l3 ->
+  disjoint l1 l3.
+Proof.
+  unfold disjoint.
+  rewrite ! List.Forall_app.
+  crush.
+Qed.
+
+(* TODO: Move me to common *)
+Lemma disjoint_app_r {A} (l1 l2 l3 : list A):
+  disjoint (l1 ++ l2) l3 ->
+  disjoint l2 l3.
+Proof.
+  unfold disjoint.
+  rewrite ! List.Forall_app.
+  crush.
+Qed.
+
+(* TODO: Move me to common *)
+Lemma disjoint_app {A} (l1 l2 l3 : list A):
+  disjoint (l1 ++ l2) l3 ->
+  disjoint l1 l3 /\ disjoint l2 l3.
+Proof.
+  unfold disjoint.
+  rewrite ! List.Forall_app.
+  crush.
+Qed.
+
+(* TODO: Move me to common *)
+Lemma disjoint_sym {A} (l1 l2 : list A):
+  disjoint l1 l2 <->
+  disjoint l2 l1.
+Proof.
+  unfold disjoint.
+  rewrite ! List.Forall_forall.
+  crush.
+Qed.
+
+Equations run_independent
+  (regs : RegisterState) (st : VerilogState) : option VerilogState
+    by wf (List.length (pendingProcesses st)) := {
+  | regs, MkVerilogState stRegs [] =>
+    Some (MkVerilogState stRegs [])
+  | regs, MkVerilogState stRegs (mi :: mis) =>
+    let* stRegs1 := exec_module_item regs mi in
+    run_independent regs (MkVerilogState (VariableDepMap.combine stRegs1 stRegs) mis)
+}.
+
+Lemma run_independent_change_regs : forall st regs regs',
+  run_independent regs st = run_independent regs' st.
+Proof.
+  intros [regs0 procs]. revert regs0.
+  induction procs; intros; simp run_independent; [reflexivity|].
+  destruct (exec_module_item regs a) eqn:E1;
+    destruct (exec_module_item regs' a) eqn:E2;
+    simpl in *.
+  - erewrite IHprocs by admit. clear IHprocs.
+Admitted.
+
+
+Lemma run_multistep_independent st :
+  disjoint
+    (Verilog.module_body_writes (pendingProcesses st))
+    (Verilog.module_body_reads (pendingProcesses st)) ->
+  run_multistep st = run_independent (regState st) st.
+Proof.
+  destruct st as [regs procs]. simpl.
+  revert regs.
+  induction procs.
+  - intros. simp run_multistep run_independent.
+    repeat f_equal.
+  - intros. simp run_multistep run_independent.
+    destruct (exec_module_item regs a) eqn:E; simpl; [|reflexivity].
+    simp module_body_writes module_body_reads in *.
+    apply disjoint_app in H. destruct H as [H0 H1].
+    apply disjoint_sym in H0. apply disjoint_app in H0. destruct H0.
+    apply disjoint_sym in H1. apply disjoint_app in H1. destruct H1.
+    erewrite IHprocs by (apply disjoint_sym; assumption).
+    clear IHprocs. admit.
+Admitted.
+
+
+
+(* Lemma run_multistep_has_error :
+ *   In mi body ->
+ *   exec_module_item
+ * run_multistep {| regState := regState; pendingProcesses := body |} *)
 
 Lemma run_multistep_permute body : forall regState body',
-  disjoint (Verilog.module_body_writes body) (Verilog.module_body_reads body') ->
+  disjoint (Verilog.module_body_writes body) (Verilog.module_body_reads body) ->
   permutation body body' ->
   run_multistep {| regState := regState; pendingProcesses := body |} =
     run_multistep {| regState := regState; pendingProcesses := body' |}.
 Proof.
-  induction body; intros.
+  induction body. intros.
   - rewrite permutation_nil with (l := body') by assumption. reflexivity.
-  - simp run_multistep. admit.
+  - intros * Hdisjoint Hpermutation.
+    eapply permutation_cons in Hpermutation.
+    inv Hpermutation. fold (permutation body body') in H2.
+    simp module_body_writes in *. apply disjoint_app in Hdisjoint. inv Hdisjoint.
+    simp run_multistep.
+    destruct (exec_module_item regState0 a) eqn:E.
+    + simpl.
+      insterU IHbody. rewrite IHbody. clear IHbody.
+      admit.
+    + simpl.
 Admitted.
 
 Lemma sort_module_items_permutation mis1 : forall vars_ready mis2,
@@ -565,7 +691,7 @@ Proof.
 Qed.
 
 Lemma transfer_module_body_valid tag m v ρ q :
-  (exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted) ->
+  vmodule_sortable v ->
   list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v) ->
   disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
   transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
@@ -775,7 +901,7 @@ Proof.
     pose proof (verilog_to_smt_has_vars _ _ _ _ _ H Hsat) as Hhas_vars.
     unfold verilog_to_smt in H. monad_inv. simpl in *.
     (* Add assertion *)
-    assert (exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted) by admit.
+    assert (vmodule_sortable v) by admit.
     eapply transfer_module_body_valid; try (some_inv; eassumption).
     intros var Hvar_in.
     unfold list_subset in *. rewrite List.Forall_forall in *.
@@ -926,7 +1052,7 @@ Proof.
   }
 
   (* Add assertion *)
-  assert (exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted) as Hsortable by admit.
+  assert (vmodule_sortable v) as Hsortable by admit.
   destruct Hsortable as [sorted Hsort].
   unfold run_vmodule, mk_initial_state in Hrun.
   rewrite Hsort in Hrun. simpl in Hrun.

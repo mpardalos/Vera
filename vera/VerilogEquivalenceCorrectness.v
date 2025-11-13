@@ -10,6 +10,7 @@ From vera Require VerilogToSMT.VerilogToSMTCorrect.
 From vera Require Import VerilogToSMT.Match.
 From vera Require Import VerilogEquivalence.
 From vera Require VerilogSemantics.
+From vera Require VerilogSort.
 From vera Require Import Tactics.
 From vera Require Import Decidable.
 
@@ -971,13 +972,16 @@ Proof.
 Qed.
 
 Lemma valid_execution_rewrite v e1 e2 :
+  (exists sorted, VerilogSort.sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted) ->
   list_subset (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.modVariables v) ->
   (forall var, In var (Verilog.modVariables v) -> e1 var = e2 var) ->
   valid_execution v e1 <-> valid_execution v e2.
 Proof.
   unfold valid_execution, execution_match_on, list_subset.
   rewrite List.Forall_forall.
-  intros Hwrites_in_vars Heq.
+  intros [sorted Hsort] Hwrites_in_vars Heq.
+  unfold run_vmodule, mk_initial_state.
+  rewrite Hsort. simpl.
   split; intros [e' [Hrun H]].
   - exists e'. split.
     + now rewrite <- limit_to_regs_rewrite with (e1 := e1)
@@ -1021,13 +1025,13 @@ Proof.
   - rewrite Heq; auto.
 Qed.
 
-Lemma counterexample_execution_rewrite_left v1 e1 e1' v2 e2 :
-  list_subset (Verilog.module_body_writes (Verilog.modBody v1)) (Verilog.modVariables v1) ->
-  (forall var, In var (Verilog.modVariables v1) -> e1 var = e1' var) ->
-  counterexample_execution v1 e1 v2 e2 <-> counterexample_execution v1 e1' v2 e2.
+Lemma counterexample_execution_rewrite_left v e1 e1' v2 e2 :
+  (exists sorted, VerilogSort.sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted) ->
+  list_subset (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.modVariables v) ->
+  (forall var, In var (Verilog.modVariables v) -> e1 var = e1' var) ->
+  counterexample_execution v e1 v2 e2 <-> counterexample_execution v e1' v2 e2.
 Proof.
   unfold counterexample_execution.
-  intros Hwrites_in_vars Heq.
   split; intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]];
     repeat split; try eassumption.
   - rewrite <- valid_execution_rewrite; eassumption.
@@ -1043,6 +1047,8 @@ Proof.
 Qed.
 
 Lemma counterexample_execution_rewrite_right v1 e1 v2 e2 e2' :
+  (exists sorted, VerilogSort.sort_module_items (Verilog.module_inputs v1) (Verilog.modBody v1) = Some sorted) ->
+  (exists sorted, VerilogSort.sort_module_items (Verilog.module_inputs v2) (Verilog.modBody v2) = Some sorted) ->
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
   list_subset (Verilog.module_body_writes (Verilog.modBody v2)) (Verilog.modVariables v2) ->
@@ -1050,7 +1056,7 @@ Lemma counterexample_execution_rewrite_right v1 e1 v2 e2 e2' :
   counterexample_execution v1 e1 v2 e2 <-> counterexample_execution v1 e1 v2 e2'.
 Proof.
   unfold counterexample_execution.
-  intros Hinputs_same Houtputs_same Hwrites_in_vars Heq.
+  intros Hsortable1 Hsortable2 Hinputs_same Houtputs_same Hwrites_in_vars Heq.
   rewrite Hinputs_same, Houtputs_same.
   split; intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]];
     repeat split; try eassumption.
@@ -1175,6 +1181,12 @@ Proof.
     unfold VerilogToSMT.verilog_to_smt in *. monad_inv. simpl in *.
     assumption.
   }
+  assert (VerilogSort.vmodule_sortable v1). {
+    admit.
+  }
+  assert (VerilogSort.vmodule_sortable v2). {
+    admit.
+  }
   erewrite
     <- counterexample_execution_rewrite_left,
     <- counterexample_execution_rewrite_right
@@ -1182,6 +1194,8 @@ Proof.
   - eapply Hunsat with (ρ := ρ).
     subst ρ.
     eapply equivalence_query_execution_spec; eauto.
+  - assumption.
+  - assumption.
   - assumption.
   - assumption.
   - assumption.
@@ -1203,6 +1217,7 @@ Proof.
       * eassumption.
     + eapply Hmatch. assumption.
   - assumption.
+  - assumption.
   - intros var Hvar_in.
     pose proof equivalence_query_map_match_left as Hmatch.
     insterU Hmatch. unfold SMT.match_map_vars in Hmatch.
@@ -1219,4 +1234,4 @@ Proof.
         eassumption.
       * eassumption.
     + eapply Hmatch. assumption.
-Qed.
+Admitted.

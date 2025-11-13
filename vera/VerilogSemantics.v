@@ -402,3 +402,99 @@ Module CombinationalOnly.
       (input_defined : forall var, exists xbv, initial var = Some xbv -> ~ XBV.has_x xbv),
     exists final, run_vmodule v initial = Some final.
 End CombinationalOnly.
+
+Module Facts.
+  Import CombinationalOnly.
+
+  Definition register_state_match_partial
+    (P : Verilog.variable -> Prop)
+    (regs1 regs2 : RegisterState) : Prop :=
+    forall var, P var -> regs1 var = regs2 var.
+
+  Global Instance register_state_match_partial_proper :
+    Proper
+      (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff)
+      register_state_match_partial.
+  Proof.
+    repeat intro. subst.
+    crush.
+  Qed.
+
+  Lemma register_state_match_partial_split_iff C1 C2 regs1 regs2 :
+    register_state_match_partial (fun var => C1 var \/ C2 var) regs1 regs2 <->
+      (register_state_match_partial C1 regs1 regs2 /\ register_state_match_partial C2 regs1 regs2).
+  Proof. unfold register_state_match_partial. crush. Qed.
+
+
+  Ltac unpack_verilog_smt_match_states_partial :=
+    repeat match goal with
+      | [ H: register_state_match_partial (fun _ => _ \/ _) _ _ |- _ ] =>
+          apply register_state_match_partial_split_iff in H;
+          destruct H
+      | [ H: register_state_match_partial (fun _ => List.In _ (_ ++ _)) _ _ |- _ ] =>
+          setoid_rewrite List.in_app_iff in H
+      | [ |- register_state_match_partial (fun _ => List.In _ (_ ++ _)) _ _ ] =>
+          setoid_rewrite List.in_app_iff
+      | [ |- register_state_match_partial (fun _ => _ \/ _) _ _ ] =>
+          apply register_state_match_partial_split_iff; split
+      end.
+
+  Lemma eval_expr_change_regs w (e : Verilog.expression w) : forall regs regs',
+    register_state_match_partial (fun var => List.In var (Verilog.expr_reads e)) regs regs' ->
+    eval_expr regs e = eval_expr regs' e.
+  Proof.
+    induction e; intros; simp eval_expr expr_reads in *;
+      unpack_verilog_smt_match_states_partial;
+      try erewrite IHe with (regs':=regs') by assumption;
+      try erewrite IHe1 with (regs':=regs') by assumption;
+      try erewrite IHe2 with (regs':=regs') by assumption;
+      try erewrite IHe3 with (regs':=regs') by assumption;
+      try reflexivity;
+      [idtac].
+    crush.
+  Qed.
+
+  Lemma exec_statement_change_regs stmt regs1 regs2 : forall regs1' regs2',
+    register_state_match_partial
+      (fun var => List.In var (Verilog.statement_reads stmt))
+      regs1 regs2 ->
+    exec_statement regs1 stmt = Some regs1' ->
+    exec_statement regs2 stmt = Some regs2' ->
+    register_state_match_partial
+      (fun var => List.In var (Verilog.statement_writes stmt))
+      regs1' regs2'.
+  Proof.
+  eapply exec_statement_elim with
+    (P := fun regs stmt_ result => forall regs1' regs2',
+          register_state_match_partial
+            (fun var => List.In var (Verilog.statement_reads stmt_))
+            regs regs2 ->
+          result = Some regs1' ->
+          exec_statement regs2 stmt_ = Some regs2' ->
+          register_state_match_partial
+            (fun var => List.In var (Verilog.statement_writes stmt_))
+            regs1' regs2'
+	    )
+    (P0 := fun regs stmts_ result => forall regs1' regs2',
+           register_state_match_partial
+             (fun var => List.In var (Verilog.statement_reads_lst stmts_))
+             regs regs2 ->
+           result = Some regs1' ->
+           exec_statements regs2 stmts_ = Some regs2' ->
+           register_state_match_partial
+             (fun var => List.In var (Verilog.statement_writes_lst stmts_))
+             regs1' regs2');
+    intros; simp exec_statement statement_writes expr_reads statement_reads expr_reads in *;
+    eauto; try discriminate.
+    - monad_inv.
+      intros var' Hvar'. replace var' with var in * by crush. clear Hvar'.
+      erewrite eval_expr_change_regs in E by eassumption.
+      replace
+
+      inv Hvar'.
+    - admit.
+    - monad_inv. unpack_verilog_smt_match_states_partial.
+      + insterU H.
+  Qed.
+
+End Facts.

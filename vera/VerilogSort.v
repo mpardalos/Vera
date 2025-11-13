@@ -67,3 +67,6 @@ Equations sort_module_items
     let* sorted_rest := sort_module_items (module_item_writes ready ++ vars_ready) rest in
     Some (ready :: sorted_rest)
   }.
+
+Definition vmodule_sortable (v : vmodule) : Prop :=
+  exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted.
