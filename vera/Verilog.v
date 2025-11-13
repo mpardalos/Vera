@@ -187,16 +187,11 @@ Module Verilog.
   Definition expr_type {w} (e : expression w) := w.
 
   Inductive statement :=
-  | Block (body : list statement)
   | BlockingAssign {w} (lhs rhs : expression w)
-  | NonBlockingAssign {w} (lhs rhs : expression w)
-  | If {w_cond} (condition : expression w_cond) (trueBranch falseBranch : statement)
   .
 
   Inductive module_item :=
   | AlwaysComb : statement -> module_item
-  | AlwaysFF : statement -> module_item
-  | Initial : statement -> module_item
   .
 
   (** Verilog modules *)
@@ -279,50 +274,22 @@ Module Verilog.
 
   Equations
     statement_reads : Verilog.statement -> list Verilog.variable :=
-    statement_reads (Verilog.Block stmts) :=
-      statement_reads_lst stmts ;
-    statement_reads (Verilog.If cond trueBranch falseBranch) :=
-      expr_reads cond ++ statement_reads trueBranch ++ statement_reads falseBranch ;
     statement_reads (Verilog.BlockingAssign lhs rhs) :=
-      expr_reads rhs ; (* ONLY looking at rhs here *)
-    statement_reads (Verilog.NonBlockingAssign lhs rhs) :=
-      expr_reads rhs ; (* ...and here *)
-  where statement_reads_lst : list Verilog.statement -> list Verilog.variable :=
-    statement_reads_lst [] := [];
-    statement_reads_lst (hd :: tl) :=
-      statement_reads hd ++ statement_reads_lst tl;
+      expr_reads rhs  (* ONLY looking at rhs here *)
   .
 
   Equations
     statement_writes : Verilog.statement -> list Verilog.variable :=
-    statement_writes (Verilog.Block stmts) :=
-      statement_writes_lst stmts ;
-    statement_writes (Verilog.If cond trueBranch falseBranch) :=
-      statement_writes trueBranch ++ statement_writes falseBranch ;
     statement_writes (Verilog.BlockingAssign lhs rhs) :=
       expr_reads lhs ; (* ONLY looking at lhs here *)
-    statement_writes (Verilog.NonBlockingAssign lhs rhs) :=
-      expr_reads lhs ; (* ...and here *)
-  where statement_writes_lst : list Verilog.statement -> list Verilog.variable :=
-    statement_writes_lst [] := [];
-    statement_writes_lst (hd :: tl) :=
-      statement_writes hd ++ statement_writes_lst tl;
   .
 
   Equations module_item_reads : Verilog.module_item -> list Verilog.variable :=
     module_item_reads (Verilog.AlwaysComb stmt) => statement_reads stmt ;
-    module_item_reads (Verilog.AlwaysFF _) => [] ;
-    (* TODO: idk if this is right? Initial blocks definitely don't matter
-      after initalization, but maybe there should be some kind of check for
-      that? In any case, only matters once we do synchronous *)
-    module_item_reads (Verilog.Initial stmt) => [] ;
   .
 
   Equations module_item_writes : Verilog.module_item -> list Verilog.variable :=
     module_item_writes (Verilog.AlwaysComb stmt) => statement_writes stmt ;
-    module_item_writes (Verilog.AlwaysFF _) => [] ;
-    (* TODO: See above comment. *)
-    module_item_writes (Verilog.Initial stmt) => [] ;
   .
 
   Equations module_body_reads : list Verilog.module_item -> list Verilog.variable :=
@@ -355,16 +322,11 @@ Module RawVerilog.
   .
 
   Inductive statement :=
-  | Block (body : list statement)
   | BlockingAssign (lhs rhs : expression)
-  | NonBlockingAssign (lhs rhs : expression)
-  | If (condition : expression) (trueBranch falseBranch : statement)
   .
 
   Inductive module_item :=
   | AlwaysComb : statement -> module_item
-  | AlwaysFF : statement -> module_item
-  | Initial : statement -> module_item
   .
 
   (** Verilog modules *)
@@ -470,32 +432,11 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
 
 
 Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
-| RawVerilog.Block body =>
-  let* t_body := tc_statement_lst body in
-  inr (Verilog.Block t_body)
-    where
-      tc_statement_lst : list RawVerilog.statement -> transf (list Verilog.statement) := {
-      | [] := inr []
-      | (stmt :: stmts) :=
-      	let* t_stmt := tc_statement stmt in
-	let* t_stmts := tc_statement_lst stmts in
-	inr (t_stmt :: t_stmts)
-      }
 | RawVerilog.BlockingAssign lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
   let* t_rhs' := cast_width "Different widths in blocking assign" w_lhs t_rhs in
   inr (Verilog.BlockingAssign t_lhs t_rhs')
-| RawVerilog.NonBlockingAssign lhs rhs =>
-  let* (w_lhs; t_lhs) := tc_expr lhs in
-  let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width "Different widths in nonblocking assign" w_lhs t_rhs in
-  inr (Verilog.BlockingAssign t_lhs t_rhs')
-| RawVerilog.If condition trueBranch falseBranch =>
-  let* (_; t_cond) := tc_expr condition in
-  let* t_trueBranch := tc_statement trueBranch in
-  let* t_falseBranch := tc_statement falseBranch in
-  inr (Verilog.If t_cond t_trueBranch t_falseBranch)
 }
 .
 
@@ -503,12 +444,6 @@ Equations tc_module_item : RawVerilog.module_item -> transf Verilog.module_item 
 | RawVerilog.AlwaysComb stmt =>
   let* t_stmt := tc_statement stmt in
   inr (Verilog.AlwaysComb t_stmt)
-| RawVerilog.AlwaysFF stmt =>
-  let* t_stmt := tc_statement stmt in
-  inr (Verilog.AlwaysFF t_stmt)
-| RawVerilog.Initial stmt =>
-  let* t_stmt := tc_statement stmt in
-  inr (Verilog.Initial t_stmt)
 }.
 
 Equations tc_module_item_lst : list RawVerilog.module_item -> transf (list Verilog.module_item) := {

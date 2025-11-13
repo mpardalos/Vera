@@ -97,25 +97,11 @@ module Raw = struct
 
   let rec statement (fmt : formatter) (s : RawVerilog.statement) =
     match s with
-    | RawVerilog.Block body ->
-        fprintf fmt "begin @,    @[<v>%a@]@,end"
-          (pp_print_list statement ~pp_sep:Util.colon_sep)
-          body
     | RawVerilog.BlockingAssign (lhs, rhs) ->
         fprintf fmt "%a = %a" expression lhs expression rhs
-    | RawVerilog.NonBlockingAssign (lhs, rhs) ->
-        fprintf fmt "%a <= %a" expression lhs expression rhs
-    | RawVerilog.If (cond, trueBranch, falseBranch) ->
-        fprintf fmt "if %a then %a else %a" expression cond statement trueBranch
-          statement falseBranch
 
   let mod_item (fmt : formatter) (i : RawVerilog.module_item) =
-    match i with
-    | RawVerilog.Initial body -> fprintf fmt "initial %a" statement body
-    | RawVerilog.AlwaysComb body ->
-        fprintf fmt "always_comb %a" statement body
-    | RawVerilog.AlwaysFF body ->
-        fprintf fmt "always_ff @(posedge clk) %a" statement body
+    fprintf fmt "always_comb %a" statement i
 
   let vmodule (fmt : formatter) (m : RawVerilog.vmodule) =
     fprintf fmt "RawVerilog.module %s {@." (Util.lst_to_string m.modName);
@@ -174,25 +160,11 @@ module Typed = struct
 
   let rec statement (fmt : formatter) (s : Verilog.statement) =
     match s with
-    | Verilog.Block body ->
-        fprintf fmt "begin @,    @[<v>%a@]@,end"
-          (pp_print_list statement ~pp_sep:Util.colon_sep)
-          body
     | Verilog.BlockingAssign (_, lhs, rhs) ->
         fprintf fmt "%a = %a" expression lhs expression rhs
-    | Verilog.NonBlockingAssign (_, lhs, rhs) ->
-        fprintf fmt "%a <= %a" expression lhs expression rhs
-    | Verilog.If (_, cond, trueBranch, falseBranch) ->
-        fprintf fmt "if %a then %a else %a" expression cond statement trueBranch
-          statement falseBranch
 
   let mod_item (fmt : formatter) (i : Verilog.module_item) =
-    match i with
-    | Verilog.Initial body -> fprintf fmt "initial %a" statement body
-    | Verilog.AlwaysComb body ->
-        fprintf fmt "always_comb %a" statement body
-    | Verilog.AlwaysFF body ->
-        fprintf fmt "always_ff (@posedge clk) %a" statement body
+    fprintf fmt "always_comb %a" statement i
 
   let vmodule (fmt : formatter) (m : Verilog.vmodule) =
     fprintf fmt "Verilog.module %s {@." (Util.lst_to_string m.modName);

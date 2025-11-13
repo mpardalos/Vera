@@ -289,17 +289,12 @@ Lemma exec_statement_reads_has_values_before r1 r2 stmt :
   List.Forall (fun n => exists v, r1 n = v) (Verilog.statement_reads stmt).
 Proof.
   rewrite List.Forall_forall.
-  eapply exec_statement_elim
-    with
-    (P := fun regs stmt result =>
-            result = Some r2 ->
-            forall x, List.In x (Verilog.statement_reads stmt) ->
-                 exists v, r1 x = v)
-    (P0 := fun regs stmts result =>
-             result = Some r2 ->
-             forall x, List.In x (Verilog.statement_reads_lst stmts) ->
-                  exists v, r1 x = v);
-    crush.
+  intros.
+  funelim (exec_statement r1 stmt);
+    clear Heqcall;
+    simp exec_statement in *;
+    try discriminate.
+  crush.
 Qed.
 
 Lemma exec_statement_preserve stmt : forall r1 r2 var,
@@ -307,28 +302,14 @@ Lemma exec_statement_preserve stmt : forall r1 r2 var,
   (~ List.In var (Verilog.statement_writes stmt)) ->
   r1 var = r2 var.
 Proof.
-  intros *. revert r2.
-  eapply exec_statement_elim with
-    (P0 :=
-       fun r stmts out => forall r2,
-           out = Some r2 ->
-           ~ List.In var (Verilog.statement_writes_lst stmts) ->
-           r var = r2 var
-    ); intros; try discriminate;
-    simp statement_writes expr_reads in *;
-    try rewrite List.in_app_iff in *;
-    monad_inv.
-  - crush.
-  - rewrite set_reg_get_out; crush.
-  - crush.
-  - crush.
-  - crush.
-  - crush.
-  - repeat
-       multimatch goal with
-       | [ H: forall _, _ |- _ ] => insterU H
-       end;
-    congruence.
+  intros * Hexec Hnotin.
+  funelim (exec_statement r1 stmt);
+    clear Heqcall;
+    simp exec_statement in *;
+    try discriminate.
+  monad_inv.
+  rewrite set_reg_get_out by crush.
+  reflexivity.
 Qed.
 
 Lemma exec_module_item_preserve mi : forall r1 r2 var,
@@ -515,8 +496,6 @@ Proof.
     clear IHprocs. admit.
 Admitted.
 
-
-
 (* Lemma run_multistep_has_error :
  *   In mi body ->
  *   exec_module_item
@@ -532,14 +511,9 @@ Proof.
   - rewrite permutation_nil with (l := body') by assumption. reflexivity.
   - intros * Hdisjoint Hpermutation.
     eapply permutation_cons in Hpermutation.
-    inv Hpermutation. fold (permutation body body') in H2.
+    inv Hpermutation.
     simp module_body_writes in *. apply disjoint_app in Hdisjoint. inv Hdisjoint.
     simp run_multistep.
-    destruct (exec_module_item regState0 a) eqn:E.
-    + simpl.
-      insterU IHbody. rewrite IHbody. clear IHbody.
-      admit.
-    + simpl.
 Admitted.
 
 Lemma sort_module_items_permutation mis1 : forall vars_ready mis2,

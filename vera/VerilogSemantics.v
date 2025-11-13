@@ -252,46 +252,15 @@ Module CombinationalOnly.
 
   Equations
     exec_statement (regs : RegisterState) (stmt : Verilog.statement) : option RegisterState by struct :=
-    exec_statement regs (Verilog.Block stmts) := exec_statements regs stmts ;
-    exec_statement regs (Verilog.If cond trueBranch falseBranch) :=
-      let* cond_val := eval_expr regs cond in
-      (*
-       * If the cond_predicate expression evaluates to true (that is, has a
-       * nonzero known value), the first statement shall be executed. If it
-       * evaluates to false (that is, has a zero value or the value is x or z), the
-       * first statement shall not execute. If there is an else statement and the
-       * cond_predicate expression is false, the else statement shall be
-       * executed.
-       *)
-      match XBV.to_bv cond_val with
-      | None => exec_statement regs falseBranch
-      | Some cond_bv =>
-        if BV.is_zero cond_bv
-        then exec_statement regs falseBranch
-        else exec_statement regs trueBranch
-      end
-    ;
     exec_statement regs (Verilog.BlockingAssign (Verilog.NamedExpression var) rhs) :=
       let* rhs_val := eval_expr regs rhs in
-      Some (set_reg var rhs_val regs)
-    ;
+      Some (set_reg var rhs_val regs) ;
     exec_statement regs (Verilog.BlockingAssign lhs rhs) :=
       None;
-    exec_statement regs (Verilog.NonBlockingAssign lhs rhs) :=
-      None;
-  where exec_statements (regs : RegisterState) (stmts : list Verilog.statement) : option RegisterState :=
-    exec_statements regs [] := Some regs;
-    exec_statements regs (hd :: tl) :=
-      let* regs' := exec_statement regs hd in
-      exec_statements regs' tl;
   .
 
   Equations
     exec_module_item : RegisterState -> Verilog.module_item -> option RegisterState :=
-    exec_module_item st (Verilog.Initial _) :=
-      None; (* initial blocks are not part of the semantics *)
-    exec_module_item st (Verilog.AlwaysFF stmt) :=
-      None; (* always_ff is not allowed *)
     exec_module_item st (Verilog.AlwaysComb stmt ) :=
       exec_statement st stmt;
   .
@@ -425,7 +394,6 @@ Module Facts.
       (register_state_match_partial C1 regs1 regs2 /\ register_state_match_partial C2 regs1 regs2).
   Proof. unfold register_state_match_partial. crush. Qed.
 
-
   Ltac unpack_verilog_smt_match_states_partial :=
     repeat match goal with
       | [ H: register_state_match_partial (fun _ => _ \/ _) _ _ |- _ ] =>
@@ -464,37 +432,18 @@ Module Facts.
       (fun var => List.In var (Verilog.statement_writes stmt))
       regs1' regs2'.
   Proof.
-  eapply exec_statement_elim with
-    (P := fun regs stmt_ result => forall regs1' regs2',
-          register_state_match_partial
-            (fun var => List.In var (Verilog.statement_reads stmt_))
-            regs regs2 ->
-          result = Some regs1' ->
-          exec_statement regs2 stmt_ = Some regs2' ->
-          register_state_match_partial
-            (fun var => List.In var (Verilog.statement_writes stmt_))
-            regs1' regs2'
-	    )
-    (P0 := fun regs stmts_ result => forall regs1' regs2',
-           register_state_match_partial
-             (fun var => List.In var (Verilog.statement_reads_lst stmts_))
-             regs regs2 ->
-           result = Some regs1' ->
-           exec_statements regs2 stmts_ = Some regs2' ->
-           register_state_match_partial
-             (fun var => List.In var (Verilog.statement_writes_lst stmts_))
-             regs1' regs2');
-    intros; simp exec_statement statement_writes expr_reads statement_reads expr_reads in *;
-    eauto; try discriminate.
-    - monad_inv.
-      intros var' Hvar'. replace var' with var in * by crush. clear Hvar'.
-      erewrite eval_expr_change_regs in E by eassumption.
-      replace
-
-      inv Hvar'.
-    - admit.
-    - monad_inv. unpack_verilog_smt_match_states_partial.
-      + insterU H.
+    intros * Hmatch Hexec1 Hexec2.
+    funelim (exec_statement regs1 stmt);
+      rewrite <- Heqcall in *; try discriminate;
+      [idtac].
+    clear Heqcall.
+    simp exec_statement statement_reads statement_writes expr_reads in *.
+    monad_inv.
+    unfold register_state_match_partial in *.
+    intros var' Hvarin.
+    replace var' with var in * by crush. clear Hvarin.
+    erewrite eval_expr_change_regs in E by eassumption.
+    rewrite ! set_reg_get_in.
+    crush.
   Qed.
-
 End Facts.

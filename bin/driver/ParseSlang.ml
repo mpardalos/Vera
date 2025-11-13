@@ -259,7 +259,7 @@ let rec parse_expression json =
       (* Vera.RawVerilog.NamedExpression ((), Util.string_to_lst kind) *)
       raise (SlangUnexpectedValue ("expression kind", kind))
 
-let rec parse_statement json =
+let parse_statement json =
   not_null "statement" json;
   match json |> member "kind" |> to_string with
   | "ExpressionStatement" ->
@@ -268,28 +268,6 @@ let rec parse_statement json =
       let lhs = parse_expression (expr |> member "left") in
       let rhs = parse_expression (expr |> member "right") in
       Vera.RawVerilog.BlockingAssign (lhs, rhs)
-  | "Block" ->
-      json |> member "blockKind" |> to_string |> expect_value "Sequential";
-      let body =
-        match json |> member "body" |> member "kind" |> to_string with
-        | "List" ->
-            json |> member "body" |> member "list" |> to_list
-            |> List.map parse_statement
-        | _ -> [ parse_statement (json |> member "body") ]
-      in
-      Vera.RawVerilog.Block body
-  | "Conditional" ->
-      let cond =
-        json |> member "conditions" |> to_list |> List.hd |> member "expr"
-        |> parse_expression
-      in
-      let ifTrue = json |> member "ifTrue" |> parse_statement in
-      let ifFalse =
-        match json |> member "ifFalse" with
-        | `Null -> Vera.RawVerilog.Block []
-        | stmt -> parse_statement stmt
-      in
-      Vera.RawVerilog.If (cond, ifTrue, ifFalse)
   | str -> raise (SlangUnexpectedValue ("statement kind", str))
 
 let parse_continuous_assign json =
@@ -298,23 +276,13 @@ let parse_continuous_assign json =
   expect_kind "Assignment" assignment;
   let lhs = parse_expression (assignment |> member "left") in
   let rhs = parse_expression (assignment |> member "right") in
-  Vera.RawVerilog.AlwaysComb (Vera.RawVerilog.BlockingAssign (lhs, rhs))
+  (* Vera.RawVerilog.AlwaysComb *) (Vera.RawVerilog.BlockingAssign (lhs, rhs))
 
 let parse_procedural_block json =
   expect_kind "ProceduralBlock" json;
   let body = json |> member "body" in
   match json |> member "procedureKind" |> to_string with
-  | "AlwaysComb" -> Vera.RawVerilog.AlwaysComb (parse_statement body)
-  | "AlwaysFF" | "Always" ->
-      expect_kind "Timed" body;
-      expect_kind "SignalEvent" (body |> member "timing");
-      expect_kind "NamedValue" (body |> member "timing" |> member "expr");
-      body |> member "timing" |> member "expr" |> member "symbol" |> to_string
-      |> read_name |> expect_value "clk";
-      Vera.RawVerilog.AlwaysFF (parse_statement (body |> member "stmt"))
-  | "Initial" ->
-      let body = json |> member "body" |> parse_statement in
-      Vera.RawVerilog.Initial body
+  | "AlwaysComb" -> (* Vera.RawVerilog.AlwaysComb *) (parse_statement body)
   | str ->
       raise (SlangUnexpectedValue ("AlwaysComb, AlwaysFF, or Initial", str))
 

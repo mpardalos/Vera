@@ -48,21 +48,12 @@ Section inline_one.
 
   Equations
     stmt_inline_var : statement -> statement := {
-    | Block stmts => Block (stmt_lst_inline_var stmts)
-      where stmt_lst_inline_var : list statement -> list statement := {
-      | [] => []
-      | (hd :: tl) => stmt_inline_var hd :: stmt_lst_inline_var tl
-      }
     | BlockingAssign lhs rhs => BlockingAssign lhs (expr_inline_var rhs)
-    | NonBlockingAssign lhs rhs => BlockingAssign lhs (expr_inline_var rhs)
-    | If cond ifT ifF => If (expr_inline_var cond) (stmt_inline_var ifT) (stmt_inline_var ifF)
     }.
 
   Equations
     module_item_inline_var : module_item -> module_item := {
     | AlwaysComb stmt => AlwaysComb (stmt_inline_var stmt)
-    | AlwaysFF stmt => AlwaysFF (stmt_inline_var stmt)
-    | Initial stmt => Initial (stmt_inline_var stmt)
     }.
 
   Equations
@@ -88,8 +79,6 @@ Equations vmodule_inline_var_lst
 Equations module_item_collect_substitution (mi : module_item) : string + substitution := {
 | AlwaysComb (BlockingAssign (NamedExpression var) rhs) => inr (MkSubstitution var rhs)
 | AlwaysComb _ => inl "always_comb block with invalid structure in inlining stage"
-| AlwaysFF _ => inl "Unexpected always_ff block in inlining stage"
-| Initial _ => inl "Unexpected initial block in inlining stage"
 }.
 
 Equations module_item_lst_collect_substitutions (mis : list module_item) : string + list substitution := {

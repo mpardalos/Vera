@@ -194,8 +194,6 @@ Section expr_to_smt.
       let* rhs_smt := expr_to_smt rhs in
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
     transfer_module_item (Verilog.AlwaysComb _) := raise "Only single-assignment always_comb (assign) allowed"%string;
-    transfer_module_item (Verilog.AlwaysFF stmt) := raise "always_ff not implemented"%string;
-    transfer_module_item (Verilog.Initial stmt) := raise "initial not implemented"%string
   .
 
   Equations transfer_module_body : list Verilog.module_item -> transf (list SMTLib.term) :=
