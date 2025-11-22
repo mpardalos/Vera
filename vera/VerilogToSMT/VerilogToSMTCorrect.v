@@ -429,12 +429,6 @@ Proof.
     intuition assumption.
 Qed.
 
-Lemma execution_match_on_impl C1 C2 e1 e2:
-  (forall var, C2 var -> C1 var) ->
-  execution_match_on C1 e1 e2 ->
-  execution_match_on C2 e1 e2.
-Proof. unfold execution_match_on. crush. Qed.
-
 Lemma transfer_module_body_satisfiable v :
   forall tag (m : VerilogSMTBijection.t) ρ q,
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->

@@ -539,37 +539,5 @@ Goal (forall (l r : list nat), DecProp (disjoint l r)). typeclasses eauto. Qed.
 Definition list_subset {A} (sub sup : list A) : Prop :=
   Forall (fun x => In x sup) sub.
 
-Definition permutation {A} (l1 l2 : list A) : Prop :=
-  forall x, List.In x l1 <-> List.In x l2.
-
-Lemma permutation_nil {A} (l : list A) : permutation [] l -> l = [].
-Proof.
-  unfold permutation. intros H.
-  destruct l; [reflexivity|].
-  exfalso. eapply List.in_nil.
-  eapply H. constructor. reflexivity.
-Qed.
-
-Lemma permutation_cons {A} a (l1 l2 : list A) :
-  permutation (a :: l1) l2 ->
-  (List.In a l2 /\ List.Forall (fun x => List.In x l2) l1).
-Proof.
-  unfold permutation. intros H.
-  rewrite List.Forall_forall.
-  destruct l1; crush.
-Qed.
-
-Lemma permutation_refl {A} (l : list A) : permutation l l.
-Proof. crush. Qed.
-
-Lemma permutation_sym {A} (l1 l2 : list A) : permutation l1 l2 <-> permutation l2 l1.
-Proof. crush. Qed.
-
-Lemma permutation_trans {A} (l1 l2 l3 : list A) :
-  permutation l1 l2 ->
-  permutation l2 l3 ->
-  permutation l1 l3.
-Proof. crush. Qed.
-
 (* Checking that typeclasses eauto can indeed figure out DecProp (list_subset l r) *)
 Goal (forall (sub sup : list nat), DecProp (list_subset sub sup)). typeclasses eauto. Qed.

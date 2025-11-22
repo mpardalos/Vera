@@ -7,6 +7,7 @@ From ExtLib Require Import Structures.Monads.
 From vera Require Import Common.
 From vera Require Import Decidable.
 From vera Require Import Verilog.
+From vera Require Import Tactics.
 Import Verilog.
 
 Import CommonNotations.
@@ -43,18 +44,22 @@ Record selection (l : list module_item) :=
   MkSelection {
     mi : module_item;
     rest : list module_item;
-    wf : S (length rest) = length l
+    wf_len : S (length rest) = length l;
+    wf_mi : List.In mi l;
+    wf_rest : List.Forall (fun x => List.In x l) rest
   }.
 
 Equations sort_module_items_select (vars_ready : list variable) (mis : list module_item) : option (selection mis) := {
   | vars_ready, [] => @None _
   | vars_ready, hd :: tl with dec (module_item_is_ready (fun var => List.In var vars_ready) hd) => {
-    | left prf => Some (MkSelection (hd :: tl) hd tl _)
+    | left prf => Some (MkSelection (hd :: tl) hd tl _ _ _)
     | right _ =>
-        let* (MkSelection _ selected selected_tl _) := sort_module_items_select vars_ready tl in
-        Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _)
+        let* (MkSelection _ selected selected_tl _ _ _) := sort_module_items_select vars_ready tl in
+        Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ _ _)
   }
 }.
+Next Obligation. rewrite List.Forall_forall in *. crush. Qed.
+Next Obligation. rewrite List.Forall_forall in *. crush. Qed.
 
 Equations sort_module_items
   (vars_ready : list variable)
@@ -63,7 +68,7 @@ Equations sort_module_items
   by wf (length mis) lt := {
   | vars_ready, [] => Some []
   | vars_ready, hd :: tl =>
-    let* (MkSelection _ ready rest _) := sort_module_items_select vars_ready (hd :: tl) in
+    let* (MkSelection _ ready rest _ _ _) := sort_module_items_select vars_ready (hd :: tl) in
     let* sorted_rest := sort_module_items (module_item_writes ready ++ vars_ready) rest in
     Some (ready :: sorted_rest)
   }.

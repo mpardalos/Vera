@@ -1005,26 +1005,6 @@ Proof.
       auto.
 Qed.
 
-Lemma execution_defined_match_on_rewrite_left C e1 e1' e2 :
-  (forall var, C var -> e1 var = e1' var) ->
-  execution_defined_match_on C e1 e2 <-> execution_defined_match_on C e1' e2.
-Proof.
-  unfold execution_defined_match_on.
-  intros Heq. split; intros Hmatch var HC.
-  - rewrite <- Heq; auto.
-  - rewrite Heq; auto.
-Qed.
-
-Lemma execution_defined_match_on_rewrite_right C e1 e2 e2' :
-  (forall var, C var -> e2 var = e2' var) ->
-  execution_defined_match_on C e1 e2 <-> execution_defined_match_on C e1 e2'.
-Proof.
-  unfold execution_defined_match_on.
-  intros Heq. split; intros Hmatch var HC.
-  - rewrite <- Heq; auto.
-  - rewrite Heq; auto.
-Qed.
-
 Lemma counterexample_execution_rewrite_left v e1 e1' v2 e2 :
   (exists sorted, VerilogSort.sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted) ->
   list_subset (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.modVariables v) ->
