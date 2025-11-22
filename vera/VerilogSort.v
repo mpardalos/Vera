@@ -1,6 +1,7 @@
 From Equations Require Import Equations.
 From Stdlib Require List.
 From Stdlib Require Import Lia.
+From Stdlib Require Import Sorting.Permutation.
 
 From ExtLib Require Import Structures.Monads.
 
@@ -44,34 +45,36 @@ Record selection (l : list module_item) :=
   MkSelection {
     mi : module_item;
     rest : list module_item;
-    wf_len : S (length rest) = length l;
-    wf_mi : List.In mi l;
-    wf_rest : List.Forall (fun x => List.In x l) rest
+    wf : Permutation (mi :: rest) l
   }.
 
 Equations sort_module_items_select (vars_ready : list variable) (mis : list module_item) : option (selection mis) := {
   | vars_ready, [] => @None _
   | vars_ready, hd :: tl with dec (module_item_is_ready (fun var => List.In var vars_ready) hd) => {
-    | left prf => Some (MkSelection (hd :: tl) hd tl _ _ _)
+    | left prf => Some (MkSelection (hd :: tl) hd tl _)
     | right _ =>
-        let* (MkSelection _ selected selected_tl _ _ _) := sort_module_items_select vars_ready tl in
-        Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ _ _)
+        let* (MkSelection _ selected selected_tl _) := sort_module_items_select vars_ready tl in
+        Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ )
   }
 }.
-Next Obligation. rewrite List.Forall_forall in *. crush. Qed.
-Next Obligation. rewrite List.Forall_forall in *. crush. Qed.
+Next Obligation.
+  etransitivity. { apply perm_swap. }
+  apply perm_skip. assumption.
+Qed.
 
 Equations sort_module_items
   (vars_ready : list variable)
   (mis : list module_item)
-  : option (list module_item)
-  by wf (length mis) lt := {
-  | vars_ready, [] => Some []
-  | vars_ready, hd :: tl =>
-    let* (MkSelection _ ready rest _ _ _) := sort_module_items_select vars_ready (hd :: tl) in
-    let* sorted_rest := sort_module_items (module_item_writes ready ++ vars_ready) rest in
-    Some (ready :: sorted_rest)
-  }.
+  : option (list module_item) by wf (length mis) lt :=
+  sort_module_items vars_ready mis with (sort_module_items_select vars_ready mis) := {
+    | None => None
+    | Some (MkSelection _ ready rest _) with (sort_module_items (module_item_writes ready ++ vars_ready) rest) => {
+      | None => None
+      | Some sorted_rest => Some (ready :: sorted_rest)
+    }
+  }
+.
+Next Obligation. apply_somewhere Permutation_length. simpl in *. lia. Qed.
 
 Definition vmodule_sortable (v : vmodule) : Prop :=
   exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted.

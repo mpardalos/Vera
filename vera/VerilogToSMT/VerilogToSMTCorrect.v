@@ -322,14 +322,12 @@ Proof.
   eapply exec_statement_preserve; eauto.
 Qed.
 
-Lemma run_multistep_preserve procs : forall r1 r2 var,
-  run_multistep
-    {| regState := r1; pendingProcesses := procs |} =
-    Some {| regState := r2; pendingProcesses := [] |} ->
+Lemma exec_module_body_preserve procs : forall r1 r2 var,
+  exec_module_body r1 procs = Some r2 ->
   (~ List.In var (Verilog.module_body_writes procs)) ->
   r1 var = r2 var.
 Proof.
-  induction procs; intros * Hrun Hin; simp run_multistep in *.
+  induction procs; intros * Hrun Hin; simp exec_module_body in *.
   - inv Hrun. reflexivity.
   - simp module_body_writes in *. rewrite List.in_app_iff in *.
     monad_inv.
@@ -381,12 +379,11 @@ Proof.
     eauto using transfer_module_item_inputs with datatypes.
 Qed.
 
-Lemma transfer_module_body_run_multistep_satisfiable inputs outputs body :
+Lemma transfer_module_body_exec_satisfiable inputs outputs body :
   forall tag (m : VerilogSMTBijection.t) r1 r2 q ρ,
     disjoint inputs outputs ->
     transfer_module_body tag m inputs outputs body = inr q ->
-    run_multistep {| regState := r1; pendingProcesses := body |} =
-      Some {| regState := r2; pendingProcesses := [] |} ->
+    exec_module_body r1 body = Some r2 ->
     verilog_smt_match_states_partial
       (fun var => List.In var (Verilog.module_body_reads body ++ Verilog.module_body_writes body))
       tag m r2 ρ ->
@@ -396,7 +393,7 @@ Proof.
    * generalize dependent (Verilog.module_inputs v). intro inputs.
    * generalize dependent (Verilog.modBody v). intro body. *)
   induction body; intros * Hdisjoint Htransfer Hvalid Hmatch; simp module_body_reads module_body_writes transfer_module_body in *; [some_inv; constructor|].
-  simp run_multistep in Hvalid.
+  simp exec_module_body in Hvalid.
   monad_inv.
   constructor.
   - eapply module_item_to_smt_satisfiable with (inputs := inputs).
@@ -409,7 +406,7 @@ Proof.
         pose proof transfer_module_item_inputs as Hinputs. insterU Hinputs.
         pose proof transfer_module_item_outputs as Houtputs. insterU Houtputs.
         rewrite List.Forall_forall in *.
-        symmetry. eapply run_multistep_preserve. eassumption.
+        symmetry. eapply exec_module_body_preserve. eassumption.
         intro Hinbody.
         destruct H.
         - eapply disjoint_l_intro with (l:=inputs); eauto; [idtac].
@@ -429,6 +426,8 @@ Proof.
     intuition assumption.
 Qed.
 
+Import Facts.
+
 Lemma transfer_module_body_satisfiable v :
   forall tag (m : VerilogSMTBijection.t) ρ q,
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
@@ -439,20 +438,23 @@ Proof.
   intros * Hdisjoint Htransfer Hvalid.
   destruct Hvalid as [e' [? ?]].
   repeat unfold mk_initial_state, run_vmodule in *. monad_inv.
-  erewrite <- run_multistep_permute in H2; cycle 1; [idtac|idtac|idtac].
-  { (* reads/writes disjoint *) admit. }
-  { eapply sort_module_items_permutation. eassumption. }
-  eapply transfer_module_body_run_multistep_satisfiable; eauto.
-  apply execution_match_on_verilog_smt_match_states_partial.
-  eapply execution_match_on_impl; [|eassumption].
-  simpl. setoid_rewrite List.in_app_iff.
-  intuition eauto.
-  apply transfer_module_body_inputs in Htransfer.
-  rewrite List.Forall_forall in Htransfer.
-  auto.
+  erewrite <- exec_module_body_permute in H2; cycle 1.
+  - eapply sort_module_items_permutation. eassumption.
+  - (* No duplicate writes *) admit.
+  - (* No duplicate writes *) admit.
+  - (* reads/writes disjoint *) admit.
+  - (* reads/writes disjoint *) admit.
+  - eapply transfer_module_body_exec_satisfiable; eauto.
+    apply execution_match_on_verilog_smt_match_states_partial.
+    eapply execution_match_on_impl; [|eassumption].
+    simpl. setoid_rewrite List.in_app_iff.
+    intuition eauto.
+    apply transfer_module_body_inputs in Htransfer.
+    rewrite List.Forall_forall in Htransfer.
+    auto.
 Admitted.
 
-Lemma transfer_module_body_run_multistep_valid inputs outputs body : forall tag m ρ q,
+Lemma transfer_module_body_exec_valid inputs outputs body : forall tag m ρ q,
     disjoint inputs outputs ->
     transfer_module_body tag m inputs outputs body = inr q ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q ->
@@ -461,8 +463,7 @@ Lemma transfer_module_body_run_multistep_valid inputs outputs body : forall tag 
         (fun var => List.In var inputs)
         tag m r1 ρ ->
       exists r2,
-        run_multistep {| regState := r1; pendingProcesses := body |} =
-          Some {| regState := r2; pendingProcesses := [] |} /\
+        exec_module_body r1 body = Some r2 /\
           verilog_smt_match_states_partial
             (fun var =>
                List.In var (inputs ++ Verilog.module_body_writes body)
@@ -470,7 +471,7 @@ Lemma transfer_module_body_run_multistep_valid inputs outputs body : forall tag 
 Proof.
   induction body; intros * Hdisjoint Htransfer Hsat * Hmatch1;
     simpl in *;
-    simp module_body_reads module_body_writes transfer_module_body run_multistep in *;
+    simp module_body_reads module_body_writes transfer_module_body exec_module_body in *;
     autorewrite with list;
     [crush|].
   monad_inv. inv Hsat.
@@ -484,7 +485,8 @@ Proof.
   rewrite Heval_mid. simpl.
   edestruct IHbody with (r1 := r_mid) as [r2 [Heval2 Hmatch2]]; try eassumption. {
     eapply verilog_smt_match_states_partial_change_regs. {
-      intros. eapply exec_module_item_preserve; [eassumption|].
+      (* TODO: Different name for the two `exec_module_item_preserve`s *)
+      intros. eapply VerilogToSMTCorrect.exec_module_item_preserve; [eassumption|].
       intro.
       pose proof transfer_module_item_outputs as Houtputs. insterU Houtputs.
       pose proof transfer_module_body_inputs as Hinputs. insterU Hinputs.
@@ -505,7 +507,8 @@ Proof.
     pose proof transfer_module_item_inputs as Hinputs. insterU Hinputs.
     pose proof transfer_module_item_outputs as Houtputs. insterU Houtputs.
     rewrite List.Forall_forall in *.
-    eapply run_multistep_preserve. eassumption.
+    (* TODO: Different name for the two `exec_module_item_preserve`s *)
+    eapply VerilogToSMTCorrect.exec_module_body_preserve. eassumption.
     intro Hinbody.
     destruct H.
     + eapply disjoint_l_intro with (l:=inputs); eauto; [idtac].
@@ -528,7 +531,7 @@ Lemma transfer_module_body_valid tag m v ρ q :
   valid_execution v (SMT.execution_of_valuation tag m ρ).
 Proof.
   intros * Hsortable Hsubset Hdisjoint Htransfer Hhas_vars Hsat.
-  edestruct transfer_module_body_run_multistep_valid
+  edestruct transfer_module_body_exec_valid
     with (r1 := limit_to_regs (Verilog.module_inputs v) (SMT.execution_of_valuation tag m ρ))
     as [final [H1 H2]].
   - eassumption.
@@ -545,17 +548,21 @@ Proof.
     apply verilog_smt_match_states_execution_of_valuation_same.
     assumption.
   - unfold valid_execution.
+  destruct Hsortable as [sorted Hsort].
     eexists.
     repeat unfold mk_initial_state, run_vmodule in *.
-    destruct Hsortable as [sorted Hsort]. rewrite Hsort. simpl.
-    erewrite <- run_multistep_permute; cycle 1; [idtac|idtac|idtac].
-    { (* reads/writes disjoint *) admit. }
-    { eapply sort_module_items_permutation. eassumption. }
-    split; [eassumption|].
-    apply verilog_smt_match_states_partial_execution_match_on.
-    eapply verilog_smt_match_states_partial_impl; [|eassumption].
-    simpl. setoid_rewrite List.in_app_iff.
-    intuition eauto.
+    rewrite Hsort. simpl.
+    erewrite <- exec_module_body_permute; cycle 1.
+    + eapply sort_module_items_permutation. eassumption.
+    + (* No duplicate writes *) admit.
+    + (* No duplicate writes *) admit.
+    + (* reads/writes disjoint *) admit.
+    + (* reads/writes disjoint *) admit.
+    + split; [eassumption|].
+      apply verilog_smt_match_states_partial_execution_match_on.
+      eapply verilog_smt_match_states_partial_impl; [|eassumption].
+      simpl. setoid_rewrite List.in_app_iff.
+      intuition eauto.
 Admitted.
 
 Lemma bij_gsi (m : VerilogSMTBijection.t) tag var smtName prf1 prf2 :
@@ -800,9 +807,9 @@ Proof.
     eauto.
 Qed.
 
-Lemma run_multistep_no_exes body : forall C tag m inputs outputs t regs regs',
+Lemma exec_module_body_no_exes body : forall C tag m inputs outputs t regs regs',
   transfer_module_body tag m inputs outputs body = inr t ->
-  run_multistep (MkVerilogState regs body) = Some (MkVerilogState regs' []) ->
+  exec_module_body regs body = Some regs' ->
   defined_value_for
     (fun var => C var
              \/ List.In var (Verilog.module_body_reads body))
@@ -815,15 +822,15 @@ Lemma run_multistep_no_exes body : forall C tag m inputs outputs t regs regs',
 Proof.
   induction body;
     simpl in *; intros * Htransfer Hrun Hdefined.
-  - simp run_multistep transfer_module_body module_body_reads in *.
+  - simp exec_module_body transfer_module_body module_body_reads in *.
     inv Hrun. intros var Hvar_in.
     simp module_body_writes in *. crush.
-  - (* FIXME: simp tactic just hangs here *)
-    autorewrite
-      with transfer_module_body
-           run_multistep
-           module_body_reads
-      in *.
+  -
+    simp
+      transfer_module_body
+      exec_module_body
+      module_body_reads
+    in *.
     monad_inv.
     simp module_body_writes.
     setoid_rewrite List.in_app_iff.
@@ -884,19 +891,21 @@ Proof.
   destruct Hsortable as [sorted Hsort].
   unfold run_vmodule, mk_initial_state in Hrun.
   rewrite Hsort in Hrun. simpl in Hrun.
-  erewrite <- run_multistep_permute in Hrun; cycle 1; [idtac|idtac|idtac].
-  { (* inputs/outputs disjoin *) admit. }
-  { eapply sort_module_items_permutation. eassumption. }
-
-  pose proof (run_multistep_no_exes
-                (Verilog.modBody v)
-                (fun var => List.In var (Verilog.module_inputs v))) as H.
-  simpl in *.
-  insterU H.
-  setoid_rewrite List.in_app_iff in Hmatch.
-  eapply defined_value_for_impl; cycle 1.
-  - eapply defined_value_for_execution_match_on; [eassumption|].
-    eapply defined_value_for_impl; [|eassumption].
-    intros var [Hvar_in | Hvar_in]; crush.
-  - crush.
+  erewrite <- exec_module_body_permute in Hrun; cycle 1.
+  - eapply sort_module_items_permutation. eassumption.
+  - (* No duplicate writes *) admit.
+  - (* No duplicate writes *) admit.
+  - (* reads/writes disjoint *) admit.
+  - (* reads/writes disjoint *) admit.
+  - pose proof (exec_module_body_no_exes
+                 (Verilog.modBody v)
+                 (fun var => List.In var (Verilog.module_inputs v))) as H.
+    simpl in *.
+    insterU H.
+    setoid_rewrite List.in_app_iff in Hmatch.
+    eapply defined_value_for_impl; cycle 1.
+    + eapply defined_value_for_execution_match_on; [eassumption|].
+      eapply defined_value_for_impl; [|eassumption].
+      intros var [Hvar_in | Hvar_in]; crush.
+    + crush.
 Admitted.

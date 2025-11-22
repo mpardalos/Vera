@@ -244,9 +244,9 @@ Qed.
 
 Lemma verilog_smt_match_states_partial_execution_match_on C tag m ρ e :
     verilog_smt_match_states_partial C tag m e ρ ->
-    execution_match_on C e (SMT.execution_of_valuation tag m ρ).
+    e =!{ C }!= SMT.execution_of_valuation tag m ρ.
 Proof.
-  unfold verilog_smt_match_states_partial, execution_match_on.
+  unfold verilog_smt_match_states_partial, "_ =!{ _ }!= _".
   intros H var Hvar.
   edestruct H as [? [H1 H2]]; [eauto|].
   inv H2. inv Hmatchvals.
@@ -258,7 +258,7 @@ Proof.
 Qed.
 
 Lemma execution_match_on_verilog_smt_match_states_partial C tag m ρ e :
-    execution_match_on C e (SMT.execution_of_valuation tag m ρ) ->
+    e =!{ C }!= (SMT.execution_of_valuation tag m ρ) ->
     verilog_smt_match_states_partial C tag m e ρ.
 Proof.
   unfold verilog_smt_match_states_partial, execution_match_on.

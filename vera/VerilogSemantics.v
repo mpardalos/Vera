@@ -282,36 +282,59 @@ Module CombinationalOnly.
     e1 ={ C2 }= e2.
   Proof. unfold register_state_match_on. crush. Qed.
 
-  Definition register_state_defined_match_on (C : Verilog.variable -> Prop) (e1 e2 : RegisterState) : Prop :=
-    forall var, C var -> exists xbv, e1 var = Some xbv /\ e2 var = Some xbv /\ ~ XBV.has_x xbv.
+  (* `RegisterState`s match on the given set, and both have values for every variable in it (Xs are allowed) *)
+  Definition execution_match_on (C : Verilog.variable -> Prop) (e1 e2 : RegisterState) : Prop :=
+    forall var, C var -> exists xbv, e1 var = Some xbv /\ e2 var = Some xbv.
 
   Notation "rs1 =!{ P }!= rs2" :=
-    (register_state_defined_match_on P rs1 rs2)
+    (execution_match_on P rs1 rs2)
     (at level 80) : type_scope.
 
   Notation "rs1 =!( vars )!= rs2" :=
     (rs1 =!{ fun var => In var vars }!= rs2)
     (at level 80) : type_scope.
 
-  Lemma register_state_defined_match_on_rewrite_left C e1 e1' e2 :
+  Lemma execution_match_on_impl C1 C2 e1 e2:
+    (forall var, C2 var -> C1 var) ->
+    e1 =!{ C1 }!= e2 ->
+    e1 =!{ C2 }!= e2.
+  Proof. unfold execution_match_on. crush. Qed.
+
+  (* `RegisterState`s match on the given set, and both have values for every variable in it (Xs are NOT allowed) *)
+  Definition execution_defined_match_on (C : Verilog.variable -> Prop) (e1 e2 : RegisterState) : Prop :=
+    forall var, C var -> exists xbv, e1 var = Some xbv /\ e2 var = Some xbv /\ ~ XBV.has_x xbv.
+
+  Notation "rs1 =!!{ P }!!= rs2" :=
+    (execution_defined_match_on P rs1 rs2)
+    (at level 80) : type_scope.
+
+  Notation "rs1 =!!( vars )!!= rs2" :=
+    (rs1 =!!{ fun var => In var vars }!!= rs2)
+    (at level 80) : type_scope.
+
+  Lemma execution_defined_match_on_rewrite_left C e1 e1' e2 :
     (forall var, C var -> e1 var = e1' var) ->
-    register_state_defined_match_on C e1 e2 <-> register_state_defined_match_on C e1' e2.
+    execution_defined_match_on C e1 e2 <-> execution_defined_match_on C e1' e2.
   Proof.
-    unfold register_state_defined_match_on.
+    unfold execution_defined_match_on.
     intros Heq. split; intros Hmatch var HC.
     - rewrite <- Heq; auto.
     - rewrite Heq; auto.
   Qed.
   
-  Lemma register_state_defined_match_on_rewrite_right C e1 e2 e2' :
+  Lemma execution_defined_match_on_rewrite_right C e1 e2 e2' :
     (forall var, C var -> e2 var = e2' var) ->
-    register_state_defined_match_on C e1 e2 <-> register_state_defined_match_on C e1 e2'.
+    execution_defined_match_on C e1 e2 <-> execution_defined_match_on C e1 e2'.
   Proof.
-    unfold register_state_defined_match_on.
+    unfold execution_defined_match_on.
     intros Heq. split; intros Hmatch var HC.
     - rewrite <- Heq; auto.
     - rewrite Heq; auto.
 Qed.
+
+  Global Instance execution_match_on_proper :
+    Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) execution_match_on.
+  Proof. repeat intro. subst. crush. Qed.
 
   Global Instance register_state_match_on_proper :
     Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) register_state_match_on.
@@ -328,12 +351,13 @@ Qed.
     limit_to_regs (Verilog.module_inputs v) regs.
 
   Definition run_vmodule (v : Verilog.vmodule) (inputs : RegisterState) : option RegisterState :=
-    exec_module_body (mk_initial_state v inputs) (Verilog.modBody v).
+    let* sorted := sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) in
+    exec_module_body (mk_initial_state v inputs) sorted.
 
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
     exists (e' : execution),
       run_vmodule v e = Some e'
-      /\ e' =( Verilog.module_inputs v ++ Verilog.module_body_writes (Verilog.modBody v))= e.
+      /\ e' =!( Verilog.module_inputs v ++ Verilog.module_body_writes (Verilog.modBody v))!= e.
 
   (** All variables of v have a value in the execution *)
   Definition complete_execution (v : Verilog.vmodule) (e : execution) :=
@@ -497,12 +521,24 @@ Module Facts.
   Add Parametric Morphism : Verilog.module_body_reads
     with signature (@Permutation Verilog.module_item) ==> (@Permutation Verilog.variable)
     as module_body_reads_permute.
-  Proof. Admitted.
+  Proof.
+    intros x y Hpermutation; induction Hpermutation; simp module_body_reads in *.
+    - constructor.
+    - erewrite IHHpermutation. reflexivity.
+    - eapply Permutation_app_swap_app.
+    - etransitivity; eassumption.
+  Qed.
 
   Add Parametric Morphism : Verilog.module_body_writes
     with signature (@Permutation Verilog.module_item) ==> (@Permutation Verilog.variable)
     as module_body_writes_permute.
-  Proof. Admitted.
+  Proof.
+    intros x y Hpermutation; induction Hpermutation; simp module_body_writes in *.
+    - constructor.
+    - erewrite IHHpermutation. reflexivity.
+    - eapply Permutation_app_swap_app.
+    - etransitivity; eassumption.
+  Qed.
 
   Ltac unpack_verilog_smt_match_states_partial :=
     repeat match goal with
@@ -723,6 +759,51 @@ Module Facts.
     now monad_inv.
   Qed.
 
+  Lemma eval_expr_change_regs_none w (expr : Verilog.expression w) : forall rs1 rs2,
+    eval_expr rs1 expr = None ->
+    rs1 =( Verilog.expr_reads expr )= rs2 ->
+    eval_expr rs2 expr = None.
+  Proof.
+    induction expr; intros;
+      simp eval_expr expr_reads in *;
+      monad_inv; unpack_verilog_smt_match_states_partial.
+    all:
+      match goal with
+      | [ Hfail : eval_expr _ ?e = None, IH : context[eval_expr _ ?e = None -> _] |- _] =>
+        insterU IH; rewrite IH; crush
+      | _ => idtac
+      end.
+    (* Variable reference is the only interesting case *)
+    unfold "_ =( _ )= _" in H0.
+    erewrite <- H0; crush.
+  Qed.
+
+  Lemma exec_module_item_change_regs_none mi : forall rs1 rs2,
+    exec_module_item rs1 mi = None ->
+    rs1 =( Verilog.module_item_reads mi )= rs2 ->
+    exec_module_item rs2 mi = None.
+  Proof.
+    destruct mi as [[? [] rhs]]; intros;
+      simp
+        module_item_reads statement_reads
+        exec_module_item exec_statement
+      in *; [idtac].
+    monad_inv.
+    erewrite eval_expr_change_regs_none; crush.
+  Qed.
+
+  Lemma exec_module_body_change_regs_none body : forall rs1 rs2,
+    exec_module_body rs1 body = None ->
+    rs1 =( Verilog.module_body_reads body )= rs2 ->
+    exec_module_body rs2 body = None.
+  Proof.
+    induction body; intros;
+      simp module_body_reads exec_module_body in *;
+      [crush|].
+    unpack_verilog_smt_match_states_partial.
+    admit.
+  Admitted.
+
   Lemma exec_module_body_permute : forall body1 body2 rs0,
     Permutation body1 body2 ->
     NoDup (Verilog.module_body_writes body1) ->
@@ -773,17 +854,27 @@ Module Facts.
 	 }
 	 eapply set_reg_swap.
 	 now disjoint_saturate.
-       * replace rs0y with rs0 in Eyx by admit. (* TODO: exec_module_item respects equality on read expressions *)
-         crush.
-       * replace rs0x with rs0 in Exy by admit. (* TODO: exec_module_item respects equality on read expressions *)
-         crush.
+       * exfalso.
+         eapply exec_module_item_change_regs_none with (rs2:=rs0) in Eyx. { congruence. }
+	 symmetry.
+	 eapply exec_module_item_preserve; [apply disjoint_sym|eassumption].
+	 now disjoint_saturate.
+       * exfalso.
+         eapply exec_module_item_change_regs_none with (rs2:=rs0) in Exy. { congruence. }
+	 symmetry.
+	 eapply exec_module_item_preserve; [apply disjoint_sym|eassumption].
+	 now disjoint_saturate.
        * reflexivity.
-     + destruct (exec_module_item rs0x y) eqn:E; [|reflexivity].
-       replace rs0x with rs0 in E by admit. (* TODO: exec_module_item respects equality on read expressions *)
-       crush.
-     + destruct (exec_module_item rs0y x) eqn:E; [|reflexivity].
-       replace rs0y with rs0 in E by admit. (* TODO: exec_module_item respects equality on read expressions *)
-       crush.
+     + destruct (exec_module_item rs0x y) as [rs0xy|] eqn:Exy; [|reflexivity].
+       exfalso.
+       eapply exec_module_item_change_regs_none with (rs2:=rs0x) in Ey. { congruence. }
+       eapply exec_module_item_preserve; [apply disjoint_sym|eassumption].
+       now disjoint_saturate.
+     + destruct (exec_module_item rs0y x) as [rs0yx|] eqn:E; [|reflexivity].
+       exfalso.
+       eapply exec_module_item_change_regs_none with (rs2:=rs0y) in Ex. { congruence. }
+       eapply exec_module_item_preserve; [apply disjoint_sym|eassumption].
+       now disjoint_saturate.
      + reflexivity.
    - transitivity (exec_module_body rs0 l').
      + eapply IHHpermute1.
@@ -797,20 +888,16 @@ Module Facts.
        * assumption.
        * rewrite <- Hpermute1. assumption.
        * assumption.
-  Admitted.
+  Qed.
 
   Lemma sort_module_items_permutation mis1 : forall vars_ready mis2,
     sort_module_items vars_ready mis1 = Some mis2 ->
     Permutation mis1 mis2.
   Proof.
-    induction mis1; intros; simp sort_module_items in *.
-    - inv H. reflexivity.
-    - monad_inv. symmetry.
-      
-      
-    
-    
-  Admitted.
-
-
+    intros.
+    funelim (sort_module_items vars_ready mis1);
+      rewrite <- Heqcall in *; clear Heqcall; try discriminate; [idtac].
+    inv H. etransitivity. { symmetry. eassumption. }
+    apply perm_skip. eapply Hind. eapply Heq.
+  Qed.
 End Facts.
