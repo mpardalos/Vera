@@ -1221,3 +1221,6 @@ Proof.
       * eassumption.
     + eapply Hmatch. assumption.
 Qed.
+
+Print Assumptions equivalence_query_unsat_correct.
+Print Assumptions equivalence_query_sat_correct.

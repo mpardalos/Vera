@@ -35,8 +35,801 @@ Import CommonNotations.
 Import MonadLetNotation.
 Import FunctorNotation.
 Import SigTNotations.
+Import EqNotations. 
 
 Local Open Scope list.
+
+Ltac bitvector_erase :=
+  repeat match goal with
+         | [ xbv : XBV.xbv _ |- _ ] => destruct xbv
+         | [ bv : BV.bitvector _ |- _ ] => destruct bv
+         | [ H : RawXBV.size ?xbv = 0%N |- _ ] =>
+	   destruct xbv; [|discriminate]; clear H; simpl in *
+         | [ H : XBV.to_bv _ = None |- _ ] => rewrite <- XBV.has_x_to_bv in H
+         | [ H : ?xbv1 = ?xbv2 |- _ ] =>
+	   match type of xbv1 with
+	   | XBV.xbv _ =>
+	     apply (f_equal XBV.bits) in H; simpl in H
+	   | BV.bitvector _ =>
+	     apply (f_equal BV.bits) in H; simpl in H
+           end
+         | [ |- ?xbv1 = ?xbv2] =>
+	   match type of xbv1 with
+	   | XBV.xbv _ => apply XBV.of_bits_equal; simpl
+	   | BV.bitvector _ => apply BV.of_bits_equal; simpl
+           end
+         | [ |- context[rew _ in _] ] => destruct_rew
+	 end;
+  unfold XBV.has_x, BV.to_N in *; simpl in *.
+
+Lemma Nat2N_inj_le : forall n m, (N.of_nat n <= N.of_nat m)%N <-> n <= m.
+Proof. lia. Qed.
+
+Lemma Nat2N_inj_lt : forall n m, (N.of_nat n < N.of_nat m)%N <-> n < m.
+Proof. lia. Qed.
+
+Lemma N2Nat_inj_le : forall n m, (N.to_nat n <= N.to_nat m) <-> (n <= m)%N.
+Proof. lia. Qed.
+
+Lemma N2Nat_inj_lt : forall n m, (N.to_nat n < N.to_nat m) <-> (n < m)%N.
+Proof. lia. Qed.
+
+Hint Rewrite <- Nat2N.inj_add Nat2N.inj_mul Nat2N.inj_sub Nat2N.inj_min Nat2N.inj_max : N_to_nat.
+Hint Rewrite N2Nat.id Nat2N.id : N_to_nat.
+
+Ltac N_to_nat :=
+  repeat match goal with
+         | [ x : N |- _ ] =>
+	 let Heqx := fresh "Heq" in
+	 let x_temp := fresh x in
+	 remember (N.to_nat x) as x_temp eqn:Heqx;
+	 apply (f_equal N.of_nat) in Heqx;
+	 rewrite N2Nat.id in Heqx;
+	 rewrite <- Heqx in *;
+	 clear x Heqx;
+	 rename x_temp into x
+	 end;
+  autorewrite with N_to_nat in *;
+  repeat match goal with
+         | [ H : (_ <= _)%N |- _ ] => apply Nat2N_inj_le in H
+         | [ H : (_ < _)%N |- _ ] => apply Nat2N_inj_lt in H
+         | [ |- (_ <= _)%N ] => apply N2Nat_inj_le
+         | [ |- (_ < _)%N ] => apply N2Nat_inj_lt
+	 | _ => progress (autorewrite with N_to_nat in *)
+  end.
+
+Ltac destruct_mins := 
+    repeat match goal with
+           | [ |- context[N.min ?l ?r] ] =>
+	     let Heqmin := fresh "Heqmin" in (
+	       destruct (N.min_spec l r) as [[? Heqmin]|[? Heqmin]];
+	       rewrite Heqmin in *;
+	       clear Heqmin;
+	       try lia
+	     )
+           | [ H : context[N.min ?l ?r] |- _ ] =>
+	     let Heqmin := fresh "Heqmin" in (
+	       destruct (N.min_spec l r) as [[? Heqmin]|[? Heqmin]];
+	       rewrite Heqmin in *;
+	       clear Heqmin;
+	       try lia
+	     )
+           | [ |- context[Nat.min ?l ?r] ] =>
+	     let Heqmin := fresh "Heqmin" in (
+	       destruct (Nat.min_spec l r) as [[? Heqmin]|[? Heqmin]];
+	       rewrite Heqmin in *;
+	       clear Heqmin;
+	       try lia
+	     )
+           | [ H : context[Nat.min ?l ?r] |- _ ] =>
+	     let Heqmin := fresh "Heqmin" in (
+	       destruct (Nat.min_spec l r) as [[? Heqmin]|[? Heqmin]];
+	       rewrite Heqmin in *;
+	       clear Heqmin;
+	       try lia
+	     )
+	   end.
+
+Lemma fold_size bv : N.of_nat (List.length bv) = RawXBV.size bv.
+Proof. reflexivity. Qed.
+
+Lemma removelast_cons_size b bs : RawXBV.size (List.removelast (b :: bs)) = RawXBV.size bs.
+Proof. unfold RawXBV.size. now rewrite removelast_cons_length. Qed.
+
+Hint Rewrite
+  fold_size
+  @RawXBV.zeros_size @RawXBV.exes_size @RawXBV.ones_size
+  @RawXBV.concat_size @RawXBV.extr_width
+  @RawXBV.extract_width @RawXBV.extract_size
+  Nat2N.id N2Nat.id Nat2N.inj_min
+  @removelast_cons_length removelast_cons_size
+  : xbv_size.
+
+Hint Rewrite
+  N.leb_le N.leb_gt
+  Nat.leb_le Nat.leb_gt
+  : kill_bools.
+
+Ltac kill_bools := autorewrite with kill_bools in *.
+
+Program Definition empty : XBV.xbv 0 := {| XBV.bv := [] |}.
+
+Lemma xbv_zero_empty (xbv : XBV.xbv 0) : xbv = empty.
+Proof. bitvector_erase. reflexivity. Qed.
+
+Lemma raw_xbv_extract_full w (xbv : RawXBV.xbv) :
+  w = N.to_nat (RawXBV.size xbv) ->
+  RawXBV.extract xbv 0 w = xbv.
+Proof.
+  intros.
+  subst. unfold RawXBV.size. rewrite Nat2N.id.
+  funelim (RawXBV.extract xbv 0 (List.length xbv)); crush.
+Qed.
+
+Lemma raw_xbv_extract_empty lo sz (xbv : RawXBV.xbv) :
+  sz = 0 ->
+  RawXBV.extract xbv lo sz = [].
+Proof.
+  intros. subst.
+  funelim (RawXBV.extract xbv lo 0); crush.
+Qed.
+
+Lemma raw_xbv_extr_empty lo sz (xbv : RawXBV.xbv) :
+  (sz = 0)%N ->
+  RawXBV.extr xbv lo sz = [].
+Proof.
+  intros. subst. unfold RawXBV.extr.
+  rewrite raw_xbv_extract_empty by lia.
+  unfold RawXBV.exes; simpl. crush.
+Qed.
+
+Lemma xbv_extr_full w (xbv : XBV.xbv w) :
+  XBV.extr xbv 0 w = xbv.
+Proof.
+  bitvector_erase. subst.
+  unfold RawXBV.extr. unfold RawXBV.size. autodestruct_eqn E; [|crush].
+  rewrite Nat2N.id. simpl. clear E.
+  funelim (RawXBV.extract bv 0 (List.length bv)); crush.
+Qed.
+
+Lemma raw_xbv_concat_empty1 (xbv1 xbv2 : RawXBV.xbv) :
+  (RawXBV.size xbv1 = 0)%N ->
+  RawXBV.concat xbv1 xbv2 = xbv2.
+Proof. intros. unfold RawXBV.concat. destruct xbv1; [|crush]. now rewrite List.app_nil_r. Qed.
+
+Lemma raw_xbv_concat_empty2 (xbv1 xbv2 : RawXBV.xbv) :
+  (RawXBV.size xbv2 = 0)%N ->
+  RawXBV.concat xbv1 xbv2 = xbv1.
+Proof. intros. unfold RawXBV.concat. destruct xbv2; crush. Qed.
+
+Lemma xbv_concat_empty1 w (xbv1 : XBV.xbv 0) (xbv2 : XBV.xbv w) :
+  XBV.concat xbv1 xbv2 = xbv2.
+Proof. bitvector_erase. unfold RawXBV.concat. now rewrite List.app_nil_r. Qed.
+
+(* Types don't match for this one (w + 0 is not definitionally equal to w) *)
+(* Lemma xbv_concat_empty2 w (xbv1 : XBV.xbv w) (xbv2 : XBV.xbv 0) :
+ *   XBV.concat xbv1 xbv2 = xbv1.
+ * Proof. bitvector_erase. induction bv. crush. Qed. *)
+
+Lemma zeros_from_bv n : XBV.zeros n = XBV.from_bv (BV.zeros n).
+Proof.
+  apply XBV.of_bits_equal. simpl. unfold RawBV.zeros, RawXBV.zeros.
+  induction n using N.peano_ind; simpl.
+  - reflexivity.
+  - rewrite N2Nat.inj_succ. simpl. crush.
+Qed.
+
+Lemma concat_from_bv n1 n2 bv1 bv2 :
+  XBV.concat (XBV.from_bv (n:=n1) bv1) (XBV.from_bv (n:=n2) bv2) = XBV.from_bv (BV.bv_concat bv1 bv2).
+Proof.
+  apply XBV.of_bits_equal. simpl.
+  destruct bv1 as [bv1 wf1], bv2 as [bv2 wf2]. subst. simpl.
+  revert bv1.
+  induction bv2; crush.
+Qed.
+
+Lemma concat_from_bv_inv1 n1 n2 (xbv1 : XBV.xbv n1) (xbv2 : XBV.xbv n2) bv :
+  XBV.concat xbv1 xbv2 = XBV.from_bv bv ->
+  (exists bv1, xbv1 = XBV.from_bv bv1).
+Proof.
+  destruct (XBV.to_bv xbv1) as [bv1|] eqn:Hbv1; [apply XBV.bv_xbv_inverse in Hbv1; crush|].
+  intros. exfalso.
+
+  bitvector_erase. subst.
+  apply (f_equal RawXBV.to_bv) in H.
+  rewrite RawXBV.xbv_bv_inverse in H.
+  rewrite RawXBV.has_x_to_bv in Hbv1.
+
+  clear wf1. revert bv bv1 H Hbv1.
+  induction bv0; intros; [crush|].
+  unfold RawXBV.to_bv in *. simpl in *.
+  autodestruct_eqn E.
+  eauto.
+Qed.
+
+Lemma concat_from_bv_inv2 n1 n2 (xbv1 : XBV.xbv n1) (xbv2 : XBV.xbv n2) bv :
+  XBV.concat xbv1 xbv2 = XBV.from_bv bv ->
+  (exists bv2, xbv2 = XBV.from_bv bv2).
+Proof.
+  destruct (XBV.to_bv xbv2) as [bv2|] eqn:Hbv2; [apply XBV.bv_xbv_inverse in Hbv2; crush|].
+  intros. exfalso.
+
+  bitvector_erase. subst.
+  apply (f_equal RawXBV.to_bv) in H.
+  rewrite RawXBV.xbv_bv_inverse in H.
+  rewrite RawXBV.has_x_to_bv in Hbv2.
+
+  clear wf1. revert bv bv1 H Hbv2.
+  induction bv0; intros; [crush|].
+  unfold RawXBV.to_bv in *. simpl in *.
+  autodestruct_eqn E.
+  eauto.
+Qed.
+
+Lemma concat_to_bv_none1 n1 n2 (xbv1 : XBV.xbv n1) (xbv2 : XBV.xbv n2) :
+  XBV.to_bv xbv1 = None ->
+  XBV.to_bv (XBV.concat xbv1 xbv2) = None.
+Proof.
+  intros.
+  destruct (XBV.to_bv (XBV.concat xbv1 xbv2)) eqn:E; [exfalso|reflexivity].
+  apply XBV.bv_xbv_inverse in E. symmetry in E.
+  apply concat_from_bv_inv1 in E. destruct E. subst.
+  rewrite XBV.xbv_bv_inverse in H. discriminate.
+Qed.
+
+Lemma concat_to_bv_none2 n1 n2 (xbv1 : XBV.xbv n1) (xbv2 : XBV.xbv n2) :
+  XBV.to_bv xbv2 = None ->
+  XBV.to_bv (XBV.concat xbv1 xbv2) = None.
+Proof.
+  intros.
+  destruct (XBV.to_bv (XBV.concat xbv1 xbv2)) eqn:E; [exfalso|reflexivity].
+  apply XBV.bv_xbv_inverse in E. symmetry in E.
+  apply concat_from_bv_inv2 in E. destruct E. subst.
+  rewrite XBV.xbv_bv_inverse in H. discriminate.
+Qed.
+
+Lemma extend_to_N w1 w2 (xbv : XBV.xbv w1) val :
+  XBV.to_N xbv = Some val ->
+  XBV.to_N (XBV.concat (XBV.zeros w2) xbv) = Some val.
+Proof.
+  unfold XBV.to_N. intros.
+  destruct (XBV.to_bv xbv) as [bv|] eqn:Hbv; [|discriminate].
+  apply XBV.bv_xbv_inverse in Hbv. inv H.
+  rewrite zeros_from_bv. rewrite concat_from_bv.
+  rewrite XBV.xbv_bv_inverse. simpl. f_equal.
+  apply BV.bv_zextn_to_N.
+Qed.
+
+Lemma extend_to_N_none2 w1 w2 (xbv1 : XBV.xbv w1) (xbv2 : XBV.xbv w2) :
+  XBV.to_N xbv2 = None ->
+  XBV.to_N (XBV.concat xbv1 xbv2) = None.
+Proof.
+  unfold XBV.to_N. intros.
+  destruct (XBV.to_bv xbv2) eqn:E; simpl in *; [discriminate|].
+  rewrite concat_to_bv_none2; crush.
+Qed.
+
+Lemma shr_as_concat_gt (n : nat) (xbv : RawXBV.xbv) :
+  (List.length xbv < n) ->
+  RawXBV.shr xbv n = RawXBV.zeros (RawXBV.size xbv).
+Proof.
+  funelim (RawXBV.shr xbv n); intros; unfold RawXBV.zeros; simpl in *.
+  - destruct bv; crush.
+  - reflexivity.
+  - insterU H.
+    unfold RawXBV.zeros in *.
+    rewrite Pnat.SuccNat2Pos.id_succ.
+    rewrite Nat2N.id in *.
+    simpl. rewrite H.
+    clear Heqcall H0 H.
+    induction (List.length bs); crush.
+Qed.
+
+Lemma shr_as_concat_le (n : nat) (xbv : RawXBV.xbv) :
+  (n <= List.length xbv) ->
+  RawXBV.shr xbv n =
+    RawXBV.concat
+      (RawXBV.zeros (N.of_nat n))
+      (RawXBV.extr xbv (N.of_nat n) (RawXBV.size xbv - N.of_nat n)).
+Proof.
+  unfold RawXBV.zeros, RawXBV.concat, RawXBV.extr, RawXBV.size.
+  simpl. rewrite Nat2N.id.
+  intros.
+  autodestruct_eqn E; kill_bools; try lia.
+  funelim (RawXBV.shr xbv n); [idtac|crush|idtac].
+  + simpl in *.
+    rewrite raw_xbv_extract_full. 
+    * now rewrite List.app_nil_r. 
+    * unfold RawXBV.size. lia.
+  + insterU H. simp extract.
+    rewrite H. clear H.
+    rewrite ! N2Nat.inj_sub, ! Nat2N.id.
+    simpl.
+    rewrite <- List.app_assoc. f_equal.
+    clear E H0 Heqcall. induction n; crush.
+Qed.
+
+Lemma shr_as_concat (n : nat) (xbv : RawXBV.xbv) :
+  RawXBV.shr xbv n =
+    RawXBV.concat
+      (RawXBV.zeros (N.of_nat (min (List.length xbv) n)))
+      (RawXBV.extr xbv (N.of_nat n) (RawXBV.size xbv - N.of_nat n)).
+Proof.
+  destruct (Nat.leb n (List.length xbv)) eqn:E; kill_bools.
+  - rewrite Nat.min_r by lia.
+    apply shr_as_concat_le. lia.
+  - rewrite Nat.min_l by lia.
+    rewrite shr_as_concat_gt by lia.
+    unfold RawXBV.extr.
+    autodestruct_eqn Hcmp; [crush|clear Hcmp].
+    rewrite raw_xbv_concat_empty2. reflexivity.
+    rewrite RawXBV.exes_size. unfold RawXBV.size. lia.
+Qed.
+
+Lemma shl_as_concat_gt (n : nat) (xbv : RawXBV.xbv) :
+  (List.length xbv < n) ->
+  RawXBV.shl xbv n = RawXBV.zeros (RawXBV.size xbv).
+Proof.
+  funelim (RawXBV.shl xbv n); intros.
+  - destruct bv; crush.
+  - reflexivity.
+  - insterU H.
+    autorewrite with xbv_size in *.
+    unfold RawXBV.size, RawXBV.zeros in *. cbn [List.length] in *.
+    erewrite H by lia. N_to_nat. reflexivity.
+Qed.
+
+Lemma rawxbv_extract_remove_last n l:
+  n < List.length l ->
+  RawXBV.extract (List.removelast l) 0 n = RawXBV.extract l 0 n.
+Proof.
+  revert n.
+  induction l; intros.
+  - destruct n; [|crush]. reflexivity.
+  - simpl in H.
+    destruct n; [rewrite ! raw_xbv_extract_empty; crush|].
+    simp extract. destruct l; [crush|].
+    simpl. simp extract.
+    f_equal. apply IHl. lia.
+Qed.
+
+Lemma shl_as_concat_le (n : nat) (xbv : RawXBV.xbv) :
+  (n <= List.length xbv) ->
+  RawXBV.shl xbv n =
+    RawXBV.concat
+      (RawXBV.extr xbv 0 (RawXBV.size xbv - N.of_nat n))
+      (RawXBV.zeros (N.of_nat n)).
+Proof.
+  unfold RawXBV.zeros, RawXBV.concat, RawXBV.extr, RawXBV.size.
+  simpl. rewrite Nat2N.id.
+  intros.
+  autodestruct_eqn E; kill_bools; N_to_nat; try lia.
+  funelim (RawXBV.shl xbv n); [idtac|crush|idtac].
+  + simpl in *.
+    rewrite raw_xbv_extract_full. 
+    * reflexivity.
+    * unfold RawXBV.size. lia.
+  + insterU H. simp extract.
+    rewrite H by (autorewrite with xbv_size in *; crush).
+    clear H. cbn [List.repeat List.app]. do 2 f_equal.
+    autorewrite with xbv_size.
+    apply rawxbv_extract_remove_last.
+    lia.
+Qed.
+
+(* TO BE UPDATED *)
+Lemma shl_as_concat (n : nat) (xbv : RawXBV.xbv) :
+  RawXBV.shl xbv n =
+    RawXBV.concat
+      (RawXBV.extr xbv 0 (RawXBV.size xbv - N.of_nat n))
+      (RawXBV.zeros (N.of_nat (min (List.length xbv) n)))
+      .
+Proof.
+  destruct (Nat.leb n (List.length xbv)) eqn:E; kill_bools.
+  - rewrite Nat.min_r by lia.
+    apply shl_as_concat_le. lia.
+  - rewrite Nat.min_l by lia.
+    rewrite shl_as_concat_gt by lia.
+    unfold RawXBV.extr.
+    autodestruct_eqn Hcmp; kill_bools; [|crush].
+    rewrite raw_xbv_concat_empty1. reflexivity.
+    autorewrite with xbv_size. unfold RawXBV.size in *. lia.
+Qed.
+
+Lemma extract_width x i j :
+  (j + i <= List.length x) ->
+  List.length (RawXBV.extract x i j) = (Nat.min j (List.length x - i)).
+Proof.
+  funelim (RawXBV.extract x i j);
+    simp extract; simpl in *; try crush.
+Qed.
+
+Lemma rawxbv_extr_of_concat_lo xbv_hi xbv_lo lo sz :
+  (lo <= RawXBV.size xbv_lo)%N ->
+  (lo + sz <= RawXBV.size xbv_lo)%N ->
+  RawXBV.extr (RawXBV.concat xbv_hi xbv_lo) lo sz = RawXBV.extr xbv_lo lo sz.
+Proof.
+  intros Hlo Hhi.
+  unfold RawXBV.extr.
+  autodestruct_eqn E; kill_bools;
+    autorewrite with xbv_size in *;
+    try lia; [idtac].
+  clear E E0.
+  N_to_nat. unfold RawXBV.concat.
+  funelim (RawXBV.extract xbv_lo lo sz).
+  - simpl in *.
+    replace i with 0 by lia.
+    replace j with 0 by lia. 
+    destruct xbv_hi; simp extract; reflexivity.
+  - simpl in *. simp extract. reflexivity.
+  - simpl in *. simp extract.
+    erewrite H; try crush.
+  - simpl in *. simp extract. eapply H; lia.
+Qed.
+
+Lemma rawxbv_extr_of_concat_hi xbv_hi xbv_lo lo sz :
+  (RawXBV.size xbv_lo <= lo)%N ->
+  (lo + sz <= RawXBV.size xbv_lo + RawXBV.size xbv_hi)%N ->
+  RawXBV.extr (RawXBV.concat xbv_hi xbv_lo) lo sz =
+    RawXBV.extr xbv_hi (lo - RawXBV.size xbv_lo) sz.
+Proof.
+  intros Hlo Hhi.
+  unfold RawXBV.extr.
+  autodestruct_eqn E; kill_bools;
+    autorewrite with xbv_size in *;
+    try lia; [idtac].
+  clear E E0.
+  unfold RawXBV.size, RawXBV.concat in *.
+  N_to_nat.
+  funelim (RawXBV.extract (xbv_lo ++ xbv_hi) lo sz); intros.
+  - symmetry in H. apply List.app_eq_nil in H.
+    destruct H. subst. simp extract. reflexivity.
+  - destruct xbv_lo; [|crush]. simpl.
+    destruct xbv_hi; now simp extract.
+  - destruct xbv_lo; [|crush]. simpl in *. subst.
+    simp extract. reflexivity.
+  - destruct xbv_lo; simpl in *.
+    + subst. simp extract. reflexivity.
+    + inv H0. eapply H; crush.
+Qed.
+
+Lemma rawxbv_extr_of_concat_mid xbv_hi xbv_lo lo sz :
+  (lo <= RawXBV.size xbv_lo)%N ->
+  (RawXBV.size xbv_lo <= lo + sz)%N ->
+  (lo + sz <= RawXBV.size xbv_lo + RawXBV.size xbv_hi)%N ->
+  RawXBV.extr (RawXBV.concat xbv_hi xbv_lo) lo sz =
+    RawXBV.concat
+      (RawXBV.extr xbv_hi (lo - RawXBV.size xbv_lo)%N (sz - (RawXBV.size xbv_lo - lo))%N)
+      (RawXBV.extr xbv_lo lo (RawXBV.size xbv_lo - lo)%N).
+Proof.
+  intros Hlo Hmid Hhi.
+  unfold RawXBV.extr.
+  autodestruct_eqn E; kill_bools;
+    autorewrite with xbv_size in *;
+    try lia; [idtac].
+  clear E E0 E1.
+  unfold RawXBV.size, RawXBV.concat in *.
+  N_to_nat.
+  funelim (RawXBV.extract (xbv_lo ++ xbv_hi) lo sz); intros.
+  - symmetry in H. apply List.app_eq_nil in H.
+    destruct H. subst. simp extract. reflexivity.
+  - destruct xbv_lo; [|crush]. simpl.
+    destruct xbv_hi; now simp extract.
+  - destruct xbv_lo.
+    + simpl in *. subst. simpl. simp extract. simpl.
+      repeat f_equal.
+    + simpl in *. inv H0. simp extract. simpl. f_equal.
+      erewrite H by crush.
+      repeat f_equal; try crush.
+  - destruct xbv_lo; [crush|]. simpl in *. simp extract.
+    inv H0. erewrite H by crush.
+    f_equal.
+Qed.
+
+Lemma rawxbv_extr_of_concat xbv_hi xbv_lo lo sz :
+  (lo + sz <= RawXBV.size xbv_hi + RawXBV.size xbv_lo)%N ->
+  RawXBV.extr (RawXBV.concat xbv_hi xbv_lo) lo sz =
+    RawXBV.concat
+      (RawXBV.extr xbv_hi (lo - RawXBV.size xbv_lo) (sz - (RawXBV.size xbv_lo - lo)))%N
+      (RawXBV.extr xbv_lo lo (N.min sz (RawXBV.size xbv_lo - lo)))%N.
+Proof.
+  intros.
+  destruct (dec (RawXBV.size xbv_lo <= lo)%N);
+    destruct (dec (lo + sz < RawXBV.size xbv_lo))%N; try lia.
+  - replace (N.min sz (RawXBV.size xbv_lo - lo)) with (RawXBV.size xbv_lo - lo)%N by lia.
+    replace (RawXBV.size xbv_lo - lo)%N with 0%N by lia.
+    erewrite rawxbv_extr_of_concat_hi by lia.
+    rewrite raw_xbv_concat_empty2 by (autorewrite with xbv_size; lia).
+    f_equal. lia.
+  - replace (N.min sz (RawXBV.size xbv_lo - lo)) with sz by lia.
+    replace (sz - (RawXBV.size xbv_lo - lo))%N with 0%N by lia.
+    erewrite rawxbv_extr_of_concat_lo by lia.
+    rewrite raw_xbv_concat_empty1 by (autorewrite with xbv_size; lia).
+    reflexivity.
+  - replace (N.min sz (RawXBV.size xbv_lo - lo)) with (RawXBV.size xbv_lo - lo)%N by lia.
+    eapply rawxbv_extr_of_concat_mid; lia.
+Qed.
+
+Lemma rawxbv_extr_of_zeros w lo sz :
+  (lo + sz <= w)%N ->
+  RawXBV.extr (RawXBV.zeros w) lo sz = RawXBV.zeros sz.
+Proof.
+  intros. unfold RawXBV.extr.
+  autorewrite with xbv_size. autodestruct_eqn E; [clear E|crush].
+  unfold RawXBV.zeros.
+  N_to_nat.
+  revert lo sz H.
+  induction w; intros; simpl; simp extract.
+  - replace sz with 0; crush.
+  - destruct lo, sz; simpl; simp extract.
+    + reflexivity.
+    + erewrite IHw; crush.
+    + erewrite IHw; crush.
+    + erewrite IHw; crush.
+Qed.
+
+Lemma rawxbv_extr_of_extr lo1 lo2 sz1 sz2 xbv :
+  (lo1 + sz1 <= RawXBV.size xbv)%N ->
+  (lo2 + sz2 <= sz1)%N ->
+  RawXBV.extr (RawXBV.extr xbv lo1 sz1) lo2 sz2 = RawXBV.extr xbv (lo1 + lo2) sz2.
+Proof.
+  intros H0 H1.
+  unfold RawXBV.extr.
+  autodestruct_eqn E;
+    autorewrite with xbv_size kill_bools in *;
+    try crush; N_to_nat.
+  clear E E0 E1.
+  revert sz1 H0 H1.
+  funelim (RawXBV.extract xbv (lo1 + lo2) sz2).
+  - intros. simp extract. reflexivity.
+  - intros.
+    replace lo2 with 0 in * by lia.
+    destruct (RawXBV.extract (bx :: x') lo1 sz1); simp extract; reflexivity.
+  - intros. simpl in *. clear Heqcall.
+    replace lo1 with 0 in * by crush.
+    replace lo2 with 0 in * by crush.
+    destruct sz1; [lia|].
+    simp extract.
+    erewrite H; crush.
+  - intros. simpl in *. clear Heqcall.
+    destruct lo1, sz1;
+      simpl in *; subst; simp extract.
+    + lia.
+    + erewrite H; crush.
+    + erewrite H; crush.
+    + erewrite H; crush.
+Qed.
+
+Lemma concat_assoc x1 x2 x3 :
+  RawXBV.concat x1 (RawXBV.concat x2 x3) = RawXBV.concat (RawXBV.concat x1 x2) x3.
+Proof. unfold RawXBV.concat. now rewrite List.app_assoc. Qed.
+
+Lemma concat_zeros w1 w2 :
+  RawXBV.concat (RawXBV.zeros w1) (RawXBV.zeros w2) = RawXBV.zeros (w1 + w2).
+Proof.
+  unfold RawXBV.zeros, RawXBV.concat.
+  rewrite <- List.repeat_app. f_equal. lia.
+Qed.
+
+Lemma raw_xbv_shr_overshift xbv shamt :
+  (N.of_nat shamt >= RawXBV.size xbv)%N ->
+  RawXBV.shr xbv shamt = RawXBV.zeros (RawXBV.size xbv).
+Proof.
+  intros.
+  unfold RawXBV.size, RawXBV.zeros in *.
+  N_to_nat.
+  funelim (RawXBV.shr xbv shamt).
+  - destruct bv; crush.
+  - reflexivity.
+  - cbn [List.length] in *.
+    rewrite H by lia. clear H H0 Heqcall.
+    induction (List.length bs); crush.
+Qed.
+
+Lemma xbv_shr_overshift w (xbv : XBV.xbv w) shamt :
+  (shamt >= w)%N ->
+  XBV.shr xbv shamt = XBV.zeros w.
+Proof.
+  intros.
+  bitvector_erase. subst.
+  erewrite raw_xbv_shr_overshift; unfold RawXBV.size in *; crush.
+Qed.
+
+Lemma extr_shr_extend_overshift w1 w2 (xbv : XBV.xbv w1) shamt  :
+  (shamt > w1)%N ->
+  XBV.extr (XBV.shr (XBV.concat (XBV.zeros w2) xbv) shamt) 0 w1 =
+  XBV.shr xbv shamt.
+Proof.
+  intros. bitvector_erase.
+  destruct (dec (shamt >= w2 + w1))%N.
+  - subst.
+    rewrite ! raw_xbv_shr_overshift by (autorewrite with xbv_size; crush).
+    autorewrite with xbv_size.
+    eapply rawxbv_extr_of_zeros. lia.
+  - subst.
+    rewrite ! raw_xbv_shr_overshift with (xbv:=bv) by (autorewrite with xbv_size; crush).
+    rewrite ! shr_as_concat.
+    rewrite ! N2Nat.id.
+    fold (RawXBV.size bv) in *.
+    autorewrite with xbv_size.
+    rewrite rawxbv_extr_of_concat with (xbv_lo := bv) by (autorewrite with xbv_size; lia).
+    destruct_mins.
+    erewrite rawxbv_extr_of_zeros by lia.
+    erewrite concat_assoc.
+    erewrite concat_zeros.
+    erewrite raw_xbv_extr_empty with (xbv := bv) by lia.
+    erewrite raw_xbv_concat_empty2 by reflexivity.
+    erewrite rawxbv_extr_of_zeros; crush.
+Qed.
+
+Lemma extr_shr_extend_no_overshift w1 w2 (xbv : XBV.xbv w1) shamt  :
+  (shamt <= w1)%N ->
+  XBV.extr (XBV.shr (XBV.concat (XBV.zeros w2) xbv) shamt) 0 w1 =
+  XBV.shr xbv shamt.
+Proof.
+  intros.
+  bitvector_erase. subst.
+  rewrite ! shr_as_concat.
+  rewrite ! N2Nat.id.
+  fold (RawXBV.size bv) in *.
+  autorewrite with xbv_size.
+  rewrite ! rawxbv_extr_of_concat by (autorewrite with xbv_size; lia).
+  rewrite rawxbv_extr_of_zeros by (autorewrite with xbv_size; lia).
+  rewrite rawxbv_extr_of_zeros by (autorewrite with xbv_size; lia).
+  rewrite rawxbv_extr_of_zeros by (autorewrite with xbv_size; lia).
+  rewrite concat_assoc.
+  rewrite concat_zeros.
+  rewrite rawxbv_extr_of_extr by (autorewrite with xbv_size; lia).
+  autorewrite with xbv_size.
+  f_equal; f_equal; lia.
+Qed.
+
+Lemma extr_shr_extend w1 w2 (xbv : XBV.xbv w1) shamt  :
+  XBV.extr (XBV.shr (XBV.concat (XBV.zeros w2) xbv) shamt) 0 w1 =
+  XBV.shr xbv shamt.
+Proof.
+  destruct (dec (shamt <= w1))%N.
+  - eapply extr_shr_extend_no_overshift. eassumption.
+  - eapply extr_shr_extend_overshift. lia.
+Qed.
+
+
+Lemma raw_xbv_shl_overshift xbv shamt :
+  (N.of_nat shamt >= RawXBV.size xbv)%N ->
+  RawXBV.shl xbv shamt = RawXBV.zeros (RawXBV.size xbv).
+Proof.
+  intros.
+  unfold RawXBV.size, RawXBV.zeros in *.
+  N_to_nat.
+  funelim (RawXBV.shl xbv shamt).
+  - destruct bv; crush.
+  - reflexivity.
+  - cbn [List.length] in *.
+    erewrite H by (autorewrite with xbv_size; crush).
+    autorewrite with xbv_size.
+    crush.
+Qed.
+
+Lemma xbv_shl_overshift w (xbv : XBV.xbv w) shamt :
+  (shamt >= w)%N ->
+  XBV.shl xbv shamt = XBV.zeros w.
+Proof.
+  intros.
+  bitvector_erase. subst.
+  erewrite raw_xbv_shl_overshift; unfold RawXBV.size in *; crush.
+Qed.
+
+Lemma extr_shl_extend_overshift w1 w2 (xbv : XBV.xbv w1) shamt  :
+  (shamt > w1)%N ->
+  XBV.extr (XBV.shl (XBV.concat (XBV.zeros w2) xbv) shamt) 0 w1 =
+  XBV.shl xbv shamt.
+Proof.
+  intros. bitvector_erase.
+  destruct (dec (shamt >= w2 + w1))%N.
+  - subst.
+    rewrite ! raw_xbv_shl_overshift by (autorewrite with xbv_size; crush).
+    autorewrite with xbv_size.
+    eapply rawxbv_extr_of_zeros. lia.
+  - subst.
+    rewrite ! raw_xbv_shl_overshift with (xbv:=bv) by (autorewrite with xbv_size; crush).
+    rewrite ! shl_as_concat.
+    rewrite ! N2Nat.id.
+    fold (RawXBV.size bv) in *.
+    autorewrite with xbv_size.
+    rewrite rawxbv_extr_of_concat with (xbv_lo := bv) by (autorewrite with xbv_size; lia).
+    rewrite rawxbv_extr_of_concat_lo by (autorewrite with xbv_size; crush).
+    apply rawxbv_extr_of_zeros. lia.
+Qed.
+
+Lemma extr_shl_extend_no_overshift w1 w2 (xbv : XBV.xbv w1) shamt  :
+  (shamt <= w1)%N ->
+  XBV.extr (XBV.shl (XBV.concat (XBV.zeros w2) xbv) shamt) 0 w1 =
+  XBV.shl xbv shamt.
+Proof.
+  intros.
+  bitvector_erase. subst.
+  rewrite ! shl_as_concat.
+  rewrite ! N2Nat.id.
+  fold (RawXBV.size bv) in *.
+  autorewrite with xbv_size.
+  rewrite ! rawxbv_extr_of_concat by (autorewrite with xbv_size; lia).
+  rewrite ! rawxbv_extr_of_zeros by (autorewrite with xbv_size; lia).
+  rewrite rawxbv_extr_of_extr by (autorewrite with xbv_size; lia).
+  autorewrite with xbv_size.
+  f_equal.
+  - rewrite raw_xbv_concat_empty1 by (autorewrite with xbv_size; lia).
+    f_equal; crush.
+  - f_equal. crush.
+Qed.
+
+Lemma extr_shl_extend w1 w2 (xbv : XBV.xbv w1) shamt :
+  XBV.extr (XBV.shl (XBV.concat (XBV.zeros w2) xbv) shamt) 0 w1 =
+  XBV.shl xbv shamt.
+Proof.
+  destruct (dec (shamt <= w1))%N.
+  - eapply extr_shl_extend_no_overshift. eassumption.
+  - eapply extr_shl_extend_overshift. lia.
+Qed.
+
+Lemma extr_exes n1 n2 lo :
+  XBV.extr (XBV.exes n1) lo n2 = XBV.exes n2.
+Proof.
+  bitvector_erase. repeat unfold RawXBV.extr.
+  rewrite RawXBV.exes_size.
+  autodestruct_eqn E; kill_bools; [|reflexivity].
+  unfold RawXBV.exes.
+
+  N_to_nat.
+  remember (List.repeat X n1) as xs.	 
+  funelim (RawXBV.extract xs lo n2).
+  - destruct n1; [|crush].
+    replace j with 0; crush.
+  - destruct n1; crush.
+  - destruct n1; [crush|].
+    (* rewrite ! Nat2N.inj_succ in *. *)
+    simpl in *. specialize (H n1). insterU H.
+    crush.
+  - destruct n1; [crush|].
+    simpl in *. specialize (H n1). insterU H.
+    crush.
+Qed.
+
+(* Move me to bitvector *)
+Lemma bv_shr_swap_definition w lhs rhs :
+  BV.bv_shr (n:=w) lhs rhs = BV.shr lhs (BV.to_N rhs).
+Proof.
+ bitvector_erase.
+ unfold RawBV.bv_shr, RawBV.to_N in *.
+ rewrite wf, wf0, N.eqb_refl, Nat2N.id in *.
+ clear wf wf0.
+ unfold RawBV.shr_be.
+ rewrite RawBV.shr_be_nicify.
+ generalize dependent (RawBV.list2nat_be bv).
+ intros shamt. clear w bv.
+ unfold RawBV.size in *.
+ funelim (RawBV.shr bv0 shamt).
+ - destruct bv; simp nice_nshr_be; reflexivity.
+ - simp nice_nshr_be. crush.
+ - simp nice_nshr_be. crush.
+Qed.
+
+Lemma bv_shl_swap_definition w lhs rhs :
+  BV.bv_shl (n:=w) lhs rhs = BV.shl lhs (BV.to_N rhs).
+Proof.
+ bitvector_erase.
+ unfold RawBV.bv_shl, RawBV.to_N in *.
+ rewrite wf, wf0, N.eqb_refl, Nat2N.id in *.
+ clear wf wf0.
+ unfold RawBV.shl_be.
+ rewrite RawBV.shl_be_nicify.
+ generalize dependent (RawBV.list2nat_be bv).
+ intros shamt. clear w bv.
+ unfold RawBV.size in *.
+ funelim (RawBV.shl bv0 shamt).
+ - destruct bv; simp nice_nshl_be; reflexivity.
+ - simp nice_nshl_be. crush.
+ - simp nice_nshl_be. crush.
+Qed.
 
 Lemma bitwise_binop_no_exes (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
   (forall (lb rb : bool), RawXBV.bool_to_bit (f_bool lb rb) = f_bit (RawXBV.bool_to_bit lb) (RawXBV.bool_to_bit rb)) ->
@@ -66,8 +859,6 @@ Proof.
   - unfold BVList.RAWBITVECTOR_LIST.size in *.
     eapply IHl_bv; crush.
 Qed.
-
-Import EqNotations.
 
 Lemma bitwise_and_no_exes :
   forall w (l_xbv r_xbv : XBV.xbv w) (l_bv r_bv : BV.bitvector w),
@@ -114,7 +905,7 @@ Proof.
   destruct bv1 as [bv1 wf1], bv2 as [bv2 wf2].
   apply XBV.of_bits_equal. simpl.
   unfold RawBV.bv_concat, RawXBV.from_bv.
-  rewrite <- List.map_app.
+  rewrite List.map_app.
   reflexivity.
 Qed.
 
@@ -247,55 +1038,51 @@ Lemma rawxbv_from_bv_app b1 b2 :
   RawXBV.from_bv (b1 ++ b2)%list = (RawXBV.from_bv b1 ++ RawXBV.from_bv b2)%list.
 Proof. unfold RawXBV.from_bv. apply List.map_app. Qed.
 
-Lemma shl_to_bv n vec shamt :
-  XBV.to_bv (XBV.shl (XBV.from_bv vec) (BV.to_N shamt)) = Some (BV.bv_shl (n:=n) vec shamt).
+
+(* Move me to common *)
+Lemma map_removelast {A B} (f : A -> B) (l : list A) :
+  List.map f (List.removelast l) = List.removelast (List.map f l).
 Proof.
-  unfold BV.to_N, RawBV.to_N, BV.bv_shl, RawBV.bv_shl, RawBV.shl_be.
+  induction l; simpl; [reflexivity|].
+  destruct l; simpl in *; [reflexivity|].
+  now rewrite IHl.
+Qed.
+
+Lemma shl_to_bv n vec shamt :
+  XBV.to_bv (XBV.shl (XBV.from_bv vec) shamt) = Some (BV.shl (n:=n) vec shamt).
+Proof.
+  unfold BV.to_N, BV.shl.
   intros.
   destruct vec as [vec vec_wf].
-  destruct shamt as [shamt shamt_wf].
   rewrite <- XBV.xbv_bv_inverse. f_equal.
   apply XBV.of_bits_equal; simpl.
-  rewrite vec_wf, shamt_wf. clear vec_wf shamt_wf.
-  rewrite N.eqb_refl. rewrite Nat2N.id. clear n.
-  rewrite RawBV.shl_be_nicify.
-  generalize (RawBV.list2nat_be shamt). clear shamt. intro i.
-  funelim (RawBV.nice_nshl_be vec i);
-    repeat progress (simpl in *; simp shl nice_nshl_be in * );
-    [crush|crush|].
-  rewrite <- H. clear H.
-  repeat f_equal.
-  induction l; destruct b; crush.
+  generalize dependent (N.to_nat shamt). clear shamt. intro shamt.
+  funelim (RawBV.shl vec shamt).
+  - reflexivity.
+  - reflexivity.
+  - insterU H.
+    unfold RawXBV.from_bv in *. cbn [List.map].
+    simp shl. repeat f_equal.
+    rewrite map_removelast in *.
+    cbn [List.map] in H.
+    apply H.
 Qed.
 
 Lemma shr_to_bv n vec shamt :
-  XBV.to_bv (XBV.shr (XBV.from_bv vec) (BV.to_N shamt)) = Some (BV.bv_shr (n:=n) vec shamt).
+  XBV.to_bv (XBV.shr (XBV.from_bv vec) shamt) = Some (BV.shr (n:=n) vec shamt).
 Proof.
-  unfold BV.to_N, RawBV.to_N, BV.bv_shr, RawBV.bv_shr, RawBV.shr_be.
+  unfold BV.to_N, BV.shr.
   intros.
   destruct vec as [vec vec_wf].
-  destruct shamt as [shamt shamt_wf].
   rewrite <- XBV.xbv_bv_inverse. f_equal.
   apply XBV.of_bits_equal; simpl.
-  rewrite vec_wf, shamt_wf. clear vec_wf shamt_wf.
-  rewrite N.eqb_refl. rewrite Nat2N.id. clear n.
-  generalize (RawBV.list2nat_be shamt). clear shamt. intro i.
-  revert vec.
-  induction i; intros.
-  - simp shr. crush.
-  - simpl.
-    rewrite <- IHi. clear IHi.
-    destruct vec; simpl; simp shr.
-    + destruct i; crush.
-    + clear b.
-      rewrite rawxbv_from_bv_app. simpl.
-      generalize (RawXBV.from_bv vec). clear vec. intro vec.
-      revert i.
-      induction vec; intros.
-      * destruct i; simpl; simp shr; try crush.
-        destruct i; simpl; simp shr; try crush.
-      * simpl; simp shr.
-        destruct i; simpl; simp shr; try crush.
+  generalize dependent (N.to_nat shamt). clear shamt. intro shamt.
+  funelim (RawBV.shr vec shamt); simpl; simp shr.
+  - reflexivity.
+  - reflexivity.
+  - unfold RawXBV.from_bv in *.
+    rewrite List.map_app. simpl. repeat f_equal.
+    eauto.
 Qed.
 
 Lemma var_to_smt_value var (m : VerilogSMTBijection.t) tag regs ρ t :
@@ -364,8 +1151,8 @@ Equations convert_bv {from} (to : N) (value : BV.bitvector from) : BV.bitvector 
       | right Hle => rew _ in value
       }
     }.
-Next Obligation. lia. Qed.
-Next Obligation. lia. Qed.
+Next Obligation. lia. Defined.
+Next Obligation. lia. Defined.
 
 Lemma convert_no_exes w_from w_to (from : BV.bitvector w_from) :
   convert w_to (XBV.from_bv from) = XBV.from_bv (convert_bv w_to from).
@@ -373,7 +1160,7 @@ Proof.
   funelim (convert w_to (XBV.from_bv from));
     try destruct_rew; clear Heqcall.
   - rewrite XBV.zeros_from_bv.
-    rewrite xbv_concat_no_exes.
+    rewrite xbv_concat_no_exes. simpl.
     funelim (convert_bv (to - from + from) from0); [|lia|lia].
     clear Heqcall.
     apply XBV.of_bits_equal.
@@ -415,35 +1202,63 @@ Proof.
       crush.
 Qed.
 
-(*   - (\* andb *\)
- *     erewrite bitwise_and_no_exes;
- *       try erewrite XBV.xbv_bv_inverse;
- *       try crush.
- *   - (\* orb *\)
- *     erewrite bitwise_or_no_exes;
- *       try erewrite XBV.xbv_bv_inverse;
- *       try crush.
- *   - (\* shift right *\)
- *     rewrite XBV.to_N_from_bv.
- *     simpl.
- *     rewrite shr_to_bv.
- *     eauto.
- *   - (\* shift left *\)
- *     rewrite XBV.to_N_from_bv.
- *     simpl.
- *     rewrite shl_to_bv.
- *     eauto.
- *   - (\* shift left (arithmetic) *\)
- *     rewrite XBV.to_N_from_bv.
- *     simpl.
- *     rewrite shl_to_bv.
- *     eauto.
- * Qed. *)
+Lemma eval_bitwiseop_to_bv op w (lhs rhs : BV.bitvector w) :
+  exists bv, XBV.to_bv (eval_bitwiseop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
+Proof.
+  destruct op; simp eval_bitwiseop.
+  - (* andb *)
+    erewrite bitwise_and_no_exes;
+      try erewrite XBV.xbv_bv_inverse;
+      try crush.
+  - (* orb *)
+    erewrite bitwise_or_no_exes;
+      try erewrite XBV.xbv_bv_inverse;
+      try crush.
+Qed.
+
+Lemma eval_shiftop_to_bv op w1 w2 (lhs : BV.bitvector w1) (rhs : BV.bitvector w2) :
+  exists bv, XBV.to_bv (eval_shiftop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
+Proof.
+  destruct op; simp eval_shiftop.
+  - (* shift right *)
+    rewrite XBV.to_N_from_bv.
+    simpl.
+    rewrite shr_to_bv.
+    eauto.
+  - (* shift left *)
+    rewrite XBV.to_N_from_bv.
+    simpl.
+    rewrite shl_to_bv.
+    eauto.
+  - (* shift left (arithmetic) *)
+    rewrite XBV.to_N_from_bv.
+    simpl.
+    rewrite shl_to_bv.
+    eauto.
+Qed.
 
 Lemma eval_arithmeticop_no_exes op w (lhs rhs : BV.bitvector w) :
   exists bv, eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
 Proof.
   edestruct eval_arithmeticop_to_bv as [bv Hbv].
+  exists bv.
+  apply XBV.bv_xbv_inverse in Hbv.
+  crush.
+Qed.
+
+Lemma eval_bitwiseop_no_exes op w (lhs rhs : BV.bitvector w) :
+  exists bv, eval_bitwiseop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
+Proof.
+  edestruct eval_bitwiseop_to_bv as [bv Hbv].
+  exists bv.
+  apply XBV.bv_xbv_inverse in Hbv.
+  crush.
+Qed.
+
+Lemma eval_shiftop_no_exes op w1 w2 (lhs : BV.bitvector w1) (rhs : BV.bitvector w2) :
+  exists bv, eval_shiftop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
+Proof.
+  edestruct eval_shiftop_to_bv as [bv Hbv].
   exists bv.
   apply XBV.bv_xbv_inverse in Hbv.
   crush.
@@ -517,13 +1332,11 @@ Proof.
     edestruct eval_arithmeticop_no_exes as [bv Hbv].
     exists bv. now rewrite Hbv.
   - (* bitwiseop *)
-    (* edestruct eval_bitwiseop_no_exes as [bv Hbv].
-     * exists bv. now rewrite Hbv. *)
-    admit.
+    edestruct eval_bitwiseop_no_exes as [bv Hbv].
+    exists bv. now rewrite Hbv.
   - (* shiftop *)
-    (* edestruct eval_shiftop_no_exes as [bv Hbv].
-     * exists bv. now rewrite Hbv. *)
-    admit.
+    edestruct eval_shiftop_no_exes as [bv Hbv].
+    exists bv. now erewrite Hbv.
   - (* unop *)
     edestruct eval_unop_no_exes as [bv Hbv].
     exists bv. now rewrite Hbv.
@@ -548,7 +1361,7 @@ Proof.
     eauto.
   - rewrite convert_no_exes.
     eauto.
-Admitted.
+Qed.
 
 Lemma eval_expr_no_exes w regs e :
   forall xbv tag m t,
@@ -564,7 +1377,7 @@ Proof.
   rewrite XBV.xbv_bv_inverse. eauto.
 Qed.
 
-Lemma binop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
+Lemma arithmeticop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
     SMTLib.interp_term ρ smt_lhs = Some (SMTLib.Value_BitVec w val_lhs) ->
     SMTLib.interp_term ρ smt_rhs = Some (SMTLib.Value_BitVec w val_rhs) ->
     arithmeticop_to_smt op smt_lhs smt_rhs = inr t ->
@@ -584,22 +1397,51 @@ Proof.
     rewrite XBV.xbv_bv_inverse in *. now some_inv.
 Qed.
 
-(*   - erewrite bitwise_and_no_exes in Heval;
- *       rewrite XBV.xbv_bv_inverse in *;
- *       (reflexivity || now some_inv).
- *   - erewrite bitwise_or_no_exes in Heval;
- *       rewrite XBV.xbv_bv_inverse in *;
- *       (reflexivity || now some_inv).
- *   - rewrite XBV.to_N_from_bv in *. simpl in *.
- *     erewrite shr_to_bv in *.
- *     now some_inv.
- *   - rewrite XBV.to_N_from_bv in *. simpl in *.
- *     erewrite shl_to_bv in *.
- *     now some_inv.
- *   - rewrite XBV.to_N_from_bv in *. simpl in *.
- *     erewrite shl_to_bv in *.
- *     now some_inv.
- * Qed. *)
+Lemma bitwiseop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
+    SMTLib.interp_term ρ smt_lhs = Some (SMTLib.Value_BitVec w val_lhs) ->
+    SMTLib.interp_term ρ smt_rhs = Some (SMTLib.Value_BitVec w val_rhs) ->
+    bitwiseop_to_smt op smt_lhs smt_rhs = inr t ->
+    XBV.to_bv (eval_bitwiseop op (XBV.from_bv val_lhs) (XBV.from_bv val_rhs)) = Some val ->
+    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
+Proof.
+  intros Hinterp_lhs Hinterp_rhs Hbitwiseop_to_smt Heval.
+  destruct op;
+    simp eval_bitwiseop bitwiseop_to_smt in *; inv Hbitwiseop_to_smt;
+    simpl; rewrite Hinterp_lhs; rewrite Hinterp_rhs; autodestruct; try contradiction;
+    repeat f_equal; rewrite <- eq_rect_eq.
+    - erewrite bitwise_and_no_exes in Heval;
+        rewrite XBV.xbv_bv_inverse in *;
+        (reflexivity || now some_inv).
+    - erewrite bitwise_or_no_exes in Heval;
+        rewrite XBV.xbv_bv_inverse in *;
+        (reflexivity || now some_inv).
+Qed.
+
+Lemma shiftop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
+    SMTLib.interp_term ρ smt_lhs = Some (SMTLib.Value_BitVec w val_lhs) ->
+    SMTLib.interp_term ρ smt_rhs = Some (SMTLib.Value_BitVec w val_rhs) ->
+    shiftop_to_smt op smt_lhs smt_rhs = inr t ->
+    XBV.to_bv (eval_shiftop op (XBV.from_bv val_lhs) (XBV.from_bv val_rhs)) = Some val ->
+    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
+Proof.
+  intros Hinterp_lhs Hinterp_rhs Hshiftop_to_smt Heval.
+  destruct op;
+    simp eval_shiftop shiftop_to_smt in *; inv Hshiftop_to_smt;
+    simpl; rewrite Hinterp_lhs; rewrite Hinterp_rhs; autodestruct; try contradiction;
+    repeat f_equal; rewrite <- eq_rect_eq.
+  - rewrite XBV.to_N_from_bv in *. simpl in *.
+    erewrite shr_to_bv in *.
+    rewrite bv_shr_swap_definition.
+    now some_inv.
+  - rewrite XBV.to_N_from_bv in *. simpl in *.
+    erewrite shl_to_bv in *.
+    rewrite bv_shl_swap_definition.
+    now some_inv.
+  - rewrite XBV.to_N_from_bv in *. simpl in *.
+    erewrite shl_to_bv in *.
+    rewrite bv_shl_swap_definition.
+    now some_inv.
+Qed.
 
 Lemma unaryop_to_smt_value ρ op w smt_expr t val_expr val :
     SMTLib.interp_term ρ smt_expr = Some (SMTLib.Value_BitVec w val_expr) ->
@@ -801,6 +1643,95 @@ Proof.
   inv Heval. reflexivity.
 Qed.
 
+Lemma convert_extend_to_N from to (xbv : XBV.xbv from) val :
+  (to >= from)%N ->
+  XBV.to_N xbv = Some val ->
+  XBV.to_N (convert to xbv) = Some val.
+Proof.
+  intros.
+  funelim (convert to xbv); [idtac|lia|idtac].
+  - destruct_rew. simpl. apply extend_to_N. assumption.
+  - destruct_rew. simpl. assumption.
+Qed.
+
+Lemma convert_extend_to_N_none from to (xbv : XBV.xbv from) :
+  (to >= from)%N ->
+  XBV.to_N xbv = None ->
+  XBV.to_N (convert to xbv) = None.
+Proof.
+  intros.
+  funelim (convert to xbv).
+  - destruct_rew. simpl. apply extend_to_N_none2. assumption.
+  - lia.
+  - destruct_rew. simpl. assumption.
+Qed.
+
+Lemma convert_shr_convert n1 n2 (xbv : XBV.xbv n1) shamt :
+  (n2 >= n1)%N ->
+  convert n1 (XBV.shr (convert n2 xbv) shamt) = XBV.shr xbv shamt.
+Proof.
+  intros.
+  funelim (convert n2 xbv); [idtac|lia|idtac].
+  - destruct_rew. simpl.
+    funelim (convert from (XBV.shr (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
+    apply extr_shr_extend.
+  - destruct_rew. simpl.
+    funelim (convert from (XBV.shr value shamt)); [lia|lia|idtac].
+    rewrite <- eq_rect_eq. reflexivity.
+Qed.
+
+Lemma convert_shl_convert n1 n2 (xbv : XBV.xbv n1) shamt :
+  (n2 >= n1)%N ->
+  convert n1 (XBV.shl (convert n2 xbv) shamt) = XBV.shl xbv shamt.
+Proof.
+  intros.
+  funelim (convert n2 xbv); [idtac|lia|idtac].
+  - destruct_rew. simpl.
+    funelim (convert from (XBV.shl (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
+    apply extr_shl_extend.
+  - destruct_rew. simpl.
+    funelim (convert from (XBV.shl value shamt)); [lia|lia|idtac].
+    rewrite <- eq_rect_eq. reflexivity.
+Qed.
+
+Lemma convert_exes n1 n2 :
+  (n2 <= n1)%N ->
+  convert n2 (XBV.exes n1) = XBV.exes n2.
+Proof.
+  intros. 
+  funelim (convert n2 (XBV.exes n1)).
+  - lia.
+  - apply extr_exes.
+  - destruct_rew. reflexivity.
+Qed.
+
+Lemma eval_shiftop_remove_converts w1 w2 op (lhs : XBV.xbv w1) (rhs : XBV.xbv w2) :
+  (N.max w1 w2 > 0)%N ->
+  convert w1 (eval_shiftop op (convert (N.max w1 w2) lhs) (convert (N.max w1 w2) rhs)) =
+  eval_shiftop op lhs rhs.
+Proof.
+  intros.
+  funelim (eval_shiftop op lhs rhs).
+  - apply convert_extend_to_N with (to := N.max n1 n2) in Heq; [|lia].
+    simp eval_shiftop. rewrite Heq. simpl.
+    apply convert_shr_convert. lia.
+  - apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq; [|lia].
+    simp eval_shiftop. rewrite Heq. simpl.
+    apply convert_exes. lia.
+  - apply convert_extend_to_N with (to := N.max n1 n2) in Heq; [|lia].
+    simp eval_shiftop. rewrite Heq. simpl.
+    apply convert_shl_convert. lia.
+  - apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq; [|lia].
+    simp eval_shiftop. rewrite Heq. simpl.
+    apply convert_exes. lia.
+  - apply convert_extend_to_N with (to := N.max n1 n2) in Heq; [|lia].
+    simp eval_shiftop. rewrite Heq. simpl.
+    apply convert_shl_convert. lia.
+  - apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq; [|lia].
+    simp eval_shiftop. rewrite Heq. simpl.
+    apply convert_exes. lia.
+Qed.
+
 Lemma expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ t,
     expr_to_smt tag m expr = inr t ->
     verilog_smt_match_states_partial
@@ -831,9 +1762,58 @@ Proof.
     rewrite XBV.xbv_bv_inverse in *.
     edestruct eval_arithmeticop_to_bv as [bv Hbv].
     rewrite Hbv.
-    now eauto using binop_to_smt_value.
-  - (* bitwiseop *) admit.
-  - (* shiftop *) admit.
+    now eauto using arithmeticop_to_smt_value.
+  - (* bitwiseop *)
+    simpl in Hexpr_to_smt.
+    destruct (expr_to_smt tag m expr1) eqn:E1; try discriminate.
+    destruct (expr_to_smt tag m expr2) eqn:E2; try discriminate.
+    insterU IHexpr1.
+    insterU IHexpr2.
+    edestruct eval_expr_defined with (e := expr1);
+      eauto using verilog_smt_match_states_partial_defined_value_for.
+    replace (eval_expr regs expr1) in *.
+    edestruct eval_expr_defined with (e := expr2);
+      eauto using verilog_smt_match_states_partial_defined_value_for.
+    replace (eval_expr regs expr2) in *.
+    simpl in *.
+    rewrite XBV.xbv_bv_inverse in *.
+    edestruct eval_bitwiseop_to_bv as [bv Hbv].
+    rewrite Hbv.
+    now eauto using bitwiseop_to_smt_value.
+  - (* shiftop *)
+    unfold Verilog.expr_type in *.
+    simpl in Hexpr_to_smt.
+    destruct (expr_to_smt tag m expr1) eqn:E1; try discriminate.
+    destruct (expr_to_smt tag m expr2) eqn:E2; try discriminate.
+    autodestruct_eqn E.
+    insterU IHexpr1.
+    insterU IHexpr2.
+    edestruct eval_expr_defined with (e := expr1);
+      eauto using verilog_smt_match_states_partial_defined_value_for.
+    replace (eval_expr regs expr1) in *.
+    edestruct eval_expr_defined with (e := expr2);
+      eauto using verilog_smt_match_states_partial_defined_value_for.
+    replace (eval_expr regs expr2) in *.
+    simpl in *.
+    rewrite XBV.xbv_bv_inverse in *.
+    edestruct eval_shiftop_to_bv as [bv Hbv].
+    rewrite Hbv.
+    edestruct eval_shiftop_to_bv as [bv_out Hbv_out].
+    erewrite cast_from_to_value; [|assumption|]; cycle 1.
+    + eapply shiftop_to_smt_value.
+      * erewrite cast_from_to_value; [reflexivity|lia|].
+        apply IHexpr1.
+      * erewrite cast_from_to_value; [reflexivity|lia|].
+        apply IHexpr2.
+      * eassumption.
+      * apply Hbv_out.
+    + repeat f_equal.
+      apply XBV.bv_xbv_inverse in Hbv, Hbv_out.
+      apply XBV.from_bv_injective.
+      rewrite Hbv.
+      rewrite <- convert_no_exes. rewrite Hbv_out.
+      rewrite <- ! convert_no_exes.
+      eapply eval_shiftop_remove_converts. lia.
   - (* unop *)
     simpl in Hexpr_to_smt.
     destruct (expr_to_smt tag m expr) eqn:E; try discriminate.
@@ -959,7 +1939,7 @@ Proof.
     rewrite convert_no_exes.
     rewrite XBV.xbv_bv_inverse.
     apply cast_from_to_value; eauto.
-Admitted.
+Qed.
 
 Lemma expr_to_smt_valid w tag m expr t regs ρ val :
   expr_to_smt (w := w) tag m expr = inr t ->

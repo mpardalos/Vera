@@ -615,3 +615,8 @@ Qed.
 (* Checking that typeclasses eauto can indeed figure out DecProp (list_subset l r) *)
 
 Goal (forall (sub sup : list nat), DecProp (list_subset sub sup)). typeclasses eauto. Qed.
+
+Lemma removelast_cons_length {A} (a : A) (l : list A) :
+  List.length (List.removelast (a :: l)) = List.length l.
+Proof. induction l; crush. Qed.
+
