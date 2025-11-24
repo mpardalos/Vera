@@ -153,6 +153,8 @@ Section expr_to_smt.
       let* rhs_smt_short := expr_to_smt rhs in
       let lhs_width := Verilog.expr_type lhs in
       let rhs_width := Verilog.expr_type rhs in
+      assert_dec (lhs_width > 0)%N "0 width"%string ;;
+      assert_dec (rhs_width > 0)%N "0 width"%string ;;
       let op_width := N.max lhs_width rhs_width in
       let lhs_smt := cast_from_to lhs_width op_width lhs_smt_short in
       let rhs_smt := cast_from_to rhs_width op_width rhs_smt_short in

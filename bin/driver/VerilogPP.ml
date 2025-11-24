@@ -95,7 +95,7 @@ module Raw = struct
         fprintf fmt "( %a@ as@ %a )" expression e vtype n);
     Format.fprintf fmt "@]"
 
-  let rec statement (fmt : formatter) (s : RawVerilog.statement) =
+  let statement (fmt : formatter) (s : RawVerilog.statement) =
     match s with
     | RawVerilog.BlockingAssign (lhs, rhs) ->
         fprintf fmt "%a = %a" expression lhs expression rhs
@@ -158,7 +158,7 @@ module Typed = struct
         fprintf fmt "%s%a" (Util.lst_to_string varName) vtype varType);
     Format.fprintf fmt "@]"
 
-  let rec statement (fmt : formatter) (s : Verilog.statement) =
+  let statement (fmt : formatter) (s : Verilog.statement) =
     match s with
     | Verilog.BlockingAssign (_, lhs, rhs) ->
         fprintf fmt "%a = %a" expression lhs expression rhs
