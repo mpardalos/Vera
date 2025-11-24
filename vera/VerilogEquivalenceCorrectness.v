@@ -1153,19 +1153,25 @@ Proof.
     unfold equivalence_query in *. monad_inv. simpl in *.
     clear E5 E6. (* These prevent the next monad_inv from running. Eww *)
     unfold VerilogToSMT.verilog_to_smt in *. monad_inv. simpl in *.
-    assumption.
+    transitivity (Verilog.module_outputs v1).
+    - assumption.
+    - unfold list_subset. apply List.Forall_forall.
+      apply Verilog.module_outputs_in_vars.
   }
   assert (list_subset (Verilog.module_body_writes (Verilog.modBody v2)) (Verilog.modVariables v2)) as Hwrites_in_vars2. {
     unfold equivalence_query in *. monad_inv. simpl in *.
     clear E5 E6. (* These prevent the next monad_inv from running. Eww *)
     unfold VerilogToSMT.verilog_to_smt in *. monad_inv. simpl in *.
-    assumption.
+    transitivity (Verilog.module_outputs v2).
+    - assumption.
+    - unfold list_subset. apply List.Forall_forall.
+      apply Verilog.module_outputs_in_vars.
   }
   assert (VerilogSort.vmodule_sortable v1). {
-    admit.
+    unfold equivalence_query in *. monad_inv. assumption.
   }
   assert (VerilogSort.vmodule_sortable v2). {
-    admit.
+    unfold equivalence_query in *. monad_inv. assumption.
   }
   erewrite
     <- counterexample_execution_rewrite_left,
@@ -1214,4 +1220,4 @@ Proof.
         eassumption.
       * eassumption.
     + eapply Hmatch. assumption.
-Admitted.
+Qed.

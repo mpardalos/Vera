@@ -250,8 +250,14 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
     "Read from non-module-input"%string ;;
   assert_dec (all_vars_driven vmodule) "Undriven variables"%string ;;
   assert_dec
-    (list_subset (Verilog.module_body_writes (Verilog.modBody vmodule)) (Verilog.modVariables vmodule))
-    "Unknown variables written to"%string ;;
+    (list_subset (Verilog.module_body_writes (Verilog.modBody vmodule)) (Verilog.module_outputs vmodule))
+    "Non-output variables written to"%string ;;
+  assert_dec
+    (NoDup (Verilog.module_body_writes (Verilog.modBody vmodule)))
+    "Duplicate writes"%string ;;
+  assert_dec
+    (VerilogSort.vmodule_sortable vmodule)
+    "module is not sortable"%string ;;
   let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
   let* nameMap := mk_bijection name_tag var_assignment in
   let* assertions :=

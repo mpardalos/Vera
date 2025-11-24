@@ -37,6 +37,68 @@ Local Open Scope bv_scope.
 
 Set Bullet Behavior "Strict Subproofs".
 
+Lemma NoDup_app_iff A (l1 l2 : list A) :
+  NoDup (l1 ++ l2) <-> (NoDup l1 /\ NoDup l2 /\ disjoint l1 l2).
+Proof.
+  revert l2.
+  induction l1; split; intros; repeat split.
+  - constructor.
+  - assumption.
+  - constructor.
+  - crush.
+  - eapply NoDup_app_remove_r. eassumption.
+  - eapply NoDup_app_remove_l. eassumption.
+  - simpl in H. inv H.
+    eapply IHl1 in H3. decompose record H3. clear H3.
+    setoid_rewrite in_app_iff in H2.
+    constructor; crush.
+  - decompose record H. clear H.
+    inv H0. inv H3. simpl. constructor.
+    + rewrite in_app_iff. crush.
+    + rewrite Forall_forall in H6.
+      apply NoDup_app; eassumption.
+Qed.
+
+Lemma disjoint_app_iff {A} (l1 l2 l3 : list A):
+  disjoint (l1 ++ l2) l3 <->
+  disjoint l1 l3 /\ disjoint l2 l3.
+Proof.
+  unfold disjoint.
+  rewrite ! Forall_app ! Forall_forall.
+  crush.
+Qed.
+
+Ltac disjoint_saturate :=
+  repeat match goal with
+         | [ H : disjoint (_ :: _) _ |- _ ] =>
+	   inv H
+         | [ H : disjoint _ (_ :: _) |- _ ] =>
+	   symmetry in H;
+	   inv H
+         | [ H : disjoint (_ ++ _) _ |- _ ] =>
+           rewrite ! disjoint_app_iff in H;
+           decompose record H;
+           clear H
+         | [ H : disjoint _ (_ ++ _) |- _ ] =>
+           symmetry in H;
+           rewrite ! disjoint_app_iff in H;
+           decompose record H;
+           clear H
+         | [ H : NoDup (_ ++ _) |- _ ] =>
+     	   apply NoDup_app_iff in H;
+           decompose record H;
+           clear H
+         | [ H : NoDup (_ :: _) |- _ ] =>
+           inv H
+         | [ H : NoDup [] |- _ ] =>
+           clear H
+         | [ H : Forall _ [] |- _ ] => clear H
+         | [ H : ~ (In _ []) |- _ ] => clear H
+	 | [ H : ~ (In _ (_ ++ _)) |- _ ] => rewrite in_app_iff in H
+	 | [ H : ~ (In _ (_ :: _)) |- _ ] => apply not_in_cons in H; destruct H
+	 | [ H : ~ (_ \/ _) |- _ ] => apply not_or_and in H; destruct H
+         end.
+
 Module CombinationalOnly.
   Definition Process := Verilog.module_item.
 
@@ -381,68 +443,6 @@ Qed.
     exists final, run_vmodule v initial = Some final.
 End CombinationalOnly.
 
-Lemma disjoint_app_iff {A} (l1 l2 l3 : list A):
-  disjoint (l1 ++ l2) l3 <->
-  disjoint l1 l3 /\ disjoint l2 l3.
-Proof.
-  unfold disjoint.
-  rewrite ! Forall_app ! Forall_forall.
-  crush.
-Qed.
-
-Lemma NoDup_app_iff A (l1 l2 : list A) :
-  NoDup (l1 ++ l2) <-> (NoDup l1 /\ NoDup l2 /\ disjoint l1 l2).
-Proof.
-  revert l2.
-  induction l1; split; intros; repeat split.
-  - constructor.
-  - assumption.
-  - constructor.
-  - crush.
-  - eapply NoDup_app_remove_r. eassumption.
-  - eapply NoDup_app_remove_l. eassumption.
-  - simpl in H. inv H.
-    eapply IHl1 in H3. decompose record H3. clear H3.
-    setoid_rewrite in_app_iff in H2.
-    constructor; crush.
-  - decompose record H. clear H.
-    inv H0. inv H3. simpl. constructor.
-    + rewrite in_app_iff. crush.
-    + rewrite Forall_forall in H6.
-      apply NoDup_app; eassumption.
-Qed.
-
-Ltac disjoint_saturate :=
-  repeat match goal with
-         | [ H : disjoint (_ ++ _) _ |- _ ] =>
-           rewrite ! disjoint_app_iff in H;
-           decompose record H;
-           clear H
-         | [ H : disjoint (_ :: _) _ |- _ ] =>
-	   inv H
-         | [ H : disjoint _ (_ :: _) |- _ ] =>
-	   apply disjoint_sym in H;
-	   inv H
-         | [ H : disjoint _ (_ ++ _) |- _ ] =>
-           rewrite disjoint_sym in H;
-           rewrite ! disjoint_app_iff in H;
-           decompose record H;
-           clear H
-         | [ H : NoDup (_ ++ _) |- _ ] =>
-     	   apply NoDup_app_iff in H;
-           decompose record H;
-           clear H
-         | [ H : NoDup (_ :: _) |- _ ] =>
-           inv H
-         | [ H : NoDup [] |- _ ] =>
-           clear H
-         | [ H : Forall _ [] |- _ ] => clear H
-         | [ H : ~ (In _ []) |- _ ] => clear H
-	 | [ H : ~ (In _ (_ ++ _)) |- _ ] => rewrite in_app_iff in H
-	 | [ H : ~ (In _ (_ :: _)) |- _ ] => apply not_in_cons in H; destruct H
-	 | [ H : ~ (_ \/ _) |- _ ] => apply not_or_and in H; destruct H
-         end.
-
 Module Facts.
   Import CombinationalOnly.
 
@@ -493,30 +493,6 @@ Module Facts.
     symmetry proved by (register_state_match_on_sym C)
     transitivity proved by (register_state_match_on_trans C)
     as register_state_match_on_rel.
-
-  Add Parametric Morphism A : (@disjoint A)
-    with signature (@Permutation A) ==> (@Permutation A) ==> iff
-    as disjoint_permute.
-  Proof.
-    unfold Proper, "==>", disjoint.
-    setoid_rewrite List.Forall_forall.
-    intros l1 l1' Hpermute1 l2 l2' Hpermute2.
-    split; intros H x Hin1 Hin2.
-    - eapply H.
-      + eapply Permutation_in.
-        * symmetry. eassumption.
-        * eassumption.
-      + eapply Permutation_in.
-        * symmetry. eassumption.
-        * eassumption.
-    - eapply H.
-      + eapply Permutation_in.
-        * eassumption.
-        * eassumption.
-      + eapply Permutation_in.
-        * eassumption.
-        * eassumption.
-  Qed.
 
   Add Parametric Morphism : Verilog.module_body_reads
     with signature (@Permutation Verilog.module_item) ==> (@Permutation Verilog.variable)
@@ -888,16 +864,5 @@ Module Facts.
        * assumption.
        * rewrite <- Hpermute1. assumption.
        * assumption.
-  Qed.
-
-  Lemma sort_module_items_permutation mis1 : forall vars_ready mis2,
-    sort_module_items vars_ready mis1 = Some mis2 ->
-    Permutation mis1 mis2.
-  Proof.
-    intros.
-    funelim (sort_module_items vars_ready mis1);
-      rewrite <- Heqcall in *; clear Heqcall; try discriminate; [idtac].
-    inv H. etransitivity. { symmetry. eassumption. }
-    apply perm_skip. eapply Hind. eapply Heq.
   Qed.
 End Facts.

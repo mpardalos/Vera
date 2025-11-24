@@ -76,5 +76,19 @@ Equations sort_module_items
 .
 Next Obligation. apply_somewhere Permutation_length. simpl in *. lia. Qed.
 
+Lemma sort_module_items_permutation mis1 : forall vars_ready mis2,
+  sort_module_items vars_ready mis1 = Some mis2 ->
+  Permutation mis1 mis2.
+Proof.
+  intros.
+  funelim (sort_module_items vars_ready mis1);
+    rewrite <- Heqcall in *; clear Heqcall; try discriminate; [idtac].
+  inv H. etransitivity. { symmetry. eassumption. }
+  apply perm_skip. eapply Hind. eapply Heq.
+Qed.
+
 Definition vmodule_sortable (v : vmodule) : Prop :=
   exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted.
+
+(* Checking that typeclasses eauto can indeed figure out DecProp (disjoint l r) *)
+Goal (forall v, DecProp (vmodule_sortable v)). typeclasses eauto. Qed.

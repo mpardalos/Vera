@@ -428,22 +428,30 @@ Qed.
 
 Import Facts.
 
-Lemma transfer_module_body_satisfiable v :
-  forall tag (m : VerilogSMTBijection.t) ρ q,
+Lemma transfer_module_body_satisfiable v tag (m : VerilogSMTBijection.t) ρ q :
+    List.NoDup (Verilog.module_body_writes (Verilog.modBody v)) ->
+    list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v) ->
+    list_subset (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v) ->
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
     transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
     valid_execution v (SMT.execution_of_valuation tag m ρ) ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q.
 Proof.
-  intros * Hdisjoint Htransfer Hvalid.
+  intros * Hwrites_ndup Hreads_subset Hwrites_subset Hdisjoint Htransfer Hvalid.
   destruct Hvalid as [e' [? ?]].
   repeat unfold mk_initial_state, run_vmodule in *. monad_inv.
+  (* Renaming monad_inv results to consistent names *)
+  match goal with [ H : sort_module_items _ _ = Some ?l |- _ ] =>
+    rename H into Hsort; rename l into sorted
+  end.
+  apply_somewhere sort_module_items_permutation.
   erewrite <- exec_module_body_permute in H2; cycle 1.
-  - eapply sort_module_items_permutation. eassumption.
-  - (* No duplicate writes *) admit.
-  - (* No duplicate writes *) admit.
-  - (* reads/writes disjoint *) admit.
-  - (* reads/writes disjoint *) admit.
+  - eassumption.
+  - eassumption.
+  - rewrite <- Hsort. assumption.
+  - eapply disjoint_subset; try symmetry; eassumption.
+  - rewrite <- Hsort.
+    eapply disjoint_subset; try symmetry; eassumption.
   - eapply transfer_module_body_exec_satisfiable; eauto.
     apply execution_match_on_verilog_smt_match_states_partial.
     eapply execution_match_on_impl; [|eassumption].
@@ -452,7 +460,7 @@ Proof.
     apply transfer_module_body_inputs in Htransfer.
     rewrite List.Forall_forall in Htransfer.
     auto.
-Admitted.
+Qed.
 
 Lemma transfer_module_body_exec_valid inputs outputs body : forall tag m ρ q,
     disjoint inputs outputs ->
@@ -524,13 +532,15 @@ Qed.
 Lemma transfer_module_body_valid tag m v ρ q :
   vmodule_sortable v ->
   list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v) ->
+  list_subset (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v) ->
+  List.NoDup (Verilog.module_body_writes (Verilog.modBody v)) ->
   disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
   transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
   (forall var : Verilog.variable, List.In var (Verilog.module_inputs v) -> valuation_has_var tag m ρ var) ->
   List.Forall (SMTQueries.term_satisfied_by ρ) q ->
   valid_execution v (SMT.execution_of_valuation tag m ρ).
 Proof.
-  intros * Hsortable Hsubset Hdisjoint Htransfer Hhas_vars Hsat.
+  intros * Hsortable Hinputs_subset Houtputs_subset Hnodup_writes Hdisjoint Htransfer Hhas_vars Hsat.
   edestruct transfer_module_body_exec_valid
     with (r1 := limit_to_regs (Verilog.module_inputs v) (SMT.execution_of_valuation tag m ρ))
     as [final [H1 H2]].
@@ -540,30 +550,32 @@ Proof.
   - eapply verilog_smt_match_states_partial_change_regs
       with (r1 := SMT.execution_of_valuation tag m ρ). {
       intros.
-      unfold list_subset in Hsubset.
-      rewrite List.Forall_forall in Hsubset.
+      unfold list_subset in Hinputs_subset.
+      rewrite List.Forall_forall in Hinputs_subset.
       unfold limit_to_regs.
       autodestruct; crush.
     }
     apply verilog_smt_match_states_execution_of_valuation_same.
     assumption.
   - unfold valid_execution.
-  destruct Hsortable as [sorted Hsort].
-    eexists.
+    destruct Hsortable as [sorted Hsort].
     repeat unfold mk_initial_state, run_vmodule in *.
     rewrite Hsort. simpl.
+    eapply sort_module_items_permutation in Hsort.
+    eexists.
     erewrite <- exec_module_body_permute; cycle 1.
-    + eapply sort_module_items_permutation. eassumption.
-    + (* No duplicate writes *) admit.
-    + (* No duplicate writes *) admit.
-    + (* reads/writes disjoint *) admit.
-    + (* reads/writes disjoint *) admit.
+    + eassumption.
+    + assumption.
+    + rewrite <- Hsort. assumption.
+    + eapply disjoint_subset; try symmetry; eassumption.
+    + rewrite <- Hsort.
+      eapply disjoint_subset; try symmetry; eassumption.
     + split; [eassumption|].
       apply verilog_smt_match_states_partial_execution_match_on.
       eapply verilog_smt_match_states_partial_impl; [|eassumption].
       simpl. setoid_rewrite List.in_app_iff.
       intuition eauto.
-Admitted.
+Qed.
 
 Lemma bij_gsi (m : VerilogSMTBijection.t) tag var smtName prf1 prf2 :
   VerilogSMTBijection.insert (tag, var) smtName m prf1 prf2 (tag, var) = Some smtName.
@@ -735,8 +747,6 @@ Proof.
   - intros Hsat.
     pose proof (verilog_to_smt_has_vars _ _ _ _ _ H Hsat) as Hhas_vars.
     unfold verilog_to_smt in H. monad_inv. simpl in *.
-    (* Add assertion *)
-    assert (vmodule_sortable v) by admit.
     eapply transfer_module_body_valid; try (some_inv; eassumption).
     intros var Hvar_in.
     unfold list_subset in *. rewrite List.Forall_forall in *.
@@ -751,7 +761,7 @@ Proof.
       * eassumption.
       * apply valid_execution_complete; eassumption.
     + eapply transfer_module_body_satisfiable; eassumption.
-Admitted.
+Qed.
 
 Lemma defined_value_for_impl C1 C2 e :
   (forall var, C2 var -> C1 var) ->
@@ -875,28 +885,35 @@ Proof.
   unfold valid_execution, all_vars_driven.
   intros * Htransf [e' [Hrun Hmatch]] Hinputs_defined.
   unfold verilog_to_smt in Htransf. monad_inv.
-  unfold list_subset in *. rewrite List.Forall_forall in *.
   assert
     (defined_value_for
        (fun var : Verilog.variable =>
           List.In var (Verilog.module_inputs v)
           \/ List.In var (Verilog.module_body_reads (Verilog.modBody v)))
        (limit_to_regs (Verilog.module_inputs v) e)) as Hdefined_initial. {
+    unfold list_subset in *. rewrite List.Forall_forall in *.
     unfold limit_to_regs, defined_value_for.
     intros var [|]; autodestruct; crush.
   }
-
-  (* Add assertion *)
-  assert (vmodule_sortable v) as Hsortable by admit.
-  destruct Hsortable as [sorted Hsort].
+  match goal with [ Hsortable : vmodule_sortable _ |- _ ] =>
+    destruct Hsortable as [sorted Hsort]
+  end.
   unfold run_vmodule, mk_initial_state in Hrun.
   rewrite Hsort in Hrun. simpl in Hrun.
+  apply sort_module_items_permutation in Hsort.
   erewrite <- exec_module_body_permute in Hrun; cycle 1.
-  - eapply sort_module_items_permutation. eassumption.
-  - (* No duplicate writes *) admit.
-  - (* No duplicate writes *) admit.
-  - (* reads/writes disjoint *) admit.
-  - (* reads/writes disjoint *) admit.
+  - eassumption.
+  - assumption.
+  - rewrite <- Hsort. assumption.
+  - eapply disjoint_subset.
+    + eassumption.
+    + eassumption.
+    + symmetry. eassumption.
+  - rewrite <- Hsort.
+    eapply disjoint_subset.
+    + eassumption.
+    + eassumption.
+    + symmetry. eassumption.
   - pose proof (exec_module_body_no_exes
                  (Verilog.modBody v)
                  (fun var => List.In var (Verilog.module_inputs v))) as H.
@@ -908,4 +925,4 @@ Proof.
       eapply defined_value_for_impl; [|eassumption].
       intros var [Hvar_in | Hvar_in]; crush.
     + crush.
-Admitted.
+Qed.

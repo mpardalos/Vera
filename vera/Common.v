@@ -1,12 +1,13 @@
-From Stdlib Require Import BinNat.
-From Stdlib Require Import ZArith.
-From Stdlib Require Import BinNums.
 From Stdlib Require Import BinIntDef.
+From Stdlib Require Import BinNat.
+From Stdlib Require Import BinNums.
 From Stdlib Require Import FMapPositive.
-From Stdlib Require Import List.
 From Stdlib Require Import FMaps.
 From Stdlib Require Import FSets.
+From Stdlib Require Import List.
+From Stdlib Require Import Sorting.Permutation.
 From Stdlib Require Import Structures.Equalities.
+From Stdlib Require Import ZArith.
 
 From ExtLib Require Import Structures.Maps.
 From ExtLib Require Import Structures.Traversable.
@@ -523,10 +524,17 @@ Proof.
   crush.
 Qed.
 
-(* TODO: Move me to common *)
 Lemma disjoint_sym {A} (l1 l2 : list A):
-  disjoint l1 l2 <->
+  disjoint l1 l2 ->
   disjoint l2 l1.
+Proof.
+  unfold disjoint.
+  rewrite ! List.Forall_forall.
+  crush.
+Qed.
+
+Lemma disjoint_sym_iff {A} (l1 l2 : list A):
+  disjoint l1 l2 <-> disjoint l2 l1.
 Proof.
   unfold disjoint.
   rewrite ! List.Forall_forall.
@@ -539,5 +547,71 @@ Goal (forall (l r : list nat), DecProp (disjoint l r)). typeclasses eauto. Qed.
 Definition list_subset {A} (sub sup : list A) : Prop :=
   Forall (fun x => In x sup) sub.
 
+Lemma list_subset_refl {A} (l : list A) :
+  list_subset l l .
+Proof. unfold list_subset. rewrite ! List.Forall_forall. crush. Qed.
+
+Lemma list_subset_trans {A} (l1 l2 l3 : list A) :
+  list_subset l1 l2 -> list_subset l2 l3 -> list_subset l1 l3.
+Proof. unfold list_subset. rewrite ! List.Forall_forall. crush. Qed.
+
+Add Parametric Relation A :
+  (list A) list_subset
+  reflexivity proved by list_subset_refl
+  transitivity proved by list_subset_trans
+  as list_subset_rel.
+
+Add Parametric Relation A :
+  (list A) disjoint
+  symmetry proved by disjoint_sym
+  as disjoint_rel.
+
+Add Parametric Morphism A : (@disjoint A)
+  with signature (@Permutation A) ==> (@Permutation A) ==> iff
+  as disjoint_permute.
+Proof.
+  unfold Proper, "==>", disjoint.
+  setoid_rewrite List.Forall_forall.
+  intros l1 l1' Hpermute1 l2 l2' Hpermute2.
+  split; intros H x Hin1 Hin2.
+  - eapply H.
+    + eapply Permutation_in.
+      * symmetry. eassumption.
+      * eassumption.
+    + eapply Permutation_in.
+      * symmetry. eassumption.
+      * eassumption.
+  - eapply H.
+    + eapply Permutation_in.
+      * eassumption.
+      * eassumption.
+    + eapply Permutation_in.
+      * eassumption.
+      * eassumption.
+Qed.
+
+Add Parametric Morphism A : (@list_subset A)
+  with signature (@Permutation A) ==> (@Permutation A) ==> iff
+  as list_subset_permute.
+Proof.
+  unfold Proper, "==>", disjoint.
+  setoid_rewrite List.Forall_forall.
+  intros l1 l1' Hpermute1 l2 l2' Hpermute2.
+  setoid_rewrite Hpermute1.
+  setoid_rewrite Hpermute2.
+  reflexivity.
+Qed.
+
+Add Parametric Morphism A : (@disjoint A)
+  with signature list_subset --> list_subset --> Basics.impl
+  as disjoint_subset.
+Proof.
+  unfold Basics.impl.
+  unfold Proper, "==>", disjoint.
+  setoid_rewrite List.Forall_forall.
+  crush.
+Qed.
+
 (* Checking that typeclasses eauto can indeed figure out DecProp (list_subset l r) *)
+
 Goal (forall (sub sup : list nat), DecProp (list_subset sub sup)). typeclasses eauto. Qed.
