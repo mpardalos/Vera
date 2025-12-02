@@ -25,6 +25,7 @@ From Stdlib Require Import ssreflect.
 From Stdlib Require Import String.
 From Stdlib Require Import Logic.ProofIrrelevance.
 From Stdlib Require Import Arith.PeanoNat.
+From Stdlib Require Import NArith.
 
 From vera Require Import Tactics.
 From vera Require Import Decidable.
@@ -620,3 +621,85 @@ Lemma removelast_cons_length {A} (a : A) (l : list A) :
   List.length (List.removelast (a :: l)) = List.length l.
 Proof. induction l; crush. Qed.
 
+Lemma map_removelast {A B} (f : A -> B) (l : list A) :
+  List.map f (List.removelast l) = List.removelast (List.map f l).
+Proof.
+  induction l; simpl; [reflexivity|].
+  destruct l; simpl in *; [reflexivity|].
+  now rewrite IHl.
+Qed.
+
+Lemma Nat2N_inj_le : forall n m, (N.of_nat n <= N.of_nat m)%N <-> n <= m.
+Proof. lia. Qed.
+
+Lemma Nat2N_inj_lt : forall n m, (N.of_nat n < N.of_nat m)%N <-> n < m.
+Proof. lia. Qed.
+
+Lemma N2Nat_inj_le : forall n m, (N.to_nat n <= N.to_nat m) <-> (n <= m)%N.
+Proof. lia. Qed.
+
+Lemma N2Nat_inj_lt : forall n m, (N.to_nat n < N.to_nat m) <-> (n < m)%N.
+Proof. lia. Qed.
+
+Hint Rewrite <- Nat2N.inj_add Nat2N.inj_mul Nat2N.inj_sub Nat2N.inj_min Nat2N.inj_max : N_to_nat.
+Hint Rewrite N2Nat.id Nat2N.id : N_to_nat.
+
+Ltac N_to_nat :=
+  repeat match goal with
+         | [ x : N |- _ ] =>
+	 let Heqx := fresh "Heq" in
+	 let x_temp := fresh x in
+	 remember (N.to_nat x) as x_temp eqn:Heqx;
+	 apply (f_equal N.of_nat) in Heqx;
+	 rewrite N2Nat.id in Heqx;
+	 rewrite <- Heqx in *;
+	 clear x Heqx;
+	 rename x_temp into x
+	 end;
+  autorewrite with N_to_nat in *;
+  repeat match goal with
+         | [ H : (_ <= _)%N |- _ ] => apply Nat2N_inj_le in H
+         | [ H : (_ < _)%N |- _ ] => apply Nat2N_inj_lt in H
+         | [ |- (_ <= _)%N ] => apply N2Nat_inj_le
+         | [ |- (_ < _)%N ] => apply N2Nat_inj_lt
+	 | _ => progress ( autorewrite with N_to_nat in * )
+  end.
+
+Ltac destruct_mins := 
+    repeat match goal with
+           | [ |- context[N.min ?l ?r] ] =>
+	     let Heqmin := fresh "Heqmin" in (
+	       destruct (N.min_spec l r) as [[? Heqmin]|[? Heqmin]];
+	       rewrite Heqmin in *;
+	       clear Heqmin;
+	       try lia
+	     )
+           | [ H : context[N.min ?l ?r] |- _ ] =>
+	     let Heqmin := fresh "Heqmin" in (
+	       destruct (N.min_spec l r) as [[? Heqmin]|[? Heqmin]];
+	       rewrite Heqmin in *;
+	       clear Heqmin;
+	       try lia
+	     )
+           | [ |- context[Nat.min ?l ?r] ] =>
+	     let Heqmin := fresh "Heqmin" in (
+	       destruct (Nat.min_spec l r) as [[? Heqmin]|[? Heqmin]];
+	       rewrite Heqmin in *;
+	       clear Heqmin;
+	       try lia
+	     )
+           | [ H : context[Nat.min ?l ?r] |- _ ] =>
+	     let Heqmin := fresh "Heqmin" in (
+	       destruct (Nat.min_spec l r) as [[? Heqmin]|[? Heqmin]];
+	       rewrite Heqmin in *;
+	       clear Heqmin;
+	       try lia
+	     )
+	   end.
+
+Hint Rewrite
+  N.leb_le N.leb_gt
+  Nat.leb_le Nat.leb_gt
+  : kill_bools.
+
+Ltac kill_bools := autorewrite with kill_bools in *.
