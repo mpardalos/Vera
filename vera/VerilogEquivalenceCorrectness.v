@@ -865,12 +865,29 @@ Definition equivalent_behaviour (v1 v2 : Verilog.vmodule) : Prop :=
   forall e1 e2,
     valid_execution v1 e1 ->
     valid_execution v2 e2 ->
-    execution_defined_match_on
-      (fun var => In var (Verilog.module_inputs v1))
-      e1 e2 ->
-    execution_defined_match_on
-      (fun var => In var (Verilog.module_outputs v1))
-      e1 e2.
+    e1 =!!(Verilog.module_inputs v1)!!= e2 ->
+    e1 =!!(Verilog.module_outputs v1)!!= e2.
+
+Lemma equivalent_behaviour_trans v1 v2 v3:
+  equivalent_behaviour v1 v2 ->
+  equivalent_behaviour v2 v3 ->
+  equivalent_behaviour v1 v3.
+Proof. Admitted.
+
+Lemma equivalent_behaviour_sym v1 v2:
+  equivalent_behaviour v1 v2 ->
+  equivalent_behaviour v2 v1.
+Proof. Admitted.
+
+Lemma equivalent_behaviour_refl v: equivalent_behaviour v v.
+Proof. Admitted.
+
+Add Parametric Relation :
+  Verilog.vmodule equivalent_behaviour
+  reflexivity proved by equivalent_behaviour_refl
+  symmetry proved by equivalent_behaviour_sym
+  transitivity proved by equivalent_behaviour_trans
+  as equivalent_behaviour_rel.
 
 Record equivalent v1 v2:=
   MkEquivalent
@@ -879,6 +896,27 @@ Record equivalent v1 v2:=
       equiv_outputs : Verilog.module_outputs v1 = Verilog.module_outputs v2;
       equiv_behaviour : equivalent_behaviour v1 v2
     }.
+
+Lemma equivalent_trans v1 v2 v3:
+  equivalent v1 v2 ->
+  equivalent v2 v3 ->
+  equivalent v1 v3.
+Proof. Admitted.
+
+Lemma equivalent_sym v1 v2:
+  equivalent v1 v2 ->
+  equivalent v2 v1.
+Proof. Admitted.
+
+Lemma equivalent_refl v: equivalent v v.
+Proof. Admitted.
+
+Add Parametric Relation :
+  Verilog.vmodule equivalent
+  reflexivity proved by equivalent_refl
+  symmetry proved by equivalent_sym
+  transitivity proved by equivalent_trans
+  as equivalent_rel.
 
 Lemma no_counterexample_equivalent_iff v1 v2 :
   (forall e1 e2, ~ counterexample_execution v1 e1 v2 e2) <-> (equivalent_behaviour v1 v2).
@@ -895,6 +933,19 @@ Proof.
     insterU H. contradiction.
 Qed.
 
+Lemma not_equivalent_counterexample_iff v1 v2 :
+  (exists e1 e2, counterexample_execution v1 e1 v2 e2) <-> (~ equivalent_behaviour v1 v2).
+Proof.
+  setoid_rewrite <- no_counterexample_equivalent_iff.
+  split.
+  - intros [e1 [e2 H1]] H2. eapply H2. eapply H1.
+  - intros H1.
+    apply not_all_ex_not in H1. destruct H1 as [e1 H1].
+    apply not_all_ex_not in H1. destruct H1 as [e2 H1].
+    apply NNPP in H1.
+    exists e1, e2. apply H1.
+Qed.
+    
 Theorem equivalence_query_sat_correct v1 v2 smt ρ :
   equivalence_query v1 v2 = inr smt ->
   satisfied_by ρ (SMT.query smt) ->
@@ -1222,5 +1273,62 @@ Proof.
     + eapply Hmatch. assumption.
 Qed.
 
-Print Assumptions equivalence_query_unsat_correct.
-Print Assumptions equivalence_query_sat_correct.
+Lemma assignment_forwarding_equivalent_behaviour v1 v2 :
+  AssignmentForwarding.forward_assignments v1 = inr v2 ->
+  equivalent_behaviour v1 v2.
+Proof. Admitted.
+
+Theorem equivalence_query_general_unsat_correct v1 v2 smt :
+  equivalence_query_general v1 v2 = inr smt ->
+  (forall ρ, ~ satisfied_by ρ (SMT.query smt)) ->
+  equivalent_behaviour v1 v2.
+Proof.
+  unfold equivalence_query_general.
+  intros. monad_inv.
+  transitivity v. {
+    apply assignment_forwarding_equivalent_behaviour. assumption.
+  }
+  symmetry. transitivity v0. {
+    apply assignment_forwarding_equivalent_behaviour. assumption.
+  } symmetry.
+  eapply equivalence_query_unsat_correct; eassumption.
+Qed.
+
+
+Tactic Notation "rename_match" open_constr(pat) "into" ident(newname) :=
+  match goal with
+  | [ H : ?T |- _ ] =>
+    (* We need the unify here, rather than just using the pattern in
+       the match directly.  If the pattern has holes, then those holes
+       need to be unified, or they stay on the shelf and won't let us
+       close the proof *)
+    unify T pat;
+    rename H into newname
+  end.
+
+Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
+  equivalence_query_general v1 v2 = inr smt ->
+  satisfied_by ρ (SMT.query smt) ->
+  exists e1 e2, counterexample_execution v1 e1 v2 e2.
+Proof.
+  unfold equivalence_query_general.
+  intros Hquery Hsat. monad_inv.
+  rename_match (AssignmentForwarding.forward_assignments v1 = inr _) into Hforward1.
+  rename_match (AssignmentForwarding.forward_assignments v2 = inr _) into Hforward2.
+  rename_match (equivalence_query _ _ = inr _) into Hquery.
+  apply not_equivalent_counterexample_iff.
+  intro Hequiv.
+  eapply equivalence_query_sat_correct in Hquery; [|eassumption].
+  assert (equivalent_behaviour v v0) as Hequiv0. {
+    etransitivity. {
+      symmetry. apply assignment_forwarding_equivalent_behaviour. apply Hforward1.
+    }
+    etransitivity. { apply Hequiv. }
+    apply assignment_forwarding_equivalent_behaviour. apply Hforward2.
+  } contradict Hequiv0.
+  apply not_equivalent_counterexample_iff.
+  eexists. eexists. apply Hquery.
+Qed.
+
+Print Assumptions equivalence_query_general_unsat_correct.
+Print Assumptions equivalence_query_general_sat_correct.

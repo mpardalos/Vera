@@ -4,6 +4,7 @@ Import (coercions) SMT.
 From vera Require Import Common.
 Import (coercions) VerilogSMTBijection.
 Import VerilogSMTBijection (bij_inverse, bij_apply, bij_wf).
+From vera Require AssignmentForwarding.
 From vera Require VerilogToSMT.
 From vera Require SMTQueries.
 From vera Require Import Decidable.
@@ -227,3 +228,9 @@ Next Obligation.
   pose proof (verilog_to_smt_max_name TaggedVariable.VerilogLeft) as Hmax_left. insterU Hmax_left.
   lia.
 Qed.
+
+Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string (SMT.smt_with_namemap) :=
+  let* inlinedVerilog1 := AssignmentForwarding.forward_assignments verilog1 in
+  let* inlinedVerilog2 := AssignmentForwarding.forward_assignments verilog2 in
+  
+  equivalence_query inlinedVerilog1 inlinedVerilog2.
