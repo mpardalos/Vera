@@ -1294,18 +1294,6 @@ Proof.
   eapply equivalence_query_unsat_correct; eassumption.
 Qed.
 
-
-Tactic Notation "rename_match" open_constr(pat) "into" ident(newname) :=
-  match goal with
-  | [ H : ?T |- _ ] =>
-    (* We need the unify here, rather than just using the pattern in
-       the match directly.  If the pattern has holes, then those holes
-       need to be unified, or they stay on the shelf and won't let us
-       close the proof *)
-    unify T pat;
-    rename H into newname
-  end.
-
 Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
   equivalence_query_general v1 v2 = inr smt ->
   satisfied_by ρ (SMT.query smt) ->

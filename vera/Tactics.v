@@ -36,6 +36,19 @@ Ltac learn_tac fact name :=
 Tactic Notation "learn" constr(fact) := let name := fresh "H" in learn_tac fact name.
 Tactic Notation "learn" constr(fact) "as" simple_intropattern(name) := learn_tac fact name.
 
+(* Match a hypothesis and rename it. Useful for renaming hyps with generated names. *)
+Tactic Notation "rename_match" open_constr(pat) "into" ident(newname) :=
+  match goal with
+  | [ H : ?T |- _ ] =>
+    (* We need the unify here, rather than just using the pattern in
+       the match directly.  If the pattern has holes, then those holes
+       need to be unified, or they stay on the shelf and won't let us
+       close the proof *)
+    unify T pat;
+    rename H into newname
+  end.
+
+
 Ltac unfold_rec c := unfold c; fold c.
 
 Ltac inv H := inversion H; subst; clear H.

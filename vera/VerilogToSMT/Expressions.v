@@ -342,24 +342,6 @@ Proof.
   crush.
 Qed.
 
-Ltac unpack_defined_value_for :=
-  repeat match goal with
-    | [ H: defined_value_for (fun _ => _ \/ _) _ |- _ ] =>
-        rewrite <- defined_value_for_split_iff in H;
-        destruct H
-    | [ H: defined_value_for (fun _ => List.In _ (_ ++ _)) _ |- _ ] =>
-        setoid_rewrite List.in_app_iff in H
-    end.
-
-Ltac unpack_verilog_smt_match_states_partial :=
-  repeat match goal with
-    | [ H: verilog_smt_match_states_partial (fun _ => _ \/ _) _ _ _ _ |- _ ] =>
-        apply verilog_smt_match_states_partial_split_iff in H;
-        destruct H
-    | [ H: verilog_smt_match_states_partial (fun _ => List.In _ (_ ++ _)) _ _ _ _ |- _ ] =>
-        setoid_rewrite List.in_app_iff in H
-    end.
-
 Lemma cast_from_to_part_eval ρ from to t w1 bv1:
   SMTLib.interp_term ρ (cast_from_to from to t) = Some (SMTLib.Value_BitVec w1 bv1) ->
   exists w2 bv2, SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w2 bv2).
@@ -370,15 +352,15 @@ Qed.
 Lemma eval_expr_defined w regs e :
   forall tag m t,
     expr_to_smt tag m e = inr t ->
-    defined_value_for (fun v => List.In v (Verilog.expr_reads e)) regs ->
+    RegisterState.defined_value_for (fun v => List.In v (Verilog.expr_reads e)) regs ->
     exists bv, eval_expr (w:=w) regs e = Some (XBV.from_bv bv).
 Proof.
   induction e; intros * Hexpr_to_smt Hdefined;
     simp expr_to_smt eval_expr expr_reads in *;
     simpl in *; monad_inv;
-    unpack_defined_value_for;
+    RegisterState.unpack_defined_value_for;
     repeat match goal with
-      | [ IH : context[defined_value_for _ _ -> exists _, _] |- _ ] =>
+      | [ IH : context[RegisterState.defined_value_for _ _ -> exists _, _] |- _ ] =>
           let IH' := fresh "IH" in
           edestruct IH as [? IH']; eauto; clear IH; inv IH'
       end.
@@ -407,11 +389,6 @@ Proof.
   - (* literal *)
     eauto.
   - (* variable *)
-    unfold defined_value_for in *.
-    edestruct H as [? [H1 H2]]; eauto; [idtac].
-    rewrite XBV.not_has_x_to_bv in H2.
-    destruct H2 as [bv Hbv].
-    apply XBV.to_from_bv_inverse in Hbv. subst.
     eauto.
   - rewrite convert_no_exes.
     eauto.
@@ -419,7 +396,7 @@ Qed.
 
 Lemma eval_expr_no_exes w regs e :
   forall xbv tag m t,
-    defined_value_for (fun v => List.In v (Verilog.expr_reads e)) regs ->
+    RegisterState.defined_value_for (fun v => List.In v (Verilog.expr_reads e)) regs ->
     expr_to_smt tag m e = inr t ->
     eval_expr (w:=w) regs e = Some xbv ->
     exists bv, XBV.to_bv xbv = Some bv.
