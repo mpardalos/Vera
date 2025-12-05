@@ -11,6 +11,9 @@ From Stdlib Require Import Psatz.
 From Stdlib Require Import Logic.ProofIrrelevance.
 From Stdlib Require Import Morphisms.
 From Stdlib Require Import Classical.
+From Stdlib Require Import Relations.
+From Stdlib Require Import Morphisms.
+From Stdlib Require Import Setoid.
 
 From vera Require Import Verilog.
 From vera Require Import Common.
@@ -99,6 +102,237 @@ Ltac disjoint_saturate :=
 	 | [ H : ~ (_ \/ _) |- _ ] => apply not_or_and in H; destruct H
          end.
 
+
+Module RegisterState.
+  Module VariableAsMDT <: MiniDecidableType.
+    Definition t := Verilog.variable.
+    Definition eq_dec (x y : t) := dec (x = y).
+  End VariableAsMDT.
+
+  Module VariableAsUDT := Make_UDT(VariableAsMDT).
+
+  Module VariableDepMap := MkDepFunMap(VariableAsUDT).
+
+  Definition register_state := VariableDepMap.t (fun var => XBV.xbv (Verilog.varType var)).
+
+  #[global]
+  Notation t := register_state.
+
+  #[global]
+  Notation execution := t.
+
+  Definition set_reg (var : Verilog.variable) (value : XBV.xbv (Verilog.varType var)) : t -> t :=
+    VariableDepMap.insert var value.
+    			  
+  Definition has_value_for (C : Verilog.variable -> Prop) (regs : RegisterState.t) :=
+    forall var, C var -> exists xbv, regs var = Some xbv.
+
+  Definition defined_value_for (C : Verilog.variable -> Prop) (regs : RegisterState.t) :=
+    forall var, C var -> exists bv, regs var = Some (XBV.from_bv bv).
+  
+  Lemma defined_value_for_split_iff (C1 C2 : Verilog.variable -> Prop) regs :
+    (defined_value_for C1 regs /\ defined_value_for C2 regs) <->
+      (defined_value_for (fun var => C1 var \/ C2 var) regs).
+  Proof. unfold defined_value_for. crush. Qed.
+
+  Lemma defined_value_for_impl C1 C2 e :
+    (forall v, C2 v -> C1 v) ->
+    defined_value_for C1 e ->
+    defined_value_for C2 e.
+  Proof. unfold defined_value_for. crush. Qed.
+
+  Ltac unpack_defined_value_for :=
+    repeat match goal with
+      | [ H: defined_value_for (fun _ => _ \/ _) _ |- _ ] =>
+          rewrite <- defined_value_for_split_iff in H;
+          destruct H
+      | [ H: defined_value_for (fun _ => List.In _ (_ ++ _)) _ |- _ ] =>
+          setoid_rewrite List.in_app_iff in H
+      | [ |- defined_value_for (fun _ => List.In _ (_ ++ _)) _ ] =>
+          setoid_rewrite List.in_app_iff
+      | [ |- defined_value_for (fun _ => _ \/ _) _ ] =>
+          apply defined_value_for_split_iff; split
+      end.
+
+  Definition match_on (C : Verilog.variable -> Prop) (e1 e2 : RegisterState.t) : Prop :=
+    forall var, C var -> e1 var = e2 var.
+
+  Notation "rs1 ={ P }= rs2" :=
+    (match_on P rs1 rs2)
+    (at level 80) : type_scope.
+
+  Notation "rs1 =( vars )= rs2" :=
+    (rs1 ={fun var => In var vars}= rs2)
+    (at level 80) : type_scope.
+
+  Lemma match_on_impl C1 C2 e1 e2:
+    (forall var, C2 var -> C1 var) ->
+    e1 ={ C1 }= e2 ->
+    e1 ={ C2 }= e2.
+  Proof. unfold match_on. crush. Qed.
+
+  Global Instance Proper_match_on_iff :
+    Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) match_on.
+  Proof. repeat intro. subst. crush. Qed.
+
+  Global Instance Proper_match_on_impl :
+    Proper
+      ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> eq ==> Basics.impl)
+      match_on.
+  Proof. repeat intro. subst. crush. Qed.
+
+  Lemma match_on_split_iff C1 C2 regs1 regs2 :
+    regs1 ={ fun var => C1 var \/ C2 var }= regs2 <->
+      (regs1 ={ C1 }= regs2 /\ regs1 ={ C2 }= regs2).
+  Proof. unfold "_ ={ _ }= _". crush. Qed.
+
+  Lemma match_on_app_iff l1 l2 regs1 regs2 :
+    (regs1 =( l1 ++ l2 )= regs2) <-> (regs1 =( l1 )= regs2 /\ regs1 =( l2 )= regs2).
+  Proof.
+    setoid_rewrite List.in_app_iff.
+    apply match_on_split_iff.
+  Qed.
+
+  Lemma match_on_trans C regs1 regs2 regs3 :
+    regs1 ={ C }= regs2 ->
+    regs2 ={ C }= regs3 ->
+    regs1 ={ C }= regs3.
+  Proof.
+    unfold "_ ={ _ }= _".
+    intros H12 H23 var HC.
+    insterU H12. insterU H23.
+    crush.
+  Qed.
+
+  Lemma match_on_sym C regs1 regs2 :
+    regs1 ={ C }= regs2 ->
+    regs2 ={ C }= regs1.
+  Proof.
+    unfold "_ ={ _ }= _".
+    intros H var HC.
+    insterU H. crush.
+  Qed.
+
+  Lemma match_on_refl C regs :
+    regs ={ C }= regs.
+  Proof. unfold "_ ={ _ }= _". crush. Qed.
+
+  Add Parametric Relation (C : Verilog.variable -> Prop) :
+    RegisterState.t (match_on C)
+    reflexivity proved by (match_on_refl C)
+    symmetry proved by (match_on_sym C)
+    transitivity proved by (match_on_trans C)
+    as match_on_rel.
+
+  Global Instance DefaultRelation_variable_prop :
+    DefaultRelation (A:=Verilog.variable -> Prop) (pointwise_relation Verilog.variable Basics.impl).
+  Defined.
+  
+  Global Instance Proper_defined_value_for_impl :
+    Proper
+      ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> Basics.impl)
+      RegisterState.defined_value_for.
+  Proof. Admitted.
+  
+  Global Instance Proper_defined_value_for_iff :
+    Proper
+      (pointwise_relation Verilog.variable iff ==> eq ==> iff)
+      RegisterState.defined_value_for.
+  Proof. Admitted.
+  
+  Global Instance Proper_defined_value_for_match C :
+    Proper
+      (RegisterState.match_on C ==> iff)
+      (RegisterState.defined_value_for C).
+  Proof. Admitted.
+
+  Global Instance Proper_has_value_for_impl :
+    Proper
+      ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> Basics.impl)
+      RegisterState.has_value_for.
+  Proof. Admitted.
+  
+  Global Instance Proper_has_value_for_iff :
+    Proper
+      (pointwise_relation Verilog.variable iff ==> eq ==> iff)
+      RegisterState.has_value_for.
+  Proof. Admitted.
+  
+  Global Instance Proper_has_value_for_match C :
+    Proper
+      (RegisterState.match_on C ==> iff)
+      (RegisterState.has_value_for C).
+  Proof. Admitted.
+
+  Definition limit_to_regs (vars : list Verilog.variable) (regs : RegisterState.t) : RegisterState.t :=
+    fun var =>
+      match dec (In var vars) with
+      | left prf => regs var
+      | right prf => None
+      end.
+
+  Lemma set_reg_get_in var val regs :
+    set_reg var val regs var = Some val.
+  Proof.
+    unfold set_reg, VariableDepMap.insert.
+    autodestruct; [|contradiction].
+    rewrite (proof_irrelevance _ e eq_refl).
+    reflexivity.
+  Qed.
+
+  #[global]
+  Hint Rewrite RegisterState.set_reg_get_in : register_state.
+
+  Lemma set_reg_get_out var1 var2 val regs :
+    var1 <> var2 ->
+    set_reg var1 val regs var2 = regs var2.
+  Proof.
+    intros.
+    unfold set_reg, VariableDepMap.insert.
+    autodestruct; [contradiction|].
+    reflexivity.
+  Qed.
+
+  #[global]
+  Hint Rewrite RegisterState.set_reg_get_out using congruence : register_state.
+
+  Lemma match_on_empty C regs1 regs2 :
+    (forall var, ~ (C var)) ->
+    regs1 ={ C }= regs2.
+  Proof. unfold "_ ={ _ }= _". crush. Qed.
+
+  Lemma match_on_set_reg_elim2 var x regs1 regs2 :
+    set_reg var x regs1 =( [var] )= set_reg var x regs2.
+  Proof.
+    unfold "_ =( _ )= _". intros var' Hvarin. inv Hvarin; [|crush].
+    rewrite ! set_reg_get_in. crush.
+  Qed.
+
+  Lemma match_on_set_reg_elim C var x regs :
+    ~ C var ->
+    set_reg var x regs ={ C }= regs.
+  Proof.
+    unfold "_ ={ _ }= _". intros HnC var' HC.
+    erewrite set_reg_get_out by crush.
+    crush.
+  Qed.
+
+  Ltac unpack_match_on :=
+    repeat match goal with
+      | [ H: match_on (fun _ => _ \/ _) _ _ |- _ ] =>
+          apply match_on_split_iff in H;
+          destruct H
+      | [ H: match_on (fun _ => List.In _ (_ ++ _)) _ _ |- _ ] =>
+          setoid_rewrite List.in_app_iff in H
+      | [ |- match_on (fun _ => List.In _ (_ ++ _)) _ _ ] =>
+          setoid_rewrite List.in_app_iff
+      | [ |- match_on (fun _ => _ \/ _) _ _ ] =>
+          apply match_on_split_iff; split
+      end.
+End RegisterState.
+
+Export (notations) RegisterState.
+
 Module CombinationalOnly.
   Definition Process := Verilog.module_item.
 
@@ -117,39 +351,6 @@ Module CombinationalOnly.
         try typeclasses eauto.
     Defined.
   End Sorted.
-
-  Module VariableAsMDT <: MiniDecidableType.
-    Definition t := Verilog.variable.
-    Definition eq_dec (x y : t) := dec (x = y).
-  End VariableAsMDT.
-
-  Module VariableAsUDT := Make_UDT(VariableAsMDT).
-
-  Module VariableDepMap := MkDepFunMap(VariableAsUDT).
-
-  Definition RegisterState := VariableDepMap.t (fun var => XBV.xbv (Verilog.varType var)).
-
-  Definition set_reg (var : Verilog.variable) (value : XBV.xbv (Verilog.varType var)) : RegisterState -> RegisterState :=
-    VariableDepMap.insert var value.
-
-  Lemma set_reg_get_in var val regs :
-    set_reg var val regs var = Some val.
-  Proof.
-    unfold set_reg, VariableDepMap.insert.
-    autodestruct; [|contradiction].
-    rewrite (proof_irrelevance _ e eq_refl).
-    reflexivity.
-  Qed.
-
-  Lemma set_reg_get_out var1 var2 val regs :
-    var1 <> var2 ->
-    set_reg var1 val regs var2 = regs var2.
-  Proof.
-    intros.
-    unfold set_reg, VariableDepMap.insert.
-    autodestruct; [contradiction|].
-    reflexivity.
-  Qed.
 
   Definition variable_names vars : list string :=
     map Verilog.varName vars.
@@ -264,7 +465,7 @@ Module CombinationalOnly.
       end.
 
   Equations
-    eval_expr {w} (regs: RegisterState) (e : Verilog.expression w) : option (XBV.xbv w) :=
+    eval_expr {w} (regs: RegisterState.t) (e : Verilog.expression w) : option (XBV.xbv w) :=
     eval_expr regs (Verilog.UnaryOp op operand) :=
       let* operand_val := eval_expr regs operand in
       Some (eval_unaryop op operand_val);
@@ -302,128 +503,47 @@ Module CombinationalOnly.
       regs var.
 
   Equations
-    exec_statement (regs : RegisterState) (stmt : Verilog.statement) : option RegisterState by struct :=
+    exec_statement (regs : RegisterState.t) (stmt : Verilog.statement) : option RegisterState.t by struct :=
     exec_statement regs (Verilog.BlockingAssign (Verilog.NamedExpression var) rhs) :=
       let* rhs_val := eval_expr regs rhs in
-      Some (set_reg var rhs_val regs) ;
+      Some (RegisterState.set_reg var rhs_val regs) ;
     exec_statement regs (Verilog.BlockingAssign lhs rhs) :=
       None;
   .
 
   Equations
-    exec_module_item : RegisterState -> Verilog.module_item -> option RegisterState :=
+    exec_module_item : RegisterState.t -> Verilog.module_item -> option RegisterState.t :=
     exec_module_item st (Verilog.AlwaysComb stmt ) :=
       exec_statement st stmt;
   .
 
   Equations
-    exec_module_body : RegisterState -> list Verilog.module_item -> option RegisterState :=
+    exec_module_body : RegisterState.t -> list Verilog.module_item -> option RegisterState.t :=
     exec_module_body regs [] := Some regs;
     exec_module_body regs (mi :: mis) :=
       let* regs' := exec_module_item regs mi in
       exec_module_body regs' mis;
   .
 
-  (** The values of the final state of the execution of module *)
-  Definition execution := RegisterState.
+  Definition mk_initial_state (v : Verilog.vmodule) (regs : RegisterState.t) : RegisterState.t :=
+    RegisterState.limit_to_regs (Verilog.module_inputs v) regs.
 
-  Definition register_state_match_on (C : Verilog.variable -> Prop) (e1 e2 : RegisterState) : Prop :=
-    forall var, C var -> e1 var = e2 var.
-
-  Notation "rs1 ={ P }= rs2" :=
-    (register_state_match_on P rs1 rs2)
-    (at level 80) : type_scope.
-
-  Notation "rs1 =( vars )= rs2" :=
-    (rs1 ={fun var => In var vars}= rs2)
-    (at level 80) : type_scope.
-
-  Lemma register_state_match_on_impl C1 C2 e1 e2:
-    (forall var, C2 var -> C1 var) ->
-    e1 ={ C1 }= e2 ->
-    e1 ={ C2 }= e2.
-  Proof. unfold register_state_match_on. crush. Qed.
-
-  (* `RegisterState`s match on the given set, and both have values for every variable in it (Xs are allowed) *)
-  Definition execution_match_on (C : Verilog.variable -> Prop) (e1 e2 : RegisterState) : Prop :=
-    forall var, C var -> exists xbv, e1 var = Some xbv /\ e2 var = Some xbv.
-
-  Notation "rs1 =!{ P }!= rs2" :=
-    (execution_match_on P rs1 rs2)
-    (at level 80) : type_scope.
-
-  Notation "rs1 =!( vars )!= rs2" :=
-    (rs1 =!{ fun var => In var vars }!= rs2)
-    (at level 80) : type_scope.
-
-  Lemma execution_match_on_impl C1 C2 e1 e2:
-    (forall var, C2 var -> C1 var) ->
-    e1 =!{ C1 }!= e2 ->
-    e1 =!{ C2 }!= e2.
-  Proof. unfold execution_match_on. crush. Qed.
-
-  (* `RegisterState`s match on the given set, and both have values for every variable in it (Xs are NOT allowed) *)
-  Definition execution_defined_match_on (C : Verilog.variable -> Prop) (e1 e2 : RegisterState) : Prop :=
-    forall var, C var -> exists xbv, e1 var = Some xbv /\ e2 var = Some xbv /\ ~ XBV.has_x xbv.
-
-  Notation "rs1 =!!{ P }!!= rs2" :=
-    (execution_defined_match_on P rs1 rs2)
-    (at level 80) : type_scope.
-
-  Notation "rs1 =!!( vars )!!= rs2" :=
-    (rs1 =!!{ fun var => In var vars }!!= rs2)
-    (at level 80) : type_scope.
-
-  Lemma execution_defined_match_on_rewrite_left C e1 e1' e2 :
-    (forall var, C var -> e1 var = e1' var) ->
-    execution_defined_match_on C e1 e2 <-> execution_defined_match_on C e1' e2.
-  Proof.
-    unfold execution_defined_match_on.
-    intros Heq. split; intros Hmatch var HC.
-    - rewrite <- Heq; auto.
-    - rewrite Heq; auto.
-  Qed.
-  
-  Lemma execution_defined_match_on_rewrite_right C e1 e2 e2' :
-    (forall var, C var -> e2 var = e2' var) ->
-    execution_defined_match_on C e1 e2 <-> execution_defined_match_on C e1 e2'.
-  Proof.
-    unfold execution_defined_match_on.
-    intros Heq. split; intros Hmatch var HC.
-    - rewrite <- Heq; auto.
-    - rewrite Heq; auto.
-Qed.
-
-  Global Instance execution_match_on_proper :
-    Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) execution_match_on.
-  Proof. repeat intro. subst. crush. Qed.
-
-  Global Instance register_state_match_on_proper :
-    Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) register_state_match_on.
-  Proof. repeat intro. subst. crush. Qed.
-
-  Definition limit_to_regs (vars : list Verilog.variable) (regs : RegisterState) : RegisterState :=
-    fun var =>
-      match dec (In var vars) with
-      | left prf => regs var
-      | right prf => None
-      end.
-
-  Definition mk_initial_state (v : Verilog.vmodule) (regs : RegisterState) : RegisterState :=
-    limit_to_regs (Verilog.module_inputs v) regs.
-
-  Definition run_vmodule (v : Verilog.vmodule) (inputs : RegisterState) : option RegisterState :=
+  Definition run_vmodule (v : Verilog.vmodule) (inputs : RegisterState.t) : option RegisterState.t :=
     let* sorted := sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) in
     exec_module_body (mk_initial_state v inputs) sorted.
+
+  Notation execution := RegisterState.t.
 
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
     exists (e' : execution),
       run_vmodule v e = Some e'
-      /\ e' =!( Verilog.module_inputs v ++ Verilog.module_body_writes (Verilog.modBody v))!= e.
+      /\ RegisterState.has_value_for (fun var => List.In var (Verilog.module_inputs v)) e
+      /\ RegisterState.has_value_for (fun var => List.In var (Verilog.module_body_writes (Verilog.modBody v))) e
+      /\ e' =( Verilog.module_inputs v ++ Verilog.module_body_writes (Verilog.modBody v))= e.
 
   (** All variables of v have a value in the execution *)
   Definition complete_execution (v : Verilog.vmodule) (e : execution) :=
-    forall var, In var (Verilog.modVariables v) -> exists bv, e var = Some bv.
+    RegisterState.has_value_for (fun var => In var (Verilog.modVariables v)) e.
 
   (** All variables of v, *and no other variables*, have a value in the execution *)
   Definition exact_execution (v : Verilog.vmodule) (e : execution) :=
@@ -438,61 +558,13 @@ Qed.
   Definition execution_no_exes := execution_no_exes_for (fun _ => True).
 
   Definition no_errors (v : Verilog.vmodule) :=
-    forall (initial : RegisterState)
+    forall (initial : RegisterState.t)
       (input_defined : forall var, exists xbv, initial var = Some xbv -> ~ XBV.has_x xbv),
     exists final, run_vmodule v initial = Some final.
 End CombinationalOnly.
 
 Module Facts.
   Import CombinationalOnly.
-
-  Lemma register_state_match_on_empty C regs1 regs2 :
-    (forall var, ~ (C var)) ->
-    regs1 ={ C }= regs2.
-  Proof. unfold "_ ={ _ }= _". crush. Qed.
-
-  Lemma register_state_match_on_split_iff C1 C2 regs1 regs2 :
-    register_state_match_on (fun var => C1 var \/ C2 var) regs1 regs2 <->
-      (register_state_match_on C1 regs1 regs2 /\ register_state_match_on C2 regs1 regs2).
-  Proof. unfold register_state_match_on. crush. Qed.
-
-  Lemma register_state_match_on_app_iff l1 l2 regs1 regs2 :
-    (regs1 =( l1 ++ l2 )= regs2) <-> (regs1 =( l1 )= regs2 /\ regs1 =( l2 )= regs2).
-  Proof.
-    setoid_rewrite List.in_app_iff.
-    apply register_state_match_on_split_iff.
-  Qed.
-
-  Lemma register_state_match_on_trans C regs1 regs2 regs3 :
-    regs1 ={ C }= regs2 ->
-    regs2 ={ C }= regs3 ->
-    regs1 ={ C }= regs3.
-  Proof.
-    unfold "_ ={ _ }= _".
-    intros H12 H23 var HC.
-    insterU H12. insterU H23.
-    crush.
-  Qed.
-
-  Lemma register_state_match_on_sym C regs1 regs2 :
-    regs1 ={ C }= regs2 ->
-    regs2 ={ C }= regs1.
-  Proof.
-    unfold "_ ={ _ }= _".
-    intros H var HC.
-    insterU H. crush.
-  Qed.
-
-  Lemma register_state_match_on_refl C regs :
-    regs ={ C }= regs.
-  Proof. unfold "_ ={ _ }= _". crush. Qed.
-
-  Add Parametric Relation (C : Verilog.variable -> Prop) :
-    RegisterState (register_state_match_on C)
-    reflexivity proved by (register_state_match_on_refl C)
-    symmetry proved by (register_state_match_on_sym C)
-    transitivity proved by (register_state_match_on_trans C)
-    as register_state_match_on_rel.
 
   Add Parametric Morphism : Verilog.module_body_reads
     with signature (@Permutation Verilog.module_item) ==> (@Permutation Verilog.variable)
@@ -516,41 +588,12 @@ Module Facts.
     - etransitivity; eassumption.
   Qed.
 
-  Ltac unpack_verilog_smt_match_states_partial :=
-    repeat match goal with
-      | [ H: register_state_match_on (fun _ => _ \/ _) _ _ |- _ ] =>
-          apply register_state_match_on_split_iff in H;
-          destruct H
-      | [ H: register_state_match_on (fun _ => List.In _ (_ ++ _)) _ _ |- _ ] =>
-          setoid_rewrite List.in_app_iff in H
-      | [ |- register_state_match_on (fun _ => List.In _ (_ ++ _)) _ _ ] =>
-          setoid_rewrite List.in_app_iff
-      | [ |- register_state_match_on (fun _ => _ \/ _) _ _ ] =>
-          apply register_state_match_on_split_iff; split
-      end.
-
-  Lemma register_state_match_on_set_reg_elim2 var x regs1 regs2 :
-    set_reg var x regs1 =( [var] )= set_reg var x regs2.
-  Proof.
-    unfold "_ =( _ )= _". intros var' Hvarin. inv Hvarin; [|crush].
-    rewrite ! set_reg_get_in. crush.
-  Qed.
-
-  Lemma register_state_match_on_set_reg_elim C var x regs :
-    ~ C var ->
-    set_reg var x regs ={ C }= regs.
-  Proof.
-    unfold "_ ={ _ }= _". intros HnC var' HC.
-    erewrite set_reg_get_out by crush.
-    crush.
-  Qed.
-
   Lemma eval_expr_change_regs w (e : Verilog.expression w) : forall regs regs',
     regs =(Verilog.expr_reads e)= regs' ->
     eval_expr regs e = eval_expr regs' e.
   Proof.
     induction e; intros; simp eval_expr expr_reads in *;
-      unpack_verilog_smt_match_states_partial;
+      RegisterState.unpack_match_on;
       try erewrite IHe with (regs':=regs') by assumption;
       try erewrite IHe1 with (regs':=regs') by assumption;
       try erewrite IHe2 with (regs':=regs') by assumption;
@@ -576,7 +619,7 @@ Module Facts.
     monad_inv.
     erewrite eval_expr_change_regs in E by eassumption.
     replace x0 with x by crush.
-    eapply register_state_match_on_set_reg_elim2.
+    eapply RegisterState.match_on_set_reg_elim2.
   Qed.
 
   Lemma exec_module_item_change_regs mi regs1 regs2 : forall regs1' regs2',
@@ -603,7 +646,7 @@ Module Facts.
     destruct stmt; destruct lhs; simp exec_statement in *; try discriminate.
     monad_inv.
     symmetry.
-    eapply register_state_match_on_set_reg_elim.
+    eapply RegisterState.match_on_set_reg_elim.
     simp statement_writes expr_reads. crush.
   Qed.
 
@@ -643,15 +686,15 @@ Module Facts.
     regs1' =(Verilog.module_body_writes body)= regs2'.
   Proof.
     induction body; intros * Hnodup Ndisjoint Heq Hexec1 Hexec2; simp module_body_writes.
-    - apply register_state_match_on_empty.
+    - apply RegisterState.match_on_empty.
       crush.
     - simp exec_module_body module_body_reads module_body_writes in *.
       disjoint_saturate.
-      apply register_state_match_on_app_iff in Heq. destruct Heq.
+      apply RegisterState.match_on_app_iff in Heq. destruct Heq.
       destruct (exec_module_item regs1 a) as [regs1a|] eqn:E1,
                (exec_module_item regs2 a) as [regs2a|] eqn:E2;
         simpl in *; try discriminate; [idtac].
-      apply register_state_match_on_app_iff.
+      apply RegisterState.match_on_app_iff.
       split.
       + etransitivity. {
           symmetry.
@@ -684,15 +727,13 @@ Module Facts.
 
   Lemma set_reg_swap var1 var2 x1 x2 regs :
     var1 <> var2 ->
-    set_reg var1 x1 (set_reg var2 x2 regs) = set_reg var2 x2 (set_reg var1 x1 regs).
+    RegisterState.set_reg var1 x1 (RegisterState.set_reg var2 x2 regs) =
+      RegisterState.set_reg var2 x2 (RegisterState.set_reg var1 x1 regs).
   Proof.
     intro Hneq.
     apply functional_extensionality_dep. intro var.
-    destruct (dec (var = var1)), (dec (var = var2)); subst.
-    - contradiction.
-    - repeat (rewrite set_reg_get_in || rewrite set_reg_get_out); crush.
-    - repeat (rewrite set_reg_get_in || rewrite set_reg_get_out); crush.
-    - repeat (rewrite set_reg_get_in || rewrite set_reg_get_out); crush.
+    destruct (dec (var = var1)), (dec (var = var2)); subst;
+      autorewrite with register_state; trivial.
   Qed.
 
   Lemma eval_expr_none_inv w rs (e : Verilog.expression w) :
@@ -742,7 +783,7 @@ Module Facts.
   Proof.
     induction expr; intros;
       simp eval_expr expr_reads in *;
-      monad_inv; unpack_verilog_smt_match_states_partial.
+      monad_inv; RegisterState.unpack_match_on.
     all:
       match goal with
       | [ Hfail : eval_expr _ ?e = None, IH : context[eval_expr _ ?e = None -> _] |- _] =>
@@ -776,7 +817,7 @@ Module Facts.
     induction body; intros;
       simp module_body_reads exec_module_body in *;
       [crush|].
-    unpack_verilog_smt_match_states_partial.
+    RegisterState.unpack_match_on.
     admit.
   Admitted.
 
@@ -816,14 +857,14 @@ Module Facts.
 	 f_equal.
 	 replace x2 with x; cycle 1. {
 	   erewrite eval_expr_change_regs with (regs' := rs0) in E2; cycle 1. {
-	     eapply register_state_match_on_set_reg_elim.
+	     eapply RegisterState.match_on_set_reg_elim.
 	     now disjoint_saturate.
 	   }
 	   congruence.
 	 }
 	 replace x1 with x0; cycle 1. {
 	   erewrite eval_expr_change_regs with (regs' := rs0) in E1; cycle 1. {
-	     eapply register_state_match_on_set_reg_elim.
+	     eapply RegisterState.match_on_set_reg_elim.
 	     now disjoint_saturate.
 	   }
 	   congruence.
