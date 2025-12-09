@@ -232,37 +232,56 @@ Module RegisterState.
     Proper
       ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> Basics.impl)
       RegisterState.defined_value_for.
-  Proof. Admitted.
+  Proof. repeat intro. subst. crush. Qed.
   
   Global Instance Proper_defined_value_for_iff :
     Proper
       (pointwise_relation Verilog.variable iff ==> eq ==> iff)
       RegisterState.defined_value_for.
-  Proof. Admitted.
+  Proof. repeat intro. subst. crush. Qed.
   
   Global Instance Proper_defined_value_for_match C :
     Proper
       (RegisterState.match_on C ==> iff)
       (RegisterState.defined_value_for C).
-  Proof. Admitted.
+  Proof.
+    unfold "_ ={ _ }= _", defined_value_for.
+    repeat intro. split; repeat intro.
+    - insterU H. insterU H0.
+      rewrite <- H. apply H0.
+    - insterU H. insterU H0.
+      rewrite H. apply H0.
+  Qed.
 
   Global Instance Proper_has_value_for_impl :
     Proper
       ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> Basics.impl)
       RegisterState.has_value_for.
-  Proof. Admitted.
+  Proof. repeat intro. subst. crush. Qed.
   
   Global Instance Proper_has_value_for_iff :
     Proper
       (pointwise_relation Verilog.variable iff ==> eq ==> iff)
       RegisterState.has_value_for.
-  Proof. Admitted.
+  Proof.
+    unfold pointwise_relation, "_ ={ _ }= _", has_value_for.
+    repeat intro. split; repeat intro.
+    - subst. setoid_rewrite H in H1. eauto.
+    - subst. setoid_rewrite <- H in H1. eauto.
+  Qed.
   
   Global Instance Proper_has_value_for_match C :
     Proper
       (RegisterState.match_on C ==> iff)
       (RegisterState.has_value_for C).
-  Proof. Admitted.
+  Proof.
+    unfold "_ ={ _ }= _", has_value_for.
+    repeat intro. split; repeat intro.
+    - insterU H. insterU H0.
+      rewrite <- H. apply H0.
+    - insterU H. insterU H0.
+      rewrite H. apply H0.
+  Qed.
 
   Definition limit_to_regs (vars : list Verilog.variable) (regs : RegisterState.t) : RegisterState.t :=
     fun var =>

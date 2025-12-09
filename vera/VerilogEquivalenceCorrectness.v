@@ -68,6 +68,35 @@ Proof.
     + intros var HC. insterU H. destruct H as [? [? ?]]. crush.
 Qed.
 
+Lemma execution_defined_match_on_trans C e1 e2 e3:
+  e1 =!!{ C }!!= e2 ->
+  e2 =!!{ C }!!= e3 ->
+  e1 =!!{ C }!!= e3.
+Proof.
+  unfold "_ =!!{ _ }!!= _".
+  intros [] [].
+  split.
+  - now transitivity e2.
+  - eassumption.
+Qed.
+
+Lemma execution_defined_match_on_sym C e1 e2:
+  e1 =!!{ C }!!= e2 ->
+  e2 =!!{ C }!!= e1.
+Proof.
+  unfold "_ =!!{ _ }!!= _".
+  intros [].
+  split.
+  - now symmetry.
+  - now rewrite <- H.
+Qed.
+
+Add Parametric Relation (C : Verilog.variable -> Prop) :
+  RegisterState.t (execution_defined_match_on C)
+  symmetry proved by (execution_defined_match_on_sym C)
+  transitivity proved by (execution_defined_match_on_trans C)
+  as execution_defiened_match_on_rel.
+
 Ltac decompose_all_records :=
   repeat match goal with
          | [ H : _ |- _ ] => progress (decompose record H); clear H
@@ -920,15 +949,38 @@ Lemma equivalent_behaviour_trans v1 v2 v3:
   equivalent_behaviour v1 v2 ->
   equivalent_behaviour v2 v3 ->
   equivalent_behaviour v1 v3.
-Proof. Admitted.
+Proof.
+  unfold equivalent_behaviour.
+  intros H12 H23 e1 e3 Hvalid1 Hvalid3 Heq_inputs13.
+  assert (exists e2, (valid_execution v2 e2 /\ (e1 =!!( Verilog.module_inputs v1 )!!= e2))) by admit.
+  destruct H as [e2 [Hvalid2 Heq_inputs12]].
+  specialize (H12 e1 e2). insterU H12.
+  transitivity e2; [eassumption|].
+  replace (Verilog.module_inputs v2) with (Verilog.module_inputs v1) in * by admit.
+  replace (Verilog.module_outputs v2) with (Verilog.module_outputs v1) in * by admit.
+  specialize (H23 e2 e3).
+  eapply H23; eauto.
+  transitivity e1; (idtac + symmetry); eassumption.
+Admitted.
 
 Lemma equivalent_behaviour_sym v1 v2:
   equivalent_behaviour v1 v2 ->
   equivalent_behaviour v2 v1.
-Proof. Admitted.
+Proof.
+  unfold equivalent_behaviour.
+  intros H e1 e2 Hvalid1 Hvalid2 Heq_inputs.
+  replace (Verilog.module_outputs v2) with (Verilog.module_outputs v1) by admit.
+  symmetry. eapply H; try eassumption.
+  replace (Verilog.module_inputs v1) with (Verilog.module_inputs v2) by admit.
+  symmetry.
+  assumption. 
+Admitted.
 
 Lemma equivalent_behaviour_refl v: equivalent_behaviour v v.
-Proof. Admitted.
+Proof.
+  unfold equivalent_behaviour, valid_execution.
+  intros.
+Admitted.
 
 Add Parametric Relation :
   Verilog.vmodule equivalent_behaviour
@@ -945,26 +997,26 @@ Record equivalent v1 v2:=
       equiv_behaviour : equivalent_behaviour v1 v2
     }.
 
-Lemma equivalent_trans v1 v2 v3:
-  equivalent v1 v2 ->
-  equivalent v2 v3 ->
-  equivalent v1 v3.
-Proof. Admitted.
-
-Lemma equivalent_sym v1 v2:
-  equivalent v1 v2 ->
-  equivalent v2 v1.
-Proof. Admitted.
-
-Lemma equivalent_refl v: equivalent v v.
-Proof. Admitted.
-
-Add Parametric Relation :
-  Verilog.vmodule equivalent
-  reflexivity proved by equivalent_refl
-  symmetry proved by equivalent_sym
-  transitivity proved by equivalent_trans
-  as equivalent_rel.
+(* Lemma equivalent_trans v1 v2 v3:
+ *   equivalent v1 v2 ->
+ *   equivalent v2 v3 ->
+ *   equivalent v1 v3.
+ * Proof. Admitted.
+ * 
+ * Lemma equivalent_sym v1 v2:
+ *   equivalent v1 v2 ->
+ *   equivalent v2 v1.
+ * Proof. Admitted.
+ * 
+ * Lemma equivalent_refl v: equivalent v v.
+ * Proof. Admitted.
+ * 
+ * Add Parametric Relation :
+ *   Verilog.vmodule equivalent
+ *   reflexivity proved by equivalent_refl
+ *   symmetry proved by equivalent_sym
+ *   transitivity proved by equivalent_trans
+ *   as equivalent_rel. *)
 
 Lemma no_counterexample_equivalent_iff v1 v2 :
   (forall e1 e2, ~ counterexample_execution v1 e1 v2 e2) <-> (equivalent_behaviour v1 v2).
