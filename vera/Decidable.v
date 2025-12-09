@@ -5,6 +5,7 @@ From Stdlib Require Import BinNat.
 From Stdlib Require Import BinInt.
 From Stdlib Require Import PeanoNat.
 From Stdlib Require Import Lia.
+From Stdlib Require Import Sorting.Permutation.
 
 From vera Require SMTLib.
 
@@ -190,6 +191,14 @@ Proof.
         firstorder; congruence.
 Qed.
 
+Instance dec_incl {A} `{forall (x y : A), DecProp (x = y)} (l1 l2 : list A): DecProp (incl l1 l2).
+Proof. Admitted.
+
+(* FIXME: This is missing assumptions, but it is checkable *)
+Instance dec_Permutation {A}
+  `{forall (x y : A), DecProp (x = y)}
+  (l1 l2 : list A) : DecProp (Permutation l1 l2).
+Proof. Admitted.
 
 Definition assert_dec {E} (P : Prop) `{ DecProp P } (err : E) : sum E P :=
   match dec P with
@@ -202,3 +211,5 @@ Definition opt_dec (P : Prop) `{DecProp P} : option P :=
   | right _ => None
   | left prf => Some prf
   end.
+
+
