@@ -40,6 +40,9 @@ Local Open Scope bv_scope.
 
 Set Bullet Behavior "Strict Subproofs".
 
+Declare Scope verilog.
+Local Open Scope verilog.
+
 Lemma NoDup_app_iff A (l1 l2 : list A) :
   NoDup (l1 ++ l2) <-> (NoDup l1 /\ NoDup l2 /\ disjoint l1 l2).
 Proof.
@@ -181,6 +184,35 @@ Module RegisterState.
       match_on.
   Proof. repeat intro. subst. crush. Qed.
 
+  Global Instance DefaultRelation_variable_prop :
+    DefaultRelation (A:=Verilog.variable -> Prop) (pointwise_relation Verilog.variable Basics.impl).
+  Defined.
+  
+  Global Instance Proper_defined_value_for_impl :
+    Proper
+      ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> Basics.impl)
+      RegisterState.defined_value_for.
+  Proof. repeat intro. subst. crush. Qed.
+  
+  Global Instance Proper_defined_value_for_iff :
+    Proper
+      (pointwise_relation Verilog.variable iff ==> eq ==> iff)
+      RegisterState.defined_value_for.
+  Proof. repeat intro. subst. crush. Qed.
+  
+  Global Instance Proper_defined_value_for_match C :
+    Proper
+      (RegisterState.match_on C ==> iff)
+      (RegisterState.defined_value_for C).
+  Proof.
+    unfold "_ ={ _ }= _", defined_value_for.
+    repeat intro. split; repeat intro.
+    - insterU H. insterU H0.
+      rewrite <- H. apply H0.
+    - insterU H. insterU H0.
+      rewrite H. apply H0.
+  Qed.
+
   Lemma match_on_split_iff C1 C2 regs1 regs2 :
     regs1 ={ fun var => C1 var \/ C2 var }= regs2 <->
       (regs1 ={ C1 }= regs2 /\ regs1 ={ C2 }= regs2).
@@ -224,34 +256,58 @@ Module RegisterState.
     transitivity proved by (match_on_trans C)
     as match_on_rel.
 
-  Global Instance DefaultRelation_variable_prop :
-    DefaultRelation (A:=Verilog.variable -> Prop) (pointwise_relation Verilog.variable Basics.impl).
-  Defined.
-  
-  Global Instance Proper_defined_value_for_impl :
-    Proper
-      ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> Basics.impl)
-      RegisterState.defined_value_for.
-  Proof. repeat intro. subst. crush. Qed.
-  
-  Global Instance Proper_defined_value_for_iff :
-    Proper
-      (pointwise_relation Verilog.variable iff ==> eq ==> iff)
-      RegisterState.defined_value_for.
-  Proof. repeat intro. subst. crush. Qed.
-  
-  Global Instance Proper_defined_value_for_match C :
-    Proper
-      (RegisterState.match_on C ==> iff)
-      (RegisterState.defined_value_for C).
+  Definition execution_defined_match_on C e1 e2 :=
+    e1 ={ C }= e2 /\ RegisterState.defined_value_for C e1.
+
+  Notation "rs1 =!!{ P }!!= rs2" :=
+    (execution_defined_match_on P rs1 rs2)
+    (at level 80) : type_scope.
+
+  Notation "rs1 =!!( vars )!!= rs2" :=
+    (rs1 =!!{fun var => In var vars}!!= rs2)
+    (at level 80) : type_scope.
+
+  Lemma defined_match_on_iff C e1 e2 :
+    e1 =!!{ C }!!= e2 <->
+    forall var, C var -> exists bv, e1 var = Some (XBV.from_bv bv) /\ e2 var = Some (XBV.from_bv bv).
   Proof.
-    unfold "_ ={ _ }= _", defined_value_for.
-    repeat intro. split; repeat intro.
-    - insterU H. insterU H0.
-      rewrite <- H. apply H0.
-    - insterU H. insterU H0.
-      rewrite H. apply H0.
+    unfold execution_defined_match_on, "_ ={ _ }= _", RegisterState.defined_value_for.
+    split.
+    - intros [Hmatch Hdefined] var HC. insterU Hmatch. insterU Hdefined.
+      rewrite <- Hmatch. crush.
+    - intro H. split.
+      + intros var HC. insterU H. destruct H as [? [? ?]]. crush.
+      + intros var HC. insterU H. destruct H as [? [? ?]]. crush.
   Qed.
+
+  Lemma execution_defined_match_on_trans C e1 e2 e3:
+    e1 =!!{ C }!!= e2 ->
+    e2 =!!{ C }!!= e3 ->
+    e1 =!!{ C }!!= e3.
+  Proof.
+    unfold "_ =!!{ _ }!!= _".
+    intros [] [].
+    split.
+    - now transitivity e2.
+    - eassumption.
+  Qed.
+
+  Lemma execution_defined_match_on_sym C e1 e2:
+    e1 =!!{ C }!!= e2 ->
+    e2 =!!{ C }!!= e1.
+  Proof.
+    unfold "_ =!!{ _ }!!= _".
+    intros [].
+    split.
+    - now symmetry.
+    - now rewrite <- H.
+  Qed.
+
+  Add Parametric Relation (C : Verilog.variable -> Prop) :
+    RegisterState.t (execution_defined_match_on C)
+    symmetry proved by (execution_defined_match_on_sym C)
+    transitivity proved by (execution_defined_match_on_trans C)
+    as execution_defiened_match_on_rel.
 
   Global Instance Proper_has_value_for_impl :
     Proper
@@ -557,8 +613,10 @@ Module CombinationalOnly.
     exists (e' : execution),
       run_vmodule v e = Some e'
       /\ RegisterState.has_value_for (fun var => List.In var (Verilog.module_inputs v)) e
-      /\ RegisterState.has_value_for (fun var => List.In var (Verilog.module_body_writes (Verilog.modBody v))) e
-      /\ e' =( Verilog.module_inputs v ++ Verilog.module_body_writes (Verilog.modBody v))= e.
+      /\ RegisterState.has_value_for (fun var => List.In var (Verilog.module_outputs v)) e
+      /\ e' =( Verilog.module_inputs v ++ Verilog.module_outputs v )= e.
+
+  Infix "⇓" := valid_execution (at level 20) : verilog.
 
   (** All variables of v have a value in the execution *)
   Definition complete_execution (v : Verilog.vmodule) (e : execution) :=
@@ -576,10 +634,11 @@ Module CombinationalOnly.
 
   Definition execution_no_exes := execution_no_exes_for (fun _ => True).
 
-  Definition no_errors (v : Verilog.vmodule) :=
-    forall (initial : RegisterState.t)
-      (input_defined : forall var, exists xbv, initial var = Some xbv -> ~ XBV.has_x xbv),
-    exists final, run_vmodule v initial = Some final.
+  (* Modules are valid if they run to completion for all complete inputs *)
+  Definition valid_module (v : Verilog.vmodule) :=
+    forall initial : RegisterState.t,
+      (RegisterState.has_value_for (fun var => In var (Verilog.module_inputs v)) initial) ->
+      exists final, run_vmodule v initial = Some final.
 End CombinationalOnly.
 
 Module Facts.
@@ -926,3 +985,63 @@ Module Facts.
        * assumption.
   Qed.
 End Facts.
+
+Module Equivalence.
+  Import CombinationalOnly.
+
+  Declare Scope verilog.
+  Local Open Scope verilog.
+
+  Definition clean_module (v : Verilog.vmodule) : Prop := forall e,
+    execution_no_exes_for (fun var => In var (Verilog.module_inputs v)) e ->
+    v ⇓ e ->
+    execution_no_exes_for (fun var => In var (Verilog.module_outputs v)) e.
+         
+  Record equivalent_behaviour (v1 v2 : Verilog.vmodule) : Prop :=
+    MkEquivalentBehaviour {
+      clean_left : clean_module v1;
+      clean_right : clean_module v2;
+      execution_match : forall e, execution_no_exes e -> (v1 ⇓ e <-> v2 ⇓ e)
+    }.
+
+  Infix "~" := equivalent_behaviour (at level 20) : verilog.
+
+  Lemma equivalent_behaviour_sym v1 v2:
+    v1 ~ v2 ->
+    v2 ~ v1.
+  Proof.
+    intros [? ? ?].
+    constructor.
+    - assumption.
+    - assumption.
+    - intros. symmetry. auto.
+  Qed.
+
+  Lemma equivalent_behaviour_trans v1 v2 v3:
+    v1 ~ v2 -> v2 ~ v3 -> v1 ~ v3.
+  Proof.
+    intros [] [].
+    constructor.
+    - assumption.
+    - assumption.
+    - intros. etransitivity; eauto.
+  Qed.
+
+  Lemma equivalent_behaviour_refl_cond v v':
+    v ~ v' -> v ~ v.
+  Proof.
+    intros [].
+    constructor.
+    - assumption.
+    - assumption.
+    - reflexivity.
+  Qed.
+
+  Add Parametric Relation :
+    Verilog.vmodule equivalent_behaviour
+    (* No reflexivity! *)
+    symmetry proved by equivalent_behaviour_sym
+    transitivity proved by equivalent_behaviour_trans
+    as equivalent_behaviour_rel.
+
+End Equivalence.
