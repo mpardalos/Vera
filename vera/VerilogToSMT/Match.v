@@ -220,6 +220,10 @@ Ltac unpack_verilog_smt_match_states_partial :=
         destruct H
     | [ H: verilog_smt_match_states_partial (fun _ => List.In _ (_ ++ _)) _ _ _ _ |- _ ] =>
         setoid_rewrite List.in_app_iff in H
+    | [ |- verilog_smt_match_states_partial (fun _ => List.In _ (_ ++ _)) _ _ _ _ ] =>
+        setoid_rewrite List.in_app_iff
+    | [ |- verilog_smt_match_states_partial (fun _ => _ \/ _) _ _ _ _ ] =>
+        apply verilog_smt_match_states_partial_split_iff; split
     end.
 
 Lemma verilog_smt_match_states_partial_defined_value_for C tag m regs ρ :

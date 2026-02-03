@@ -6,6 +6,7 @@ From Stdlib Require Import Program.
 From Stdlib Require Import Psatz.
 From Stdlib Require Import String.
 From Stdlib Require Import ZArith.
+From Stdlib Require Import Sorting.Permutation.
 
 From Equations Require Import Equations.
 From ExtLib Require Import Data.List.
@@ -252,11 +253,14 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
     "Read from non-module-input"%string ;;
   assert_dec (all_vars_driven vmodule) "Undriven variables"%string ;;
   assert_dec
-    (list_subset (Verilog.module_body_writes (Verilog.modBody vmodule)) (Verilog.module_outputs vmodule))
-    "Non-output variables written to"%string ;;
-  assert_dec
     (NoDup (Verilog.module_body_writes (Verilog.modBody vmodule)))
     "Duplicate writes"%string ;;
+  assert_dec
+    (NoDup (Verilog.module_outputs vmodule))
+    "Duplicate outputs"%string ;;
+  assert_dec
+    (Permutation (Verilog.module_body_writes (Verilog.modBody vmodule)) (Verilog.module_outputs vmodule))
+    "Non-output variables written to"%string ;;
   assert_dec
     (VerilogSort.vmodule_sortable vmodule)
     "module is not sortable"%string ;;
