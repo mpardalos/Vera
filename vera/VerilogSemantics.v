@@ -609,6 +609,18 @@ Module CombinationalOnly.
 
   Notation execution := RegisterState.t.
 
+  (* TODO: This could possible use module_body_writes instead of
+  module_outputs. That would give us an internal view of the
+  module. Instead, here we have a version that views a module as a
+  black box.
+
+  Notes:
+  - This is the version that we *need* for equivalence.
+  - The two versions are identical for modules after assignment-forwarding.
+  - The alternative might be useful for defining transformations on
+    modules (not sure, things like assignment forwarding don't keep
+    the internal state, maybe this is the version we want.)
+    *)
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
     exists (e' : execution),
       run_vmodule v e = Some e'

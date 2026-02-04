@@ -919,7 +919,7 @@ Lemma valid_execution_no_exes_written v : forall e tag start q,
     RegisterState.defined_value_for (fun var => List.In var (Verilog.module_body_writes (Verilog.modBody v))) e.
 Proof.
   unfold valid_execution, all_vars_driven.
-  intros * Htransf [e' [Hrun Hmatch]] Hinputs_defined.
+  intros * Htransf [e' [Hrun [Hinput_has_value [Houtput_has_value Hmatch]]]] Hinputs_defined.
   unfold verilog_to_smt in Htransf. monad_inv.
   assert
     (RegisterState.defined_value_for
@@ -934,6 +934,8 @@ Proof.
   match goal with [ Hsortable : vmodule_sortable _ |- _ ] =>
     destruct Hsortable as [sorted Hsort]
   end.
+  rename_match (list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v)) into Hreads_in_inputs.
+  rename_match (Permutation (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v)) into Hwrites_outputs_permute.
   unfold run_vmodule, mk_initial_state in Hrun.
   rewrite Hsort in Hrun. simpl in Hrun.
   apply sort_module_items_permutation in Hsort.
@@ -941,25 +943,19 @@ Proof.
   - eassumption.
   - assumption.
   - rewrite <- Hsort. assumption.
-  - eapply disjoint_subset.
-    + eassumption.
-    + eassumption.
-    + symmetry. eassumption.
+  - rewrite Hreads_in_inputs. rewrite Hwrites_outputs_permute. symmetry. assumption.
   - rewrite <- Hsort.
-    eapply disjoint_subset.
-    + eassumption.
-    + eassumption.
-    + symmetry. eassumption.
+    rewrite Hreads_in_inputs. rewrite Hwrites_outputs_permute. symmetry. assumption.
   - pose proof (exec_module_body_no_exes
                  (Verilog.modBody v)
                  (fun var => List.In var (Verilog.module_inputs v))) as H.
     simpl in *.
     insterU H.
-    destruct Hmatch as [? [? ?]].
     RegisterState.unpack_match_on.
     RegisterState.unpack_defined_value_for.
-    match goal with
-    | [ Heq : e' =( _ )= e |- _ ] => setoid_rewrite <- Heq
-    end.
+    rename_match (e' =( Verilog.module_outputs v )= e) into Hmatch_outputs.
+    setoid_rewrite Hwrites_outputs_permute.
+    setoid_rewrite <- Hmatch_outputs.
+    setoid_rewrite <- Hwrites_outputs_permute.
     assumption.
 Qed.
