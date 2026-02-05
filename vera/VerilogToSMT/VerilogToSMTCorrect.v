@@ -559,6 +559,14 @@ Proof.
     intuition assumption.
 Qed.
 
+Lemma limit_to_regs_twice st regs :
+  st // regs // regs = st // regs.
+Proof.
+  unfold "//".
+  apply functional_extensionality_dep. intros.
+  autodestruct; reflexivity.
+Qed.
+
 Lemma defined_value_for_has_value_for C e :
   RegisterState.defined_value_for C e -> 
   RegisterState.has_value_for C e.
@@ -609,7 +617,10 @@ Proof.
       rewrite Hinputs_subset.
       rewrite Houtputs_permute.
       symmetry. assumption.
-    + split. { eassumption. }
+    + split. {
+        rewrite limit_to_regs_twice. 
+	eassumption.
+      }
       split. {
         apply defined_value_for_has_value_for.
         eapply verilog_smt_match_states_partial_execution_defined_value_for.
@@ -950,6 +961,7 @@ Proof.
                  (Verilog.modBody v)
                  (fun var => List.In var (Verilog.module_inputs v))) as H.
     simpl in *.
+    rewrite limit_to_regs_twice in *.
     insterU H.
     RegisterState.unpack_match_on.
     RegisterState.unpack_defined_value_for.

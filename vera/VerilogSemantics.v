@@ -346,6 +346,8 @@ Module RegisterState.
       | right prf => None
       end.
 
+  Notation "st // regs" := (limit_to_regs regs st) (at level 20) : verilog.
+
   Lemma set_reg_get_in var val regs :
     set_reg var val regs var = Some val.
   Proof.
@@ -601,7 +603,7 @@ Module CombinationalOnly.
   .
 
   Definition mk_initial_state (v : Verilog.vmodule) (regs : RegisterState.t) : RegisterState.t :=
-    RegisterState.limit_to_regs (Verilog.module_inputs v) regs.
+    regs // Verilog.module_inputs v.
 
   Definition run_vmodule (v : Verilog.vmodule) (inputs : RegisterState.t) : option RegisterState.t :=
     let* sorted := sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) in
@@ -623,7 +625,7 @@ Module CombinationalOnly.
     *)
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
     exists (e' : execution),
-      run_vmodule v e = Some e'
+      run_vmodule v (e // Verilog.module_inputs v) = Some e'
       /\ RegisterState.has_value_for (fun var => List.In var (Verilog.module_inputs v)) e
       /\ RegisterState.has_value_for (fun var => List.In var (Verilog.module_outputs v)) e
       /\ e' =( Verilog.module_inputs v ++ Verilog.module_outputs v )= e.
@@ -645,6 +647,10 @@ Module CombinationalOnly.
     forall var, C var -> execution_not_x e var.
 
   Definition execution_no_exes := execution_no_exes_for (fun _ => True).
+
+  Global Instance Proper_execution_no_exes_for :
+    Proper (pointwise_relation Verilog.variable iff ==> eq ==> iff) execution_no_exes_for.
+  Proof. repeat intro. subst. crush. Qed.
 
   (* Modules are valid if they run to completion for all complete inputs *)
   Definition valid_module (v : Verilog.vmodule) :=
@@ -1005,45 +1011,66 @@ Module Equivalence.
   Local Open Scope verilog.
 
   Definition clean_module (v : Verilog.vmodule) : Prop := forall e,
-    execution_no_exes_for (fun var => In var (Verilog.module_inputs v)) e ->
+    RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
     v ⇓ e ->
-    execution_no_exes_for (fun var => In var (Verilog.module_outputs v)) e.
+    RegisterState.defined_value_for (fun var => In var (Verilog.module_outputs v)) e.
          
   Record equivalent_behaviour (v1 v2 : Verilog.vmodule) : Prop :=
     MkEquivalentBehaviour {
+      inputs_same : Verilog.module_inputs v1 = Verilog.module_inputs v2;
+      outputs_same : Verilog.module_outputs v1 = Verilog.module_outputs v2;
       clean_left : clean_module v1;
       clean_right : clean_module v2;
-      execution_match : forall e, execution_no_exes e -> (v1 ⇓ e <-> v2 ⇓ e)
+      execution_match : forall e,
+	RegisterState.defined_value_for
+        (fun var => In var (Verilog.module_inputs v1 ++ Verilog.module_outputs v1)) e ->
+	(v1 ⇓ e <-> v2 ⇓ e)
     }.
 
-  Infix "~" := equivalent_behaviour (at level 20) : verilog.
+  Infix "~~" := equivalent_behaviour (at level 20) : verilog.
 
   Lemma equivalent_behaviour_sym v1 v2:
-    v1 ~ v2 ->
-    v2 ~ v1.
+    v1 ~~ v2 ->
+    v2 ~~ v1.
   Proof.
-    intros [? ? ?].
+    intros [? ? ? ? execution_match].
     constructor.
+    - symmetry. assumption.
+    - symmetry. assumption.
     - assumption.
     - assumption.
-    - intros. symmetry. auto.
+    - intros. symmetry.
+      apply execution_match.
+      replace (Verilog.module_inputs v1).
+      replace (Verilog.module_outputs v1).
+      assumption.
   Qed.
 
   Lemma equivalent_behaviour_trans v1 v2 v3:
-    v1 ~ v2 -> v2 ~ v3 -> v1 ~ v3.
+    v1 ~~ v2 -> v2 ~~ v3 -> v1 ~~ v3.
   Proof.
     intros [] [].
     constructor.
+    - congruence.
+    - congruence.
     - assumption.
     - assumption.
-    - intros. etransitivity; eauto.
+    - intros.
+      etransitivity.
+      + apply execution_match0.
+        assumption.
+      + apply execution_match1.
+        rewrite <- inputs_same0, <- outputs_same0.
+        assumption.
   Qed.
 
   Lemma equivalent_behaviour_refl_cond v v':
-    v ~ v' -> v ~ v.
+    v ~~ v' -> v ~~ v.
   Proof.
     intros [].
     constructor.
+    - reflexivity.
+    - reflexivity.
     - assumption.
     - assumption.
     - reflexivity.
