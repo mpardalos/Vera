@@ -910,13 +910,41 @@ Proof.
   assumption.
 Qed.
 
+Local Open Scope verilog.
+
+Global Instance Proper_limit_to_regs regs :
+  Proper
+    (RegisterState.match_on (fun var => In var regs) ==> eq)
+    (RegisterState.limit_to_regs regs).
+Proof.
+  repeat intro.
+  unfold "//", "_ =( _ )= _" in *.
+  apply functional_extensionality_dep. intro var.
+  autodestruct; eauto.
+Qed.
+
 Global Instance Proper_valid_execution v :
   Proper
     (RegisterState.match_on (fun var => In var (Verilog.module_inputs v) \/ In var (Verilog.module_outputs v)) ==> iff)
     (valid_execution v).
-Proof. Admitted.
-  
-Local Open Scope verilog.
+Proof.
+  repeat intro.
+  unfold valid_execution.
+  RegisterState.unpack_match_on.
+  rename_match (_ =( Verilog.module_inputs _ )= _ ) into inputs_same.
+  rename_match (_ =( Verilog.module_outputs _ )= _ ) into outputs_same.
+  split.
+  - intros H. decompose record H; clear H.
+    RegisterState.unpack_match_on.
+    rewrite inputs_same in *; clear inputs_same.
+    rewrite outputs_same in *; clear outputs_same.
+    exists x0. repeat split; RegisterState.unpack_match_on; try eassumption.
+  - intros H. decompose record H; clear H.
+    RegisterState.unpack_match_on.
+    rewrite <- inputs_same in *; clear inputs_same.
+    rewrite <- outputs_same in *; clear outputs_same.
+    exists x0. repeat split; RegisterState.unpack_match_on; try eassumption.
+Qed.
 
 Lemma transfer_execution v e :
   clean_module v ->
@@ -933,9 +961,21 @@ Proof.
   intros Hadmit1 Hadmit2 Hinput_match.
   decompose record Hadmit1. clear Hadmit1.
   decompose record Hadmit2. clear Hadmit2.
+  match goal with
+  | [ H : run_vmodule v (e1 // Verilog.module_inputs v) = Some ?x |- _ ] =>
+    rename H into Hrun1; rename x into e1'
+  end.
+  match goal with
+  | [ H : run_vmodule v (e2 // Verilog.module_inputs v) = Some ?x |- _ ] =>
+    rename H into Hrun2; rename x into e2'
+  end.
+  rewrite <- Hinput_match in Hrun2.
+  replace e2' with e1' in * by congruence.
   RegisterState.unpack_match_on.
-  rewrite <- H8, <- H7.
-Admitted.
+  transitivity e1'.
+  - symmetry. assumption.
+  - assumption.
+Qed.
 
 Lemma no_counterexample_equivalent_iff v1 v2 :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
