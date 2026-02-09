@@ -1408,9 +1408,9 @@ Proof.
       destruct Hvar_in; auto using Verilog.module_input_in_vars, Verilog.module_outputs_in_vars.
 Qed.
 
-Lemma assignment_forwarding_equivalent_behaviour v1 v2 :
-  AssignmentForwarding.forward_assignments v1 = inr v2 ->
-  equivalent_behaviour v1 v2.
+Theorem assignment_forwarding_equivalent_behaviour v v' : 
+  AssignmentForwarding.forward_assignments v = inr v' ->
+  v ~~ v'.
 Proof. Admitted.
 
 Theorem equivalence_query_general_unsat_correct v1 v2 smt :
