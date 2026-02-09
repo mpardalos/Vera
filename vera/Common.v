@@ -703,3 +703,9 @@ Hint Rewrite
   : kill_bools.
 
 Ltac kill_bools := autorewrite with kill_bools in *.
+
+Definition opt_to_sum {E A} (e: E) (o : option A) : E + A :=
+  match o with
+  | None => inl e
+  | Some a => inr a
+  end.

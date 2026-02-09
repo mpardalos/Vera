@@ -75,11 +75,11 @@ Qed.
 
 Ltac disjoint_saturate :=
   repeat match goal with
-         | [ H : disjoint (_ :: _) _ |- _ ] =>
-	   inv H
-         | [ H : disjoint _ (_ :: _) |- _ ] =>
+         | [ H : disjoint (_ :: ?l1) ?l2 |- _ ] =>
+	   inv H; fold (disjoint l1 l2) in *
+         | [ H : disjoint ?l2 (_ :: ?l1) |- _ ] =>
 	   symmetry in H;
-	   inv H
+	   inv H; fold (disjoint l1 l2) in *
          | [ H : disjoint (_ ++ _) _ |- _ ] =>
            rewrite ! disjoint_app_iff in H;
            decompose record H;
@@ -516,18 +516,25 @@ Module CombinationalOnly.
   Definition Process := Verilog.module_item.
 
   Section Sorted.
-    Equations module_items_sorted : list Verilog.module_item -> Prop :=
-      module_items_sorted [] := True;
-      module_items_sorted (mi :: mis) :=
-        Forall (fun mi' => disjoint (Verilog.module_item_writes mi) (Verilog.module_item_reads mi')) mis
-               /\ module_items_sorted mis
+    Inductive module_items_sorted : list Verilog.module_item -> Prop :=
+      | module_items_sorted_nil : module_items_sorted []
+      | module_items_sorted_cons mi mis :
+        disjoint (Verilog.module_body_writes (mi :: mis)) (Verilog.module_item_reads mi) ->
+	module_items_sorted mis ->
+        module_items_sorted (mi :: mis)
     .
 
     Global Instance dec_module_items_sorted ms : DecProp (module_items_sorted ms).
     Proof.
-      induction ms;
-        simp module_items_sorted;
-        try typeclasses eauto.
+      induction ms.
+      - left. constructor.
+      - destruct
+          (dec (disjoint (Verilog.module_body_writes (a :: ms)) (Verilog.module_item_reads a))),
+	  IHms.
+        + left. constructor; assumption.
+	+ right. inversion 1. crush.
+	+ right. inversion 1. crush.
+	+ right. inversion 1. crush.
     Defined.
   End Sorted.
 
@@ -1222,3 +1229,75 @@ Module Equivalence.
     as equivalent_behaviour_rel.
 
 End Equivalence.
+
+Module ExactEquivalence.
+  Import CombinationalOnly.
+  Export Clean.
+
+  Declare Scope verilog.
+  Local Open Scope verilog.
+
+  Record exact_equivalence (v1 v2 : Verilog.vmodule) : Prop :=
+    MkEquivalentBehaviour {
+      inputs_same : Verilog.module_inputs v1 = Verilog.module_inputs v2;
+      outputs_same : Verilog.module_outputs v1 = Verilog.module_outputs v2;
+      execution_match : forall e, (v1 ⇓ e <-> v2 ⇓ e)
+    }.
+
+  Infix "~~~" := exact_equivalence (at level 20) : verilog.
+
+  Lemma exact_equivalence_sym v1 v2:
+    v1 ~~~ v2 ->
+    v2 ~~~ v1.
+  Proof.
+    intros [? ? execution_match].
+    constructor.
+    - symmetry. assumption.
+    - symmetry. assumption.
+    - symmetry. auto.
+  Qed.
+
+  Lemma exact_equivalence_trans v1 v2 v3:
+    v1 ~~~ v2 -> v2 ~~~ v3 -> v1 ~~~ v3.
+  Proof.
+    intros [] [].
+    constructor.
+    - congruence.
+    - congruence.
+    - etransitivity; eauto.
+  Qed.
+
+  Lemma exact_equivalence_refl v : v ~~~ v.
+  Proof. constructor; reflexivity. Qed.
+
+  Add Parametric Relation :
+    Verilog.vmodule exact_equivalence
+    reflexivity proved by exact_equivalence_refl
+    symmetry proved by exact_equivalence_sym
+    transitivity proved by exact_equivalence_trans
+    as exact_equivalence_rel.
+
+  Global Instance Proper_valid_execution_exact_equivalence :
+    Proper (exact_equivalence ==> eq ==> iff) valid_execution.
+  Proof.
+    repeat intro. subst.
+    destruct H. auto.
+  Qed.
+
+  Import Equivalence.
+
+  Lemma exact_equivalence_equivalent_behaviour v1 v2 :
+    clean_module v1 ->
+    clean_module v2 ->
+    v1 ~~~ v2 ->
+    v1 ~~ v2.
+  Proof.
+    intros Hclean1 Hclean2 [].
+    constructor.
+    - assumption.
+    - assumption.
+    - assumption.
+    - assumption.
+    - auto.
+  Qed.
+End ExactEquivalence.
