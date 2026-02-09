@@ -613,6 +613,16 @@ Proof.
   crush.
 Qed.
 
+Add Parametric Morphism A : (@In A)
+  with signature eq --> list_subset ==> Basics.impl
+  as In_subset.
+Proof.
+  unfold Basics.impl.
+  unfold Proper, "==>", disjoint.
+  setoid_rewrite List.Forall_forall.
+  intros. subst. auto.
+Qed.
+
 (* Checking that typeclasses eauto can indeed figure out DecProp (list_subset l r) *)
 
 Goal (forall (sub sup : list nat), DecProp (list_subset sub sup)). typeclasses eauto. Qed.

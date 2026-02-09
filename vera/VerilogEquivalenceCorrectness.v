@@ -912,45 +912,25 @@ Qed.
 
 Local Open Scope verilog.
 
-Global Instance Proper_limit_to_regs regs :
-  Proper
-    (RegisterState.match_on (fun var => In var regs) ==> eq)
-    (RegisterState.limit_to_regs regs).
-Proof.
-  repeat intro.
-  unfold "//", "_ =( _ )= _" in *.
-  apply functional_extensionality_dep. intro var.
-  autodestruct; eauto.
-Qed.
-
-Global Instance Proper_valid_execution v :
-  Proper
-    (RegisterState.match_on (fun var => In var (Verilog.module_inputs v ++ Verilog.module_outputs v)) ==> iff)
-    (valid_execution v).
-Proof.
-  repeat intro.
-  unfold valid_execution.
-  RegisterState.unpack_match_on.
-  rename_match (_ =( Verilog.module_inputs _ )= _ ) into inputs_same.
-  rename_match (_ =( Verilog.module_outputs _ )= _ ) into outputs_same.
-  split.
-  - intros H. decompose record H; clear H.
-    RegisterState.unpack_match_on.
-    rewrite inputs_same in *; clear inputs_same.
-    rewrite outputs_same in *; clear outputs_same.
-    exists x0. repeat split; RegisterState.unpack_match_on; try eassumption.
-  - intros H. decompose record H; clear H.
-    RegisterState.unpack_match_on.
-    rewrite <- inputs_same in *; clear inputs_same.
-    rewrite <- outputs_same in *; clear outputs_same.
-    exists x0. repeat split; RegisterState.unpack_match_on; try eassumption.
-Qed.
-
 Lemma transfer_execution v e :
   clean_module v ->
   RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
   exists e', e =!!( Verilog.module_inputs v )!!= e' /\ v ⇓ e'.
-Proof. Admitted.
+Proof.
+  intros Hclean Hinputs_defined.
+  apply clean_module_definition with (e:=e) in Hclean; [|assumption].
+  destruct Hclean as [e' [Hrun [Hmatch Hdefined_outputs]]].
+  RegisterState.unpack_defined_value_for. RegisterState.unpack_match_on.
+  exists e'. unfold "⇓".
+  split. { split; assumption. }
+  exists e'. repeat split.
+  - rewrite Hmatch in Hrun. assumption.
+  - rewrite <- Hmatch.
+    apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+    assumption.
+  - apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+    assumption.
+Qed.
 
 Lemma clean_defined_outputs v e :
   clean_module v ->
@@ -983,6 +963,11 @@ Proof.
   - symmetry. assumption.
   - assumption.
 Qed.
+
+Lemma clean_module_execution_outputs v e :
+  clean_module v -> v ⇓ e ->
+  RegisterState.defined_value_for (fun var => In var (Verilog.module_outputs v)) e.
+Proof. Admitted.
 
 Lemma no_counterexample_equivalent_iff v1 v2 :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
@@ -1176,7 +1161,6 @@ Lemma counterexample_execution_rewrite_right v1 e1 v2 e2 e2' :
   e2 =( Verilog.module_inputs v2 ++ Verilog.module_outputs v2 )= e2' ->
   counterexample_execution v1 e1 v2 e2 <-> counterexample_execution v1 e1 v2 e2'.
 Proof.
-
   unfold counterexample_execution.
   intros inputs_same outputs_same H.
   split; intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]];
