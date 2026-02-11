@@ -207,3 +207,16 @@ Tactic Notation "insterKeep" hyp(H) "by" tactic(tac) := insterKeep' tac H.
 
 (** Like insterU, but keep an uninstantiated copy of `H' *)
 Tactic Notation "insterKeep" hyp(H) := insterKeep' crush H.
+
+(* Assert that there is a certain number of goals.
+   Useful after applying a `try` tactic which is expected to clear a large number of
+   goals. Something like:
+
+   induction H; try crush; expect 1.
+   ...
+ *)
+Tactic Notation "expect" integer(n) :=
+  let ng := numgoals in
+  tryif guard ng = n then idtac
+  else fail 0 "Expected" n "goals but got" ng.
+
