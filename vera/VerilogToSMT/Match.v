@@ -188,9 +188,8 @@ Proof.
     repeat econstructor; try eassumption; [idtac].
     rewrite RegisterState.set_reg_get_in.
     repeat f_equal.
-    rewrite H0 in Hsmtval. inv Hsmtval.
-    apply_somewhere inj_pair2.
-    assumption.
+    rewrite H0 in Hsmtval.
+    inv Hsmtval. reflexivity.
   - insterU Hvar. destruct Hvar as [? [? ?]].
     insterU Hrest. destruct Hrest as [? [? []]].
     inv Hmatchvals.

@@ -1,5 +1,5 @@
+From Stdlib Require Import ProofIrrelevance.
 From Stdlib Require Export Lia.
-Import EqNotations.
 
 From vera Require Import Decidable.
 
@@ -7,6 +7,7 @@ From ExtLib Require Import Structures.Monads.
 
 Import MonadLetNotation.
 Import SigTNotations.
+Import EqNotations.
 
 (* This needs to be defined here, because monad_inv depends on it *)
 Program Definition sum_with_eqn {A B} (s : sum A B) : sum A { x : B & s = inr x } :=
@@ -48,10 +49,16 @@ Tactic Notation "rename_match" open_constr(pat) "into" ident(newname) :=
     rename H into newname
   end.
 
-
 Ltac unfold_rec c := unfold c; fold c.
 
-Ltac inv H := inversion H; subst; clear H.
+Ltac apply_somewhere f :=
+  multimatch goal with
+  | [ H : _ |- _] => apply f in H
+  end.
+
+Ltac inv H :=
+  inversion H; subst; clear H;
+  repeat apply_somewhere inj_pair2; subst.
 
 Ltac some_inv :=
   multimatch goal with
@@ -138,11 +145,6 @@ Ltac monad_inv :=
 Ltac reductio_ad_absurdum :=
   match goal with
   | [ |- ?g ] => destruct (dec g); try assumption; exfalso
-  end.
-
-Ltac apply_somewhere f :=
-  multimatch goal with
-  | [ H : _ |- _] => apply f in H
   end.
 
 Ltac destruct_rew :=

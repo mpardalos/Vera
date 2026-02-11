@@ -548,7 +548,7 @@ Proof.
   rewrite Hverilogval_l, Hverilogval_r.
   replace val_r with val_l in *.
   - inv Hmatchvals_l. inv Hmatchvals_r.
-    apply_somewhere inj_pair2. subst. crush.
+    crush.
   - pose proof smt_same_values_eq as Heq.
     insterU Heq.
     rewrite Hsmtval_l, Hsmtval_r in Heq.
@@ -656,7 +656,7 @@ Proof.
   apply execution_of_valuation_inv in Hlookup_right. decompose record Hlookup_right.
   eexists. split; [eassumption|].
   do 4 eexists. repeat split; eauto.
-  intro contra. inv contra. apply_somewhere inj_pair2.
+  intro contra. inv contra.
   contradiction.
 Qed.
 
