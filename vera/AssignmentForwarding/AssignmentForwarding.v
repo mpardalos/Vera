@@ -65,7 +65,7 @@ Next Obligation. rewrite apply_substitution_module_body_length. lia. Qed.
 
 Definition forward_assignments (m : vmodule) : string + vmodule :=
   assert_dec (List.NoDup (module_body_writes (modBody m))) "Duplicate write";;
-  assert_dec (module_items_sorted (modBody m)) "Module items unsorted" ;;
+  assert_dec (module_items_sorted (module_inputs m) (modBody m)) "Module items unsorted" ;;
   let* body := forward_assignments_body (modBody m) in
   inr {|
     modName := modName m;

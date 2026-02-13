@@ -17,7 +17,6 @@ From vera Require Import Common.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require Import AssignmentForwarding.AssignmentForwarding.
-From vera Require Import VerilogSort.
 
 Import ListNotations.
 Import EqNotations.
@@ -124,36 +123,90 @@ Proof.
   crush.
 Qed.
 
-Lemma apply_substitution_sorted v r body :
+Lemma list_subset_app_l A (l1 l2 l3 : list A) :
+  list_subset l1 l2 ->
+  list_subset l1 (l2 ++ l3).
+Proof.
+  unfold list_subset.
+  rewrite ! Forall_forall. setoid_rewrite in_app_iff.
+  crush.
+Qed.
+
+Lemma list_subset_app_r A (l1 l2 l3 : list A) :
+  list_subset l1 l3 ->
+  list_subset l1 (l2 ++ l3).
+Proof.
+  unfold list_subset.
+  rewrite ! Forall_forall. setoid_rewrite in_app_iff.
+  crush.
+Qed.
+
+Lemma apply_substitution_sorted vars v r body :
   ~ In v (module_body_writes body) ->
   disjoint (module_body_writes body) (expr_reads r) ->
-  module_items_sorted body ->
-  module_items_sorted (apply_substitution_module_body v r body).
+  list_subset (expr_reads r) vars ->
+  module_items_sorted vars body ->
+  module_items_sorted vars (apply_substitution_module_body v r body).
 Proof.
-  intros Hno_write Hreads_stable Hsorted.
+  intros Hno_write Hreads_stable Hreads_available Hsorted.
   funelim (apply_substitution_module_body v r body);
     simp module_body_writes module_item_writes statement_writes expr_reads in *;
     expect 1.
   clear Heqcall.
   inv Hsorted. unpack_in. disjoint_saturate.
-  simp module_body_writes module_item_writes statement_writes expr_reads in *.
-  constructor; [|apply H; assumption].
   simp module_body_writes module_item_writes statement_writes
-       expr_reads module_item_reads statement_reads expr_reads in *.
-  disjoint_saturate.
-  rewrite apply_substitution_writes.
-  unfold disjoint. rewrite List.Forall_forall. setoid_rewrite in_app_iff.
-  intros var Hvar_write Hvar_read.
-  apply apply_substitution_expr_reads in Hvar_read.
-  intuition (contradiction || match goal with
-    [ Hin1 : In var ?l1, Hin2 : In var ?l2, Hdisjoint : disjoint ?l1 ?l2 |- _ ] =>
-      eapply disjoint_l_intro; [ eapply Hdisjoint | eapply Hin1 | eapply Hin2 ]
-    end).
+       module_body_reads module_item_reads statement_reads expr_reads
+    in *.
+  constructor.
+  - simp module_body_writes module_item_writes statement_writes
+       module_body_reads module_item_reads statement_reads expr_reads
+    in *.
+    unfold list_subset in *. rewrite Forall_forall in *.
+    intros var Hvar_in. apply apply_substitution_expr_reads in Hvar_in.
+    destruct Hvar_in; eauto.
+  - eauto.
+  - simp module_body_writes module_item_writes statement_writes
+         expr_reads module_item_reads statement_reads expr_reads in *.
+    apply H; eauto.
+    apply list_subset_app_r. assumption.
 Qed.
 
-Lemma forward_assignments_body_correct regs body body' :
+Lemma module_items_sorted_no_overwrite inputs body :
+  module_items_sorted inputs body ->
+  disjoint (module_body_writes body) inputs.
+Proof.
+  induction 1.
+  - constructor.
+  - simp module_body_writes.
+    unfold disjoint in *.
+    rewrite ! Forall_forall in *.
+    setoid_rewrite in_app_iff.
+    setoid_rewrite in_app_iff in IHmodule_items_sorted.
+    crush.
+Qed.
+
+From Stdlib Require Import Relations.
+From Stdlib Require Import Morphisms.
+
+Global Instance Proper_list_subset_in A :
+  Proper (eq ==> list_subset ==> Basics.impl) (@In A).
+Proof.
+  repeat intro. subst.
+  unfold list_subset in *. rewrite Forall_forall in *.
+  auto.
+Qed.
+
+Global Instance Proper_list_subset_disjoint A :
+  Proper (list_subset --> list_subset --> Basics.impl) (@disjoint A).
+Proof.
+  repeat intro. subst.
+  unfold Basics.flip, list_subset, disjoint in *. rewrite Forall_forall in *.
+  crush.
+Qed.
+
+Lemma forward_assignments_body_correct vars regs body body' :
   NoDup (module_body_writes body) ->
-  module_items_sorted body ->
+  module_items_sorted vars body ->
   forward_assignments_body body = inr body' ->
   exec_module_body regs body' = exec_module_body regs body.
 Proof.
@@ -171,18 +224,29 @@ Proof.
   disjoint_saturate.
   simp exec_module_body exec_module_item exec_statement.
   destruct (eval_expr regs rhs) eqn:Heval; simpl; [|reflexivity].
-  specialize (H (RegisterState.set_reg var x regs) l).
+  specialize (H ([var] ++ vars) (RegisterState.set_reg var x regs) l).
   rewrite H; cycle 1.
   - rewrite apply_substitution_writes. assumption.
-  - apply apply_substitution_sorted; assumption.
+  - apply apply_substitution_sorted; eauto.
+    + rename_match (module_items_sorted _ tl) into Hsorted_tl.
+      apply module_items_sorted_no_overwrite in Hsorted_tl. disjoint_saturate.
+      rename_match (list_subset (expr_reads rhs) vars) into Hrhs_in_vars.
+      rename_match (disjoint vars (module_body_writes tl)) into Hno_overwrite.
+      rewrite Hrhs_in_vars. symmetry. apply Hno_overwrite.
+    + apply list_subset_app_r. assumption.
   - reflexivity.
   - apply apply_substitution_module_body_valid.
     + rewrite RegisterState.set_reg_get_in.
       erewrite eval_expr_change_regs; [eassumption|].
       apply RegisterState.match_on_set_reg_elim.
-      assumption.
+      rename_match (list_subset (expr_reads rhs) vars) into Hrhs_in_vars.
+      rewrite Hrhs_in_vars. assumption.
     + assumption.
-    + assumption.
+    + rename_match (module_items_sorted _ tl) into Hsorted_tl.
+      apply module_items_sorted_no_overwrite in Hsorted_tl. disjoint_saturate.
+      rename_match (list_subset (expr_reads rhs) vars) into Hrhs_in_vars.
+      rename_match (disjoint vars (module_body_writes tl)) into Hno_overwrite.
+      rewrite Hrhs_in_vars. symmetry. apply Hno_overwrite.
 Qed.
 
 Lemma module_inputs_same v1 v2 :
@@ -205,11 +269,6 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma sort_module_items_idempotent inputs body :
-  module_items_sorted body ->
-  sort_module_items inputs body = Some body.
-Proof. Admitted.
-
 Lemma forward_assignments_body_writes body body' :
   forward_assignments_body body = inr body' ->
   module_body_writes body' = module_body_writes body.
@@ -224,11 +283,11 @@ Proof.
   reflexivity.
 Qed. 
 
-Lemma forward_assignments_body_sorted body body' :
+Lemma forward_assignments_body_sorted inputs body body' :
   NoDup (module_body_writes body) ->
-  module_items_sorted body ->
+  module_items_sorted inputs body ->
   forward_assignments_body body = inr body' ->
-  module_items_sorted body'.
+  module_items_sorted inputs body'.
 Proof.
   intros Hnodup Hsorted Hforward.
   funelim (forward_assignments_body body);
@@ -241,17 +300,20 @@ Proof.
     in *.
   disjoint_saturate.
   constructor.
+  - assumption.
   - autorewrite with
       expr_reads module_item_reads statement_reads
       module_body_writes module_item_writes statement_writes
-      in *.
-      simpl.
-      erewrite forward_assignments_body_writes; eauto.
-      rewrite apply_substitution_writes.
-      constructor; crush.
+      in *. constructor; auto.
   - eapply H.
     + rewrite apply_substitution_writes. assumption.
     + apply apply_substitution_sorted; eauto.
+      * rename_match (module_items_sorted _ tl) into Hsorted_tl.
+        apply module_items_sorted_no_overwrite in Hsorted_tl. disjoint_saturate.
+        rename_match (list_subset (expr_reads rhs) inputs) into Hrhs_in_vars.
+        rename_match (disjoint inputs (module_body_writes tl)) into Hno_overwrite.
+	rewrite Hrhs_in_vars. symmetry. apply Hno_overwrite.
+      * apply list_subset_app_r. assumption.
     + reflexivity.
 Qed.
 
@@ -262,13 +324,13 @@ Proof.
   intros.
   unfold forward_assignments, run_vmodule, opt_to_sum in *.
   monad_inv. simpl in *.
-  rewrite ! sort_module_items_idempotent
+  rewrite ! sort_module_items_stable
     by eauto using forward_assignments_body_sorted.
   replace (mk_initial_state
      {| modName := modName v1; modVariableDecls := modVariableDecls v1; modBody := l |} regs)
      with (mk_initial_state v1 regs) by now apply initial_state_same.
   symmetry.
-  now apply forward_assignments_body_correct.
+  eapply forward_assignments_body_correct; eassumption.
 Qed.
 
 Lemma equal_exact_equivalence v1 v2 :

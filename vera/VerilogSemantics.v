@@ -11,7 +11,6 @@ From Stdlib Require Import Psatz.
 From Stdlib Require Import Logic.ProofIrrelevance.
 From Stdlib Require Import Morphisms.
 From Stdlib Require Import Classical.
-From Stdlib Require Import Relations.
 From Stdlib Require Import Morphisms.
 From Stdlib Require Import Setoid.
 
