@@ -6,13 +6,12 @@ From vera Require Import VerilogSMT.
 From vera Require SMTQueries.
 Import (coercions) VerilogSMTBijection.
 From vera Require Import VerilogSemantics.
-From vera Require Import Verilog.
 Import CombinationalOnly.
+From vera Require Import Verilog.
 From vera Require Import Bitvector.
 Import RawXBV(bit(..)).
 From vera Require Import VerilogToSMT.Expressions.
 From vera Require Import VerilogToSMT.Match.
-From vera Require Import VerilogSort.
 
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.MonadState.

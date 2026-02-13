@@ -34,6 +34,7 @@ From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require VerilogSemantics.
 Import VerilogSemantics.Clean.
+Import VerilogSemantics.Sort.
 
 Import ListNotations.
 Import CommonNotations.
@@ -264,7 +265,7 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
     (Permutation (Verilog.module_body_writes (Verilog.modBody vmodule)) (Verilog.module_outputs vmodule))
     "Non-output variables written to"%string ;;
   assert_dec
-    (VerilogSort.vmodule_sortable vmodule)
+    (vmodule_sortable vmodule)
     "module is not sortable"%string ;;
   assert_dec
     (Forall clean_module_item_structure (Verilog.modBody vmodule))

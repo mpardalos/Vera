@@ -10,6 +10,8 @@ Import Verilog.
 From vera Require Import Common.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
+From vera Require VerilogSemantics.
+Import VerilogSemantics.Sort (module_items_sorted).
 
 Import List.ListNotations.
 Local Open Scope list.

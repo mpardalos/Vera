@@ -10,7 +10,7 @@ From vera Require VerilogToSMT.VerilogToSMTCorrect.
 From vera Require Import VerilogToSMT.Match.
 From vera Require Import VerilogEquivalence.
 From vera Require VerilogSemantics.
-From vera Require VerilogSort.
+Import VerilogSemantics.Sort (vmodule_sortable).
 From vera Require Import Tactics.
 From vera Require Import Decidable.
 
@@ -1298,7 +1298,7 @@ Record verilog_to_smt_checked (v : Verilog.vmodule) := MkVerilogToSMTChecked {
     no_duplicate_outputs : NoDup (Verilog.module_outputs v);
     writes_outputs : Permutation (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v);
     all_module_items_clean : Forall clean_module_item_structure (Verilog.modBody v);
-    sortable : VerilogSort.vmodule_sortable v;
+    sortable : vmodule_sortable v;
 }.
 
 Lemma verilog_to_smt_checks tag start v smt :

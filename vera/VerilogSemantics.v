@@ -22,7 +22,6 @@ Import (notations) XBV.
 Import RawXBV (bit(..)).
 From vera Require Import Tactics.
 From vera Require Import Decidable.
-From vera Require Import VerilogSort.
 
 From Equations Require Import Equations.
 
@@ -91,7 +90,7 @@ Ltac disjoint_saturate :=
            decompose record H;
            clear H
          | [ H : NoDup (_ ++ _) |- _ ] =>
-     	   apply NoDup_app_iff in H;
+           apply NoDup_app_iff in H;
            decompose record H;
            clear H
          | [ H : NoDup (_ :: _) |- _ ] =>
@@ -100,9 +99,9 @@ Ltac disjoint_saturate :=
            clear H
          | [ H : Forall _ [] |- _ ] => clear H
          | [ H : ~ (In _ []) |- _ ] => clear H
-	 | [ H : ~ (In _ (_ ++ _)) |- _ ] => rewrite in_app_iff in H
-	 | [ H : ~ (In _ (_ :: _)) |- _ ] => apply not_in_cons in H; destruct H
-	 | [ H : ~ (_ \/ _) |- _ ] => apply not_or_and in H; destruct H
+         | [ H : ~ (In _ (_ ++ _)) |- _ ] => rewrite in_app_iff in H
+         | [ H : ~ (In _ (_ :: _)) |- _ ] => apply not_in_cons in H; destruct H
+         | [ H : ~ (_ \/ _) |- _ ] => apply not_or_and in H; destruct H
          end.
 
 
@@ -126,7 +125,7 @@ Module RegisterState.
 
   Definition set_reg (var : Verilog.variable) (value : XBV.xbv (Verilog.varType var)) : t -> t :=
     VariableDepMap.insert var value.
-    			  
+                          
   Definition has_value_for (C : Verilog.variable -> Prop) (regs : RegisterState.t) :=
     forall var, C var -> exists xbv, regs var = Some xbv.
 
@@ -410,7 +409,110 @@ End RegisterState.
 
 Export (notations) RegisterState.
 
+Module Sort.
+  Import Verilog.
+
+  Section Ready.
+    Context (regs_ready : variable -> Prop).
+
+    Definition expr_is_ready {w} (e : expression w) : Prop :=
+      List.Forall regs_ready (expr_reads e).
+  
+    Definition statement_is_ready (s : statement) : Prop :=
+      List.Forall regs_ready (statement_reads s).
+
+    Definition module_item_is_ready (mi : module_item) : Prop :=
+      List.Forall regs_ready (module_item_reads mi).
+  End Ready.
+
+  Inductive module_items_sorted : list Verilog.module_item -> Prop :=
+    | module_items_sorted_nil : module_items_sorted []
+    | module_items_sorted_cons mi mis :
+      disjoint (Verilog.module_body_writes (mi :: mis)) (Verilog.module_item_reads mi) ->
+      module_items_sorted mis ->
+      module_items_sorted (mi :: mis)
+  .
+
+  Global Instance dec_module_items_sorted ms : DecProp (module_items_sorted ms).
+  Proof.
+    induction ms.
+    - left. constructor.
+    - destruct
+        (dec (disjoint (Verilog.module_body_writes (a :: ms)) (Verilog.module_item_reads a))),
+        IHms.
+      + left. constructor; assumption.
+      + right. inversion 1. crush.
+      + right. inversion 1. crush.
+      + right. inversion 1. crush.
+  Defined.
+  
+  Equations sort_module_items_insert
+    (regs_ready : list variable)
+    (mi : module_item)(mis : list module_item)
+    : list module_item :=
+  sort_module_items_insert vars_ready mi mis with dec (module_item_is_ready (fun var => List.In var vars_ready) mi) :=
+    sort_module_items_insert vars_ready mi mis (left prf) := mi :: mis;
+    sort_module_items_insert vars_ready mi [] (right prf) := [mi];
+    sort_module_items_insert vars_ready mi (hd :: tl) (right prf) :=
+      hd :: sort_module_items_insert (module_item_writes hd ++ vars_ready) mi tl
+  .
+  
+  Record selection (l : list module_item) :=
+    MkSelection {
+      mi : module_item;
+      rest : list module_item;
+      wf : Permutation (mi :: rest) l
+    }.
+  
+  Equations sort_module_items_select (vars_ready : list variable) (mis : list module_item) : option (selection mis) := {
+    | vars_ready, [] => @None _
+    | vars_ready, hd :: tl with dec (module_item_is_ready (fun var => List.In var vars_ready) hd) => {
+      | left prf => Some (MkSelection (hd :: tl) hd tl _)
+      | right _ =>
+          let* (MkSelection _ selected selected_tl _) := sort_module_items_select vars_ready tl in
+          Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ )
+    }
+  }.
+  Next Obligation.
+    etransitivity. { apply perm_swap. }
+    apply perm_skip. assumption.
+  Qed.
+  
+  Equations sort_module_items
+    (vars_ready : list variable)
+    (mis : list module_item)
+    : option (list module_item) by wf (length mis) lt :=
+    sort_module_items vars_ready mis with (sort_module_items_select vars_ready mis) := {
+      | None => None
+      | Some (MkSelection _ ready rest _) with (sort_module_items (module_item_writes ready ++ vars_ready) rest) => {
+        | None => None
+        | Some sorted_rest => Some (ready :: sorted_rest)
+      }
+    }
+  .
+  Next Obligation. apply_somewhere Permutation_length. simpl in *. lia. Qed.
+  
+  Lemma sort_module_items_permutation mis1 : forall vars_ready mis2,
+    sort_module_items vars_ready mis1 = Some mis2 ->
+    Permutation mis1 mis2.
+  Proof.
+    intros.
+    funelim (sort_module_items vars_ready mis1);
+      rewrite <- Heqcall in *; clear Heqcall; try discriminate; [idtac].
+    inv H. etransitivity. { symmetry. eassumption. }
+    apply perm_skip. eapply Hind. eapply Heq.
+  Qed.
+  
+  Definition vmodule_sortable (v : vmodule) : Prop :=
+    exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted.
+  
+  (* Checking that typeclasses eauto can indeed figure out DecProp (disjoint l r) *)
+  Goal (forall v, DecProp (vmodule_sortable v)). typeclasses eauto. Qed.
+End Sort.
+
 Module CombinationalOnly.
+  Export Sort.
+
   Definition Process := Verilog.module_item.
 
   Section Sorted.
@@ -798,27 +900,27 @@ Module Facts.
           apply Forall_forall. intros.
           eapply disjoint_r_intro; eassumption.
         }
-	transitivity regs2a. {
-	  eapply exec_module_item_change_regs; eassumption.
-	}
-	eapply exec_module_body_preserve; [|eapply Hexec2].
+        transitivity regs2a. {
+          eapply exec_module_item_change_regs; eassumption.
+        }
+        eapply exec_module_body_preserve; [|eapply Hexec2].
         apply Forall_forall. intros.
         eapply disjoint_r_intro; eassumption.
       + eapply (IHbody regs1a regs2a).
         * eassumption.
-	* apply disjoint_sym. assumption.
-	* transitivity regs1. {
-	    symmetry.
-	    eapply exec_module_item_preserve.
-	    -- apply disjoint_sym. eassumption.
-	    -- assumption.
-	  }
-	  transitivity regs2. { assumption. }
-	  eapply exec_module_item_preserve.
-	  -- apply disjoint_sym. eassumption.
-	  -- assumption.
+        * apply disjoint_sym. assumption.
+        * transitivity regs1. {
+            symmetry.
+            eapply exec_module_item_preserve.
+            -- apply disjoint_sym. eassumption.
+            -- assumption.
+          }
+          transitivity regs2. { assumption. }
+          eapply exec_module_item_preserve.
+          -- apply disjoint_sym. eassumption.
+          -- assumption.
         * assumption.
-	* assumption.
+        * assumption.
   Qed.
 
   Lemma set_reg_swap var1 var2 x1 x2 regs :
@@ -945,38 +1047,38 @@ Module Facts.
      + destruct (exec_module_item rs0x y) as [rs0xy|] eqn:Exy,
                 (exec_module_item rs0y x) as [rs0yx|] eqn:Eyx; simpl.
        * destruct x as [[? [] x_rhs]];
-	   simp exec_module_item exec_statement in *; try discriminate.
+           simp exec_module_item exec_statement in *; try discriminate.
          destruct y as [[? [] y_rhs]];
-	   simp exec_module_item exec_statement in *; try discriminate.
-	 simp module_item_writes module_item_reads statement_writes statement_reads expr_reads in *.
-	 monad_inv.
-	 f_equal.
-	 replace x2 with x; cycle 1. {
-	   erewrite eval_expr_change_regs with (regs' := rs0) in E2; cycle 1. {
-	     eapply RegisterState.match_on_set_reg_elim.
-	     now disjoint_saturate.
-	   }
-	   congruence.
-	 }
-	 replace x1 with x0; cycle 1. {
-	   erewrite eval_expr_change_regs with (regs' := rs0) in E1; cycle 1. {
-	     eapply RegisterState.match_on_set_reg_elim.
-	     now disjoint_saturate.
-	   }
-	   congruence.
-	 }
-	 eapply set_reg_swap.
-	 now disjoint_saturate.
+           simp exec_module_item exec_statement in *; try discriminate.
+         simp module_item_writes module_item_reads statement_writes statement_reads expr_reads in *.
+         monad_inv.
+         f_equal.
+         replace x2 with x; cycle 1. {
+           erewrite eval_expr_change_regs with (regs' := rs0) in E2; cycle 1. {
+             eapply RegisterState.match_on_set_reg_elim.
+             now disjoint_saturate.
+           }
+           congruence.
+         }
+         replace x1 with x0; cycle 1. {
+           erewrite eval_expr_change_regs with (regs' := rs0) in E1; cycle 1. {
+             eapply RegisterState.match_on_set_reg_elim.
+             now disjoint_saturate.
+           }
+           congruence.
+         }
+         eapply set_reg_swap.
+         now disjoint_saturate.
        * exfalso.
          eapply exec_module_item_change_regs_none with (rs2:=rs0) in Eyx. { congruence. }
-	 symmetry.
-	 eapply exec_module_item_preserve; [apply disjoint_sym|eassumption].
-	 now disjoint_saturate.
+         symmetry.
+         eapply exec_module_item_preserve; [apply disjoint_sym|eassumption].
+         now disjoint_saturate.
        * exfalso.
          eapply exec_module_item_change_regs_none with (rs2:=rs0) in Exy. { congruence. }
-	 symmetry.
-	 eapply exec_module_item_preserve; [apply disjoint_sym|eassumption].
-	 now disjoint_saturate.
+         symmetry.
+         eapply exec_module_item_preserve; [apply disjoint_sym|eassumption].
+         now disjoint_saturate.
        * reflexivity.
      + destruct (exec_module_item rs0x y) as [rs0xy|] eqn:Exy; [|reflexivity].
        exfalso.
@@ -1058,9 +1160,9 @@ Module Equivalence.
       clean_left : clean_module v1;
       clean_right : clean_module v2;
       execution_match : forall e,
-	RegisterState.defined_value_for
+        RegisterState.defined_value_for
         (fun var => In var (Verilog.module_inputs v1 ++ Verilog.module_outputs v1)) e ->
-	(v1 ⇓ e <-> v2 ⇓ e)
+        (v1 ⇓ e <-> v2 ⇓ e)
     }.
 
   Infix "~~" := equivalent_behaviour (at level 20) : verilog.

@@ -1,4 +1,6 @@
 From vera Require Import Verilog.
+From vera Require VerilogSemantics.
+Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
 Import (coercions) SMT.
 From vera Require Import Common.
@@ -179,8 +181,8 @@ Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum
   let* inputs_same := mk_inputs_same (Verilog.module_inputs verilog1) nameMap in
   let* outputs_distinct := mk_outputs_distinct (Verilog.module_outputs verilog1) nameMap in
 
-  let* sortable1 := assert_dec (VerilogSort.vmodule_sortable verilog1) "Left verilog module is not sortable" in
-  let* sortable2 := assert_dec (VerilogSort.vmodule_sortable verilog2) "Right verilog module is not sortable" in
+  let* sortable1 := assert_dec (vmodule_sortable verilog1) "Left verilog module is not sortable" in
+  let* sortable2 := assert_dec (vmodule_sortable verilog2) "Right verilog module is not sortable" in
   let* prf1 := assert_dec _ "Unknown variables in inputs_same assertion" in
   let* prf2 := assert_dec _ "Unknown variables in outputs_distinct assertion" in
 

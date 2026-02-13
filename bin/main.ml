@@ -18,7 +18,7 @@ let sort_module_items m =
   let open Vera in
   let open Vera.Verilog in
   let inputs = module_inputs m in
-  match sort_module_items inputs m.modBody with
+  match Sort.sort_module_items inputs m.modBody with
   | None -> Inl (Util.string_to_lst "Sorting failed")
   | Some modBody -> Inr { m with modBody }
 
