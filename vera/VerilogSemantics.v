@@ -412,50 +412,29 @@ Export (notations) RegisterState.
 Module Sort.
   Import Verilog.
 
-  Section Ready.
-    Context (regs_ready : variable -> Prop).
-
-    Definition expr_is_ready {w} (e : expression w) : Prop :=
-      List.Forall regs_ready (expr_reads e).
-  
-    Definition statement_is_ready (s : statement) : Prop :=
-      List.Forall regs_ready (statement_reads s).
-
-    Definition module_item_is_ready (mi : module_item) : Prop :=
-      List.Forall regs_ready (module_item_reads mi).
-  End Ready.
-
-  Inductive module_items_sorted : list Verilog.module_item -> Prop :=
-    | module_items_sorted_nil : module_items_sorted []
-    | module_items_sorted_cons mi mis :
-      disjoint (Verilog.module_body_writes (mi :: mis)) (Verilog.module_item_reads mi) ->
-      module_items_sorted mis ->
-      module_items_sorted (mi :: mis)
+  Inductive module_items_sorted : list Verilog.variable -> list Verilog.module_item -> Prop :=
+    | module_items_sorted_nil vars : module_items_sorted vars []
+    | module_items_sorted_cons vars mi mis :
+      list_subset (module_item_reads mi) vars ->
+      disjoint (module_item_writes mi) vars ->
+      (* disjoint (Verilog.module_body_writes (mi :: mis)) (Verilog.module_item_reads mi) -> *)
+      module_items_sorted (Verilog.module_item_writes mi ++ vars) mis ->
+      module_items_sorted vars (mi :: mis)
   .
 
-  Global Instance dec_module_items_sorted ms : DecProp (module_items_sorted ms).
+  Global Instance dec_module_items_sorted vars ms : DecProp (module_items_sorted vars ms).
   Proof.
-    induction ms.
+    revert vars.
+    induction ms; intros vars.
     - left. constructor.
-    - destruct
-        (dec (disjoint (Verilog.module_body_writes (a :: ms)) (Verilog.module_item_reads a))),
-        IHms.
-      + left. constructor; assumption.
-      + right. inversion 1. crush.
-      + right. inversion 1. crush.
-      + right. inversion 1. crush.
+    - destruct (dec (list_subset (Verilog.module_item_reads a) vars));
+        [|right; inversion 1; crush].
+      destruct (dec (disjoint (Verilog.module_item_writes a) vars));
+        [|right; inversion 1; crush].
+      destruct (IHms (Verilog.module_item_writes a ++ vars));
+        [|right; inversion 1; crush].
+      left. constructor; auto.
   Defined.
-  
-  Equations sort_module_items_insert
-    (regs_ready : list variable)
-    (mi : module_item)(mis : list module_item)
-    : list module_item :=
-  sort_module_items_insert vars_ready mi mis with dec (module_item_is_ready (fun var => List.In var vars_ready) mi) :=
-    sort_module_items_insert vars_ready mi mis (left prf) := mi :: mis;
-    sort_module_items_insert vars_ready mi [] (right prf) := [mi];
-    sort_module_items_insert vars_ready mi (hd :: tl) (right prf) :=
-      hd :: sort_module_items_insert (module_item_writes hd ++ vars_ready) mi tl
-  .
   
   Record selection (l : list module_item) :=
     MkSelection {
@@ -466,11 +445,14 @@ Module Sort.
   
   Equations sort_module_items_select (vars_ready : list variable) (mis : list module_item) : option (selection mis) := {
     | vars_ready, [] => @None _
-    | vars_ready, hd :: tl with dec (module_item_is_ready (fun var => List.In var vars_ready) hd) => {
-      | left prf => Some (MkSelection (hd :: tl) hd tl _)
-      | right _ =>
+    | vars_ready, hd :: tl with
+      dec (list_subset (module_item_reads hd) vars_ready),
+      dec (disjoint (module_item_writes hd) vars_ready) => {
+      | right _, _ => None
+      | left _, right _ =>
           let* (MkSelection _ selected selected_tl _) := sort_module_items_select vars_ready tl in
           Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ )
+      | left prf1, left prf2 => Some (MkSelection (hd :: tl) hd tl _)
     }
   }.
   Next Obligation.
@@ -482,6 +464,7 @@ Module Sort.
     (vars_ready : list variable)
     (mis : list module_item)
     : option (list module_item) by wf (length mis) lt :=
+    sort_module_items vars_ready [] := Some [];
     sort_module_items vars_ready mis with (sort_module_items_select vars_ready mis) := {
       | None => None
       | Some (MkSelection _ ready rest _) with (sort_module_items (module_item_writes ready ++ vars_ready) rest) => {
@@ -492,21 +475,92 @@ Module Sort.
   .
   Next Obligation. apply_somewhere Permutation_length. simpl in *. lia. Qed.
   
-  Lemma sort_module_items_permutation mis1 : forall vars_ready mis2,
-    sort_module_items vars_ready mis1 = Some mis2 ->
-    Permutation mis1 mis2.
+  Lemma module_items_sorted_select inputs mi mis :
+    module_items_sorted inputs (mi :: mis) ->
+    sort_module_items_select inputs (mi :: mis) = Some (MkSelection _ mi mis (perm_skip mi (reflexivity mis))).
+  Proof.
+    intros Hsorted.
+    funelim (sort_module_items_select inputs (mi :: mis)); cbn in *.
+    - f_equal. f_equal. apply proof_irrelevance.
+    - inv Hsorted. contradiction.
+    - inv Hsorted. contradiction.
+  Qed.
+
+  Lemma module_items_select_ready vars mis mi rest wf :
+    sort_module_items_select vars mis = Some (MkSelection mis mi rest wf) ->
+    list_subset (module_item_reads mi) vars.
+  Proof.
+    intros H.
+    funelim (sort_module_items_select vars mis);
+      rewrite <- Heqcall in *; clear Heqcall.
+    - discriminate.
+    - inv H. assumption.
+    - monad_inv. eauto.
+    - discriminate.
+  Qed.
+
+  Lemma module_items_select_no_overwrite vars mis mi rest wf :
+    sort_module_items_select vars mis = Some (MkSelection mis mi rest wf) ->
+    disjoint (module_item_writes mi) vars.
+  Proof.
+    intros H.
+    funelim (sort_module_items_select vars mis);
+      rewrite <- Heqcall in *; clear Heqcall.
+    - discriminate.
+    - inv H. assumption.
+    - monad_inv. eauto.
+    - discriminate.
+  Qed.
+
+  Theorem sort_module_items_permutation body : forall vars_ready body',
+    sort_module_items vars_ready body = Some body' ->
+    Permutation body body'.
   Proof.
     intros.
-    funelim (sort_module_items vars_ready mis1);
-      rewrite <- Heqcall in *; clear Heqcall; try discriminate; [idtac].
-    inv H. etransitivity. { symmetry. eassumption. }
-    apply perm_skip. eapply Hind. eapply Heq.
+    funelim (sort_module_items vars_ready body);
+      rewrite <- Heqcall in *; clear Heqcall; try discriminate.
+    - inv H. reflexivity.
+    - inv H. etransitivity. { symmetry. eassumption. }
+      apply perm_skip. eapply Hind. eapply Heq.
+  Qed.
+
+  Theorem sort_module_items_sorted inputs body body':
+    sort_module_items inputs body = Some body' ->
+    module_items_sorted inputs body'.
+  Proof.
+    intros Hsort.
+    funelim (sort_module_items inputs body);
+      rewrite <- Heqcall in *; clear Heqcall.
+    - inv Hsort. constructor.
+    - discriminate.
+    - inv Hsort.
+      constructor.
+      + eapply module_items_select_ready. eassumption.
+      + eapply module_items_select_no_overwrite. eassumption.
+      + apply Hind. assumption.
+    - discriminate.
+  Qed.
+
+  Theorem sort_module_items_stable inputs body :
+    module_items_sorted inputs body ->
+    sort_module_items inputs body = Some body.
+  Proof.
+    intros Hsorted.
+    funelim (sort_module_items inputs body).
+    - reflexivity.
+    - rewrite module_items_sorted_select in Heq; crush.
+    - rewrite module_items_sorted_select in Heq0; [crush|].
+      inv Hsorted. inv Heq0.
+      rewrite Hind in Heq; crush.
+    - rewrite module_items_sorted_select in Heq0; [crush|].
+      inv Hsorted. inv Heq0.
+      rewrite Hind in Heq; crush.
   Qed.
   
   Definition vmodule_sortable (v : vmodule) : Prop :=
     exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted.
   
-  (* Checking that typeclasses eauto can indeed figure out DecProp (disjoint l r) *)
+  (* Checking that typeclasses eauto can indeed find this instance *)
   Goal (forall v, DecProp (vmodule_sortable v)). typeclasses eauto. Qed.
 End Sort.
 
@@ -514,29 +568,6 @@ Module CombinationalOnly.
   Export Sort.
 
   Definition Process := Verilog.module_item.
-
-  Section Sorted.
-    Inductive module_items_sorted : list Verilog.module_item -> Prop :=
-      | module_items_sorted_nil : module_items_sorted []
-      | module_items_sorted_cons mi mis :
-        disjoint (Verilog.module_body_writes (mi :: mis)) (Verilog.module_item_reads mi) ->
-	module_items_sorted mis ->
-        module_items_sorted (mi :: mis)
-    .
-
-    Global Instance dec_module_items_sorted ms : DecProp (module_items_sorted ms).
-    Proof.
-      induction ms.
-      - left. constructor.
-      - destruct
-          (dec (disjoint (Verilog.module_body_writes (a :: ms)) (Verilog.module_item_reads a))),
-	  IHms.
-        + left. constructor; assumption.
-	+ right. inversion 1. crush.
-	+ right. inversion 1. crush.
-	+ right. inversion 1. crush.
-    Defined.
-  End Sorted.
 
   Definition variable_names vars : list string :=
     map Verilog.varName vars.
