@@ -979,23 +979,11 @@ Module Facts.
     intros. induction e;
       simp eval_expr expr_reads in *;
       repeat setoid_rewrite in_app_iff;
-      monad_inv.
-    - edestruct IHe2; crush.
-    - edestruct IHe1; crush.
-    - edestruct IHe2; crush.
-    - edestruct IHe1; crush.
-    - edestruct IHe2; crush.
-    - edestruct IHe1; crush.
-    - edestruct IHe; crush.
-    - edestruct IHe3; crush.
-    - edestruct IHe2; crush.
-    - edestruct IHe1; crush.
-    - edestruct IHe2; crush.
-    - edestruct IHe1; crush.
-    - edestruct IHe2; crush.
-    - edestruct IHe1; crush.
-    - crush.
-    - edestruct IHe; crush.
+      monad_inv;
+      try match goal with
+      | [ H : None = None -> _ |- _ ] => edestruct H
+      end;
+      crush.
   Qed.
 
   Lemma exec_module_item_none_inv rs1 rs2 x mi :

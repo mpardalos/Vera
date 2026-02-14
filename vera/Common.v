@@ -77,14 +77,12 @@ Definition opt_prop {A} (p : A -> Prop) (o : option A) :=
 Instance dec_opt_prop {A P} {o : option A} `{(forall x, DecProp (P x))} : DecProp ( opt_prop P o ).
 Proof. destruct o; crush. Qed.
 
-Fixpoint map_opt {A B} (f : A -> option B) (lst : list A) : list B :=
-  match lst with
-  | [] => []
-  | (x :: xs) => match f x with
-               | None => map_opt f xs
-               | Some x' => x' :: map_opt f xs
-               end
-  end
+Equations map_opt {A B} (f : A -> option B) (lst : list A) : list B :=
+  map_opt f [] := [];
+  map_opt f (x :: xs) with f x := {
+    | None => map_opt f xs
+    | Some x' => x' :: map_opt f xs
+  }
 .
 
 Definition dupe {A} (x : A) := (x, x).

@@ -161,6 +161,22 @@ Variant bitwiseop :=
     ; varType := varDeclWidth decl
     |}.
 
+  Equations inputs_of_decls : list variable_declaration -> list variable := {
+    | [] => []
+    | d::ds with varDeclPort d => {
+      | Some PortIn => variable_of_decl d :: inputs_of_decls ds
+      | _ => inputs_of_decls ds
+    }
+  }.
+
+  Equations outputs_of_decls : list variable_declaration -> list variable := {
+    | [] => []
+    | d::ds with varDeclPort d => {
+      | Some PortOut => variable_of_decl d :: outputs_of_decls ds
+      | _ => outputs_of_decls ds
+    }
+  }.
+
 End VerilogCommon.
 
 Module Verilog.
@@ -213,29 +229,18 @@ Module Verilog.
   End Notations.
 
   Definition module_inputs (v : Verilog.vmodule) : list variable :=
-    map_opt
-      (fun decl =>
-         match varDeclPort decl with
-         | Some PortIn => Some (variable_of_decl decl)
-         | _ => None
-         end)
-      (modVariableDecls v).
+    inputs_of_decls (modVariableDecls v).
 
   Definition module_outputs (v : Verilog.vmodule) : list variable :=
-    map_opt
-      (fun decl =>
-         match varDeclPort decl with
-         | Some PortOut => Some (variable_of_decl decl)
-         | _ => None
-         end)
-      (modVariableDecls v).
+    outputs_of_decls (modVariableDecls v).
 
   Lemma module_input_in_vars v : forall var,
       List.In var (Verilog.module_inputs v) ->
       List.In var (Verilog.modVariables v).
   Proof.
     unfold Verilog.module_inputs, Verilog.modVariables.
-    induction (Verilog.modVariableDecls v); crush.
+    generalize (modVariableDecls v). intros decls var Hvar_in. 
+    funelim (inputs_of_decls decls); rewrite <- Heqcall in *; crush.
   Qed.
 
   Lemma module_outputs_in_vars v : forall var,
@@ -243,7 +248,8 @@ Module Verilog.
       List.In var (Verilog.modVariables v).
   Proof.
     unfold Verilog.module_outputs, Verilog.modVariables.
-    induction (Verilog.modVariableDecls v); crush.
+    generalize (modVariableDecls v). intros decls var Hvar_in. 
+    funelim (outputs_of_decls decls); rewrite <- Heqcall in *; crush.
   Qed.
 
   Definition var_names : list variable -> list name :=
@@ -342,29 +348,18 @@ Module RawVerilog.
     map variable_of_decl (modVariableDecls v).
 
   Definition module_inputs (v : vmodule) : list variable :=
-    map_opt
-      (fun decl =>
-         match varDeclPort decl with
-         | Some PortIn => Some (variable_of_decl decl)
-         | _ => None
-         end)
-      (modVariableDecls v).
+    inputs_of_decls (modVariableDecls v).
 
   Definition module_outputs (v : vmodule) : list variable :=
-    map_opt
-      (fun decl =>
-         match varDeclPort decl with
-         | Some PortOut => Some (variable_of_decl decl)
-         | _ => None
-         end)
-      (modVariableDecls v).
+    outputs_of_decls (modVariableDecls v).
 
   Lemma module_input_in_vars v : forall var,
       List.In var (module_inputs v) ->
       List.In var (modVariables v).
   Proof.
     unfold module_inputs, modVariables.
-    induction (modVariableDecls v); crush.
+    generalize (modVariableDecls v). intros decls var Hvar_in. 
+    funelim (inputs_of_decls decls); rewrite <- Heqcall in *; crush.
   Qed.
 
   Lemma module_outputs_in_vars v : forall var,
@@ -372,8 +367,10 @@ Module RawVerilog.
       List.In var (modVariables v).
   Proof.
     unfold module_outputs, modVariables.
-    induction (modVariableDecls v); crush.
+    generalize (modVariableDecls v). intros decls var Hvar_in. 
+    funelim (outputs_of_decls decls); rewrite <- Heqcall in *; crush.
   Qed.
+
 End RawVerilog.
 
 Module Typecheck.
