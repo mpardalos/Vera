@@ -49,7 +49,7 @@ Definition decls_find_internal_vars := List.filter
 	  | None => false
 	  end).
 
-Definition vmodule_drop_internal (m : vmodule) : string + vmodule :=
+Definition drop_internal (m : vmodule) : string + vmodule :=
   assert_dec (list_subset (module_body_reads (modBody m)) (module_inputs m))
     "Internal read remains in drop_internal";;
   assert_dec ((module_items_sorted (module_inputs m) (modBody m)))
@@ -104,12 +104,12 @@ Lemma exact_by_output_equality v1 v2:
   v1 ~~~ v2.
 Proof. Admitted.
 
-Theorem vmodule_drop_internal_correct v1 v2 :
-  vmodule_drop_internal v1 = inr v2 ->
+Theorem drop_internal_correct v1 v2 :
+  drop_internal v1 = inr v2 ->
   v1 ~~~ v2.
 Proof.
   intros H.
-  unfold vmodule_drop_internal in H.
+  unfold drop_internal in H.
   monad_inv.
   apply exact_by_output_equality.
   - symmetry. apply decls_drop_internal_keep_inputs.
