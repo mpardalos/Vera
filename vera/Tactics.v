@@ -222,3 +222,16 @@ Tactic Notation "expect" integer(n) :=
   tryif guard ng = n then idtac
   else fail 0 "Expected" n "goals but got" ng.
 
+Lemma not_in_app_iff A (x : A) l1 l2 : ~ List.In x (l1 ++ l2) <-> (~ List.In x l1 /\ ~ List.In x l2).
+Proof.
+  split; intros.
+  - split; intro contra; contradict H; apply List.in_app_iff; crush.
+  - destruct H as [H1 H2]. rewrite List.in_app_iff. intros []; contradiction.
+Qed.
+
+Ltac unpack_in :=
+  repeat match goal with
+         | [ H : ~ (List.In _ (_ ++ _)) |- _] => apply not_in_app_iff in H; destruct H
+         | [ H : (List.In _ (_ ++ _)) |- _] => apply List.in_app_iff in H; destruct H
+         | [ |- ~ List.In _ (_ ++ _) ] => apply not_in_app_iff; split
+	 end.

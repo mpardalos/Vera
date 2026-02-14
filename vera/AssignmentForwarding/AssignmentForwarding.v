@@ -72,22 +72,3 @@ Definition forward_assignments (m : vmodule) : string + vmodule :=
     modVariableDecls := modVariableDecls m;
     modBody := body
   |}.
-
-Equations target_pred : (variable -> bool) -> module_item -> bool := {
-| p, AlwaysComb (BlockingAssign (NamedExpression var) rhs) => p var
-| _, _ => false
-}.
-
-(* TODO: Handle decls, and do in separate pass *)
-(* TODO: also: deshittify *)
-Definition vmodule_drop_internal (m : vmodule) : vmodule := {|
-  modName := modName m;
-  modVariableDecls := List.filter
-   (fun d => match (varDeclPort d) with | Some _ => true | None => false end)
-   (modVariableDecls m);
-  modBody := List.filter
-    (target_pred
-      (fun var => List.anyb (fun var' => String.eqb (varName var) (varName var'))
-      (module_outputs m)))
-    (modBody m)
-|}.

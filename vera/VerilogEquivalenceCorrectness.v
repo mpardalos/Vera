@@ -294,15 +294,6 @@ Proof.
   reflexivity.
 Qed.
 
-(* TODO: This should be more general, or at least moved to Verilog.v *)
-Lemma module_output_in_vars v : forall var,
-  List.In var (Verilog.module_outputs v) ->
-  List.In var (Verilog.modVariables v).
-Proof.
-  unfold Verilog.module_outputs, Verilog.modVariables.
-  induction (Verilog.modVariableDecls v); crush.
-Qed.
-
 Lemma verilog_to_smt_outputs_have_values tag start v s ρ:
   VerilogToSMT.verilog_to_smt tag start v = inr s ->
   ρ ⊧ SMT.query s ->
@@ -313,7 +304,7 @@ Proof.
   monad_inv. simpl in *. intros [Hdecls Hassertions].
   intros.
   rewrite List.Forall_forall. intros var Hvar_in.
-  apply module_output_in_vars in Hvar_in.
+  apply Verilog.module_outputs_in_vars in Hvar_in.
   pose proof VerilogToSMTCorrect.declarations_satisfied_valuation_has_var as H.
   insterU H. destruct H as [smtName [bv [Ht Hρ]]].
   eauto.
@@ -670,7 +661,7 @@ Proof.
   rewrite ! List.Forall_forall.
   intros Hdisjoint Hdriven Houtput.
   edestruct Hdriven.
-  - eapply module_output_in_vars.
+  - eapply Verilog.module_outputs_in_vars.
     eassumption.
   - exfalso. crush.
   - assumption.

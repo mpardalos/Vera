@@ -21,7 +21,6 @@ Import FunctorNotation.
 
 From Equations Require Import Equations.
 From Stdlib Require Import Psatz.
-From Stdlib Require Import ssreflect.
 From Stdlib Require Import String.
 From Stdlib Require Import Logic.ProofIrrelevance.
 From Stdlib Require Import Arith.PeanoNat.
@@ -77,14 +76,12 @@ Definition opt_prop {A} (p : A -> Prop) (o : option A) :=
 Instance dec_opt_prop {A P} {o : option A} `{(forall x, DecProp (P x))} : DecProp ( opt_prop P o ).
 Proof. destruct o; crush. Qed.
 
-Fixpoint map_opt {A B} (f : A -> option B) (lst : list A) : list B :=
-  match lst with
-  | [] => []
-  | (x :: xs) => match f x with
-               | None => map_opt f xs
-               | Some x' => x' :: map_opt f xs
-               end
-  end
+Equations map_opt {A B} (f : A -> option B) (lst : list A) : list B :=
+  map_opt f [] := [];
+  map_opt f (x :: xs) with f x := {
+    | None => map_opt f xs
+    | Some x' => x' :: map_opt f xs
+  }
 .
 
 Definition dupe {A} (x : A) := (x, x).
@@ -561,6 +558,38 @@ Add Parametric Relation A :
   reflexivity proved by list_subset_refl
   transitivity proved by list_subset_trans
   as list_subset_rel.
+
+Global Instance Proper_list_subset_in A :
+  Proper (eq ==> list_subset ==> Basics.impl) (@In A).
+Proof.
+  repeat intro. subst.
+  unfold list_subset in *.
+  rewrite List.Forall_forall in *.
+  auto.
+Qed.
+
+Global Instance Proper_list_subset_disjoint A :
+  Proper (list_subset --> list_subset --> Basics.impl) (@disjoint A).
+Proof.
+  intros ? ? Hsub1 ? ? Hsub2 Hin. subst.
+  unfold Basics.flip, list_subset, disjoint in *.
+  rewrite ! Forall_forall in *.
+  crush.
+Qed.
+
+Lemma list_subset_app A (l1 l2 l3 : list A) :
+  list_subset (l1 ++ l2) l3 <->
+    (list_subset l1 l3 /\ list_subset l2 l3).
+Proof.
+ unfold list_subset. rewrite ! Forall_forall. setoid_rewrite in_app_iff.
+ crush.
+Qed.
+
+Ltac unpack_list_subset :=
+  repeat match goal with
+  | [ H : list_subset (_ ++ _) _ |- _ ] =>
+    apply list_subset_app in H; destruct H
+  end.
 
 Add Parametric Relation A :
   (list A) disjoint
