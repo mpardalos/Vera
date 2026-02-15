@@ -247,6 +247,13 @@ Definition all_vars_driven v :=
                List.In var (Verilog.module_body_writes (Verilog.modBody v)))
     (Verilog.modVariables v).
 
+Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
+  (l1 l2 : list A) (nodup1 : NoDup l1) : option (Permutation l1 l2) :=
+  match dec (length l2 <= length l1), dec (incl l1 l2) with
+  | left prf1, left prf2 => Some (NoDup_Permutation_bis nodup1 prf1 prf2)
+  | _, _ => None
+  end.
+
 Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smt_with_namemap :=
   assert_dec
     (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
@@ -255,15 +262,17 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
     (list_subset (Verilog.module_body_reads (Verilog.modBody vmodule)) (Verilog.module_inputs vmodule))
     "Read from non-module-input"%string ;;
   assert_dec (all_vars_driven vmodule) "Undriven variables"%string ;;
-  assert_dec
+  let* writes_nodup := assert_dec
     (NoDup (Verilog.module_body_writes (Verilog.modBody vmodule)))
-    "Duplicate writes"%string ;;
+    "Duplicate writes"%string in
   assert_dec
     (NoDup (Verilog.module_outputs vmodule))
     "Duplicate outputs"%string ;;
-  assert_dec
-    (Permutation (Verilog.module_body_writes (Verilog.modBody vmodule)) (Verilog.module_outputs vmodule))
-    "Non-output variables written to"%string ;;
+  opt_to_sum "Non-output variables written to"%string
+    (assert_permutation
+      (Verilog.module_body_writes (Verilog.modBody vmodule))
+      (Verilog.module_outputs vmodule)
+      writes_nodup ) ;;
   assert_dec
     (vmodule_sortable vmodule)
     "module is not sortable"%string ;;
