@@ -55,6 +55,13 @@ Instance dec_eq_string (x y : string) : DecProp (x = y) :=
 Instance dec_eq_nat (x y : nat) : DecProp (x = y) :=
   mk_dec_eq(Nat.eq_dec).
 
+Instance dec_le_nat (x y : nat) : DecProp (x <= y).
+Proof.
+  destruct (x <=? y) eqn:E.
+  - left. now apply Nat.leb_le in E.
+  - right. now apply Nat.leb_nle in E.
+Defined.
+
 Instance dec_eq_N (x y : N) : DecProp (x = y) :=
   mk_dec_eq(N.eq_dec).
 
@@ -191,14 +198,13 @@ Proof.
         firstorder; congruence.
 Qed.
 
-Instance dec_incl {A} `{forall (x y : A), DecProp (x = y)} (l1 l2 : list A): DecProp (incl l1 l2).
-Proof. Admitted.
-
-(* FIXME: This is missing assumptions, but it is checkable *)
-Instance dec_Permutation {A}
-  `{forall (x y : A), DecProp (x = y)}
-  (l1 l2 : list A) : DecProp (Permutation l1 l2).
-Proof. Admitted.
+Global Instance dec_incl {A} `{forall (x y : A), DecProp (x = y)} (l1 l2 : list A): DecProp (incl l1 l2).
+Proof.
+  unfold incl, DecProp.
+  destruct (dec (Forall (fun a => In a l2) l1)).
+  - left. rewrite <- Forall_forall. assumption.
+  - right. rewrite <- Forall_forall. assumption.
+Defined.
 
 Definition assert_dec {E} (P : Prop) `{ DecProp P } (err : E) : sum E P :=
   match dec P with
