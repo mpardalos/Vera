@@ -252,6 +252,16 @@ Module Verilog.
     funelim (outputs_of_decls decls); rewrite <- Heqcall in *; crush.
   Qed.
 
+  Lemma module_inputs_same v1 v2 :
+    modVariableDecls v1 = modVariableDecls v2 ->
+    module_inputs v1 = module_inputs v2.
+  Proof. unfold module_inputs. crush. Qed.
+
+  Lemma module_outputs_same v1 v2 :
+    modVariableDecls v1 = modVariableDecls v2 ->
+    module_outputs v1 = module_outputs v2.
+  Proof. unfold module_outputs. crush. Qed.
+
   Definition var_names : list variable -> list name :=
     map varName.
 

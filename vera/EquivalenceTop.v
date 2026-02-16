@@ -61,7 +61,16 @@ Local Open Scope verilog.
 Theorem sort_module_equivalent v1 v2 :
   sort_module v1 = inr v2 ->
   v1 ~~~ v2.
-Proof. Admitted.
+Proof.
+  unfold sort_module. intros H. monad_inv.
+  apply equal_exact_equivalence; try reflexivity; expect 1.
+  unfold run_vmodule. simpl.
+  unfold Verilog.module_inputs in *; simpl in *.
+  intros regs. rewrite E0.
+  rewrite sort_module_items_stable
+    by eauto using sort_module_items_sorted.
+  reflexivity.
+Qed.
 
 Lemma equivalence_query_clean_left v1 v2 smt :
   VerilogEquivalence.equivalence_query v1 v2 = inr smt ->

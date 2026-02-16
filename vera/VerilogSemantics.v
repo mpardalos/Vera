@@ -744,6 +744,16 @@ Module CombinationalOnly.
   Definition mk_initial_state (v : Verilog.vmodule) (regs : RegisterState.t) : RegisterState.t :=
     regs // Verilog.module_inputs v.
 
+  Lemma initial_state_same v1 v2 regs :
+    Verilog.modVariableDecls v1 = Verilog.modVariableDecls v2 ->
+    mk_initial_state v1 regs = mk_initial_state v2 regs.
+  Proof.
+    unfold mk_initial_state.
+    intros.
+    erewrite Verilog.module_inputs_same by eassumption.
+    reflexivity.
+  Qed.
+
   Definition run_vmodule (v : Verilog.vmodule) (inputs : RegisterState.t) : option RegisterState.t :=
     let* sorted := sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) in
     exec_module_body (mk_initial_state v inputs) sorted.
@@ -1300,6 +1310,22 @@ Module ExactEquivalence.
   Proof.
     repeat intro. subst.
     destruct H. auto.
+  Qed.
+
+  Lemma equal_exact_equivalence v1 v2 :
+    Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
+    Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
+    (forall regs, run_vmodule v1 regs = run_vmodule v2 regs) ->
+    v1 ~~~ v2.
+  Proof.
+    intros Hinputs Houtputs Hmatch.
+    constructor; try eassumption; expect 1.
+    intros regs.
+    unfold "⇓".
+    rewrite Hinputs.
+    rewrite Houtputs.
+    rewrite Hmatch.
+    reflexivity.
   Qed.
 
   Import Equivalence.

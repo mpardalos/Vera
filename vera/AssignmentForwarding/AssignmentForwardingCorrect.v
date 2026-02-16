@@ -249,26 +249,6 @@ Proof.
       rewrite Hrhs_in_vars. symmetry. apply Hno_overwrite.
 Qed.
 
-Lemma module_inputs_same v1 v2 :
-  modVariableDecls v1 = modVariableDecls v2 ->
-  module_inputs v1 = module_inputs v2.
-Proof. unfold module_inputs. crush. Qed.
-
-Lemma module_outputs_same v1 v2 :
-  modVariableDecls v1 = modVariableDecls v2 ->
-  module_outputs v1 = module_outputs v2.
-Proof. unfold module_outputs. crush. Qed.
-
-Lemma initial_state_same v1 v2 regs :
-  modVariableDecls v1 = modVariableDecls v2 ->
-  mk_initial_state v1 regs = mk_initial_state v2 regs.
-Proof.
-  unfold mk_initial_state.
-  intros.
-  erewrite module_inputs_same by eassumption.
-  reflexivity.
-Qed.
-
 Lemma forward_assignments_body_writes body body' :
   forward_assignments_body body = inr body' ->
   module_body_writes body' = module_body_writes body.
@@ -331,20 +311,6 @@ Proof.
      with (mk_initial_state v1 regs) by now apply initial_state_same.
   symmetry.
   eapply forward_assignments_body_correct; eassumption.
-Qed.
-
-Lemma equal_exact_equivalence v1 v2 :
-  module_inputs v1 = module_inputs v2 ->
-  module_outputs v1 = module_outputs v2 ->
-  (forall regs, run_vmodule v1 regs = run_vmodule v2 regs) ->
-  v1 ~~~ v2.
-Proof.
-  intros Hinputs Houtputs Hmatch.
-  constructor; try eassumption; expect 1.
-  intros regs.
-  unfold "⇓".
-  rewrite Hinputs, Houtputs, Hmatch.
-  reflexivity.
 Qed.
 
 Lemma assignment_forwarding_exact_equivalence v1 v2 :
