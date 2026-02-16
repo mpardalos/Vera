@@ -89,7 +89,32 @@ Lemma transfer_clean v1 v2 :
   v1 ~~~ v2 ->
   clean_module v1 ->
   clean_module v2.
-Proof. Admitted.
+Proof.
+  intros [Hinput_names Houtput_names Hequiv].
+  unfold clean_module.
+  rewrite <- Hinput_names, Houtput_names.
+  intros Hclean e Hinputs_defined.
+  specialize (Hclean e Hinputs_defined).
+  destruct Hclean as [e' [Hrun [Hinputs Houtputs_defined]]].
+  specialize (Hequiv e'). destruct Hequiv as [Hequiv _].
+  unfold "⇓" in Hequiv. edestruct Hequiv as [e'' [Hrun'' [Hinputs'' [Houtputs_defined'' Hmatch'']]]]; clear Hequiv. 
+  - exists e'. repeat split.
+    + setoid_rewrite <- Hinputs at 1.
+      apply Hrun.
+    + setoid_rewrite <- Hinputs. 
+      apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+      apply Hinputs_defined.
+    + apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+      rewrite <- Houtput_names in Houtputs_defined.
+      apply Houtputs_defined.
+  - symmetry in Hmatch''.
+    rewrite <- Hinput_names, <- Houtput_names in *.
+    RegisterState.unpack_match_on.
+    exists e''. repeat split.
+    + rewrite Hinputs at 1. apply Hrun''.
+    + transitivity e'; eassumption.
+    + rewrite <- H0. apply Houtputs_defined.
+Qed.
 
 Global Instance Proper_equivalent_behaviour_exact_equivalence :
   Proper
