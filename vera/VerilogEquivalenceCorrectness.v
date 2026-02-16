@@ -941,14 +941,39 @@ Lemma transfer_execution v e :
   clean_module v ->
   RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
   exists e', e =!!( Verilog.module_inputs v )!!= e' /\ v ⇓ e'.
-Proof. Admitted.
+Proof.
+  unfold clean_module.
+  intros Hclean Hinputs. specialize (Hclean _ Hinputs).
+  destruct Hclean as [e' [Hrun [Hmatch Houtputs]]].
+  exists e'. split.
+  - crush.
+  - unfold "⇓". exists e'. repeat split.
+    + setoid_rewrite <- Hmatch at 1.
+      apply Hrun.
+    + setoid_rewrite <- Hmatch. 
+      apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+      apply Hinputs.
+    + apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+      apply Houtputs.
+Qed.
 
 Lemma clean_defined_outputs v e :
   clean_module v ->
   v ⇓ e ->
   RegisterState.defined_value_for
+    (fun var : Verilog.variable => In var (Verilog.module_inputs v)) e ->
+  RegisterState.defined_value_for
     (fun var : Verilog.variable => In var (Verilog.module_outputs v)) e.
-Proof. Admitted.
+Proof.
+  unfold clean_module, "⇓".
+  intros Hclean [e' [Hrun [Hinputs_e' [Houtputs_e' Hmatch]]]] Hinputs. 
+  specialize (Hclean e). insterU Hclean.
+  destruct Hclean as [e'' [Hclean [Hmatch'' Houtputs_e'']]]. 
+  replace e'' with e' in * by congruence.
+  RegisterState.unpack_match_on.
+  rename_match (e' =( Verilog.module_outputs v )= e) into Hmatch_outputs.
+  rewrite <- Hmatch_outputs. assumption.
+Qed.
 
 Lemma execution_congruent v e1 e2 :
   v ⇓ e1 -> v ⇓ e2 ->
@@ -1021,7 +1046,9 @@ Proof.
       RegisterState.unpack_defined_value_for.
       - destruct H0. rewrite <- H0. assumption.
       - rewrite Houtput_match.
-        apply clean_defined_outputs; assumption.
+        apply clean_defined_outputs; try assumption; expect 1.
+	rewrite <- Hinput_match. destruct H0.
+	rewrite <- H0. assumption.
     }
     apply H3. apply execution_congruent.
     + assumption.
