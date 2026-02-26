@@ -329,13 +329,17 @@ Proof.
   constructor; try eassumption; expect 1.
   unfold "⇓". intros e. split; intros [e' [Hrun [Hhas_inputs [Hhas_outputs Hmatch_e]]]].
   - rewrite <- Heq_inputs. rewrite <- Heq_outputs.
-    specialize (Hmatch (e // module_inputs v1) ltac:(auto using has_value_for_limit_to_regs)).
+    specialize (Hmatch
+      (e // module_inputs v1)
+      ltac:(auto using RegisterState.has_value_for_limit_to_regs)).
     rewrite Hrun in Hmatch. inv Hmatch. eexists. repeat split.
     + assumption.
     + assumption.
     + transitivity e'; (symmetry + idtac); assumption.
   - rewrite <- Heq_inputs in *. rewrite <- Heq_outputs in *.
-    specialize (Hmatch (e // module_inputs v1) ltac:(auto using has_value_for_limit_to_regs)).
+    specialize (Hmatch
+      (e // module_inputs v1)
+      ltac:(auto using RegisterState.has_value_for_limit_to_regs)).
     rewrite Hrun in Hmatch. inv Hmatch. eexists. repeat split.
     + assumption.
     + assumption.
@@ -368,8 +372,8 @@ Proof.
       rewrite decls_drop_internal_keep_inputs in *.
       symmetry.
       RegisterState.unpack_match_on.
-      * apply has_value_for_limit_to_regs in H.
+      * apply RegisterState.has_value_for_limit_to_regs in H.
         eapply module_body_keep_vars_preserve; try eassumption.
-      * apply has_value_for_limit_to_regs in H.
+      * apply RegisterState.has_value_for_limit_to_regs in H.
         eapply module_body_keep_vars_correct; eassumption.
 Qed.

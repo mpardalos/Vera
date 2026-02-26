@@ -196,6 +196,10 @@ Module RegisterState.
     defined_value_for C2 e.
   Proof. unfold defined_value_for. crush. Qed.
 
+  Lemma defined_value_for_empty e :
+    defined_value_for (fun var => In var []) e.
+  Proof. unfold defined_value_for. crush. Qed.
+
   Ltac unpack_defined_value_for :=
     repeat match goal with
       | [ H: defined_value_for (fun _ => _ \/ _) _ |- _ ] =>
@@ -207,6 +211,8 @@ Module RegisterState.
           setoid_rewrite List.in_app_iff
       | [ |- defined_value_for (fun _ => _ \/ _) _ ] =>
           apply defined_value_for_split_iff; split
+      | [ |- defined_value_for (fun var => In var [] ) _ ] =>
+          apply defined_value_for_empty
       end.
 
   Definition match_on (C : Verilog.variable -> Prop) (e1 e2 : RegisterState.t) : Prop :=
@@ -499,6 +505,17 @@ Module RegisterState.
 
   Notation "st // regs" := (limit_to_regs regs st) (at level 20) : verilog.
 
+  Global Instance Proper_limit_to_regs regs :
+    Proper
+      (RegisterState.match_on (fun var => In var regs) ==> eq)
+      (RegisterState.limit_to_regs regs).
+  Proof.
+    repeat intro.
+    unfold "//", "_ =( _ )= _" in *.
+    apply functional_extensionality_dep. intro var.
+    autodestruct; eauto.
+  Qed.
+
   Lemma limit_to_regs_twice st regs :
     st // regs // regs = st // regs.
   Proof.
@@ -579,13 +596,37 @@ Module RegisterState.
 
   Lemma match_on_limit_to_regs_iff r1 r2 l :
     (r1 // l = r2 // l) <-> (r1 =( l )= r2).
-  Proof. Admitted.
+  Proof.
+    unfold "//", "_ =( _ )= _".
+    split.
+    - intros Heq var Hvar_in.
+      match type of Heq with
+      | ?f1' = ?f2' =>
+        remember f1' as f1;
+        remember f2' as f2;
+	assert (f1 var = f2 var) by now rewrite Heq
+      end.
+      subst.
+      autodestruct; crush.
+    - intros Heq.
+      apply functional_extensionality_dep.
+      intros var. specialize (Heq var).
+      autodestruct; crush.
+  Qed.
 
   Lemma has_value_for_limit_to_regs vars st :
     RegisterState.has_value_for (fun var => In var vars) st ->
     RegisterState.has_value_for (fun var => In var vars) (st // vars).
   Proof.
     unfold RegisterState.has_value_for, "//".
+    intros. autodestruct; crush.
+  Qed.
+
+  Lemma defined_value_for_limit_to_regs vars st :
+    RegisterState.defined_value_for (fun var => In var vars) st ->
+    RegisterState.defined_value_for (fun var => In var vars) (st // vars).
+  Proof.
+    unfold RegisterState.defined_value_for, "//".
     intros. autodestruct; crush.
   Qed.
 
@@ -620,6 +661,16 @@ Module RegisterState.
   Proof.
     unfold "_ =( _ )= _". intros var' Hvarin. inv Hvarin; [|crush].
     rewrite ! set_reg_get_in. crush.
+  Qed.
+
+  Lemma match_on_set_reg_elim_trans C var x regs1 regs2 :
+    ~ C var ->
+    regs1 ={ C }= regs2 ->
+    set_reg var x regs1 ={ C }= regs2.
+  Proof.
+    unfold "_ ={ _ }= _". intros HnC Hmatch var' HC.
+    erewrite set_reg_get_out by crush.
+    crush.
   Qed.
 
   Lemma match_on_set_reg_elim C var x regs :
@@ -1022,7 +1073,7 @@ Module CombinationalOnly.
       let* lhs_val := eval_expr regs lhs in
       let* rhs_val := eval_expr regs rhs in
       Some (eval_bitwiseop op lhs_val rhs_val);
-    eval_expr regs (Verilog.ShiftOp op lhs rhs) :=
+    eval_expr regs (Verilog.ShiftOp op lhs rhs _ _) :=
       let* lhs_val := eval_expr regs lhs in
       let* rhs_val := eval_expr regs rhs in
       Some (eval_shiftop op lhs_val rhs_val);
@@ -1031,11 +1082,14 @@ Module CombinationalOnly.
       let* tBranch_val := eval_expr regs tBranch in
       let* fBranch_val := eval_expr regs fBranch in
       Some (eval_conditional cond_val tBranch_val fBranch_val);
-    eval_expr regs (Verilog.BitSelect vec idx) :=
+    eval_expr regs (Verilog.BitSelect_width vec idx _) :=
       let* vec_val := eval_expr regs vec in
       let* idx_val := eval_expr regs idx in
       Some (select_bit vec_val idx_val);
-    eval_expr regs (Verilog.Resize t expr) :=
+    eval_expr regs (Verilog.BitSelect_const vec idx_val _) :=
+      let* vec_val := eval_expr regs vec in
+      Some (select_bit vec_val (XBV.from_bv idx_val));
+    eval_expr regs (Verilog.Resize t expr _) :=
       let* val := eval_expr regs expr in
       Some (convert t val);
     eval_expr regs (Verilog.Concatenation e1 e2) :=
@@ -1072,6 +1126,16 @@ Module CombinationalOnly.
 
   Definition mk_initial_state (v : Verilog.vmodule) (regs : RegisterState.t) : RegisterState.t :=
     regs // Verilog.module_inputs v.
+
+  Lemma initial_state_same v1 v2 regs :
+    Verilog.modVariableDecls v1 = Verilog.modVariableDecls v2 ->
+    mk_initial_state v1 regs = mk_initial_state v2 regs.
+  Proof.
+    unfold mk_initial_state.
+    intros.
+    erewrite Verilog.module_inputs_same by eassumption.
+    reflexivity.
+  Qed.
 
   Definition run_vmodule (v : Verilog.vmodule) (inputs : RegisterState.t) : option RegisterState.t :=
     let* sorted := sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) in
@@ -1126,6 +1190,330 @@ Module CombinationalOnly.
       (RegisterState.has_value_for (fun var => In var (Verilog.module_inputs v)) initial) ->
       exists final, run_vmodule v initial = Some final.
 End CombinationalOnly.
+
+Section ExpressionFacts.
+  Import CombinationalOnly.
+
+  Lemma bitwise_binop_no_exes (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
+    (forall (lb rb : bool), RawXBV.bool_to_bit (f_bool lb rb) = f_bit (RawXBV.bool_to_bit lb) (RawXBV.bool_to_bit rb)) ->
+    forall n (l_xbv r_xbv : XBV.xbv n) (l_bv r_bv : BV.bitvector n),
+      XBV.to_bv l_xbv = Some l_bv ->
+      XBV.to_bv r_xbv = Some r_bv ->
+      bitwise_binop f_bit l_xbv r_xbv = XBV.from_bv (BV.map2 f_bool l_bv r_bv).
+  Proof.
+    intros * Hf * Hl Hr.
+    unfold RawBV.bv_and.
+    pose proof (XBV.bv_xbv_inverse _ _ _ Hl) as Hl_inverse. subst l_xbv.
+    pose proof (XBV.bv_xbv_inverse _ _ _ Hr) as Hr_inverse. subst r_xbv.
+    clear Hl. clear Hr.
+    apply XBV.of_bits_equal; simpl.
+    destruct l_bv as [l_bv l_bv_wf].
+    destruct r_bv as [r_bv r_bv_wf].
+    simpl in *.
+    unfold bitwise_binop_raw.
+    generalize dependent n.
+    generalize dependent r_bv.
+    induction l_bv; simpl; simp map2; try easy.
+    destruct r_bv; simpl; simp map2; try easy.
+    specialize (IHl_bv r_bv).
+    intros.
+    simpl in *. f_equal.
+    - auto.
+    - unfold BVList.RAWBITVECTOR_LIST.size in *.
+      eapply IHl_bv; crush.
+  Qed.
+  
+  Lemma bitwise_and_no_exes :
+    forall w (l_xbv r_xbv : XBV.xbv w) (l_bv r_bv : BV.bitvector w),
+      XBV.to_bv l_xbv = Some l_bv ->
+      XBV.to_bv r_xbv = Some r_bv ->
+      bitwise_binop and_bit l_xbv r_xbv = XBV.from_bv (BV.bv_and l_bv r_bv).
+  Proof.
+    intros w [] [] [] [] Hl Hr.
+    etransitivity. {
+      apply bitwise_binop_no_exes with (f_bool:=andb); eauto.
+      intros [] []; crush.
+    }
+    f_equal. apply BV.of_bits_equal. simpl.
+    unfold BVList.RAWBITVECTOR_LIST.bv_and.
+    replace (BVList.RAWBITVECTOR_LIST.size bv1).
+    replace (BVList.RAWBITVECTOR_LIST.size bv2).
+    rewrite N.eqb_refl.
+    reflexivity.
+  Qed.
+  
+  Lemma bitwise_or_no_exes :
+    forall w (l_xbv r_xbv : XBV.xbv w) (l_bv r_bv : BV.bitvector w),
+      XBV.to_bv l_xbv = Some l_bv ->
+      XBV.to_bv r_xbv = Some r_bv ->
+      bitwise_binop or_bit l_xbv r_xbv = XBV.from_bv (BV.bv_or l_bv r_bv).
+  Proof.
+    intros w [] [] [] [] Hl Hr.
+    etransitivity. {
+      apply bitwise_binop_no_exes with (f_bool:=orb); try crush.
+      intros [] []; crush.
+    }
+    f_equal. apply BV.of_bits_equal. simpl.
+    unfold BVList.RAWBITVECTOR_LIST.bv_or.
+    replace (BVList.RAWBITVECTOR_LIST.size bv1).
+    replace (BVList.RAWBITVECTOR_LIST.size bv2).
+    rewrite N.eqb_refl.
+    reflexivity.
+  Qed.
+  
+  Definition select_bit_bv {w1 w2} (vec : BV.bitvector w1) (idx : BV.bitvector w2) : BV.bitvector 1 :=
+    BV.of_bits [BV.bitOf (N.to_nat (BV.to_N idx)) vec].
+  
+  Lemma select_bit_to_bv w_vec w_idx (vec : BV.bitvector w_vec) (idx : BV.bitvector w_idx) :
+    (BV.to_N idx < w_vec)%N ->
+    XBV.to_bv (select_bit (XBV.from_bv vec) (XBV.from_bv idx)) =
+      Some (select_bit_bv vec idx).
+  Proof.
+    intros H.
+    unfold select_bit, select_bit_bv.
+    rewrite XBV.to_N_from_bv.
+    rewrite XBV.bit_of_as_bv by lia.
+    generalize (BV.bitOf (n:=w_vec) (N.to_nat (BV.to_N idx)) vec). intro b.
+    apply XBV.to_bv_some_raw_iff.
+    simpl.
+    unfold RawXBV.to_bv. simpl.
+    rewrite RawXBV.bit_to_bool_inverse.
+    reflexivity.
+  Qed.
+  
+  Lemma value_bitvec_bits_equal n1 n2 bv1 bv2 :
+    BV.bits bv1 = BV.bits bv2 ->
+    SMTLib.Value_BitVec n1 bv1 = SMTLib.Value_BitVec n2 bv2.
+  Proof.
+    intros H.
+    destruct bv1 as [bv1 wf1], bv2 as [bv2 wf2]. cbn in *.
+    subst bv2.
+    assert (n1 = n2) by crush.
+    subst.
+    reflexivity.
+  Qed.
+  
+  Lemma eval_arithmeticop_to_bv op w (lhs rhs : BV.bitvector w) :
+    exists bv, XBV.to_bv (eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
+  Proof.
+    destruct op; simp eval_arithmeticop.
+    - funelim (bv_binop (BV.bv_add (n:=w)) (XBV.from_bv lhs) (XBV.from_bv rhs));
+        rewrite XBV.xbv_bv_inverse in *; crush.
+    - funelim (bv_binop (fun bvl bvr : BV.bitvector w => BV.bv_subt bvl bvr) (XBV.from_bv lhs) (XBV.from_bv rhs));
+        rewrite XBV.xbv_bv_inverse in *;
+        crush.
+    - funelim (bv_binop (BV.bv_mult (n:=w)) (XBV.from_bv lhs) (XBV.from_bv rhs));
+        rewrite XBV.xbv_bv_inverse in *;
+        crush.
+  Qed.
+  
+  Lemma eval_bitwiseop_to_bv op w (lhs rhs : BV.bitvector w) :
+    exists bv, XBV.to_bv (eval_bitwiseop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
+  Proof.
+    destruct op; simp eval_bitwiseop.
+    - (* andb *)
+      erewrite bitwise_and_no_exes;
+        try erewrite XBV.xbv_bv_inverse;
+        try crush.
+    - (* orb *)
+      erewrite bitwise_or_no_exes;
+        try erewrite XBV.xbv_bv_inverse;
+        try crush.
+  Qed.
+  
+  Lemma eval_shiftop_to_bv op w1 w2 (lhs : BV.bitvector w1) (rhs : BV.bitvector w2) :
+    exists bv, XBV.to_bv (eval_shiftop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
+  Proof.
+    destruct op; simp eval_shiftop.
+    - (* shift right *)
+      rewrite XBV.to_N_from_bv.
+      simpl.
+      rewrite XBV.shr_to_bv.
+      eauto.
+    - (* shift left *)
+      rewrite XBV.to_N_from_bv.
+      simpl.
+      rewrite XBV.shl_to_bv.
+      eauto.
+    - (* shift left (arithmetic) *)
+      rewrite XBV.to_N_from_bv.
+      simpl.
+      rewrite XBV.shl_to_bv.
+      eauto.
+  Qed.
+  
+  Lemma eval_arithmeticop_no_exes op w (lhs rhs : BV.bitvector w) :
+    exists bv, eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
+  Proof.
+    edestruct eval_arithmeticop_to_bv as [bv Hbv].
+    exists bv.
+    apply XBV.bv_xbv_inverse in Hbv.
+    crush.
+  Qed.
+  
+  Lemma eval_bitwiseop_no_exes op w (lhs rhs : BV.bitvector w) :
+    exists bv, eval_bitwiseop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
+  Proof.
+    edestruct eval_bitwiseop_to_bv as [bv Hbv].
+    exists bv.
+    apply XBV.bv_xbv_inverse in Hbv.
+    crush.
+  Qed.
+  
+  Lemma eval_shiftop_no_exes op w1 w2 (lhs : BV.bitvector w1) (rhs : BV.bitvector w2) :
+    exists bv, eval_shiftop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
+  Proof.
+    edestruct eval_shiftop_to_bv as [bv Hbv].
+    exists bv.
+    apply XBV.bv_xbv_inverse in Hbv.
+    crush.
+  Qed.
+  
+  Lemma eval_unop_to_bv op w (e : BV.bitvector w) :
+    exists bv, XBV.to_bv (eval_unaryop op (XBV.from_bv e)) = Some bv.
+  Proof.
+    destruct op; simp eval_unaryop.
+    - rewrite XBV.xbv_bv_inverse. eauto.
+  Qed.
+  
+  Lemma eval_unop_no_exes op w (e : BV.bitvector w) :
+    exists bv, eval_unaryop op (XBV.from_bv e) = XBV.from_bv bv.
+  Proof.
+    edestruct eval_unop_to_bv as [bv Hbv].
+    exists bv.
+    apply XBV.bv_xbv_inverse in Hbv.
+    crush.
+  Qed.
+  
+  Lemma eval_conditional_no_exes w_cond w (cond : BV.bitvector w_cond) (ifT ifF : BV.bitvector w) :
+    exists bv, eval_conditional (XBV.from_bv cond) (XBV.from_bv ifT) (XBV.from_bv ifF) = XBV.from_bv bv.
+  Proof.
+    unfold eval_conditional.
+    rewrite XBV.xbv_bv_inverse.
+    crush.
+  Qed.
+
+  Lemma select_bit_no_exes:
+    forall (w_val w_sel : N) (vec : BV.bitvector w_val) (idx : BV.bitvector w_sel),
+      (BV.to_N idx < w_val)%N ->
+      select_bit (XBV.from_bv vec) (XBV.from_bv idx) = XBV.from_bv (select_bit_bv vec idx).
+  Proof.
+    intros.
+    eapply XBV.to_bv_injective.
+    - apply select_bit_to_bv.
+      assumption.
+    - apply XBV.xbv_bv_inverse.
+  Qed.
+
+  Import SigTNotations.
+  Import EqNotations. 
+
+  Equations convert_bv {from} (to : N) (value : BV.bitvector from) : BV.bitvector to :=
+    convert_bv to value with dec (from < to)%N := {
+      | left Hlt => rew _ in BV.bv_concat (BV.zeros (to - from)%N) value
+      | right Hge with dec (from > to)%N => {
+        | left Hgr => BV.bv_extr 0 to value;
+        | right Hle => rew _ in value
+        }
+      }.
+  Next Obligation. lia. Defined.
+  Next Obligation. lia. Defined.
+  
+  Lemma convert_no_exes w_from w_to (from : BV.bitvector w_from) :
+    convert w_to (XBV.from_bv from) = XBV.from_bv (convert_bv w_to from).
+  Proof.
+    funelim (convert w_to (XBV.from_bv from));
+      try destruct_rew; clear Heqcall.
+    - rewrite XBV.zeros_from_bv.
+      rewrite XBV.concat_no_exes. simpl.
+      funelim (convert_bv (to - from + from) from0); [|lia|lia].
+      clear Heqcall.
+      apply XBV.of_bits_equal.
+      destruct_rew.
+      repeat f_equal.
+      crush.
+    - rewrite XBV.extr_no_exes by crush.
+      funelim (convert_bv to from0); [lia| |lia].
+      reflexivity.
+    - funelim (convert_bv from from0); [lia|lia|].
+      now rewrite <- eq_rect_eq.
+  Qed.
+  
+  Lemma convert_from_bv w_from w_to (from : BV.bitvector w_from) :
+    exists bv : BV.bitvector w_to, XBV.to_bv (convert w_to (XBV.from_bv from)) = Some bv.
+  Proof.
+    funelim (convert w_to (XBV.from_bv from));
+      try destruct_rew; try rewrite <- Heqcall; clear Heqcall; simpl.
+    - rewrite XBV.zeros_from_bv, XBV.concat_to_bv.
+      eauto.
+    - rewrite XBV.extr_no_exes by crush.
+      rewrite XBV.xbv_bv_inverse.
+      eauto.
+    - rewrite XBV.xbv_bv_inverse.
+      eauto.
+  Qed.
+  
+  Lemma eval_expr_defined w regs e :
+      RegisterState.defined_value_for (fun v => List.In v (Verilog.expr_reads e)) regs ->
+      exists bv, eval_expr (w:=w) regs e = Some (XBV.from_bv bv).
+  Proof.
+    induction e; intros * Hdefined;
+      simp eval_expr expr_reads in *;
+      simpl in *; monad_inv;
+      RegisterState.unpack_defined_value_for;
+      repeat match goal with
+        | [ IH : context[RegisterState.defined_value_for _ _ -> exists _, _] |- _ ] =>
+            let IH' := fresh "IH" in
+            edestruct IH as [? IH']; eauto; clear IH; inv IH'
+        end.
+    - (* arithmeticop *)
+      edestruct eval_arithmeticop_no_exes as [bv Hbv].
+      exists bv. now rewrite Hbv.
+    - (* bitwiseop *)
+      edestruct eval_bitwiseop_no_exes as [bv Hbv].
+      exists bv. now rewrite Hbv.
+    - (* shiftop *)
+      edestruct eval_shiftop_no_exes as [bv Hbv].
+      exists bv. now erewrite Hbv.
+    - (* unop *)
+      edestruct eval_unop_no_exes as [bv Hbv].
+      exists bv. now rewrite Hbv.
+    - (* conditional *)
+      edestruct eval_conditional_no_exes as [bv Hbv].
+      exists bv. now rewrite Hbv.
+    - (* bit select (in bounds by literal) *)
+      rewrite select_bit_no_exes by assumption.
+      eauto.
+    - (* bit select (in bounds by literal) *)
+      rewrite select_bit_no_exes; cycle 1. {
+        pose proof (BV.to_N_max_bound _ x1).
+        lia.
+      }
+      eauto.
+    - (* concat *)
+      rewrite XBV.concat_no_exes.
+      eauto.
+    - (* literal *)
+      eauto.
+    - (* variable *)
+      eauto.
+    - rewrite convert_no_exes.
+      eauto.
+  Qed.
+  
+  Lemma eval_expr_no_exes w regs e :
+    forall xbv,
+      RegisterState.defined_value_for (fun v => List.In v (Verilog.expr_reads e)) regs ->
+      eval_expr (w:=w) regs e = Some xbv ->
+      exists bv, XBV.to_bv xbv = Some bv.
+  Proof.
+    intros * Hdefined Heval.
+    pose proof eval_expr_defined as Hto_bv. insterU Hto_bv. destruct Hto_bv as [bv Hto_bv].
+    rewrite Heval in Hto_bv. inv Hto_bv.
+    rewrite XBV.xbv_bv_inverse. eauto.
+  Qed.
+  
+End ExpressionFacts.
 
 Module Facts.
   Import CombinationalOnly.
@@ -1422,13 +1810,13 @@ Module Facts.
     exec_module_body regs1 body =?( Verilog.module_body_reads body )?= exec_module_body regs2 body.
   Proof. auto using exec_module_body_change_preserve. Qed.
 
-  Lemma exec_module_body_preserve mi regs regs' l :
-    disjoint l (Verilog.module_body_writes mi) ->
-    exec_module_body regs mi = Some regs' ->
+  Lemma exec_module_body_preserve body regs regs' l :
+    disjoint l (Verilog.module_body_writes body) ->
+    exec_module_body regs body = Some regs' ->
     regs =( l )= regs'.
   Proof.
     intros Hdisjoint Hexec.
-    funelim (exec_module_body regs mi);
+    funelim (exec_module_body regs body);
       rewrite <- Heqcall in *; clear Heqcall;
       simp module_body_writes expr_reads in *;
       try discriminate; try (some_inv; reflexivity); expect 1.
@@ -1609,6 +1997,82 @@ Module Clean.
     - left. constructor; assumption.
   Qed.
 
+  Definition clean_module_body inputs body := forall e,
+    RegisterState.defined_value_for (fun var => In var inputs) e ->
+          (* Runs to completion *)
+    exists e', exec_module_body (e // inputs) body = Some e'
+          (* Does not overwrite its inputs *)
+        /\ e =( inputs )= e'
+          (* Produces defined outputs*)
+        /\ RegisterState.defined_value_for (fun var => In var (Verilog.module_body_writes body)) e'.
+
+  Lemma clean_module_body_statically inputs body :
+    Forall clean_module_item_structure body ->
+    disjoint (Verilog.module_body_writes body) inputs ->
+    NoDup (Verilog.module_body_writes body) ->
+    list_subset (Verilog.module_body_reads body) inputs ->
+    (* module_items_sorted inputs body -> *)
+    clean_module_body inputs body.
+  Proof.
+    unfold clean_module_body.
+    induction body;
+      intros * Hstructure Hio_disjoint Hnodup_writes Hreads_in_inputs e Hdefined.
+    - simp exec_module_body module_body_reads module_body_writes in *. eexists. repeat split.
+      + apply RegisterState.match_on_limit_to_regs_iff.
+        now rewrite RegisterState.limit_to_regs_twice.
+      + apply RegisterState.defined_value_for_empty.
+    - simp exec_module_body module_body_writes module_body_reads in *.
+      inversion Hstructure as [|? ? Hstructure' ?]. subst. clear Hstructure. inv Hstructure'.
+      simp module_item_writes statement_writes
+           module_item_reads statement_reads expr_reads
+	   exec_module_item exec_statement
+	 in *.
+      cbn ["++"] in *.
+      disjoint_saturate. unpack_list_subset.
+      insterU IHbody.
+      destruct IHbody as [e' [Hexec_body [Hbody_match_inputs Hbody_defined_outputs]]].
+      simpl.
+      destruct (eval_expr_defined _ (e // inputs) rhs) as [bv Heval];
+        expect 2.
+      {
+        setoid_rewrite H1.
+	apply RegisterState.defined_value_for_limit_to_regs.
+	assumption.
+      }
+      rewrite Heval.
+      unshelve (epose proof
+        (Facts.exec_module_body_change_regs body (RegisterState.set_reg var (XBV.from_bv bv) (e // inputs)) (e // inputs) _) as Hexec_body_match); expect 2. {
+        setoid_rewrite H2.
+	apply RegisterState.match_on_set_reg_elim. assumption.
+      }
+      rewrite Hexec_body in Hexec_body_match. inv Hexec_body_match.
+      assert (e =( inputs )= x). {
+        transitivity (RegisterState.set_reg var (XBV.from_bv bv) (e // inputs)). {
+          symmetry.
+	  eapply RegisterState.match_on_set_reg_elim_trans; [assumption|].
+	  eapply RegisterState.match_on_limit_to_regs_iff.
+	  eapply RegisterState.limit_to_regs_twice.
+        }
+        apply Facts.exec_module_body_preserve with (body:=body); expect 2;
+	  [symmetry; assumption|].
+	symmetry. assumption.
+      }
+      eexists. repeat match goal with [ |- _ /\ _ ] => split end.
+      + reflexivity.
+      + assumption.
+      + RegisterState.unpack_defined_value_for; expect 2; cycle 1. {
+          rename_match (x =( module_body_writes body )= e') into Hmatch_writes.
+          now rewrite Hmatch_writes.
+        }
+        unfold RegisterState.defined_value_for. intros var' ?. subst var'.
+	exists bv.
+	enough (x =( [var] )= RegisterState.set_reg var (XBV.from_bv bv) (e // inputs)) as Hmatch_var.
+	* specialize (Hmatch_var var).  rewrite Hmatch_var by crush. apply RegisterState.set_reg_get_in.
+	* symmetry.
+          apply Facts.exec_module_body_preserve with (body:=body); [now constructor|].
+	  symmetry. assumption.
+  Qed.
+
   Definition clean_module v := forall e,
     RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
           (* Runs to completion *)
@@ -1618,15 +2082,42 @@ Module Clean.
           (* Produces defined outputs*)
         /\ RegisterState.defined_value_for (fun var => In var (Verilog.module_outputs v)) e'.
 
+  Lemma clean_module_body_module v :
+    Permutation (module_body_writes (modBody v)) (module_outputs v) ->
+    module_items_sorted (module_inputs v) (modBody v) ->
+    clean_module_body (module_inputs v) (modBody v) ->
+    clean_module v.
+  Proof.
+    unfold clean_module, clean_module_body.
+    intros Hwrites Hsorted Hclean e Hdefined. specialize (Hclean e Hdefined).
+    unfold run_vmodule.
+    rewrite sort_module_items_stable by assumption.
+    simpl. unfold mk_initial_state. rewrite RegisterState.limit_to_regs_twice.
+    setoid_rewrite <- Hwrites.
+    apply Hclean.
+  Qed.
+
   Lemma clean_module_statically v :
     Forall clean_module_item_structure (Verilog.modBody v) ->
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
     NoDup (Verilog.module_body_writes (Verilog.modBody v)) ->
     list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v) ->
     Permutation (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v) ->
-    (exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted) ->
+    module_items_sorted (module_inputs v) (modBody v) ->
     clean_module v.
-  Proof. Admitted.
+  Proof.
+    intros ? ? ? ? Hwrites_outputs_perm ?.
+    apply clean_module_body_module.
+    - assumption.
+    - assumption.
+    - apply clean_module_body_statically.
+      + assumption.
+      + symmetry. rewrite Hwrites_outputs_perm. assumption.
+      + assumption.
+      + assumption.
+  Qed.
+
+  Print Assumptions clean_module_statically.
 End Clean.
 
 Module Equivalence.
@@ -1758,6 +2249,22 @@ Module ExactEquivalence.
   Proof.
     repeat intro. subst.
     destruct H. auto.
+  Qed.
+
+  Lemma equal_exact_equivalence v1 v2 :
+    Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
+    Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
+    (forall regs, run_vmodule v1 regs = run_vmodule v2 regs) ->
+    v1 ~~~ v2.
+  Proof.
+    intros Hinputs Houtputs Hmatch.
+    constructor; try eassumption; expect 1.
+    intros regs.
+    unfold "⇓".
+    rewrite Hinputs.
+    rewrite Houtputs.
+    rewrite Hmatch.
+    reflexivity.
   Qed.
 
   Import Equivalence.

@@ -903,17 +903,6 @@ Qed.
 
 Local Open Scope verilog.
 
-Global Instance Proper_limit_to_regs regs :
-  Proper
-    (RegisterState.match_on (fun var => In var regs) ==> eq)
-    (RegisterState.limit_to_regs regs).
-Proof.
-  repeat intro.
-  unfold "//", "_ =( _ )= _" in *.
-  apply functional_extensionality_dep. intro var.
-  autodestruct; eauto.
-Qed.
-
 Global Instance Proper_valid_execution v :
   Proper
     (RegisterState.match_on (fun var => In var (Verilog.module_inputs v ++ Verilog.module_outputs v)) ==> iff)
@@ -941,14 +930,39 @@ Lemma transfer_execution v e :
   clean_module v ->
   RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
   exists e', e =!!( Verilog.module_inputs v )!!= e' /\ v ⇓ e'.
-Proof. Admitted.
+Proof.
+  unfold clean_module.
+  intros Hclean Hinputs. specialize (Hclean _ Hinputs).
+  destruct Hclean as [e' [Hrun [Hmatch Houtputs]]].
+  exists e'. split.
+  - crush.
+  - unfold "⇓". exists e'. repeat split.
+    + setoid_rewrite <- Hmatch at 1.
+      apply Hrun.
+    + setoid_rewrite <- Hmatch. 
+      apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+      apply Hinputs.
+    + apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+      apply Houtputs.
+Qed.
 
 Lemma clean_defined_outputs v e :
   clean_module v ->
   v ⇓ e ->
   RegisterState.defined_value_for
+    (fun var : Verilog.variable => In var (Verilog.module_inputs v)) e ->
+  RegisterState.defined_value_for
     (fun var : Verilog.variable => In var (Verilog.module_outputs v)) e.
-Proof. Admitted.
+Proof.
+  unfold clean_module, "⇓".
+  intros Hclean [e' [Hrun [Hinputs_e' [Houtputs_e' Hmatch]]]] Hinputs. 
+  specialize (Hclean e). insterU Hclean.
+  destruct Hclean as [e'' [Hclean [Hmatch'' Houtputs_e'']]]. 
+  replace e'' with e' in * by congruence.
+  RegisterState.unpack_match_on.
+  rename_match (e' =( Verilog.module_outputs v )= e) into Hmatch_outputs.
+  rewrite <- Hmatch_outputs. assumption.
+Qed.
 
 Lemma execution_congruent v e1 e2 :
   v ⇓ e1 -> v ⇓ e2 ->
@@ -1021,7 +1035,9 @@ Proof.
       RegisterState.unpack_defined_value_for.
       - destruct H0. rewrite <- H0. assumption.
       - rewrite Houtput_match.
-        apply clean_defined_outputs; assumption.
+        apply clean_defined_outputs; try assumption; expect 1.
+	rewrite <- Hinput_match. destruct H0.
+	rewrite <- H0. assumption.
     }
     apply H3. apply execution_congruent.
     + assumption.
@@ -1289,7 +1305,7 @@ Record verilog_to_smt_checked (v : Verilog.vmodule) := MkVerilogToSMTChecked {
     no_duplicate_outputs : NoDup (Verilog.module_outputs v);
     writes_outputs : Permutation (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v);
     all_module_items_clean : Forall clean_module_item_structure (Verilog.modBody v);
-    sortable : vmodule_sortable v;
+    sorted : module_items_sorted (Verilog.module_inputs v) (Verilog.modBody v);
 }.
 
 Lemma verilog_to_smt_checks tag start v smt :
@@ -1298,7 +1314,7 @@ Lemma verilog_to_smt_checks tag start v smt :
 Proof.
   intros H.
   unfold VerilogToSMT.verilog_to_smt in H. monad_inv.
-  constructor; assumption.
+  constructor; try assumption.
 Qed.
 
 Record equivalence_query_checked (v1 v2 : Verilog.vmodule) := MkEquivalenceQueryChecked {
@@ -1324,7 +1340,7 @@ Lemma verilog_to_smt_clean tag start v smt :
   clean_module v.
 Proof.
   intros H. eapply verilog_to_smt_checks in H. destruct H.
-  apply clean_module_statically; eassumption.
+  apply clean_module_statically; try eassumption.
 Qed.
 
 Theorem equivalence_query_unsat_correct v1 v2 smt :
@@ -1398,58 +1414,3 @@ Proof.
       rewrite in_app_iff in Hvar_in.
       destruct Hvar_in; auto using Verilog.module_input_in_vars, Verilog.module_outputs_in_vars.
 Qed.
-
-Theorem assignment_forwarding_equivalent_behaviour v v' : 
-  AssignmentForwarding.forward_assignments v = inr v' ->
-  v ~~ v'.
-Proof. Admitted.
-
-Theorem equivalence_query_general_unsat_correct v1 v2 smt :
-  equivalence_query_general v1 v2 = inr smt ->
-  (forall ρ, ~ satisfied_by ρ (SMT.query smt)) ->
-  equivalent_behaviour v1 v2.
-Proof.
-  unfold equivalence_query_general.
-  intros. monad_inv.
-  transitivity v. {
-    apply assignment_forwarding_equivalent_behaviour. assumption.
-  }
-  symmetry. transitivity v0. {
-    apply assignment_forwarding_equivalent_behaviour. assumption.
-  } symmetry.
-  eapply equivalence_query_unsat_correct; eassumption.
-Qed.
-
-Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
-  equivalence_query_general v1 v2 = inr smt ->
-  satisfied_by ρ (SMT.query smt) ->
-  exists e1 e2, counterexample_execution v1 e1 v2 e2.
-Proof.
-  unfold equivalence_query_general.
-  intros Hquery Hsat. monad_inv.
-  rename_match (AssignmentForwarding.forward_assignments v1 = inr _) into Hforward1.
-  rename_match (AssignmentForwarding.forward_assignments v2 = inr _) into Hforward2.
-  rename_match (equivalence_query _ _ = inr _) into Hquery.
-  destruct (equivalence_query_checks v v0 smt)
-    as [[? [? [? ?]]] [? [? [? ?]]] [] [] inputs_match outputs_match];
-    [assumption|].
-  edestruct (assignment_forwarding_equivalent_behaviour v1 v); [eassumption|].
-  edestruct (assignment_forwarding_equivalent_behaviour v2 v0); [eassumption|].
-
-  apply not_equivalent_counterexample_iff; [congruence|congruence|assumption|assumption|].
-  intro Hequiv.
-  eapply equivalence_query_sat_correct in Hquery; [|eassumption].
-  assert (equivalent_behaviour v v0) as Hequiv0. {
-    etransitivity. {
-      symmetry. apply assignment_forwarding_equivalent_behaviour. apply Hforward1.
-    }
-    etransitivity. { apply Hequiv. }
-    apply assignment_forwarding_equivalent_behaviour. apply Hforward2.
-  } contradict Hequiv0.
-
-  apply not_equivalent_counterexample_iff; [congruence|congruence|assumption|assumption|].
-  eexists. eexists. apply Hquery.
-Qed.
-
-Print Assumptions equivalence_query_general_unsat_correct.
-Print Assumptions equivalence_query_general_sat_correct.

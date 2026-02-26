@@ -33,13 +33,14 @@ Section inline_one.
     (* These just walk the tree *)
     | ArithmeticOp op lhs rhs => ArithmeticOp op (apply_substitution_expr lhs) (apply_substitution_expr rhs)
     | BitwiseOp op lhs rhs => (BitwiseOp op (apply_substitution_expr lhs) (apply_substitution_expr rhs))
-    | ShiftOp op lhs rhs => (ShiftOp op (apply_substitution_expr lhs) (apply_substitution_expr rhs))
+    | ShiftOp op lhs rhs _ _ => (ShiftOp op (apply_substitution_expr lhs) (apply_substitution_expr rhs) _ _)
     | UnaryOp p e => (UnaryOp p (apply_substitution_expr e))
     | Conditional cond ifT ifF => (Conditional (apply_substitution_expr cond) (apply_substitution_expr ifT) (apply_substitution_expr ifF))
-    | BitSelect vec idx => BitSelect (apply_substitution_expr vec) (apply_substitution_expr idx)
+    | BitSelect_width vec idx _ => BitSelect_width (apply_substitution_expr vec) (apply_substitution_expr idx) _
+    | BitSelect_const vec idx _ => BitSelect_const (apply_substitution_expr vec) idx _
     | Concatenation lhs rhs => (Concatenation (apply_substitution_expr lhs) (apply_substitution_expr rhs))
     | IntegerLiteral _ val => IntegerLiteral _ val
-    | Resize to e => (Resize to (apply_substitution_expr e))
+    | Resize to e _ => (Resize to (apply_substitution_expr e) _)
     }.
 
   Equations

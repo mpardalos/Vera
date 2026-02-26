@@ -152,13 +152,14 @@ Section expr_to_smt.
       let* lhs_smt := expr_to_smt lhs in
       let* rhs_smt := expr_to_smt rhs in
       bitwiseop_to_smt op lhs_smt rhs_smt;
-    expr_to_smt (Verilog.ShiftOp op lhs rhs) :=
+    expr_to_smt (Verilog.ShiftOp op lhs rhs _ _) :=
       let* lhs_smt_short := expr_to_smt lhs in
       let* rhs_smt_short := expr_to_smt rhs in
       let lhs_width := Verilog.expr_type lhs in
       let rhs_width := Verilog.expr_type rhs in
-      assert_dec (lhs_width > 0)%N "0 width"%string ;;
-      assert_dec (rhs_width > 0)%N "0 width"%string ;;
+      (* Added to syntax *)
+      (* assert_dec (lhs_width > 0)%N "0 width"%string ;;
+       * assert_dec (rhs_width > 0)%N "0 width"%string ;; *)
       let op_width := N.max lhs_width rhs_width in
       let lhs_smt := cast_from_to lhs_width op_width lhs_smt_short in
       let rhs_smt := cast_from_to rhs_width op_width rhs_smt_short in
@@ -174,17 +175,20 @@ Section expr_to_smt.
       let* ifT_smt := expr_to_smt ifT in
       let* ifF_smt := expr_to_smt ifF in
       ret (conditional_to_smt cond_type cond_smt ifT_smt ifF_smt);
-    expr_to_smt (Verilog.BitSelect vec idx) :=
+    expr_to_smt (Verilog.BitSelect_width vec idx _) :=
       let t_vec := Verilog.expr_type vec in
       let t_idx := Verilog.expr_type idx in
-      let* inb := assert_dec (statically_in_bounds t_vec idx) "Cannot statically determine if index is in bounds"%string in
       let* vec_smt := expr_to_smt vec in
       let* idx_smt := expr_to_smt idx in
       ret (smt_select_bit t_vec vec_smt t_idx idx_smt);
-    expr_to_smt (Verilog.Resize to expr) :=
+    expr_to_smt (@Verilog.BitSelect_const _ t_idx vec idx _) :=
+      let t_vec := Verilog.expr_type vec in
+      let* vec_smt := expr_to_smt vec in
+      let idx_smt := SMTLib.Term_BVLit t_idx idx in
+      ret (smt_select_bit t_vec vec_smt t_idx idx_smt);
+    expr_to_smt (Verilog.Resize to expr _) :=
       let from := Verilog.expr_type expr in
       let* expr_smt := expr_to_smt expr in
-      assert_dec (to > 0)%N "Resize to 0 is not allowed"%string;;
       ret (cast_from_to from to expr_smt);
     expr_to_smt (Verilog.IntegerLiteral w val) :=
       ret (SMTLib.Term_BVLit w val);
@@ -274,11 +278,13 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
       (Verilog.module_outputs vmodule)
       writes_nodup ) ;;
   assert_dec
-    (vmodule_sortable vmodule)
-    "module is not sortable"%string ;;
-  assert_dec
     (Forall clean_module_item_structure (Verilog.modBody vmodule))
     "Invalid module item"%string ;;
+  (* This is implied by the above, so it could be removed, added to
+  void writing a proof. *)
+  assert_dec
+    (module_items_sorted (Verilog.module_inputs vmodule) (Verilog.modBody vmodule))
+    "Module items unsorted"%string ;;
   let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
   let* nameMap := mk_bijection name_tag var_assignment in
   let* assertions :=

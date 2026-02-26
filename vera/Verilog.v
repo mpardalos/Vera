@@ -186,18 +186,72 @@ Module Verilog.
   Instance dec_eq_variable (x y : variable) : DecProp (x = y) :=
     mk_dec_eq.
 
+  (* Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=
+   *   match expr with
+   *   | Verilog.IntegerLiteral _ val => Some val
+   *   | _ => None
+   *   end.
+   * 
+   * Definition statically_in_bounds {w} (max_val : N) (expr : Verilog.expression w) : Prop :=
+   *   opt_prop (fun v => (BV.to_N v) < max_val)%N (static_value expr) \/ ((2 ^ w) < max_val)%N. *)
+
+  (* Need to use these in the definition of expression below, but it created a cycle.
+     Can we define mutually inductive/recursive datatypes/functions?
+     We should probably define it as an inductive instead
+
+     Inductive statically_in_bounds (max_val : N) (expr : Verilog.expresssion w) : Prop
+     | statically_in_bounds_size :
+       (2 ^ w < max_val)%N -> statically_in_bounds max_val expr
+     | statically_in_bounds_constant :
+       (BV.to_N bv < max_val)%N -> statically_in_bounds max_val (IntegerLiteral w bv)
+
+     but how to define this mutually with expression? if I just add it in a `with` clause I get
+
+       Parameters should be syntactically the same for each inductive type.
+       Type "expression" has no parameters
+       but type "statically_in_bounds" has parameters
+       "(max_val : N) (expr : Verilog.expresssion w)".
+
+     and even if I try to eliminate the parameters like this:
+
+       with statically_in_bounds : N -> expression 1 -> Prop :=
+          | statically_in_bounds_size :
+            (2 ^ w < max_val)%N -> statically_in_bounds max_val expr
+          | statically_in_bounds_constant :
+            (BV.to_N bv < max_val)%N -> statically_in_bounds max_val (IntegerLiteral w bv)
+
+     I get:
+       
+       The reference expression was not found in the current environment.
+   *)
+
   Inductive expression : N -> Type :=
   | ArithmeticOp {w} (op : arithmeticop) : expression w -> expression w -> expression w
   | BitwiseOp {w} (op : bitwiseop) : expression w -> expression w -> expression w
-  | ShiftOp {w1 w2} (op : shiftop) : expression w1 -> expression w2 -> expression w1
+  | ShiftOp {w1 w2}
+    (op : shiftop)
+    (lhs : expression w1)
+    (rhs : expression w2)
+    (wf_lhs : (w1 > 0)%N)
+    (wf_rhs : (w2 > 0)%N)
+    : expression w1
   | UnaryOp {w} (op : unaryop) : expression w -> expression w
   | Conditional {w_val w_cond : N} : expression w_cond -> expression w_val -> expression w_val -> expression w_val
-  | BitSelect {w_val w_sel} : expression w_val -> expression w_sel -> expression 1
+  | BitSelect_const {w_val w_sel}
+    (val : expression w_val)
+    (sel : BV.bitvector w_sel)
+    (wf : (BV.to_N sel < w_val)%N)
+    : expression 1
+  | BitSelect_width {w_val w_sel}
+    (val : expression w_val)
+    (sel : expression w_sel)
+    (wf : (2 ^ w_sel < w_val)%N)
+    : expression 1
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
   | IntegerLiteral (w : N) : BV.bitvector w -> expression w
   | NamedExpression (var : Verilog.variable) : expression (Verilog.varType var)
-  | Resize {w_from} (w_to : N) : expression w_from -> expression w_to
+  | Resize {w_from} (w_to : N) (from : expression w_from) (wf : (w_to > 0)%N) : expression w_to
   .
 
   Definition expr_type {w} (e : expression w) := w.
@@ -252,6 +306,16 @@ Module Verilog.
     funelim (outputs_of_decls decls); rewrite <- Heqcall in *; crush.
   Qed.
 
+  Lemma module_inputs_same v1 v2 :
+    modVariableDecls v1 = modVariableDecls v2 ->
+    module_inputs v1 = module_inputs v2.
+  Proof. unfold module_inputs. crush. Qed.
+
+  Lemma module_outputs_same v1 v2 :
+    modVariableDecls v1 = modVariableDecls v2 ->
+    module_outputs v1 = module_outputs v2.
+  Proof. unfold module_outputs. crush. Qed.
+
   Definition var_names : list variable -> list name :=
     map varName.
 
@@ -263,13 +327,15 @@ Module Verilog.
       expr_reads lhs ++ expr_reads rhs ;
     expr_reads (Verilog.BitwiseOp op lhs rhs) :=
       expr_reads lhs ++ expr_reads rhs ;
-    expr_reads (Verilog.ShiftOp op lhs rhs) :=
+    expr_reads (Verilog.ShiftOp op _ _ lhs rhs) :=
       expr_reads lhs ++ expr_reads rhs ;
     expr_reads (Verilog.Conditional cond tBranch fBranch) :=
       expr_reads cond ++ expr_reads tBranch ++ expr_reads fBranch ;
-    expr_reads (Verilog.BitSelect vec idx) :=
+    expr_reads (Verilog.BitSelect_width vec idx _) :=
       expr_reads vec ++ expr_reads idx;
-    expr_reads (Verilog.Resize t expr) :=
+    expr_reads (Verilog.BitSelect_const vec idx _) :=
+      expr_reads vec;
+    expr_reads (Verilog.Resize t expr _) :=
       expr_reads expr;
     expr_reads (Verilog.Concatenation e1 e2) :=
       expr_reads e1 ++ expr_reads e2 ;
@@ -399,8 +465,10 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   inr (_; Verilog.BitwiseOp op t_lhs t_rhs')
 | RawVerilog.ShiftOp op lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
+  let* wf_lhs := assert_dec (w_lhs > 0)%N "0 width not allowed in shift"%string in
   let* (w_rhs; t_rhs) := tc_expr rhs in
-  inr (_; Verilog.ShiftOp op t_lhs t_rhs)
+  let* wf_rhs := assert_dec (w_rhs > 0)%N "0 width not allowed in shift"%string in
+  inr (_; Verilog.ShiftOp op t_lhs t_rhs wf_lhs wf_rhs)
 | RawVerilog.UnaryOp op expr =>
   let* (w_expr; t_expr) := tc_expr expr in
   inr (_; Verilog.UnaryOp op t_expr)
@@ -412,21 +480,30 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   inr (_; Verilog.Conditional t_cond t_ifTrue t_ifFalse')
 | RawVerilog.BitSelect vec idx =>
   let* (w_vec; t_vec) := tc_expr vec in
-  let* (w_idx; t_idx) := tc_expr idx in
-  inr (_; Verilog.BitSelect t_vec t_idx)
+  match idx with
+  | RawVerilog.IntegerLiteral lit =>
+    let* wf := assert_dec
+      (BV.to_N (BV.of_bits lit) < w_vec)%N
+      "bit-select index out of bounds"%string in
+    inr (1%N; Verilog.BitSelect_const t_vec (BV.of_bits lit) wf)
+  | _ =>
+    let* (w_idx; t_idx) := tc_expr idx in
+    let* wf := assert_dec _ "bit-select index out of bounds"%string in
+    inr (1%N; Verilog.BitSelect_width t_vec t_idx wf)
+  end
 | RawVerilog.Concatenation lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
-  inr (_; Verilog.BitSelect t_lhs t_rhs)
+  inr (_; Verilog.Concatenation t_lhs t_rhs)
 | RawVerilog.IntegerLiteral bits =>
   inr (_; Verilog.IntegerLiteral _ (BV.of_bits bits))
 | RawVerilog.NamedExpression var =>
   inr (_; Verilog.NamedExpression var)
 | RawVerilog.Resize to expr =>
   let* (w_expr; t_expr) := tc_expr expr in
-  inr (_; Verilog.Resize to t_expr)
+  let* wf := assert_dec (to > 0)%N "Cannot resize to 0"%string in
+  inr (_; Verilog.Resize to t_expr wf)
 }.
-
 
 Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
 | RawVerilog.BlockingAssign lhs rhs =>

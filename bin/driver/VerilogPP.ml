@@ -147,8 +147,10 @@ module Typed = struct
     | Verilog.UnaryOp (_, e) ->
         (* fprintf fmt "( %a@ %a )" unaryop op expression e *)
         fprintf fmt "( +@ %a )" expression e
-    | Verilog.BitSelect (_, _, target, index) ->
+    | Verilog.BitSelect_width (_, _, target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
+    | Verilog.BitSelect_const (_, w_index, target, index) ->
+        fprintf fmt "%a[%a]" expression target expression (Verilog.IntegerLiteral (w_index, index))
     | Verilog.Concatenation (_, _, lhs, rhs) ->
         fprintf fmt "{%a %a}" expression lhs expression rhs
     | Verilog.Conditional (_, _, cond, t, f) ->
