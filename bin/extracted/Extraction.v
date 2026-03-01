@@ -48,6 +48,7 @@ Extraction "Vera.ml"
   Verilog.Typecheck.tc_vmodule
   VerilogToSMT.expr_to_smt
   AssignmentForwarding.forward_assignments
+  DropInternal.drop_internal
   VerilogSemantics.Sort.sort_module_items
   (* Common.NameMap *)
   .

@@ -30,16 +30,20 @@ let inlined_module_of_file f =
   let* m = typed_module_of_file f in
   Vera.forward_assignments m
 
+let internals_dropped_of_file f =
+  let* m = inlined_module_of_file f in
+  Vera.drop_internal m
+
 let smt_of_file filename =
   (* Need to tag it as left or right, doesn't matter here because we only
       translate one module *)
   Vera.verilog_to_smt VerilogLeft (Vera.int_to_nat 0)
-  =<< inlined_module_of_file filename
+  =<< internals_dropped_of_file filename
 
 let compare solver filename1 filename2 =
   let queryResult =
-    let* m1 = inlined_module_of_file filename1 in
-    let* m2 = inlined_module_of_file filename2 in
+    let* m1 = internals_dropped_of_file filename1 in
+    let* m2 = internals_dropped_of_file filename2 in
     Vera.equivalence_query m1 m2
   in
   match queryResult with
@@ -72,6 +76,8 @@ let rec lower level filename =
       display_or_error VerilogPP.Typed.vmodule (inlined_module_of_file filename)
   | `Sorted ->
       display_or_error VerilogPP.Typed.vmodule (sorted_module_of_file filename)
+  | `InternalsDropped ->
+      display_or_error VerilogPP.Typed.vmodule (internals_dropped_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
   | `All ->
       printf "\n-- parsed -- \n";
