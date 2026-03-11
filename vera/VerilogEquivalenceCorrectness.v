@@ -1077,49 +1077,44 @@ Definition match_map_execution tag (m : VerilogSMTBijection.t) (e : execution) :
   forall var,
     (exists smtName, m (tag, var) = Some smtName) <-> (exists xbv, e var = Some xbv).
 
-Lemma execution_of_valuation_inverse_left (m : VerilogSMTBijection.t) var e1 e2 :
-  RegisterState.defined_value_for (fun var => exists n, m (TaggedVariable.VerilogLeft, var) = Some n) e1 ->
-  (exists n, m (TaggedVariable.VerilogLeft, var) = Some n) ->
-  SMT.execution_of_valuation TaggedVariable.VerilogLeft m (SMT.valuation_of_executions m e1 e2) var =
-    e1 var.
+
+Lemma execution_of_valuation_left_match_on (m : VerilogSMTBijection.t) e1 e2 l :
+  RegisterState.defined_value_for (fun var => In var l) e1 ->
+  SMT.match_map_vars TaggedVariable.VerilogLeft m l ->
+  SMT.execution_of_valuation TaggedVariable.VerilogLeft m
+    (SMT.valuation_of_executions m e1 e2) =( l )= e1.
 Proof.
   unfold SMT.execution_of_valuation, SMT.valuation_of_executions.
-  intros Hdefined Hexists.
-  unfold RegisterState.defined_value_for in Hdefined.
-  insterU Hdefined.
-  destruct Hexists as [n Hm].
-  rewrite Hm.
-  rewrite VerilogSMTBijection.bij_wf in Hm.
-  rewrite Hm.
-  rewrite <- VerilogSMTBijection.bij_wf in Hm.
-
-  edestruct Hdefined as [bv Hbv]. clear Hdefined.
+  (* intros Hdefined Hexists var Hvar_in. *)
+  intros Hdefined Hmatch var Hvar_in.
+  pose proof Hvar_in as H.
+  apply Hmatch in H. destruct H as [smtName HsmtName].
+  rewrite HsmtName.
+  rewrite VerilogSMTBijection.bij_wf in HsmtName.
+  rewrite HsmtName.
+  apply Hdefined in Hvar_in. destruct Hvar_in as [bv Hbv].
   rewrite Hbv, XBV.xbv_bv_inverse.
-
   autodestruct; [|contradiction].
   rewrite <- eq_rect_eq.
   reflexivity.
 Qed.
 
-Lemma execution_of_valuation_inverse_right (m : VerilogSMTBijection.t) var e1 e2 :
-  RegisterState.defined_value_for (fun var => exists n, m (TaggedVariable.VerilogRight, var) = Some n) e2 ->
-  (exists n, m (TaggedVariable.VerilogRight, var) = Some n) ->
-  SMT.execution_of_valuation TaggedVariable.VerilogRight m (SMT.valuation_of_executions m e1 e2) var =
-    e2 var.
+Lemma execution_of_valuation_right_match_on (m : VerilogSMTBijection.t) e1 e2 l :
+  RegisterState.defined_value_for (fun var => In var l) e2 ->
+  SMT.match_map_vars TaggedVariable.VerilogRight m l ->
+  SMT.execution_of_valuation TaggedVariable.VerilogRight m
+    (SMT.valuation_of_executions m e1 e2) =( l )= e2.
 Proof.
   unfold SMT.execution_of_valuation, SMT.valuation_of_executions.
-  intros Hdefined Hexists.
-  unfold RegisterState.defined_value_for in Hdefined.
-  insterU Hdefined.
-  destruct Hexists as [n Hm].
-  rewrite Hm.
-  rewrite VerilogSMTBijection.bij_wf in Hm.
-  rewrite Hm.
-  rewrite <- VerilogSMTBijection.bij_wf in Hm.
-
-  edestruct Hdefined as [bv Hbv]. clear Hdefined.
+  (* intros Hdefined Hexists var Hvar_in. *)
+  intros Hdefined Hmatch var Hvar_in.
+  pose proof Hvar_in as H.
+  apply Hmatch in H. destruct H as [smtName HsmtName].
+  rewrite HsmtName.
+  rewrite VerilogSMTBijection.bij_wf in HsmtName.
+  rewrite HsmtName.
+  apply Hdefined in Hvar_in. destruct Hvar_in as [bv Hbv].
   rewrite Hbv, XBV.xbv_bv_inverse.
-
   autodestruct; [|contradiction].
   rewrite <- eq_rect_eq.
   reflexivity.
@@ -1317,20 +1312,26 @@ Proof.
   constructor; try assumption.
 Qed.
 
-Record equivalence_query_checked (v1 v2 : Verilog.vmodule) := MkEquivalenceQueryChecked {
+Record equivalence_query_checked (v1 v2 : Verilog.vmodule) smt := MkEquivalenceQueryChecked {
   verilog_to_smt_eqn1 : exists tag start smt, VerilogToSMT.verilog_to_smt tag start v1 = inr smt;
   verilog_to_smt_eqn2 : exists tag start smt, VerilogToSMT.verilog_to_smt tag start v2 = inr smt;
   verilog_to_smt_checked1 : verilog_to_smt_checked v1;
   verilog_to_smt_checked2 : verilog_to_smt_checked v2;
+  map_match_left : SMT.match_map_vars
+    TaggedVariable.VerilogLeft (SMT.nameMap smt) (Verilog.modVariables v1);
+  map_match_right : SMT.match_map_vars
+    TaggedVariable.VerilogRight (SMT.nameMap smt) (Verilog.modVariables v2);
   inputs_match : Verilog.module_inputs v1 = Verilog.module_inputs v2;
   outputs_match : Verilog.module_outputs v1 = Verilog.module_outputs v2;
 }.
 
 Lemma equivalence_query_checks v1 v2 smt :
   equivalence_query v1 v2 = inr smt ->
-  equivalence_query_checked v1 v2.
+  equivalence_query_checked v1 v2 smt.
 Proof.
   intros H.
+  epose proof (equivalence_query_map_match_left _ _ _ ltac:(eauto)).
+  epose proof (equivalence_query_map_match_right _ _ _ ltac:(eauto)).
   unfold equivalence_query in H. monad_inv.
   constructor; eauto using verilog_to_smt_checks.
 Qed.
@@ -1343,6 +1344,49 @@ Proof.
   apply clean_module_statically; try eassumption.
 Qed.
 
+Lemma inputs_outputs_subset v :
+  list_subset
+    (Verilog.module_inputs v ++ Verilog.module_outputs v)
+    (Verilog.modVariables v).
+Proof.
+  apply list_subset_app. unfold list_subset. rewrite ! Forall_forall.
+  split.
+  - apply Verilog.module_input_in_vars.
+  - apply Verilog.module_outputs_in_vars.
+Qed.
+
+Lemma equivalence_query_unsat_no_counterexample v1 v2 smt :
+  equivalence_query v1 v2 = inr smt ->
+  (forall ρ, ~ satisfied_by ρ (SMT.query smt)) ->
+  (forall e1 e2, ~ counterexample_execution v1 e1 v2 e2).
+Proof.
+  intros Hquery Hunsat e1 e2 Hcounterexample.
+  destruct (equivalence_query_checks v1 v2 smt)
+    as [[? [? [? ?]]] [? [? [? ?]]] [] [] ? ? inputs_match outputs_match];
+    [assumption|].
+  eapply Hunsat with (ρ := SMT.valuation_of_executions (SMT.nameMap smt) e1 e2).
+  eapply equivalence_query_execution_spec; eauto.
+  erewrite
+    counterexample_execution_rewrite_left,
+    counterexample_execution_rewrite_right.
+  - eassumption.
+  - eassumption.
+  - eassumption.
+  - setoid_rewrite inputs_outputs_subset.
+    eapply execution_of_valuation_right_match_on; [|assumption].
+    (* defined_value_for right-tagged vars *)
+    destruct Hcounterexample as [? [? [[Hinputs_match Hinputs_defined] ?]]].
+    eapply valid_execution_all_vars_defined; eauto.
+    setoid_rewrite Hinputs_match in Hinputs_defined.
+    rewrite inputs_match in Hinputs_defined.
+    apply Hinputs_defined.
+  - setoid_rewrite inputs_outputs_subset.
+    eapply execution_of_valuation_left_match_on; [|assumption].
+    (* defined_value_for left-tagged vars *)
+    destruct Hcounterexample as [? [? [[Hinputs_match Hinputs_defined] ?]]].
+    eapply valid_execution_all_vars_defined; eauto.
+Qed.
+
 Theorem equivalence_query_unsat_correct v1 v2 smt :
   equivalence_query v1 v2 = inr smt ->
   (forall ρ, ~ satisfied_by ρ (SMT.query smt)) ->
@@ -1353,64 +1397,5 @@ Proof.
     as [[? [? [? ?]]] [? [? [? ?]]] [] [] inputs_match outputs_match];
     [assumption|].
   apply no_counterexample_equivalent_iff; eauto using verilog_to_smt_clean.
-  intros e1 e2 Hcounterexample.
-  remember (SMT.valuation_of_executions (SMT.nameMap smt) e1 e2) as ρ.
-  (* assert (VerilogSort.vmodule_sortable v1). {
-   *   unfold equivalence_query in *. monad_inv. assumption.
-   * }
-   * assert (VerilogSort.vmodule_sortable v2). {
-   *   unfold equivalence_query in *. monad_inv. assumption.
-   * } *)
-  erewrite
-    <- counterexample_execution_rewrite_left,
-    <- counterexample_execution_rewrite_right
-    in Hcounterexample.
-  - eapply Hunsat with (ρ := ρ).
-    subst ρ.
-    eapply equivalence_query_execution_spec; eauto.
-  - assumption.
-  - assumption.
-  - intros var Hvar_in.
-    pose proof equivalence_query_map_match_right as Hmatch.
-    insterU Hmatch. unfold SMT.match_map_vars in Hmatch.
-    eapply execution_of_valuation_inverse_right.
-    + (* defined_value_for right-tagged vars *)
-      eapply RegisterState.defined_value_for_impl; [apply Hmatch|].
-      unfold equivalence_query in Hquery. monad_inv. simpl in *.
-      eapply valid_execution_all_vars_defined; cycle 1.
-      * unfold counterexample_execution in Hcounterexample.
-        decompose record Hcounterexample. assumption.
-      * unfold counterexample_execution in Hcounterexample.
-        decompose record Hcounterexample.
-        eapply defined_match_on_defined_value_right.
-        rewrite <- inputs_match.
-	decompose_all_records.
-	split; [now apply H2|].
-	apply execution_of_valuation_all_defined.
-        apply valid_execution_has_value_for_inputs.
-        assumption.
-      * eassumption.
-    + eapply Hmatch.
-      rewrite in_app_iff in Hvar_in.
-      destruct Hvar_in; auto using Verilog.module_input_in_vars, Verilog.module_outputs_in_vars.
-  - intros var Hvar_in.
-    pose proof equivalence_query_map_match_left as Hmatch.
-    insterU Hmatch. unfold SMT.match_map_vars in Hmatch.
-    eapply execution_of_valuation_inverse_left.
-    + (* defined_value_for left-tagged vars *)
-      eapply RegisterState.defined_value_for_impl; [apply Hmatch|].
-      unfold equivalence_query in Hquery. monad_inv. simpl in *.
-      eapply valid_execution_all_vars_defined; cycle 1.
-      * unfold counterexample_execution in Hcounterexample.
-        decompose record Hcounterexample. assumption.
-      * unfold counterexample_execution in Hcounterexample.
-        decompose record Hcounterexample.
-        eapply defined_match_on_defined_value_right.
-	decompose_all_records.
-	split; [symmetry; now eapply H2|].
-	destruct H2. rewrite <- H2. assumption.
-      * eassumption.
-    + eapply Hmatch.
-      rewrite in_app_iff in Hvar_in.
-      destruct Hvar_in; auto using Verilog.module_input_in_vars, Verilog.module_outputs_in_vars.
+  eapply equivalence_query_unsat_no_counterexample; eauto.
 Qed.
