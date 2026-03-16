@@ -70,7 +70,7 @@ let parse_port json : port =
   { direction; name }
 
 let type_regexp =
-  Str.regexp {|\(logic\|reg\)\( signed\)?\[\([0-9]+\):\([0-9]+\)\]|}
+  Str.regexp {|\(logic\|reg\)\( signed\)?\(\[\([0-9]+\):\([0-9]+\)\]\)?|}
 
 let read_type_as_vector str =
   if Str.string_match type_regexp str 0 then
@@ -80,8 +80,11 @@ let read_type_as_vector str =
         true
       with Not_found -> false
     in
-    let hi = int_of_string (Str.matched_group 3 str) in
-    let lo = int_of_string (Str.matched_group 4 str) in
+    let (hi, lo) =
+      try
+        ( int_of_string (Str.matched_group 4 str),
+          int_of_string (Str.matched_group 5 str) )
+      with Not_found -> (0, 0) in
     if is_signed then
       failwith (Printf.sprintf "Signed types not implemented (Got '%s')" str)
     else Vera.RawVerilog.Vector (hi, lo)
