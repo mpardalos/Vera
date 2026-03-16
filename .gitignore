@@ -2,3 +2,5 @@
 /_build/
 .lia.cache
 /test/out/
+vera_query.smt
+*.ast.json

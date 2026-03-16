@@ -199,7 +199,8 @@ let read_binary_op = function
 
 let read_unary_op = function
   (* | "BitwiseNot" -> Vera.RawVerilog.UnaryNegation *)
-  | str -> raise (SlangUnexpectedValue ("unary operator", str))
+  | _ -> raise (Failure "Unary operators not supported")
+  (* raise (SlangUnexpectedValue ("unary operator", str)) *)
 
 let read_name str = Scanf.sscanf str "%d %s" (fun _ n -> n)
 
@@ -256,7 +257,7 @@ let rec parse_expression json =
       | `Bitwise op -> Vera.RawVerilog.BitwiseOp (op, lhs, rhs)
       | `Shift op -> Vera.RawVerilog.ShiftOp (op, lhs, rhs))
   | "UnaryOp" ->
-      (* let op = json |> member "op" |> to_string |> read_unary_op in *)
+      let _op = json |> member "op" |> to_string |> read_unary_op in
       let operand = json |> member "operand" |> parse_expression in
       Vera.RawVerilog.UnaryOp (* op, *) operand
   | kind ->
