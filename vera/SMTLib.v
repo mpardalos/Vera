@@ -47,6 +47,7 @@ Variant BVUnaryOp : Set :=
 Variant BVBinOp : Set :=
   | BVAnd
   | BVOr
+  | BVXor
   | BVAdd
   | BVMul
   | BVUDiv
@@ -328,6 +329,10 @@ Section Interpretation.
                 match binop with
                 | BVAnd => Some (Value_BitVec m1 (bv_and bv1 bv2))
                 | BVOr =>  Some (Value_BitVec m1 (bv_or bv1 bv2))
+		(* TODO: Follow standard more precisely. This should be an abbreviation:
+		     (bvxor s t) abbreviates (bvor (bvand s (bvnot t)) (bvand (bvnot s) t))
+		*)
+                | BVXor =>  Some (Value_BitVec m1 (bv_xor bv1 bv2))
                 | BVAdd => Some (Value_BitVec m1 (bv_add bv1 bv2))
                 | BVMul => Some (Value_BitVec m1 (bv_mult bv1 bv2))
                 | BVUDiv =>

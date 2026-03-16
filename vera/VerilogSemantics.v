@@ -998,6 +998,14 @@ Module CombinationalOnly.
     or_bit X _ := X;
     or_bit _ X := X.
 
+  Equations xor_bit : bit -> bit -> bit :=
+    xor_bit O O := O;
+    xor_bit I I := O;
+    xor_bit I O := I;
+    xor_bit O I := I;
+    xor_bit X _ := X;
+    xor_bit _ X := X.
+
   Equations eval_arithmeticop {n} (op : Verilog.arithmeticop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv n :=
     eval_arithmeticop Verilog.ArithmeticPlus l r := bv_binop (@BV.bv_add _) l r;
     eval_arithmeticop Verilog.ArithmeticMinus l r := bv_binop (fun bvl bvr => BV.bv_add bvl (BV.bv_neg bvr)) l r;
@@ -1007,6 +1015,7 @@ Module CombinationalOnly.
   Equations eval_bitwiseop {n} (op : Verilog.bitwiseop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv n :=
     eval_bitwiseop Verilog.BinaryBitwiseAnd l r := bitwise_binop and_bit l r;
     eval_bitwiseop Verilog.BinaryBitwiseOr l r := bitwise_binop or_bit l r;
+    eval_bitwiseop Verilog.BinaryBitwiseXor l r := bitwise_binop xor_bit l r;
   .
 
   Equations eval_shiftop {n1 n2} (op : Verilog.shiftop) : XBV.xbv n1 -> XBV.xbv n2 -> XBV.xbv n1 :=
@@ -1260,6 +1269,25 @@ Section ExpressionFacts.
     rewrite N.eqb_refl.
     reflexivity.
   Qed.
+
+  Lemma bitwise_xor_no_exes :
+    forall w (l_xbv r_xbv : XBV.xbv w) (l_bv r_bv : BV.bitvector w),
+      XBV.to_bv l_xbv = Some l_bv ->
+      XBV.to_bv r_xbv = Some r_bv ->
+      bitwise_binop xor_bit l_xbv r_xbv = XBV.from_bv (BV.bv_xor l_bv r_bv).
+  Proof.
+    intros w [] [] [] [] Hl Hr.
+    etransitivity. {
+      apply bitwise_binop_no_exes with (f_bool:=xorb); try crush.
+      intros [] []; crush.
+    }
+    f_equal. apply BV.of_bits_equal. simpl.
+    unfold BVList.RAWBITVECTOR_LIST.bv_xor.
+    replace (BVList.RAWBITVECTOR_LIST.size bv1).
+    replace (BVList.RAWBITVECTOR_LIST.size bv2).
+    rewrite N.eqb_refl.
+    reflexivity.
+  Qed.
   
   Definition select_bit_bv {w1 w2} (vec : BV.bitvector w1) (idx : BV.bitvector w2) : BV.bitvector 1 :=
     BV.of_bits [BV.bitOf (N.to_nat (BV.to_N idx)) vec].
@@ -1317,6 +1345,10 @@ Section ExpressionFacts.
         try crush.
     - (* orb *)
       erewrite bitwise_or_no_exes;
+        try erewrite XBV.xbv_bv_inverse;
+        try crush.
+    - (* xorb *)
+      erewrite bitwise_xor_no_exes;
         try erewrite XBV.xbv_bv_inverse;
         try crush.
   Qed.

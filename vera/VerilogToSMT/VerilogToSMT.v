@@ -108,6 +108,8 @@ Section expr_to_smt.
   Equations bitwiseop_to_smt : Verilog.bitwiseop -> SMTLib.term -> SMTLib.term -> transf SMTLib.term :=
     bitwiseop_to_smt Verilog.BinaryBitwiseOr lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVOr lhs rhs);
+    bitwiseop_to_smt Verilog.BinaryBitwiseXor lhs rhs :=
+      ret (SMTLib.Term_BVBinOp SMTLib.BVXor lhs rhs);
     bitwiseop_to_smt Verilog.BinaryBitwiseAnd lhs rhs :=
       ret (SMTLib.Term_BVBinOp SMTLib.BVAnd lhs rhs)
   .

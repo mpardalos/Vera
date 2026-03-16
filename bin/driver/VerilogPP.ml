@@ -11,7 +11,7 @@ let arithmeticop fmt = function
 let bitwiseop fmt = function
   | Verilog.BinaryBitwiseAnd -> fprintf fmt "&"
   | Verilog.BinaryBitwiseOr -> fprintf fmt "|"
-  (* | Verilog.BinaryBitwiseXor -> fprintf fmt "^" *)
+  | Verilog.BinaryBitwiseXor -> fprintf fmt "^"
   (* | Verilog.BinaryXNor -> fprintf fmt "^~" *)
 
 let shiftop fmt = function

@@ -192,6 +192,7 @@ let read_binary_op = function
   (* | "LogicalAnd" -> Vera.RawVerilog.BinaryLogicalAnd *)
   | "BinaryAnd" -> `Bitwise Vera.RawVerilog.BinaryBitwiseAnd
   | "BinaryOr" -> `Bitwise Vera.RawVerilog.BinaryBitwiseOr
+  | "BinaryXor" -> `Bitwise Vera.RawVerilog.BinaryBitwiseXor
   | "LogicalShiftLeft" -> `Shift Vera.RawVerilog.BinaryShiftLeft
   | "LogicalShiftRight" -> `Shift Vera.RawVerilog.BinaryShiftRight
   | str -> raise (SlangUnexpectedValue ("binary operator", str))

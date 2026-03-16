@@ -19,6 +19,7 @@ module SMTLib = struct
   let binaryOp fmt = function
     | BVAnd -> fprintf fmt "bvand"
     | BVOr -> fprintf fmt "bvor"
+    | BVXor -> fprintf fmt "bvxor"
     | BVAdd -> fprintf fmt "bvadd"
     | BVMul -> fprintf fmt "bvmul"
     | BVUDiv -> fprintf fmt "bvudiv"

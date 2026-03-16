@@ -39,7 +39,7 @@ Module VerilogCommon.
 Variant bitwiseop :=
     | BinaryBitwiseAnd (* '&' *)
     | BinaryBitwiseOr (* '|' *)
-    (* | BinaryBitwiseXor (* '^' *) *)
+    | BinaryBitwiseXor (* '^' *)
   .
 
   (* Variant logicalop :=
@@ -112,7 +112,7 @@ Variant bitwiseop :=
           match u with
           | BinaryBitwiseAnd => "&"
           | BinaryBitwiseOr => "|"
-          (* | BinaryBitwiseXor => "^" *)
+          | BinaryBitwiseXor => "^"
           end
       }.
 
