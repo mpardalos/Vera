@@ -651,18 +651,16 @@ Proof.
   contradiction.
 Qed.
 
-Lemma all_driven_outputs_driven v var :
+Lemma all_driven_outputs_driven v :
   disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
   VerilogToSMT.all_vars_driven v ->
-  In var (Verilog.module_outputs v) ->
-  In var (Verilog.module_body_writes (Verilog.modBody v)).
+  list_subset (Verilog.module_outputs v) (Verilog.module_body_writes (Verilog.modBody v)).
 Proof.
-  unfold VerilogToSMT.all_vars_driven, disjoint.
+  unfold VerilogToSMT.all_vars_driven, disjoint, list_subset.
   rewrite ! List.Forall_forall.
-  intros Hdisjoint Hdriven Houtput.
+  intros Hdisjoint Hdriven var Houtput.
   edestruct Hdriven.
-  - eapply Verilog.module_outputs_in_vars.
-    eassumption.
+  - eapply Verilog.module_outputs_in_vars. eassumption.
   - exfalso. crush.
   - assumption.
 Qed.
@@ -681,25 +679,6 @@ Proof.
   rewrite <- Hmatch.
   apply Hdefined.
 Qed.
-
-Ltac monad_inv2 :=
-  try discriminate;
-  repeat match goal with
-    | [ H : (_ ;; _)%monad = _ |- _ ] => inv H || learn H; inversion H; subst
-    | [ H : _ = (_ ;; _)%monad |- _ ] => inv H || learn H; inversion H; subst
-    | [ H : inl _ = inl _ |- _ ] =>      inv H || learn H; inversion H; subst
-    | [ H : inr _ = inr _ |- _ ] =>      inv H || learn H; inversion H; subst
-    | [ H : ret _ = inr _ |- _ ] =>      inv H || learn H; inversion H; subst
-    | [ H : inr _ = ret _ |- _ ] =>      inv H || learn H; inversion H; subst
-    end;
-  let E := fresh "E" in
-  autodestruct_eqn E;
-  repeat match goal with
-    | [ E : sum_with_eqn ?x = inr _, e : ?x = inr _ |- _ ] =>
-        rewrite e in E; simpl in E; inv E
-    end;
-  monad_cleanup
-.
 
 (* TODO: Move me to Match.v *)
 Lemma execution_of_valuation_all_defined C tag m ρ :
@@ -736,6 +715,13 @@ Proof.
 Qed.
 
 Import Setoid.
+
+Ltac unpack_goal :=
+  repeat match goal with
+  | [|- _ /\ _] => split
+  | [|- _ <-> _] => split
+  | [|- (_ /\ _) -> _] => let H := fresh "H" in intro H; decompose record H; clear H
+  end.
 
 Lemma counterexample_valuation_execution v1 v2 m ρ q :
   equivalence_query v1 v2 = inr q ->
@@ -816,53 +802,38 @@ Proof.
     assumption.
   }
   unfold counterexample_valuation, counterexample_execution.
-  split; intros H; decompose record H; clear H.
-  - repeat split.
+  split. 
+  - unpack_goal.
     + assumption.
     + assumption.
     + eapply smt_all_same_inputs_execution_match;
         eassumption.
-    + apply execution_of_valuation_all_defined.
-      apply valid_execution_has_value_for_inputs.
-      assumption.
-    + apply smt_distinct_values_not_defined_match in H3.
-      intro contra. apply H3. clear H3.
-      unfold "_ =!!( _ )!!= _". split; [assumption|].
-      setoid_replace
-        (fun var : Verilog.variable => In var (Verilog.module_outputs v1))
-      	with
-        (fun var : Verilog.variable => In var (Verilog.module_body_writes (Verilog.modBody v1)))
-	by (unfold pointwise_relation, Basics.impl; eauto using all_driven_outputs_driven).
+    + rename_match (smt_some_distinct_values (Verilog.module_outputs v1) m ρ)
+        into Houtputs_distinct_smt.
+      apply smt_distinct_values_not_defined_match in Houtputs_distinct_smt.
+      intro contra. apply Houtputs_distinct_smt. clear Houtputs_distinct_smt.
+      split; [assumption|].
+      setoid_rewrite all_driven_outputs_driven; try assumption; expect 1.
       apply execution_of_valuation_all_defined.
       apply valid_execution_has_value_for_writes; assumption.
-  - repeat split.
+  - unpack_goal.
     + eassumption.
     + eassumption.
     + apply execution_defined_match_smt_all_same_values.
       assumption.
-    + apply not_execution_defined_match_on_smt_some_distinct_values; [].
+    + apply not_execution_defined_match_on_smt_some_distinct_values; expect 1.
       apply not_defined_match_some_distinct.
-      * setoid_replace
-          (fun var : Verilog.variable => In var (Verilog.module_outputs v1))
-        	with
-          (fun var : Verilog.variable => In var (Verilog.module_body_writes (Verilog.modBody v1)))
-	  by (unfold pointwise_relation, Basics.impl; eauto using all_driven_outputs_driven).
+      * setoid_rewrite all_driven_outputs_driven; try assumption; expect 1.
 	apply execution_of_valuation_all_defined.
         apply valid_execution_has_value_for_writes; assumption.
       * rewrite Hmatch_outputs, Hmatch_inputs in *.
-        setoid_replace
-          (fun var : Verilog.variable => In var (Verilog.module_outputs v2))
-        	with
-          (fun var : Verilog.variable => In var (Verilog.module_body_writes (Verilog.modBody v2)))
-	  by (unfold pointwise_relation, Basics.impl; eauto using all_driven_outputs_driven).
+        setoid_rewrite all_driven_outputs_driven; try assumption; expect 1.
 	apply execution_of_valuation_all_defined.
         apply valid_execution_has_value_for_writes; assumption.
       * unfold "_ =!!( _ )!!= _". intuition eauto.
-    + eapply valid_execution_smt_all_outputs_have_values;
-        eassumption.
+    + eapply valid_execution_smt_all_outputs_have_values; eassumption.
     + rewrite Hmatch_outputs.
-      eapply valid_execution_smt_all_outputs_have_values;
-        eassumption.
+      eapply valid_execution_smt_all_outputs_have_values; eassumption.
 Qed.
 
 Lemma valuation_has_var_tag_equal tag (m1 m2 : VerilogSMTBijection.t) ρ var :
