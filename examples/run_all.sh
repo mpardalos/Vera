@@ -19,7 +19,7 @@ JOBS="${VERA_JOBS:-0}"  # 0 means use all CPUs in parallel
 
 # Temporary directory for test results
 TEMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TEMP_DIR"' EXIT
+trap 'rm -rf "$TEMP_DIR" "$RESULTS_DIR"' EXIT
 
 # Get the script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,6 +64,7 @@ RESULTS_DIR=$(mktemp -d)
 > $RESULTS_DIR/EQ
 > $RESULTS_DIR/NEQ
 > $RESULTS_DIR/ERROR
+mkdir "$RESULTS_DIR/error_details"
 export RESULTS_DIR VERA SOLVER SCRIPT_DIR RED GREEN YELLOW NC
 
 vera_compare() {
@@ -87,6 +88,7 @@ vera_compare() {
         *)
 	    echo -e "${RED}ERROR${NC}: $label1 vs $label2:\n$output"
 	    echo "$label1 vs $label2" >> $RESULTS_DIR/ERROR
+	    echo "$output" > "$RESULTS_DIR/error_details/$$"
 	    ;;
     esac
 }
@@ -112,6 +114,25 @@ echo -e "Total tests: $total_tests"
 echo -e "${GREEN}Passed (EQ)${NC}: $passed"
 echo -e "${RED}Failed (NEQ)${NC}: $failed"
 echo -e "${RED}Errors${NC}: $errors"
+
+if [ "$errors" -gt 0 ]; then
+    echo
+    echo "Errors by type:"
+    echo "----------------------------------------"
+    declare -A error_hashes
+    declare -A error_contents
+    for f in "$RESULTS_DIR"/error_details/*; do
+        hash=$(md5sum < "$f" | cut -d' ' -f1)
+        error_hashes["$hash"]=$(( ${error_hashes["$hash"]:-0} + 1 ))
+        error_contents["$hash"]=$(cat "$f")
+    done
+    for hash in "${!error_hashes[@]}"; do
+        count=${error_hashes[$hash]}
+        echo "$count test(s) with error:"
+        echo "${error_contents[$hash]}"
+        echo "----------------------------------------"
+    done
+fi
 
 # Exit with failure if any tests failed
 if [ "$failed" -gt 0 ] || [ "$errors" -gt 0 ]; then
