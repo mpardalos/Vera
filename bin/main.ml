@@ -125,6 +125,7 @@ let lower_cmd =
         ("parsed", `Parsed);
         ("typed", `Typed);
         ("inlined", `Inlined);
+        ("internals-dropped", `InternalsDropped);
         ("sorted", `Sorted);
         ("smt", `SMT);
         ("all", `All);
