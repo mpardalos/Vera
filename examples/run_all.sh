@@ -60,7 +60,11 @@ echo
 
 dune build
 VERA="$PROJECT_ROOT/_build/default/bin/main.exe"
-export VERA SOLVER SCRIPT_DIR RED GREEN YELLOW NC
+RESULTS_DIR=$(mktemp -d)
+> $RESULTS_DIR/EQ
+> $RESULTS_DIR/NEQ
+> $RESULTS_DIR/ERROR
+export RESULTS_DIR VERA SOLVER SCRIPT_DIR RED GREEN YELLOW NC
 
 vera_compare() {
     local in1=$(realpath "$1")
@@ -72,14 +76,44 @@ vera_compare() {
     cd $(mktemp -d)
     local output=$("$VERA" compare --solver="$SOLVER" "$in1" "$in2" 2>&1)
     case "$output" in
-        *"Equivalent (UNSAT)"*) echo -e "${GREEN}PASS${NC}: $label1 vs $label2" ;;
-        *"Non-equivalent (SAT)"*) echo -e "${RED}FAIL${NC}: $label1 vs $label2" ;;
-        *) echo -e "${RED}ERROR${NC}: $label1 vs $label2:\n$output" ;;
+        *"Equivalent (UNSAT)"*)
+	    echo -e "${GREEN}PASS${NC}: $label1 vs $label2"
+	    echo "$label1 vs $label2" >> $RESULTS_DIR/EQ
+	    ;;
+        *"Non-equivalent (SAT)"*)
+	    echo -e "${RED}FAIL${NC}: $label1 vs $label2"
+	    echo "$label1 vs $label2" >> $RESULTS_DIR/NEQ
+	    ;;
+        *)
+	    echo -e "${RED}ERROR${NC}: $label1 vs $label2:\n$output"
+	    echo "$label1 vs $label2" >> $RESULTS_DIR/ERROR
+	    ;;
     esac
 }
 export -f vera_compare
 
+output_file="$TEMP_DIR/test_output.txt"
+> "$output_file"
+
 parallel --colsep '\|' \
 	 -j "$JOBS" \
-	 --halt soon,fail=1 \
-	 vera_compare < "$test_pairs_file"
+	 vera_compare < "$test_pairs_file" | tee "$output_file"
+
+# Print summary
+echo
+echo "========================================"
+echo "Test Summary:"
+echo "========================================"
+passed=$(wc -l < "$RESULTS_DIR/EQ")
+failed=$(wc -l < "$RESULTS_DIR/NEQ")
+errors=$(wc -l < "$RESULTS_DIR/ERROR")
+
+echo -e "Total tests: $total_tests"
+echo -e "${GREEN}Passed (EQ)${NC}: $passed"
+echo -e "${RED}Failed (NEQ)${NC}: $failed"
+echo -e "${RED}Errors${NC}: $errors"
+
+# Exit with failure if any tests failed
+if [ "$failed" -gt 0 ] || [ "$errors" -gt 0 ]; then
+    exit 1
+fi
