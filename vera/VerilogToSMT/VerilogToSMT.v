@@ -119,8 +119,8 @@ Section expr_to_smt.
       ret operand ;
     (* unaryop_to_smt Verilog.UnaryMinus operand := *)
     (*   ret (SMTLib.Term_BVUnaryOp SMTLib.BVNeg operand); *)
-    (* unaryop_to_smt Verilog.UnaryNegation operand := *)
-    (*   ret (SMTLib.Term_BVUnaryOp SMTLib.BVNot operand) *)
+    unaryop_to_smt Verilog.UnaryNot operand :=
+      ret (SMTLib.Term_BVUnaryOp SMTLib.BVNot operand)
   .
 
   Definition conditional_to_smt

@@ -353,7 +353,8 @@ Proof. reflexivity. Qed.
 Program Definition add_assertion
   (a : SMTLib.term)
   (q : query)
-  (domain_wf : list_subset (term_domain a) (domain q))
+  (domain_wf :
+    Forall (fun n => exists s, In (n, s) (declarations q)) (term_domain a))
   : query :=
   {|
     assertions := a :: assertions q;
@@ -362,11 +363,10 @@ Program Definition add_assertion
 Next Obligation.
   simpl.
   rewrite lst_domain_cons.
-  unfold list_subset in domain_wf.
   rewrite List.Forall_app in *.
-  destruct q. cbn in *.
-  rewrite ! List.Forall_forall in *.
-  firstorder.
+  split.
+  - assumption.
+  - apply q.(wf).
 Qed.
 
 Lemma add_assertion_reflect_if :

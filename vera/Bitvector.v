@@ -501,6 +501,13 @@ Module RawXBV.
     bool_to_bit b2 = b1.
   Proof. intros. destruct b1, b2; crush. Qed.
 
+  Definition not_bit (b : bit) :=
+    match b with
+    | X => X
+    | I => O
+    | O => I
+    end.
+
   Definition xbv := list bit.
 
   Definition size (xbv : xbv) := N.of_nat (length xbv).
@@ -704,6 +711,15 @@ Module RawXBV.
       | left e, Some l_bv, Some r_bv => Some (l_bv, r_bv)
       | _, _, _ => None
       }.
+
+  Definition not (bv : xbv) :=
+    List.map not_bit bv.
+
+  Lemma not_size b :
+    size (not b) = size b.
+  Proof. unfold not, size. now rewrite List.length_map. Qed.
+
+  #[global] Hint Rewrite @not_size : xbv_size.
 
   Definition concat (l r : xbv) : xbv := r ++ l.
 
@@ -1490,6 +1506,31 @@ Module XBV.
     rew [xbv] (N.add_0_l w) in concat x1 x2 = x2.
   Proof.
     bitvector_erase. unfold RawXBV.concat. now rewrite List.app_nil_r.
+  Qed.
+
+  #[program]
+  Definition not {n} (bv : xbv n) : xbv n :=
+    {| bv := RawXBV.not (bits bv) |}.
+  Next Obligation. rewrite RawXBV.not_size. apply wf. Qed.
+
+  Lemma not_to_bv n (bv : BV.bitvector n) :
+    to_bv (not (from_bv bv)) = Some (BV.bv_not bv).
+  Proof.
+    destruct bv.
+    rewrite <- xbv_bv_inverse. f_equal.
+    apply of_bits_equal; simpl.
+    unfold RawXBV.not, RawBV.bv_not, RawXBV.from_bv, RAWBITVECTOR_LIST.bits.
+    rewrite ! List.map_map.
+    apply List.map_ext. intros b.
+    destruct b; reflexivity.
+  Qed.
+
+  Lemma not_no_exes n (bv : BV.bitvector n) :
+    not (from_bv bv) = from_bv (BV.bv_not bv).
+  Proof.
+    eapply to_bv_injective.
+    - apply not_to_bv.
+    - apply XBV.xbv_bv_inverse.
   Qed.
 
   Program Definition replicate_bit (n : N) (b : bit) : xbv n :=

@@ -36,10 +36,9 @@ let shiftop fmt = function
   (* | Verilog.BinaryLogicalImplication -> fprintf fmt "->" *)
   (* | Verilog.BinaryLogicalEquivalence -> fprintf fmt "<->" *)
 
-(* let unaryop fmt = function *)
-(*   | Verilog.UnaryPlus -> fprintf fmt "+" *)
-(*   | Verilog.UnaryMinus -> fprintf fmt "-" *)
-(*   | Verilog.UnaryNegation -> fprintf fmt "!" *)
+let unaryop fmt = function
+  | Verilog.UnaryPlus -> fprintf fmt "+"
+  | Verilog.UnaryNot -> fprintf fmt "~"
 
 let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"
@@ -88,9 +87,8 @@ module Raw = struct
         fprintf fmt "( %a@ %a@ %a )" expression l bitwiseop op expression r
     | RawVerilog.ShiftOp (op, l, r) ->
         fprintf fmt "( %a@ %a@ %a )" expression l shiftop op expression r
-    | RawVerilog.UnaryOp ((* op, *) e) ->
-        (* fprintf fmt "( %a@ %a )" unaryop op expression e *)
-        fprintf fmt "( +@ %a )" expression e
+    | RawVerilog.UnaryOp (op, e) ->
+        fprintf fmt "( %a@ %a )" unaryop op expression e
     | RawVerilog.NamedExpression var ->
         fprintf fmt "%s" (Util.lst_to_string var.varName)
     | RawVerilog.Resize (n, e) ->
@@ -146,9 +144,8 @@ module Typed = struct
         fprintf fmt "( %a@ %a@ %a )" expression l bitwiseop op expression r
     | Verilog.ShiftOp (_, _, op, l, r) ->
         fprintf fmt "( %a@ %a@ %a )" expression l shiftop op expression r
-    | Verilog.UnaryOp (_, e) ->
-        (* fprintf fmt "( %a@ %a )" unaryop op expression e *)
-        fprintf fmt "( +@ %a )" expression e
+    | Verilog.UnaryOp (_, op, e) ->
+        fprintf fmt "( %a@ %a )" unaryop op expression e
     | Verilog.BitSelect_width (_, _, target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
     | Verilog.BitSelect_const (_, w_index, target, index) ->

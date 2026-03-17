@@ -67,11 +67,10 @@ Variant bitwiseop :=
     | BinaryShiftLeftArithmetic (* '<<<' *)
   .
 
-
   Variant unaryop :=
     | UnaryPlus (* +  *)
     (* | UnaryMinus (* -  *) *)
-    (* | UnaryNegation (* !  *) *)
+    | UnaryNot (* ~  *)
     (* | UnaryReduce... (* ~  *) *)
     (* | UnaryReduce... (* &  *) *)
     (* | UnaryReduce... (* ~& *) *)
@@ -120,8 +119,8 @@ Variant bitwiseop :=
       { show u :=
           match u with
           | UnaryPlus => "+"
+          | UnaryNot => "~"
           (* | UnaryMinus => "-" *)
-          (* | UnaryNegation => "!" *)
           end
       }.
   End op_show.

@@ -205,7 +205,7 @@ let read_binary_op = function
   | str -> raise (SlangUnexpectedValueFor ("binary operator", str))
 
 let read_unary_op = function
-  (* | "BitwiseNot" -> Vera.RawVerilog.UnaryNegation *)
+  | "BitwiseNot" -> Vera.RawVerilog.UnaryNot
   | str -> raise (SlangUnexpectedValueFor ("unary operator", str))
 
 let read_name str = Scanf.sscanf str "%d %s" (fun _ n -> n)
@@ -273,9 +273,9 @@ let rec parse_expression json =
       | `Bitwise op -> Vera.RawVerilog.BitwiseOp (op, lhs, rhs)
       | `Shift op -> Vera.RawVerilog.ShiftOp (op, lhs, rhs))
   | "UnaryOp" ->
-      let _op = json |> member "op" |> to_string |> read_unary_op in
+      let op = json |> member "op" |> to_string |> read_unary_op in
       let operand = json |> member "operand" |> parse_expression in
-      Vera.RawVerilog.UnaryOp (* op, *) operand
+      Vera.RawVerilog.UnaryOp (op, operand)
   | kind ->
       (* Vera.RawVerilog.NamedExpression ((), Util.string_to_lst kind) *)
       raise (SlangUnexpectedValueFor ("expression kind", kind))

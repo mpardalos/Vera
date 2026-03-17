@@ -157,6 +157,7 @@ Proof.
     simpl; rewrite Hinterp_expr; autodestruct; try contradiction;
     repeat f_equal; try rewrite <- eq_rect_eq.
   - rewrite XBV.xbv_bv_inverse in *. now some_inv.
+  - rewrite XBV.not_to_bv in *. now some_inv.
 Qed.
 
 Lemma conditional_to_smt_value ρ w_cond w smt_cond smt_ifT smt_ifF val_cond val_ifT val_ifF val :

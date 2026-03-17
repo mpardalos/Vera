@@ -1034,7 +1034,8 @@ Module CombinationalOnly.
   .
 
   Equations eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv n :=
-    eval_unaryop Verilog.UnaryPlus x := x
+    eval_unaryop Verilog.UnaryPlus x := x;
+    eval_unaryop Verilog.UnaryNot x := XBV.not x
   .
 
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
@@ -1409,6 +1410,9 @@ Section ExpressionFacts.
   Proof.
     destruct op; simp eval_unaryop.
     - rewrite XBV.xbv_bv_inverse. eauto.
+    - rewrite XBV.not_no_exes.
+      rewrite XBV.xbv_bv_inverse.
+      eauto.
   Qed.
   
   Lemma eval_unop_no_exes op w (e : BV.bitvector w) :
