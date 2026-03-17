@@ -1092,6 +1092,9 @@ Module CombinationalOnly.
       let* tBranch_val := eval_expr regs tBranch in
       let* fBranch_val := eval_expr regs fBranch in
       Some (eval_conditional cond_val tBranch_val fBranch_val);
+    eval_expr regs (Verilog.RangeSelect vec hi lo _ _) :=
+      let* vec_val := eval_expr regs vec in
+      Some (XBV.extr vec_val lo (1 + hi - lo));
     eval_expr regs (Verilog.BitSelect_width vec idx _) :=
       let* vec_val := eval_expr regs vec in
       let* idx_val := eval_expr regs idx in
@@ -1520,6 +1523,11 @@ Section ExpressionFacts.
     - (* conditional *)
       edestruct eval_conditional_no_exes as [bv Hbv].
       exists bv. now rewrite Hbv.
+    - (* range select *) (* Not sure why it appears 4 times *)
+      rewrite XBV.extr_no_exes by lia. eauto.
+    - rewrite XBV.extr_no_exes by lia. eauto.
+    - rewrite XBV.extr_no_exes by lia. eauto.
+    - rewrite XBV.extr_no_exes by lia. eauto.
     - (* bit select (in bounds by literal) *)
       rewrite select_bit_no_exes by assumption.
       eauto.

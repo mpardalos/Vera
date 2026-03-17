@@ -72,6 +72,8 @@ module Raw = struct
     (match e with
     | RawVerilog.IntegerLiteral v ->
         fprintf fmt "%d'b%s" (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
+    | RawVerilog.RangeSelect (target, hi, lo) ->
+        fprintf fmt "%a[%a:%a]" expression target expression hi expression lo
     | RawVerilog.BitSelect (target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
     | RawVerilog.Concatenation (lhs, rhs) ->
@@ -146,6 +148,8 @@ module Typed = struct
         fprintf fmt "( %a@ %a@ %a )" expression l shiftop op expression r
     | Verilog.UnaryOp (_, op, e) ->
         fprintf fmt "( %a@ %a )" unaryop op expression e
+    | Verilog.RangeSelect (_, target, hi, lo) ->
+        fprintf fmt "%a[%d:%d]" expression target hi lo
     | Verilog.BitSelect_width (_, _, target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
     | Verilog.BitSelect_const (_, w_index, target, index) ->

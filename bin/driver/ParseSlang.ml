@@ -235,6 +235,12 @@ let rec parse_expression json =
       let ifTrue = json |> member "left" |> parse_expression in
       let ifFalse = json |> member "right" |> parse_expression in
       Vera.RawVerilog.Conditional (cond, ifTrue, ifFalse)
+  | "RangeSelect" ->
+      let value = json |> member "value" |> parse_expression in
+      let hi = json |> member "left" |> parse_expression in
+      let lo = json |> member "right" |> parse_expression in
+      json |> member "selectionKind" |> to_string |> expect_value "Simple" ;
+      Vera.RawVerilog.RangeSelect (value, hi, lo)
   | "ElementSelect" ->
       let value = json |> member "value" |> parse_expression in
       let selector = json |> member "selector" |> parse_expression in

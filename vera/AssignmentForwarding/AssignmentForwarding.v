@@ -36,6 +36,7 @@ Section inline_one.
     | ShiftOp op lhs rhs _ _ => (ShiftOp op (apply_substitution_expr lhs) (apply_substitution_expr rhs) _ _)
     | UnaryOp p e => (UnaryOp p (apply_substitution_expr e))
     | Conditional cond ifT ifF => (Conditional (apply_substitution_expr cond) (apply_substitution_expr ifT) (apply_substitution_expr ifF))
+    | RangeSelect vec hi lo _ _ => RangeSelect (apply_substitution_expr vec) hi lo _ _
     | BitSelect_width vec idx _ => BitSelect_width (apply_substitution_expr vec) (apply_substitution_expr idx) _
     | BitSelect_const vec idx _ => BitSelect_const (apply_substitution_expr vec) idx _
     | Concatenation lhs rhs => (Concatenation (apply_substitution_expr lhs) (apply_substitution_expr rhs))

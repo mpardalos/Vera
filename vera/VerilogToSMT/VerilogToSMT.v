@@ -179,6 +179,9 @@ Section expr_to_smt.
       let* ifT_smt := expr_to_smt ifT in
       let* ifF_smt := expr_to_smt ifF in
       ret (conditional_to_smt cond_type cond_smt ifT_smt ifF_smt);
+    expr_to_smt (Verilog.RangeSelect vec hi lo _ _) :=
+      let* vec_smt := expr_to_smt vec in
+      ret (SMTLib.Term_BVExtract (N.to_nat hi) (N.to_nat lo) vec_smt);
     expr_to_smt (Verilog.BitSelect_width vec idx _) :=
       let t_vec := Verilog.expr_type vec in
       let t_idx := Verilog.expr_type idx in

@@ -532,6 +532,26 @@ Proof.
       with (val_cond := x) (val_ifT := x0) (val_ifF := x1) (val := bv);
       try rewrite Hbv, XBV.xbv_bv_inverse;
       eauto.
+  - (* Range select *) (* Ew, but this whole proof is ew, so whatever *)
+    simpl in Hexpr_to_smt. monad_inv.
+    insterU IHexpr.
+    edestruct eval_expr_defined with (e := expr);
+      eauto using verilog_smt_match_states_partial_defined_value_for.
+    replace (eval_expr regs expr) in *.
+    remember (SMTLib.Term_BVExtract (N.to_nat hi) (N.to_nat lo) t0) as t.
+    remember (1 + hi - lo)%N as w.
+    simpl.
+    rewrite XBV.extr_no_exes, XBV.xbv_bv_inverse by lia.
+    subst t. simpl.
+    rewrite IHexpr. simpl. rewrite XBV.xbv_bv_inverse.
+    autodestruct_eqn E; [|lia].
+    subst w. f_equal.
+    apply SMTLib.value_eqb_eq.
+    cbn [SMTLib.value_eqb].
+    autodestruct; [|lia].
+    destruct e. cbn.
+    apply BV.bv_eq_reflect.
+    f_equal. apply N2Nat.id.
   - (* Bitselect (literal) *)
     simpl in Hexpr_to_smt. monad_inv.
     insterU IHexpr.

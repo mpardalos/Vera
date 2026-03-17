@@ -236,6 +236,12 @@ Module Verilog.
     : expression w1
   | UnaryOp {w} (op : unaryop) : expression w -> expression w
   | Conditional {w_val w_cond : N} : expression w_cond -> expression w_val -> expression w_val -> expression w_val
+  | RangeSelect {w_val}
+    (val : expression w_val)
+    (hi lo : N)
+    (wf_hi : (hi < w_val)%N)
+    (wf_lo : (lo <= hi)%N)
+    : expression (1 + hi - lo)%N
   | BitSelect_const {w_val w_sel}
     (val : expression w_val)
     (sel : BV.bitvector w_sel)
@@ -331,6 +337,8 @@ Module Verilog.
       expr_reads lhs ++ expr_reads rhs ;
     expr_reads (Verilog.Conditional cond tBranch fBranch) :=
       expr_reads cond ++ expr_reads tBranch ++ expr_reads fBranch ;
+    expr_reads (Verilog.RangeSelect vec hi lo _ _) :=
+      expr_reads vec;
     expr_reads (Verilog.BitSelect_width vec idx _) :=
       expr_reads vec ++ expr_reads idx;
     expr_reads (Verilog.BitSelect_const vec idx _) :=
@@ -387,6 +395,7 @@ Module RawVerilog.
   | ShiftOp (op : shiftop) (lhs rhs : expression)
   | UnaryOp (op : unaryop) (expr : expression)
   | Conditional (cond ifT ifF : expression)
+  | RangeSelect (vec hi lo : expression)
   | BitSelect (vec idx : expression)
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation (lhs rhs : expression)
@@ -481,6 +490,15 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   let* (w_ifFalse; t_ifFalse) := tc_expr ifFalse in
   let* t_ifFalse' := cast_width "Different widths in conditional" w_ifTrue t_ifFalse in
   inr (_; Verilog.Conditional t_cond t_ifTrue t_ifFalse')
+| RawVerilog.RangeSelect vec (RawVerilog.IntegerLiteral hi_lit) (RawVerilog.IntegerLiteral lo_lit) =>
+  let* (w_vec; t_vec) := tc_expr vec in
+  let hi := RawBV.to_N hi_lit in
+  let lo := RawBV.to_N lo_lit in
+  let* wf_hi := assert_dec _ "High bound of range select must be in-bounds"%string in
+  let* wf_lo := assert_dec _ "Low bound of range select must be in-bounds"%string in
+  inr (_; Verilog.RangeSelect t_vec hi lo wf_hi wf_lo) ;
+| RawVerilog.RangeSelect vec _ _ =>
+  raise "Range select must have literal bounds"%string ;
 | RawVerilog.BitSelect vec idx =>
   let* (w_vec; t_vec) := tc_expr vec in
   match idx with
