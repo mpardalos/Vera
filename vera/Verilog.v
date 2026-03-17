@@ -530,11 +530,12 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
 }.
 
 Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
-| RawVerilog.BlockingAssign lhs rhs =>
-  let* (w_lhs; t_lhs) := tc_expr lhs in
+| RawVerilog.BlockingAssign (RawVerilog.NamedExpression var) rhs =>
   let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width "Different widths in blocking assign" w_lhs t_rhs in
-  inr (Verilog.BlockingAssign t_lhs t_rhs')
+  let* t_rhs' := cast_width "Different widths in blocking assign" (Verilog.varType var) t_rhs in
+  inr (Verilog.BlockingAssign (Verilog.NamedExpression var) t_rhs')
+| RawVerilog.BlockingAssign lhs rhs =>
+  inl "Unsupported assignment target"%string
 }
 .
 
