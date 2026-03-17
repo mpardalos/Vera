@@ -324,6 +324,7 @@ let collect_instance_member (ports : port list ref)
       body := List.append !body [ parse_continuous_assign json ]
   | "ProceduralBlock" ->
       body := List.append !body [ parse_procedural_block json ]
+  | "EmptyMember" -> () (* These appear sometimes, not sure why *)
   | kind ->
       raise
         (Failure (Format.sprintf "Unexpected instance member kind: %s" kind))
