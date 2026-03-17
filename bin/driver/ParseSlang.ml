@@ -36,6 +36,8 @@ open Yojson.Safe.Util
 
 exception SlangUnexpectedValue of string * string
 
+exception SlangUnexpectedValueFor of string * string
+
 let () =
   Printexc.register_printer (function
     | SlangUnexpectedValue (expected, got) ->
@@ -43,6 +45,11 @@ let () =
           (Printf.sprintf
              "Unexpected value during slang parsing:\n\
               Expected '%s', but got '%s'" expected got)
+    | SlangUnexpectedValueFor (kind, got) ->
+        Some
+          (Printf.sprintf
+             "Unexpected value during slang parsing:\n\
+              '%s' is not a known value of kind '%s'" got kind)
     | _ -> None (* for other exceptions *))
 
 let not_null msg = function
@@ -88,7 +95,7 @@ let read_type_as_vector str =
     if is_signed then
       failwith (Printf.sprintf "Signed types not implemented (Got '%s')" str)
     else Vera.RawVerilog.Vector (hi, lo)
-  else raise (SlangUnexpectedValue ("Verilog type", str))
+  else raise (SlangUnexpectedValueFor ("Verilog type", str))
 
 let read_type_as_width str =
   match read_type_as_vector str with
@@ -176,10 +183,10 @@ let read_constant const_str =
     else if Str.string_match unsized_prefixed_hex_re const_str 0 then
       let hex = Str.matched_group 1 const_str in
       hex_to_bits 32 hex (* Default to 32-bit for unsized hex *)
-    else raise (SlangUnexpectedValue ("constant", const_str))
+    else raise (SlangUnexpectedValueFor ("constant", const_str))
   with
-  | Failure _ -> raise (SlangUnexpectedValue ("constant", const_str))
-  | Not_found -> raise (SlangUnexpectedValue ("constant", const_str))
+  | Failure _ -> raise (SlangUnexpectedValueFor ("constant", const_str))
+  | Not_found -> raise (SlangUnexpectedValueFor ("constant", const_str))
 
 let read_binary_op = function
   | "Add" -> `Arithmetic Vera.RawVerilog.ArithmeticPlus
@@ -195,12 +202,11 @@ let read_binary_op = function
   | "BinaryXor" -> `Bitwise Vera.RawVerilog.BinaryBitwiseXor
   | "LogicalShiftLeft" -> `Shift Vera.RawVerilog.BinaryShiftLeft
   | "LogicalShiftRight" -> `Shift Vera.RawVerilog.BinaryShiftRight
-  | str -> raise (SlangUnexpectedValue ("binary operator", str))
+  | str -> raise (SlangUnexpectedValueFor ("binary operator", str))
 
 let read_unary_op = function
   (* | "BitwiseNot" -> Vera.RawVerilog.UnaryNegation *)
-  | _ -> raise (Failure "Unary operators not supported")
-  (* raise (SlangUnexpectedValue ("unary operator", str)) *)
+  | str -> raise (SlangUnexpectedValueFor ("unary operator", str))
 
 let read_name str = Scanf.sscanf str "%d %s" (fun _ n -> n)
 
@@ -272,7 +278,7 @@ let rec parse_expression json =
       Vera.RawVerilog.UnaryOp (* op, *) operand
   | kind ->
       (* Vera.RawVerilog.NamedExpression ((), Util.string_to_lst kind) *)
-      raise (SlangUnexpectedValue ("expression kind", kind))
+      raise (SlangUnexpectedValueFor ("expression kind", kind))
 
 let parse_statement json =
   not_null "statement" json;
@@ -283,7 +289,7 @@ let parse_statement json =
       let lhs = parse_expression (expr |> member "left") in
       let rhs = parse_expression (expr |> member "right") in
       Vera.RawVerilog.BlockingAssign (lhs, rhs)
-  | str -> raise (SlangUnexpectedValue ("statement kind", str))
+  | str -> raise (SlangUnexpectedValueFor ("statement kind", str))
 
 let parse_continuous_assign json =
   expect_kind "ContinuousAssign" json;
