@@ -77,6 +77,8 @@ module Raw = struct
         fprintf fmt "%a[%a]" expression target expression index
     | RawVerilog.Concatenation (lhs, rhs) ->
         fprintf fmt "{%a %a}" expression lhs expression rhs
+    | RawVerilog.Replication (count, expr) ->
+        fprintf fmt "{%d{%a}}" count expression expr
     | RawVerilog.Conditional (cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f
@@ -153,6 +155,8 @@ module Typed = struct
         fprintf fmt "%a[%a]" expression target expression (Verilog.IntegerLiteral (w_index, index))
     | Verilog.Concatenation (_, _, lhs, rhs) ->
         fprintf fmt "{%a %a}" expression lhs expression rhs
+    | Verilog.Replication (_, count, expr) ->
+        fprintf fmt "{%d{%a}}" count expression expr
     | Verilog.Conditional (_, _, cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f

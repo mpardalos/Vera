@@ -114,6 +114,9 @@ Proof.
     - erewrite bitwise_or_no_exes in Heval;
         rewrite XBV.xbv_bv_inverse in *;
         (reflexivity || now some_inv).
+    - erewrite bitwise_xor_no_exes in Heval;
+        rewrite XBV.xbv_bv_inverse in *;
+        (reflexivity || now some_inv).
 Qed.
 
 Lemma shiftop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
@@ -419,7 +422,8 @@ Lemma expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ 
 Proof.
   induction expr; intros * Hexpr_to_smt Hmatch;
     simp expr_reads expr_to_smt eval_expr in *;
-    unpack_verilog_smt_match_states_partial.
+    unpack_verilog_smt_match_states_partial;
+    try solve [some_inv]. (* Handle expressions that we abort on *)
   - (* arithmeticop *)
     simpl in Hexpr_to_smt.
     destruct (expr_to_smt tag m expr1) eqn:E1; try discriminate.

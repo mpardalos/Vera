@@ -259,6 +259,21 @@ Module RawBV.
     rewrite _list2nat_be_of_N_full.
     simpl. lia.
   Qed.
+
+  Definition replicate (n : N) (bv : bitvector) : bitvector :=
+    List.concat (List.repeat bv (N.to_nat n)).
+
+  Lemma replicate_size n bv :
+    size (replicate n bv) = (n * size bv)%N.
+  Proof.
+    unfold replicate, size.
+    rewrite List.length_concat.
+    rewrite List.map_repeat.
+    N_to_nat.
+    induction n; crush.
+  Qed.
+
+  #[global] Hint Rewrite @replicate_size : xbv_size.
 End RawBV.
 
 Module BV.
@@ -456,6 +471,11 @@ Module BV.
     funelim (RawBV.nice_nshr_be vec n); simp nice_nshr_be; try crush.
     destruct (RawBV.nice_nshr_be bs n); crush.
   Qed.
+
+  #[program]
+  Definition replicate {n} (c : N) (bv : bitvector n) : bitvector (c * n) :=
+    {| bv := RawBV.replicate c (bits bv) |}.
+  Next Obligation. now rewrite RawBV.replicate_size, wf. Qed.
 End BV.
 
 Module RawXBV.
@@ -571,15 +591,30 @@ Module RawXBV.
 
   #[global] Hint Rewrite @to_bv_size : xbv_size.
 
-  Definition replicate (n : N) (b : bit) :=
+  Definition replicate_bit (n : N) (b : bit) :=
     List.repeat b (N.to_nat n).
 
-  Lemma replicate_size n b :
-    size (replicate n b) = n.
+  Lemma replicate_bit_size n b :
+    size (replicate_bit n b) = n.
   Proof.
-    unfold replicate, size.
+    unfold replicate_bit, size.
     rewrite List.repeat_length.
     apply N2Nat.id.
+  Qed.
+
+  #[global] Hint Rewrite @replicate_bit_size : xbv_size.
+
+  Definition replicate (n : N) (bv : xbv) : xbv :=
+    List.concat (List.repeat bv (N.to_nat n)).
+
+  Lemma replicate_size n bv :
+    size (replicate n bv) = (n * size bv)%N.
+  Proof.
+    unfold replicate, size.
+    rewrite List.length_concat.
+    rewrite List.map_repeat.
+    N_to_nat.
+    induction n; crush.
   Qed.
 
   #[global] Hint Rewrite @replicate_size : xbv_size.
@@ -1457,7 +1492,7 @@ Module XBV.
     bitvector_erase. unfold RawXBV.concat. now rewrite List.app_nil_r.
   Qed.
 
-  Program Definition replicate (n : N) (b : bit) : xbv n :=
+  Program Definition replicate_bit (n : N) (b : bit) : xbv n :=
     {| bv := List.repeat b (N.to_nat n) |}.
   Next Obligation. unfold RawXBV.size. rewrite repeat_length. apply N2Nat.id. Qed.
 
@@ -1475,7 +1510,7 @@ Module XBV.
     to_bv (exes n) = None.
   Proof.
     intros.
-    unfold exes, RawXBV.exes, replicate.
+    unfold exes, RawXBV.exes, replicate_bit.
     apply has_x_to_bv. unfold has_x. simpl.
     unfold RawXBV.has_x.
     induction (N.to_nat n) eqn:E; crush.
@@ -1484,7 +1519,7 @@ Module XBV.
   Lemma ones_to_bv n :
     to_bv (ones n) = Some (BV.ones n).
   Proof.
-    unfold ones, RawXBV.ones, BV.ones, replicate, RawBV.ones.
+    unfold ones, RawXBV.ones, BV.ones, replicate_bit, RawBV.ones.
     rewrite <- xbv_bv_inverse. f_equal.
     apply of_bits_equal; simpl.
     induction (N.to_nat n); crush.
@@ -1501,7 +1536,7 @@ Module XBV.
   Lemma zeros_to_bv n :
     to_bv (zeros n) = Some (BV.zeros n).
   Proof.
-    unfold zeros, RawXBV.zeros, BV.zeros, replicate, RawBV.zeros.
+    unfold zeros, RawXBV.zeros, BV.zeros, replicate_bit, RawBV.zeros.
     rewrite <- xbv_bv_inverse. f_equal.
     apply of_bits_equal; simpl.
     induction (N.to_nat n); crush.
@@ -1515,6 +1550,30 @@ Module XBV.
     - eapply xbv_bv_inverse.
   Qed.
 
+  #[program]
+  Definition replicate {n} (c : N) (bv : xbv n) : xbv (c * n) :=
+    {| bv := RawXBV.replicate c (bits bv) |}.
+  Next Obligation. now rewrite RawXBV.replicate_size, wf. Qed.
+
+  Lemma replicate_to_bv n c (bv : BV.bitvector n) :
+    to_bv (replicate c (from_bv bv)) = Some (BV.replicate c bv).
+  Proof.
+    destruct bv.
+    rewrite <- xbv_bv_inverse. f_equal.
+    apply of_bits_equal; simpl.
+    unfold RawXBV.replicate, RawBV.replicate, RawXBV.from_bv.
+    rewrite List.concat_map.
+    rewrite List.map_repeat.
+    reflexivity.
+  Qed.
+
+  Lemma replicate_no_exes c n (bv : BV.bitvector n) :
+    replicate c (from_bv bv) = from_bv (BV.replicate c bv).
+  Proof.
+    eapply to_bv_injective.
+    - apply replicate_to_bv.
+    - apply XBV.xbv_bv_inverse.
+  Qed.
 
   #[program]
   Definition shl {n} (bv : xbv n) (shamt : N) : xbv n :=

@@ -39,6 +39,7 @@ Section inline_one.
     | BitSelect_width vec idx _ => BitSelect_width (apply_substitution_expr vec) (apply_substitution_expr idx) _
     | BitSelect_const vec idx _ => BitSelect_const (apply_substitution_expr vec) idx _
     | Concatenation lhs rhs => (Concatenation (apply_substitution_expr lhs) (apply_substitution_expr rhs))
+    | Replication count expr => (Replication count (apply_substitution_expr expr))
     | IntegerLiteral _ val => IntegerLiteral _ val
     | Resize to e _ => (Resize to (apply_substitution_expr e) _)
     }.

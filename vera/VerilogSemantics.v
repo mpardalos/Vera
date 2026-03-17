@@ -1105,6 +1105,9 @@ Module CombinationalOnly.
       let* val1 := eval_expr regs e1 in
       let* val2 := eval_expr regs e2 in
       Some (XBV.concat val1 val2);
+    eval_expr regs (Verilog.Replication count expr) :=
+      let* expr_val := eval_expr regs expr in
+      Some (XBV.replicate count expr_val);
     eval_expr regs (Verilog.IntegerLiteral _ val) :=
       Some (XBV.from_bv val) ;
     eval_expr regs (Verilog.NamedExpression var) :=
@@ -1524,6 +1527,9 @@ Section ExpressionFacts.
       eauto.
     - (* concat *)
       rewrite XBV.concat_no_exes.
+      eauto.
+    - (* replicate *)
+      rewrite XBV.replicate_no_exes.
       eauto.
     - (* literal *)
       eauto.

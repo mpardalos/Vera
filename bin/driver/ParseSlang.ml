@@ -208,8 +208,7 @@ let read_name str = Scanf.sscanf str "%d %s" (fun _ n -> n)
 let rec fold_concat = function
   | [] ->
       raise (SlangUnexpectedValue ("concatenation", "0-input concatenatation"))
-  | [ _ ] ->
-      raise (SlangUnexpectedValue ("concatenation", "1-input concatenatation"))
+  | [ e ] -> e
   | [ l; r ] -> Vera.RawVerilog.Concatenation (l, r)
   | hd :: tl -> Vera.RawVerilog.Concatenation (hd, fold_concat tl)
 
@@ -248,6 +247,17 @@ let rec parse_expression json =
         json |> member "operands" |> to_list |> List.map parse_expression
       in
       fold_concat exprs
+  | "Replication" ->
+      let count_expression = json |> member "count" in
+      expect_kind "IntegerLiteral" count_expression;
+      (* We need an int value here, not a bitvector, so just use
+      int_of_string. It will fail if it gets a sized int (32'd8) but
+      that's ok.*)
+      let count = count_expression |> member "constant" |> to_string |> int_of_string in
+      let concat_expression = json |> member "concat" in
+      expect_kind "Concatenation" concat_expression;
+      let expr = concat_expression |> parse_expression in
+      Vera.RawVerilog.Replication (count, expr)
   | "BinaryOp" -> (
       let op = json |> member "op" |> to_string |> read_binary_op in
       let lhs = json |> member "left" |> parse_expression in

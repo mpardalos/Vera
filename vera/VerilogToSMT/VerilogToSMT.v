@@ -171,6 +171,8 @@ Section expr_to_smt.
       let* e1_smt := expr_to_smt e1 in
       let* e2_smt := expr_to_smt e2 in
       ret (SMTLib.Term_BVConcat e1_smt e2_smt);
+    expr_to_smt (Verilog.Replication _ _) :=
+      raise "Unexpected replication in VerilogToSMT stage"%string ;
     expr_to_smt (Verilog.Conditional cond ifT ifF) :=
       let cond_type := Verilog.expr_type cond in
       let* cond_smt := expr_to_smt cond in

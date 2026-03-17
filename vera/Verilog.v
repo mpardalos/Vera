@@ -249,6 +249,7 @@ Module Verilog.
     : expression 1
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
+  | Replication {w} (count : N) (e : expression w) : expression (count * w)
   | IntegerLiteral (w : N) : BV.bitvector w -> expression w
   | NamedExpression (var : Verilog.variable) : expression (Verilog.varType var)
   | Resize {w_from} (w_to : N) (from : expression w_from) (wf : (w_to > 0)%N) : expression w_to
@@ -339,6 +340,8 @@ Module Verilog.
       expr_reads expr;
     expr_reads (Verilog.Concatenation e1 e2) :=
       expr_reads e1 ++ expr_reads e2 ;
+    expr_reads (Verilog.Replication _ e) :=
+      expr_reads e ;
     expr_reads (Verilog.IntegerLiteral _ val) :=
       [] ;
     expr_reads (Verilog.NamedExpression var) :=
@@ -388,6 +391,7 @@ Module RawVerilog.
   | BitSelect (vec idx : expression)
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation (lhs rhs : expression)
+  | Replication (count : N) (expr : expression)
   | IntegerLiteral (val : RawBV.bitvector)
   | NamedExpression (var : variable)
   | Resize (to : N) (expr : expression)
@@ -495,6 +499,9 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
   inr (_; Verilog.Concatenation t_lhs t_rhs)
+| RawVerilog.Replication count expr =>
+  let* (w_expr; t_expr) := tc_expr expr in
+  inr (_; Verilog.Replication count t_expr)
 | RawVerilog.IntegerLiteral bits =>
   inr (_; Verilog.IntegerLiteral _ (BV.of_bits bits))
 | RawVerilog.NamedExpression var =>
