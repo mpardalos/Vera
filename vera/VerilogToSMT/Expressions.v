@@ -84,16 +84,16 @@ Lemma arithmeticop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
     SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
 Proof.
   intros Hinterp_lhs Hinterp_rhs Harithmeticop_to_smt Heval.
-  destruct op;
-    simp eval_arithmeticop arithmeticop_to_smt in *; inv Harithmeticop_to_smt;
-    simpl; rewrite Hinterp_lhs; rewrite Hinterp_rhs; autodestruct; try contradiction;
-    repeat f_equal; rewrite <- eq_rect_eq.
-  - simp bv_binop in *. rewrite ! XBV.xbv_bv_inverse in *. simpl in *.
-    rewrite XBV.xbv_bv_inverse in *. now some_inv.
-  - simp bv_binop in *. rewrite ! XBV.xbv_bv_inverse in *. simpl in *.
-    rewrite XBV.xbv_bv_inverse in *. now some_inv.
-  - simp bv_binop in *. rewrite ! XBV.xbv_bv_inverse in *. simpl in *.
-    rewrite XBV.xbv_bv_inverse in *. now some_inv.
+  destruct op.
+  all: simp eval_arithmeticop arithmeticop_to_smt in *.
+  all: inv Harithmeticop_to_smt.
+  all: cbn [SMTLib.interp_term].
+  all: rewrite Hinterp_lhs, Hinterp_rhs.
+  all: autodestruct; [|contradiction].
+  all: repeat f_equal.
+  all: rewrite <- eq_rect_eq.
+  all: autorewrite with xbv bv_binop in Heval.
+  all: now inv Heval.
 Qed.
 
 Lemma bitwiseop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
@@ -104,19 +104,16 @@ Lemma bitwiseop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
     SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
 Proof.
   intros Hinterp_lhs Hinterp_rhs Hbitwiseop_to_smt Heval.
-  destruct op;
-    simp eval_bitwiseop bitwiseop_to_smt in *; inv Hbitwiseop_to_smt;
-    simpl; rewrite Hinterp_lhs; rewrite Hinterp_rhs; autodestruct; try contradiction;
-    repeat f_equal; rewrite <- eq_rect_eq.
-    - erewrite bitwise_and_no_exes in Heval;
-        rewrite XBV.xbv_bv_inverse in *;
-        (reflexivity || now some_inv).
-    - erewrite bitwise_or_no_exes in Heval;
-        rewrite XBV.xbv_bv_inverse in *;
-        (reflexivity || now some_inv).
-    - erewrite bitwise_xor_no_exes in Heval;
-        rewrite XBV.xbv_bv_inverse in *;
-        (reflexivity || now some_inv).
+  destruct op.
+  all: simp eval_bitwiseop bitwiseop_to_smt in *.
+  all: inv Hbitwiseop_to_smt.
+  all: simpl.
+  all: rewrite Hinterp_lhs; rewrite Hinterp_rhs.
+  all: autodestruct; [|contradiction].
+  all: repeat f_equal.
+  all: rewrite <- eq_rect_eq.
+  all: autorewrite with xbv in Heval.
+  all: now inv Heval.
 Qed.
 
 Lemma shiftop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
@@ -127,22 +124,19 @@ Lemma shiftop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
     SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
 Proof.
   intros Hinterp_lhs Hinterp_rhs Hshiftop_to_smt Heval.
-  destruct op;
-    simp eval_shiftop shiftop_to_smt in *; inv Hshiftop_to_smt;
-    simpl; rewrite Hinterp_lhs; rewrite Hinterp_rhs; autodestruct; try contradiction;
-    repeat f_equal; rewrite <- eq_rect_eq.
-  - rewrite XBV.to_N_from_bv in *. simpl in *.
-    erewrite XBV.shr_to_bv in *.
-    rewrite BV.shr_swap_definition.
-    now some_inv.
-  - rewrite XBV.to_N_from_bv in *. simpl in *.
-    erewrite XBV.shl_to_bv in *.
-    rewrite BV.shl_swap_definition.
-    now some_inv.
-  - rewrite XBV.to_N_from_bv in *. simpl in *.
-    erewrite XBV.shl_to_bv in *.
-    rewrite BV.shl_swap_definition.
-    now some_inv.
+  destruct op.
+  all: simp eval_shiftop shiftop_to_smt in *.
+  all: inv Hshiftop_to_smt.
+  all: simpl.
+  all: rewrite Hinterp_lhs, Hinterp_rhs.
+  all: autodestruct; [|contradiction].
+  all: repeat f_equal.
+  all: rewrite <- eq_rect_eq.
+  all: repeat (simpl in Heval; autorewrite with xbv in Heval).
+  all: inv Heval.
+  - apply BV.shr_swap_definition.
+  - apply BV.shl_swap_definition.
+  - apply BV.shl_swap_definition.
 Qed.
 
 Lemma unaryop_to_smt_value ρ op w smt_expr t val_expr val :
@@ -192,35 +186,15 @@ Lemma cast_from_to_value ρ w_from w_to smt_from val_from :
       Some (SMTLib.Value_BitVec w_to (convert_bv w_to val_from)).
 Proof.
   intros Hnot_zero Hinterp_from.
-  funelim (convert_bv w_to val_from).
-  - funelim (cast_from_to from to smt_from);
-      [ rewrite N.compare_eq_iff in *; lia
-      | rewrite N.compare_lt_iff in *; lia
-      |idtac].
-    rewrite N.compare_gt_iff in *.
-    simpl. rewrite Hinterp_from.
-    f_equal.
-    apply value_bitvec_bits_equal.
-    destruct_rew. simpl.
-    repeat f_equal. lia.
-  - funelim (cast_from_to from to smt_from);
-      [ rewrite N.compare_eq_iff in *; lia
-      | rewrite N.compare_lt_iff in *
-      | rewrite N.compare_gt_iff in *; lia ].
-    simpl. rewrite Hinterp_from.
-    f_equal.
-    apply value_bitvec_bits_equal.
-    simpl.
-    repeat f_equal. lia.
-  - funelim (cast_from_to from to smt_from);
-      [ rewrite N.compare_eq_iff in *
-      | rewrite N.compare_lt_iff in *; lia
-      | rewrite N.compare_gt_iff in *; lia ].
-    simpl. rewrite Hinterp_from.
-    f_equal.
-    apply value_bitvec_bits_equal.
-    destruct_rew.
-    reflexivity.
+  funelim (convert_bv w_to val_from); expect 3.
+  all: funelim (cast_from_to from to smt_from); expect 9.
+  all: autorewrite with bool_to_prop in *; try lia; expect 3.
+  all: simpl; rewrite Hinterp_from.
+  all: f_equal.
+  all: apply value_bitvec_bits_equal.
+  all: try destruct_rew.
+  all: simpl.
+  all: repeat f_equal; lia.
 Qed.
 
 Lemma to_N_convert_bv_extn from to (bv : BV.bitvector from) :
@@ -350,11 +324,10 @@ Lemma convert_shr_convert n1 n2 (xbv : XBV.xbv n1) shamt :
 Proof.
   intros.
   funelim (convert n2 xbv); [idtac|lia|idtac].
-  - destruct_rew. simpl.
-    funelim (convert from (XBV.shr (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
+  all: destruct_rew; simpl.
+  - funelim (convert from (XBV.shr (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
     apply XBV.extr_shr_extend.
-  - destruct_rew. simpl.
-    funelim (convert from (XBV.shr value shamt)); [lia|lia|idtac].
+  - funelim (convert from (XBV.shr value shamt)); [lia|lia|idtac].
     rewrite <- eq_rect_eq. reflexivity.
 Qed.
 
@@ -364,11 +337,10 @@ Lemma convert_shl_convert n1 n2 (xbv : XBV.xbv n1) shamt :
 Proof.
   intros.
   funelim (convert n2 xbv); [idtac|lia|idtac].
-  - destruct_rew. simpl.
-    funelim (convert from (XBV.shl (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
+  all: destruct_rew; simpl.
+  - funelim (convert from (XBV.shl (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
     apply XBV.extr_shl_extend.
-  - destruct_rew. simpl.
-    funelim (convert from (XBV.shl value shamt)); [lia|lia|idtac].
+  - funelim (convert from (XBV.shl value shamt)); [lia|lia|idtac].
     rewrite <- eq_rect_eq. reflexivity.
 Qed.
 
@@ -390,24 +362,18 @@ Lemma eval_shiftop_remove_converts w1 w2 op (lhs : XBV.xbv w1) (rhs : XBV.xbv w2
 Proof.
   intros.
   funelim (eval_shiftop op lhs rhs).
-  - apply convert_extend_to_N with (to := N.max n1 n2) in Heq; [|lia].
-    simp eval_shiftop. rewrite Heq. simpl.
-    apply convert_shr_convert. lia.
-  - apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq; [|lia].
-    simp eval_shiftop. rewrite Heq. simpl.
-    apply convert_exes. lia.
-  - apply convert_extend_to_N with (to := N.max n1 n2) in Heq; [|lia].
-    simp eval_shiftop. rewrite Heq. simpl.
-    apply convert_shl_convert. lia.
-  - apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq; [|lia].
-    simp eval_shiftop. rewrite Heq. simpl.
-    apply convert_exes. lia.
-  - apply convert_extend_to_N with (to := N.max n1 n2) in Heq; [|lia].
-    simp eval_shiftop. rewrite Heq. simpl.
-    apply convert_shl_convert. lia.
-  - apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq; [|lia].
-    simp eval_shiftop. rewrite Heq. simpl.
-    apply convert_exes. lia.
+  all: simp eval_shiftop.
+  all: match type of Heq with
+       | (_ = Some _) => apply convert_extend_to_N with (to := N.max n1 n2) in Heq
+       | (_ = None) => apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq
+       end; [|lia].
+  all: rewrite Heq; simpl.
+  - apply convert_shr_convert. lia.
+  - apply convert_exes. lia.
+  - apply convert_shl_convert. lia.
+  - apply convert_exes. lia.
+  - apply convert_shl_convert. lia.
+  - apply convert_exes. lia.
 Qed.
 
 Lemma expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ t,
@@ -421,62 +387,39 @@ Lemma expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ 
        ret (SMTLib.Value_BitVec _ bv))%monad
 .
 Proof.
-  induction expr; intros * Hexpr_to_smt Hmatch;
-    simp expr_reads expr_to_smt eval_expr in *;
-    unpack_verilog_smt_match_states_partial;
-    try solve [some_inv]. (* Handle expressions that we abort on *)
+  induction expr.
+  all: intros * Hexpr_to_smt Hmatch.
+  all: simp expr_reads expr_to_smt eval_expr in *.
+  all: unpack_verilog_smt_match_states_partial.
+  all: try solve [some_inv]. (* Handle expressions that we abort on *)
+  all: simpl in Hexpr_to_smt.
+  all: unfold Verilog.expr_type in *.
+  all: repeat match type of Hexpr_to_smt with
+       | (match ?e with _ => _ end) = inr _ =>
+         let E := fresh "E" in destruct e eqn:E
+       | inl _ = inr _ => inv Hexpr_to_smt
+       | inr _ = inr _ => inv Hexpr_to_smt
+       end.
+  all: repeat match goal with
+  | [ H : context[_ -> SMTLib.interp_term _ _ = _] |- _] => insterU H
+  end.
+  all: repeat match goal with
+       | [ |- context[eval_expr ?r ?e'] ] =>
+         edestruct eval_expr_defined with (e := e');
+         eauto using verilog_smt_match_states_partial_defined_value_for;
+	 expect 1;
+         replace (eval_expr r e') in *
+       end.
+  all: cbn - [SMTLib.interp_term eval_conditional conditional_to_smt XBV.extr N.add] in *.
+  all: try rewrite XBV.xbv_bv_inverse in *.
   - (* arithmeticop *)
-    simpl in Hexpr_to_smt.
-    destruct (expr_to_smt tag m expr1) eqn:E1; try discriminate.
-    destruct (expr_to_smt tag m expr2) eqn:E2; try discriminate.
-    insterU IHexpr1.
-    insterU IHexpr2.
-    edestruct eval_expr_defined with (e := expr1);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr1) in *.
-    edestruct eval_expr_defined with (e := expr2);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr2) in *.
-    simpl in *.
-    rewrite XBV.xbv_bv_inverse in *.
-    edestruct eval_arithmeticop_to_bv as [bv Hbv].
-    rewrite Hbv.
-    now eauto using arithmeticop_to_smt_value.
+    edestruct eval_arithmeticop_to_bv as [bv Hbv]. rewrite Hbv.
+    eauto using arithmeticop_to_smt_value.
   - (* bitwiseop *)
-    simpl in Hexpr_to_smt.
-    destruct (expr_to_smt tag m expr1) eqn:E1; try discriminate.
-    destruct (expr_to_smt tag m expr2) eqn:E2; try discriminate.
-    insterU IHexpr1.
-    insterU IHexpr2.
-    edestruct eval_expr_defined with (e := expr1);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr1) in *.
-    edestruct eval_expr_defined with (e := expr2);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr2) in *.
-    simpl in *.
-    rewrite XBV.xbv_bv_inverse in *.
-    edestruct eval_bitwiseop_to_bv as [bv Hbv].
-    rewrite Hbv.
+    edestruct eval_bitwiseop_to_bv as [bv Hbv]. rewrite Hbv.
     now eauto using bitwiseop_to_smt_value.
   - (* shiftop *)
-    unfold Verilog.expr_type in *.
-    simpl in Hexpr_to_smt.
-    destruct (expr_to_smt tag m expr1) eqn:E1; try discriminate.
-    destruct (expr_to_smt tag m expr2) eqn:E2; try discriminate.
-    autodestruct_eqn E.
-    insterU IHexpr1.
-    insterU IHexpr2.
-    edestruct eval_expr_defined with (e := expr1);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr1) in *.
-    edestruct eval_expr_defined with (e := expr2);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr2) in *.
-    simpl in *.
-    rewrite XBV.xbv_bv_inverse in *.
-    edestruct eval_shiftop_to_bv as [bv Hbv].
-    rewrite Hbv.
+    edestruct eval_shiftop_to_bv as [bv Hbv]. rewrite Hbv.
     edestruct eval_shiftop_to_bv as [bv_out Hbv_out].
     erewrite cast_from_to_value; [|assumption|]; cycle 1.
     + eapply shiftop_to_smt_value.
@@ -494,58 +437,22 @@ Proof.
       rewrite <- ! convert_no_exes.
       eapply eval_shiftop_remove_converts. lia.
   - (* unop *)
-    simpl in Hexpr_to_smt.
-    destruct (expr_to_smt tag m expr) eqn:E; try discriminate.
-    insterU IHexpr.
-    edestruct eval_expr_defined with (e := expr);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr) in *.
-    simpl in *.
-    rewrite XBV.xbv_bv_inverse in *.
-    edestruct eval_unop_to_bv as [bv Hbv].
-    rewrite Hbv.
-    eauto.
+    simpl in *; try rewrite XBV.xbv_bv_inverse in *.
+    edestruct eval_unop_to_bv as [bv Hbv]. rewrite Hbv.
     now eauto using unaryop_to_smt_value.
   - (* conditional *)
-    simpl in Hexpr_to_smt.
-    destruct (expr_to_smt tag m expr1) eqn:E1; try discriminate.
-    destruct (expr_to_smt tag m expr2) eqn:E2; try discriminate.
-    destruct (expr_to_smt tag m expr3) eqn:E3; try discriminate.
-    insterU IHexpr1.
-    insterU IHexpr2.
-    insterU IHexpr3.
-    edestruct eval_expr_defined with (e := expr1);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr1) in *.
-    edestruct eval_expr_defined with (e := expr2);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr2) in *.
-    edestruct eval_expr_defined with (e := expr3);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr3) in *.
-    simpl in *.
-    rewrite XBV.xbv_bv_inverse in *.
-    inv Hexpr_to_smt.
     destruct eval_conditional_no_exes
       with (cond := x) (ifT := x0) (ifF := x1) as [bv Hbv].
-    rewrite conditional_to_smt_value
-      with (val_cond := x) (val_ifT := x0) (val_ifF := x1) (val := bv);
-      try rewrite Hbv, XBV.xbv_bv_inverse;
-      eauto.
-  - (* Range select *) (* Ew, but this whole proof is ew, so whatever *)
-    simpl in Hexpr_to_smt. monad_inv.
-    insterU IHexpr.
-    edestruct eval_expr_defined with (e := expr);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr) in *.
-    remember (SMTLib.Term_BVExtract (N.to_nat hi) (N.to_nat lo) t0) as t.
-    remember (1 + hi - lo)%N as w.
-    simpl.
-    rewrite XBV.extr_no_exes, XBV.xbv_bv_inverse by lia.
-    subst t. simpl.
-    rewrite IHexpr. simpl. rewrite XBV.xbv_bv_inverse.
+    rewrite Hbv. rewrite XBV.xbv_bv_inverse.
+    eapply conditional_to_smt_value; try eassumption; expect 1.
+    rewrite Hbv, XBV.xbv_bv_inverse.
+    reflexivity.
+  - (* Range select *)
+    rewrite XBV.extr_no_exes by lia.
+    rewrite XBV.xbv_bv_inverse.
+    cbn [SMTLib.interp_term]. rewrite IHexpr. 
     autodestruct_eqn E; [|lia].
-    subst w. f_equal.
+    f_equal.
     apply SMTLib.value_eqb_eq.
     cbn [SMTLib.value_eqb].
     autodestruct; [|lia].
@@ -553,30 +460,15 @@ Proof.
     apply BV.bv_eq_reflect.
     f_equal. apply N2Nat.id.
   - (* Bitselect (literal) *)
-    simpl in Hexpr_to_smt. monad_inv.
-    insterU IHexpr.
-    edestruct eval_expr_defined with (e := expr);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr) in *.
-    erewrite smt_select_bit_value with (val_vec := x) (val_idx := sel); eauto.
-    + simpl.
-      rewrite select_bit_no_exes by assumption.
-      now rewrite XBV.xbv_bv_inverse.
-    + rewrite IHexpr. simpl.
-      now rewrite XBV.xbv_bv_inverse.
+    erewrite smt_select_bit_value with (val_vec := x) (val_idx := sel);
+      eauto; expect 2.
     + rewrite select_bit_no_exes by assumption.
-      now rewrite XBV.xbv_bv_inverse.
+      rewrite XBV.xbv_bv_inverse.
+      reflexivity.
+    + rewrite select_bit_no_exes by assumption.
+      rewrite XBV.xbv_bv_inverse.
+      reflexivity.
   - (* Bitselect (width) *)
-    simpl in Hexpr_to_smt. monad_inv.
-    insterU IHexpr1.
-    insterU IHexpr2.
-    edestruct eval_expr_defined with (e := expr1);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr1) in *.
-    edestruct eval_expr_defined with (e := expr2);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr2) in *.
-    simpl in * |-. rewrite XBV.xbv_bv_inverse in *.
     erewrite smt_select_bit_value
       with (val_vec := x) (val_idx := x0);
       eauto.
@@ -591,31 +483,13 @@ Proof.
       now rewrite XBV.xbv_bv_inverse.
     + pose proof (BV.to_N_max_bound _ x0). lia.
   - (* concat *)
-    simpl in Hexpr_to_smt.
-    destruct (expr_to_smt tag m expr1) eqn:E1; try discriminate.
-    destruct (expr_to_smt tag m expr2) eqn:E2; try discriminate.
-    insterU IHexpr1.
-    insterU IHexpr2.
-    edestruct eval_expr_defined with (e := expr1);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr1) in *.
-    edestruct eval_expr_defined with (e := expr2);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr2) in *.
-    simpl in *.
-    rewrite XBV.xbv_bv_inverse in *.
     rewrite XBV.concat_to_bv.
-    inv Hexpr_to_smt.
     simpl.
     rewrite IHexpr1, IHexpr2.
     reflexivity.
   - (* literal *)
-    simpl.
-    rewrite XBV.xbv_bv_inverse.
-    inv Hexpr_to_smt.
     reflexivity.
   - (* variable *)
-    simpl.
     edestruct Hmatch as [smtName [Heq2 [? ? ? ? Hmatchvals]]]. { repeat econstructor. }
     rewrite Hverilogval.
     inv Hexpr_to_smt.
@@ -628,20 +502,6 @@ Proof.
     replace n_smt with smtName in * by congruence.
     now rewrite Hsmtval, XBV.xbv_bv_inverse.
   - (* resize *)
-    simpl in Hexpr_to_smt.
-    repeat match type of Hexpr_to_smt with
-    | context[match ?c with _ => _ end] =>
-        let E := fresh "E" in
-        destruct c eqn:E; try discriminate
-    | inr _ = inr _ => inv Hexpr_to_smt
-    | inl _ = inl _ => inv Hexpr_to_smt
-    end.
-    insterU IHexpr.
-    edestruct eval_expr_defined with (e := expr);
-      eauto using verilog_smt_match_states_partial_defined_value_for.
-    replace (eval_expr regs expr) in *.
-    simpl in *.
-    rewrite XBV.xbv_bv_inverse in *.
     rewrite convert_no_exes.
     rewrite XBV.xbv_bv_inverse.
     apply cast_from_to_value; eauto.

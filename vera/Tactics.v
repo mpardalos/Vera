@@ -1,5 +1,6 @@
 From Stdlib Require Import ProofIrrelevance.
 From Stdlib Require Export Lia.
+From Stdlib Require Import NArith.
 
 From vera Require Import Decidable.
 
@@ -235,3 +236,28 @@ Ltac unpack_in :=
          | [ H : (List.In _ (_ ++ _)) |- _] => apply List.in_app_iff in H; destruct H
          | [ |- ~ List.In _ (_ ++ _) ] => apply not_in_app_iff; split
 	 end.
+
+(* Tactics for rewriting predicates in bool to their Prop equivalents *)
+Hint Rewrite
+  N.compare_eq_iff
+  N.compare_lt_iff
+  N.compare_le_iff
+  N.compare_gt_iff
+  N.compare_ge_iff
+  : bool_to_prop.
+
+(* Opposite of the above *)
+Hint Rewrite <-
+  N.compare_eq_iff
+  N.compare_lt_iff
+  N.compare_le_iff
+  N.compare_gt_iff
+  N.compare_ge_iff
+  : prop_to_bool.
+
+Ltac unpack_goal :=
+  repeat match goal with
+  | [|- _ /\ _] => split
+  | [|- _ <-> _] => split
+  | [|- (_ /\ _) -> _] => let H := fresh "H" in intro H; decompose record H; clear H
+  end.

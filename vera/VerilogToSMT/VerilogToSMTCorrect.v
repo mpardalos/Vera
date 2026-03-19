@@ -397,28 +397,26 @@ Proof.
   monad_inv.
   constructor.
   - eapply module_item_to_smt_satisfiable with (inputs := inputs).
-    + eassumption.
-    + eassumption.
-    + eassumption.
-    + eapply verilog_smt_match_states_partial_change_regs with (r1 := r2). {
-        intros.
-        rewrite ! List.in_app_iff in *.
-        pose proof transfer_module_item_inputs as Hinputs. insterU Hinputs.
-        pose proof transfer_module_item_outputs as Houtputs. insterU Houtputs.
-        rewrite List.Forall_forall in *.
-        symmetry. eapply exec_module_body_preserve. eassumption.
-        intro Hinbody.
-        destruct H.
-        - eapply disjoint_l_intro with (l:=inputs); eauto; [idtac].
-          pose proof transfer_module_body_outputs as Hbody_outputs.
-          insterU Hbody_outputs. rewrite List.Forall_forall in Hbody_outputs.
-          auto.
-        - eapply disjoint_l_intro; eauto.
-      }
-      eapply verilog_smt_match_states_partial_impl; [|eassumption].
-      intros. simpl.
+    all: try eassumption; expect 1.
+    eapply verilog_smt_match_states_partial_change_regs with (r1 := r2). {
+      intros.
       rewrite ! List.in_app_iff in *.
-      intuition assumption.
+      pose proof transfer_module_item_inputs as Hinputs. insterU Hinputs.
+      pose proof transfer_module_item_outputs as Houtputs. insterU Houtputs.
+      rewrite List.Forall_forall in *.
+      symmetry. eapply exec_module_body_preserve. eassumption.
+      intro Hinbody.
+      destruct H.
+      - eapply disjoint_l_intro with (l:=inputs); eauto; [idtac].
+        pose proof transfer_module_body_outputs as Hbody_outputs.
+        insterU Hbody_outputs. rewrite List.Forall_forall in Hbody_outputs.
+        auto.
+      - eapply disjoint_l_intro; eauto.
+    }
+    eapply verilog_smt_match_states_partial_impl; [|eassumption].
+    intros. simpl.
+    rewrite ! List.in_app_iff in *.
+    intuition assumption.
   - eapply IHbody; try eauto; [idtac].
     eapply verilog_smt_match_states_partial_impl; [|eassumption].
     intros. simpl.
@@ -595,27 +593,20 @@ Proof.
     (* destruct Hsortable as [sorted Hsort]. *)
     repeat unfold mk_initial_state, run_vmodule in *.
     rewrite sort_module_items_stable by assumption. simpl.
-    eexists.
-    split. {
-      rewrite RegisterState.limit_to_regs_twice.
+    eexists. unpack_goal.
+    + rewrite RegisterState.limit_to_regs_twice.
       eassumption.
-    }
-    split. {
-      apply defined_value_for_has_value_for.
+    + apply defined_value_for_has_value_for.
       eapply verilog_smt_match_states_partial_execution_defined_value_for.
       apply verilog_smt_match_states_execution_of_valuation_same.
       intros. apply Hhas_vars. apply Verilog.module_input_in_vars. assumption.
-    }
-    split. {
-      apply defined_value_for_has_value_for.
+    + apply defined_value_for_has_value_for.
       eapply verilog_smt_match_states_partial_execution_defined_value_for.
       apply verilog_smt_match_states_execution_of_valuation_same.
       intros. apply Hhas_vars. apply Verilog.module_outputs_in_vars.
-assumption.
-    }
-
-    eapply verilog_smt_match_states_partial_execution_match_on.
-    setoid_rewrite <- Houtputs_permute. assumption.
+      assumption.
+    + eapply verilog_smt_match_states_partial_execution_match_on.
+      setoid_rewrite <- Houtputs_permute. assumption.
 Qed.
 
 Lemma bij_gsi (m : VerilogSMTBijection.t) tag var smtName prf1 prf2 :
@@ -815,15 +806,17 @@ Lemma exec_module_item_no_exes C tag m t regs inputs outputs mi : forall regs',
     RegisterState.defined_value_for (fun var => C var \/ List.In var (Verilog.module_item_reads mi)) regs ->
     RegisterState.defined_value_for (fun var => C var \/ List.In var (Verilog.module_item_reads mi) \/ List.In var (Verilog.module_item_writes mi)) regs'.
 Proof.
-  funelim (transfer_module_item tag m inputs outputs mi);
-    simp
+  funelim (transfer_module_item tag m inputs outputs mi).
+  all: clear Heqcall.
+  all: intros.
+  all: try discriminate; expect 1.
+  simp
       transfer_module_item
       exec_module_item
       exec_statement
       module_item_reads
       statement_reads
-      expr_reads;
-    intros; try discriminate; [].
+      expr_reads in *.
   monad_inv.
   simp module_item_writes statement_writes expr_reads. simpl.
   unfold RegisterState.defined_value_for.

@@ -45,6 +45,16 @@ Local Open Scope monad_scope.
 
 Import SigTNotations.
 
+(* FIXME: Move me to SMT *)
+Lemma match_map_vars_tag_same tag (m1 m2 : VerilogSMTBijection.t) vars :
+  (forall var, m1 (tag, var) = m2 (tag, var)) ->
+  SMT.match_map_vars tag m1 vars <-> SMT.match_map_vars tag m2 vars.
+Proof.
+  unfold SMT.match_map_vars.
+  intros H. setoid_rewrite H.
+  reflexivity.
+Qed.
+
 Ltac decompose_all_records :=
   repeat match goal with
          | [ H : _ |- _ ] => progress (decompose record H); clear H
@@ -714,128 +724,6 @@ Proof.
   decompose record Hvalid. assumption.
 Qed.
 
-Import Setoid.
-
-Ltac unpack_goal :=
-  repeat match goal with
-  | [|- _ /\ _] => split
-  | [|- _ <-> _] => split
-  | [|- (_ /\ _) -> _] => let H := fresh "H" in intro H; decompose record H; clear H
-  end.
-
-Lemma counterexample_valuation_execution v1 v2 m ρ q :
-  equivalence_query v1 v2 = inr q ->
-  counterexample_valuation v1 v2 m ρ <->
-    counterexample_execution
-      v1 (SMT.execution_of_valuation TaggedVariable.VerilogLeft m ρ)
-      v2 (SMT.execution_of_valuation TaggedVariable.VerilogRight m ρ).
-Proof.
-  intros Hequivalence_query.
-  assert (VerilogToSMT.all_vars_driven v1) as Hvars_driven1.
-  {
-    unfold equivalence_query in *. monad_inv.
-    pose proof e1 as e1'.
-    pose proof e2 as e2'.
-    unfold VerilogToSMT.verilog_to_smt in e1'.
-    unfold VerilogToSMT.verilog_to_smt in e2'.
-    monad_inv.
-    assumption.
-  }
-  assert (VerilogToSMT.all_vars_driven v2) as Hvars_driven2.
-  {
-    unfold equivalence_query in *. monad_inv.
-    pose proof e1 as e1'.
-    pose proof e2 as e2'.
-    unfold VerilogToSMT.verilog_to_smt in e1'.
-    unfold VerilogToSMT.verilog_to_smt in e2'.
-    monad_inv.
-    assumption.
-  }
-  assert (disjoint (Verilog.module_inputs v1) (Verilog.module_outputs v1)) as Hdisjoint.
-  {
-    unfold equivalence_query in *. monad_inv.
-    pose proof e1 as e1'.
-    pose proof e2 as e2'.
-    unfold VerilogToSMT.verilog_to_smt in e1'.
-    unfold VerilogToSMT.verilog_to_smt in e2'.
-    monad_inv.
-    assumption.
-  }
-  assert (Verilog.module_inputs v1 = Verilog.module_inputs v2) as Hmatch_inputs.
-  {
-    unfold equivalence_query in *. monad_inv.
-    pose proof e1 as e1'.
-    pose proof e2 as e2'.
-    unfold VerilogToSMT.verilog_to_smt in e1'.
-    unfold VerilogToSMT.verilog_to_smt in e2'.
-    monad_inv.
-    assumption.
-  }
-  assert (Verilog.module_outputs v1 = Verilog.module_outputs v2) as Hmatch_outputs.
-  {
-    unfold equivalence_query in *. monad_inv.
-    pose proof e1 as e1'.
-    pose proof e2 as e2'.
-    unfold VerilogToSMT.verilog_to_smt in e1'.
-    unfold VerilogToSMT.verilog_to_smt in e2'.
-    monad_inv.
-    assumption.
-  }
-  assert (Permutation (Verilog.module_body_writes (Verilog.modBody v1)) (Verilog.module_outputs v1)) as Houtputs1.
-  {
-    unfold equivalence_query in *. monad_inv.
-    pose proof e1 as e1'.
-    pose proof e2 as e2'.
-    unfold VerilogToSMT.verilog_to_smt in e1'.
-    unfold VerilogToSMT.verilog_to_smt in e2'.
-    monad_inv.
-    assumption.
-  }
-  assert (Permutation (Verilog.module_body_writes (Verilog.modBody v2)) (Verilog.module_outputs v2)) as Houtputs2.
-  {
-    unfold equivalence_query in *. monad_inv.
-    pose proof e1 as e1'.
-    pose proof e2 as e2'.
-    unfold VerilogToSMT.verilog_to_smt in e1'.
-    unfold VerilogToSMT.verilog_to_smt in e2'.
-    monad_inv.
-    assumption.
-  }
-  unfold counterexample_valuation, counterexample_execution.
-  split. 
-  - unpack_goal.
-    + assumption.
-    + assumption.
-    + eapply smt_all_same_inputs_execution_match;
-        eassumption.
-    + rename_match (smt_some_distinct_values (Verilog.module_outputs v1) m ρ)
-        into Houtputs_distinct_smt.
-      apply smt_distinct_values_not_defined_match in Houtputs_distinct_smt.
-      intro contra. apply Houtputs_distinct_smt. clear Houtputs_distinct_smt.
-      split; [assumption|].
-      setoid_rewrite all_driven_outputs_driven; try assumption; expect 1.
-      apply execution_of_valuation_all_defined.
-      apply valid_execution_has_value_for_writes; assumption.
-  - unpack_goal.
-    + eassumption.
-    + eassumption.
-    + apply execution_defined_match_smt_all_same_values.
-      assumption.
-    + apply not_execution_defined_match_on_smt_some_distinct_values; expect 1.
-      apply not_defined_match_some_distinct.
-      * setoid_rewrite all_driven_outputs_driven; try assumption; expect 1.
-	apply execution_of_valuation_all_defined.
-        apply valid_execution_has_value_for_writes; assumption.
-      * rewrite Hmatch_outputs, Hmatch_inputs in *.
-        setoid_rewrite all_driven_outputs_driven; try assumption; expect 1.
-	apply execution_of_valuation_all_defined.
-        apply valid_execution_has_value_for_writes; assumption.
-      * unfold "_ =!!( _ )!!= _". intuition eauto.
-    + eapply valid_execution_smt_all_outputs_have_values; eassumption.
-    + rewrite Hmatch_outputs.
-      eapply valid_execution_smt_all_outputs_have_values; eassumption.
-Qed.
-
 Lemma valuation_has_var_tag_equal tag (m1 m2 : VerilogSMTBijection.t) ρ var :
   (forall n, m1 (tag, n) = m2 (tag, n)) ->
   valuation_has_var tag m1 ρ var <-> valuation_has_var tag m2 ρ var.
@@ -857,20 +745,6 @@ Ltac inv_equivalence_query_sat :=
       rewrite ! satisfied_by_add_assertion_iff, satisfied_by_combine_iff in Hsat;
       decompose record Hsat
   end.
-
-Theorem equivalence_query_execution_spec v1 v2 smt :
-  equivalence_query v1 v2 = inr smt ->
-  smt_reflect
-    (SMT.query smt)
-    (fun ρ => counterexample_execution
-      v1 (SMT.execution_of_valuation TaggedVariable.VerilogLeft (SMT.nameMap smt) ρ)
-      v2 (SMT.execution_of_valuation TaggedVariable.VerilogRight (SMT.nameMap smt) ρ)).
-Proof.
-  intros Hfunc.
-  setoid_rewrite <- counterexample_valuation_execution; [|eassumption].
-  eapply equivalence_query_spec.
-  assumption.
-Qed.
 
 Local Open Scope verilog.
 
@@ -1035,7 +909,140 @@ Proof.
     apply NNPP in H1.
     exists e1, e2. apply H1.
 Qed.
-    
+
+Record verilog_to_smt_checked (v : Verilog.vmodule) := MkVerilogToSMTChecked {
+    io_disjoint : disjoint (Verilog.module_inputs v) (Verilog.module_outputs v);
+    only_reads_inputs : list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v);
+    all_vars_driven : VerilogToSMT.all_vars_driven v;
+    no_duplicate_writes : NoDup (Verilog.module_body_writes (Verilog.modBody v));
+    no_duplicate_outputs : NoDup (Verilog.module_outputs v);
+    writes_outputs : Permutation (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v);
+    all_module_items_clean : Forall clean_module_item_structure (Verilog.modBody v);
+    sorted : module_items_sorted (Verilog.module_inputs v) (Verilog.modBody v);
+}.
+
+Lemma verilog_to_smt_checks tag start v smt :
+  VerilogToSMT.verilog_to_smt tag start v = inr smt ->
+  verilog_to_smt_checked v.
+Proof.
+  intros H.
+  unfold VerilogToSMT.verilog_to_smt in H. monad_inv.
+  constructor; try assumption.
+Qed.
+
+Record equivalence_query_checked (v1 v2 : Verilog.vmodule) smt := MkEquivalenceQueryChecked {
+  verilog_to_smt_eqn1 : exists tag start smt, VerilogToSMT.verilog_to_smt tag start v1 = inr smt;
+  verilog_to_smt_eqn2 : exists tag start smt, VerilogToSMT.verilog_to_smt tag start v2 = inr smt;
+  verilog_to_smt_checked1 : verilog_to_smt_checked v1;
+  verilog_to_smt_checked2 : verilog_to_smt_checked v2;
+  map_match_left : SMT.match_map_vars
+    TaggedVariable.VerilogLeft (SMT.nameMap smt) (Verilog.modVariables v1);
+  map_match_right : SMT.match_map_vars
+    TaggedVariable.VerilogRight (SMT.nameMap smt) (Verilog.modVariables v2);
+  inputs_match : Verilog.module_inputs v1 = Verilog.module_inputs v2;
+  outputs_match : Verilog.module_outputs v1 = Verilog.module_outputs v2;
+}.
+
+Lemma equivalence_query_map_match_left v1 v2 smt :
+  equivalence_query v1 v2 = inr smt ->
+  SMT.match_map_vars TaggedVariable.VerilogLeft (SMT.nameMap smt) (Verilog.modVariables v1).
+Proof.
+  unfold equivalence_query.
+  intros. monad_inv. simpl.
+  eapply match_map_vars_tag_same.
+  - eapply VerilogSMTBijection.combine_different_tag_left;
+      eauto using verilog_to_smt_only_tag;
+      discriminate.
+  - eapply VerilogToSMTCorrect.verilog_to_smt_map_match.
+    eassumption.
+Qed.
+
+Lemma equivalence_query_map_match_right v1 v2 smt :
+  equivalence_query v1 v2 = inr smt ->
+  SMT.match_map_vars TaggedVariable.VerilogRight (SMT.nameMap smt) (Verilog.modVariables v2).
+Proof.
+  unfold equivalence_query.
+  intros. monad_inv. simpl.
+  eapply match_map_vars_tag_same.
+  - eapply VerilogSMTBijection.combine_different_tag_right;
+      eauto using verilog_to_smt_only_tag;
+      discriminate.
+  - eapply VerilogToSMTCorrect.verilog_to_smt_map_match.
+    eassumption.
+Qed.
+
+Lemma equivalence_query_checks v1 v2 smt :
+  equivalence_query v1 v2 = inr smt ->
+  equivalence_query_checked v1 v2 smt.
+Proof.
+  intros H.
+  epose proof (equivalence_query_map_match_left _ _ _ ltac:(eauto)).
+  epose proof (equivalence_query_map_match_right _ _ _ ltac:(eauto)).
+  unfold equivalence_query in H. monad_inv.
+  constructor; eauto using verilog_to_smt_checks.
+Qed.
+
+Lemma counterexample_valuation_execution v1 v2 m ρ q :
+  equivalence_query_checked v1 v2 q ->
+  counterexample_valuation v1 v2 m ρ <->
+    counterexample_execution
+      v1 (SMT.execution_of_valuation TaggedVariable.VerilogLeft m ρ)
+      v2 (SMT.execution_of_valuation TaggedVariable.VerilogRight m ρ).
+Proof.
+  intros Hequivalence_query.
+  destruct Hequivalence_query.
+  inv verilog_to_smt_checked3.
+  inv verilog_to_smt_checked4.
+  unfold counterexample_valuation, counterexample_execution.
+  split. 
+  - unpack_goal.
+    + assumption.
+    + assumption.
+    + eapply smt_all_same_inputs_execution_match;
+        eassumption.
+    + rename_match (smt_some_distinct_values (Verilog.module_outputs v1) m ρ)
+        into Houtputs_distinct_smt.
+      apply smt_distinct_values_not_defined_match in Houtputs_distinct_smt.
+      intro contra. apply Houtputs_distinct_smt. clear Houtputs_distinct_smt.
+      split; [assumption|].
+      setoid_rewrite all_driven_outputs_driven; try assumption; expect 1.
+      apply execution_of_valuation_all_defined.
+      apply valid_execution_has_value_for_writes; assumption.
+  - unpack_goal.
+    + eassumption.
+    + eassumption.
+    + apply execution_defined_match_smt_all_same_values.
+      assumption.
+    + apply not_execution_defined_match_on_smt_some_distinct_values; expect 1.
+      apply not_defined_match_some_distinct.
+      * setoid_rewrite all_driven_outputs_driven; try assumption; expect 1.
+	apply execution_of_valuation_all_defined.
+        apply valid_execution_has_value_for_writes; assumption.
+      * rewrite inputs_match0, outputs_match0 in *.
+        setoid_rewrite all_driven_outputs_driven; try assumption; expect 1.
+	apply execution_of_valuation_all_defined.
+        apply valid_execution_has_value_for_writes; assumption.
+      * unfold "_ =!!( _ )!!= _". intuition eauto.
+    + eapply valid_execution_smt_all_outputs_have_values; eassumption.
+    + rewrite inputs_match0, outputs_match0 in *.
+      eapply valid_execution_smt_all_outputs_have_values; eassumption.
+Qed.
+
+Theorem equivalence_query_execution_spec v1 v2 smt :
+  equivalence_query v1 v2 = inr smt ->
+  smt_reflect
+    (SMT.query smt)
+    (fun ρ => counterexample_execution
+      v1 (SMT.execution_of_valuation TaggedVariable.VerilogLeft (SMT.nameMap smt) ρ)
+      v2 (SMT.execution_of_valuation TaggedVariable.VerilogRight (SMT.nameMap smt) ρ)).
+Proof.
+  intros Hfunc.
+  setoid_rewrite <- counterexample_valuation_execution;
+    [|eauto using equivalence_query_checks].
+  eapply equivalence_query_spec.
+  assumption.
+Qed.
+
 Theorem equivalence_query_sat_correct v1 v2 smt ρ :
   equivalence_query v1 v2 = inr smt ->
   satisfied_by ρ (SMT.query smt) ->
@@ -1047,7 +1054,6 @@ Proof. intros. now apply equivalence_query_execution_spec. Qed.
 Definition match_map_execution tag (m : VerilogSMTBijection.t) (e : execution) :=
   forall var,
     (exists smtName, m (tag, var) = Some smtName) <-> (exists xbv, e var = Some xbv).
-
 
 Lemma execution_of_valuation_left_match_on (m : VerilogSMTBijection.t) e1 e2 l :
   RegisterState.defined_value_for (fun var => In var l) e1 ->
@@ -1149,7 +1155,6 @@ Lemma counterexample_execution_rewrite_right v1 e1 v2 e2 e2' :
   e2 =( Verilog.module_inputs v2 ++ Verilog.module_outputs v2 )= e2' ->
   counterexample_execution v1 e1 v2 e2 <-> counterexample_execution v1 e1 v2 e2'.
 Proof.
-
   unfold counterexample_execution.
   intros inputs_same outputs_same H.
   split; intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]];
@@ -1223,88 +1228,6 @@ Proof.
   - RegisterState.unpack_defined_value_for.
     + assumption.
     + eapply VerilogToSMTCorrect.valid_execution_no_exes_written; eassumption.
-Qed.
-
-(* FIXME: Move me to SMT *)
-Lemma match_map_vars_tag_same tag (m1 m2 : VerilogSMTBijection.t) vars :
-  (forall var, m1 (tag, var) = m2 (tag, var)) ->
-  SMT.match_map_vars tag m1 vars <-> SMT.match_map_vars tag m2 vars.
-Proof.
-  unfold SMT.match_map_vars.
-  intros H. setoid_rewrite H.
-  reflexivity.
-Qed.
-
-Lemma equivalence_query_map_match_left v1 v2 smt :
-  equivalence_query v1 v2 = inr smt ->
-  SMT.match_map_vars TaggedVariable.VerilogLeft (SMT.nameMap smt) (Verilog.modVariables v1).
-Proof.
-  unfold equivalence_query.
-  intros. monad_inv. simpl.
-  eapply match_map_vars_tag_same.
-  - eapply VerilogSMTBijection.combine_different_tag_left;
-      eauto using verilog_to_smt_only_tag;
-      discriminate.
-  - eapply VerilogToSMTCorrect.verilog_to_smt_map_match.
-    eassumption.
-Qed.
-
-Lemma equivalence_query_map_match_right v1 v2 smt :
-  equivalence_query v1 v2 = inr smt ->
-  SMT.match_map_vars TaggedVariable.VerilogRight (SMT.nameMap smt) (Verilog.modVariables v2).
-Proof.
-  unfold equivalence_query.
-  intros. monad_inv. simpl.
-  eapply match_map_vars_tag_same.
-  - eapply VerilogSMTBijection.combine_different_tag_right;
-      eauto using verilog_to_smt_only_tag;
-      discriminate.
-  - eapply VerilogToSMTCorrect.verilog_to_smt_map_match.
-    eassumption.
-Qed.
-
-Record verilog_to_smt_checked (v : Verilog.vmodule) := MkVerilogToSMTChecked {
-    io_disjoint : disjoint (Verilog.module_inputs v) (Verilog.module_outputs v);
-    only_reads_inputs : list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v);
-    all_vars_driven : VerilogToSMT.all_vars_driven v;
-    no_duplicate_writes : NoDup (Verilog.module_body_writes (Verilog.modBody v));
-    no_duplicate_outputs : NoDup (Verilog.module_outputs v);
-    writes_outputs : Permutation (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v);
-    all_module_items_clean : Forall clean_module_item_structure (Verilog.modBody v);
-    sorted : module_items_sorted (Verilog.module_inputs v) (Verilog.modBody v);
-}.
-
-Lemma verilog_to_smt_checks tag start v smt :
-  VerilogToSMT.verilog_to_smt tag start v = inr smt ->
-  verilog_to_smt_checked v.
-Proof.
-  intros H.
-  unfold VerilogToSMT.verilog_to_smt in H. monad_inv.
-  constructor; try assumption.
-Qed.
-
-Record equivalence_query_checked (v1 v2 : Verilog.vmodule) smt := MkEquivalenceQueryChecked {
-  verilog_to_smt_eqn1 : exists tag start smt, VerilogToSMT.verilog_to_smt tag start v1 = inr smt;
-  verilog_to_smt_eqn2 : exists tag start smt, VerilogToSMT.verilog_to_smt tag start v2 = inr smt;
-  verilog_to_smt_checked1 : verilog_to_smt_checked v1;
-  verilog_to_smt_checked2 : verilog_to_smt_checked v2;
-  map_match_left : SMT.match_map_vars
-    TaggedVariable.VerilogLeft (SMT.nameMap smt) (Verilog.modVariables v1);
-  map_match_right : SMT.match_map_vars
-    TaggedVariable.VerilogRight (SMT.nameMap smt) (Verilog.modVariables v2);
-  inputs_match : Verilog.module_inputs v1 = Verilog.module_inputs v2;
-  outputs_match : Verilog.module_outputs v1 = Verilog.module_outputs v2;
-}.
-
-Lemma equivalence_query_checks v1 v2 smt :
-  equivalence_query v1 v2 = inr smt ->
-  equivalence_query_checked v1 v2 smt.
-Proof.
-  intros H.
-  epose proof (equivalence_query_map_match_left _ _ _ ltac:(eauto)).
-  epose proof (equivalence_query_map_match_right _ _ _ ltac:(eauto)).
-  unfold equivalence_query in H. monad_inv.
-  constructor; eauto using verilog_to_smt_checks.
 Qed.
 
 Lemma verilog_to_smt_clean tag start v smt :

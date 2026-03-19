@@ -1212,16 +1212,10 @@ Section ExpressionFacts.
 
   Lemma bitwise_binop_no_exes (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
     (forall (lb rb : bool), RawXBV.bool_to_bit (f_bool lb rb) = f_bit (RawXBV.bool_to_bit lb) (RawXBV.bool_to_bit rb)) ->
-    forall n (l_xbv r_xbv : XBV.xbv n) (l_bv r_bv : BV.bitvector n),
-      XBV.to_bv l_xbv = Some l_bv ->
-      XBV.to_bv r_xbv = Some r_bv ->
-      bitwise_binop f_bit l_xbv r_xbv = XBV.from_bv (BV.map2 f_bool l_bv r_bv).
+    forall n (l_bv r_bv : BV.bitvector n),
+      bitwise_binop f_bit (XBV.from_bv l_bv) (XBV.from_bv r_bv) = XBV.from_bv (BV.map2 f_bool l_bv r_bv).
   Proof.
-    intros * Hf * Hl Hr.
-    unfold RawBV.bv_and.
-    pose proof (XBV.bv_xbv_inverse _ _ _ Hl) as Hl_inverse. subst l_xbv.
-    pose proof (XBV.bv_xbv_inverse _ _ _ Hr) as Hr_inverse. subst r_xbv.
-    clear Hl. clear Hr.
+    intros * Hf *.
     apply XBV.of_bits_equal; simpl.
     destruct l_bv as [l_bv l_bv_wf].
     destruct r_bv as [r_bv r_bv_wf].
@@ -1239,63 +1233,53 @@ Section ExpressionFacts.
       eapply IHl_bv; crush.
   Qed.
   
-  Lemma bitwise_and_no_exes :
-    forall w (l_xbv r_xbv : XBV.xbv w) (l_bv r_bv : BV.bitvector w),
-      XBV.to_bv l_xbv = Some l_bv ->
-      XBV.to_bv r_xbv = Some r_bv ->
-      bitwise_binop and_bit l_xbv r_xbv = XBV.from_bv (BV.bv_and l_bv r_bv).
+  Lemma bitwise_and_no_exes w (l_bv r_bv : BV.bitvector w) :
+      bitwise_binop and_bit (XBV.from_bv l_bv) (XBV.from_bv r_bv) =
+        XBV.from_bv (BV.bv_and l_bv r_bv).
   Proof.
-    intros w [] [] [] [] Hl Hr.
-    etransitivity. {
-      apply bitwise_binop_no_exes with (f_bool:=andb); eauto.
-      intros [] []; crush.
-    }
-    f_equal. apply BV.of_bits_equal. simpl.
-    unfold BVList.RAWBITVECTOR_LIST.bv_and.
-    replace (BVList.RAWBITVECTOR_LIST.size bv1).
-    replace (BVList.RAWBITVECTOR_LIST.size bv2).
-    rewrite N.eqb_refl.
-    reflexivity.
+    rewrite bitwise_binop_no_exes with (f_bool := andb).
+    - XBV.bitvector_erase. 
+      f_equal.
+      unfold RawBV.bv_and.
+      rewrite wf0, wf1, N.eqb_refl.
+      reflexivity.
+    - intros [] []; reflexivity.
   Qed.
   
-  Lemma bitwise_or_no_exes :
-    forall w (l_xbv r_xbv : XBV.xbv w) (l_bv r_bv : BV.bitvector w),
-      XBV.to_bv l_xbv = Some l_bv ->
-      XBV.to_bv r_xbv = Some r_bv ->
-      bitwise_binop or_bit l_xbv r_xbv = XBV.from_bv (BV.bv_or l_bv r_bv).
+  Lemma bitwise_or_no_exes w (l_bv r_bv : BV.bitvector w) :
+      bitwise_binop or_bit (XBV.from_bv l_bv) (XBV.from_bv r_bv) =
+        XBV.from_bv (BV.bv_or l_bv r_bv).
   Proof.
-    intros w [] [] [] [] Hl Hr.
-    etransitivity. {
-      apply bitwise_binop_no_exes with (f_bool:=orb); try crush.
-      intros [] []; crush.
-    }
-    f_equal. apply BV.of_bits_equal. simpl.
-    unfold BVList.RAWBITVECTOR_LIST.bv_or.
-    replace (BVList.RAWBITVECTOR_LIST.size bv1).
-    replace (BVList.RAWBITVECTOR_LIST.size bv2).
-    rewrite N.eqb_refl.
-    reflexivity.
+    rewrite bitwise_binop_no_exes with (f_bool := orb).
+    - XBV.bitvector_erase. 
+      f_equal.
+      unfold RawBV.bv_or.
+      rewrite wf0, wf1, N.eqb_refl.
+      reflexivity.
+    - intros [] []; reflexivity.
   Qed.
 
-  Lemma bitwise_xor_no_exes :
-    forall w (l_xbv r_xbv : XBV.xbv w) (l_bv r_bv : BV.bitvector w),
-      XBV.to_bv l_xbv = Some l_bv ->
-      XBV.to_bv r_xbv = Some r_bv ->
-      bitwise_binop xor_bit l_xbv r_xbv = XBV.from_bv (BV.bv_xor l_bv r_bv).
+  Lemma bitwise_xor_no_exes w (l_bv r_bv : BV.bitvector w) :
+      bitwise_binop xor_bit (XBV.from_bv l_bv) (XBV.from_bv r_bv) =
+        XBV.from_bv (BV.bv_xor l_bv r_bv).
   Proof.
-    intros w [] [] [] [] Hl Hr.
-    etransitivity. {
-      apply bitwise_binop_no_exes with (f_bool:=xorb); try crush.
-      intros [] []; crush.
-    }
-    f_equal. apply BV.of_bits_equal. simpl.
-    unfold BVList.RAWBITVECTOR_LIST.bv_xor.
-    replace (BVList.RAWBITVECTOR_LIST.size bv1).
-    replace (BVList.RAWBITVECTOR_LIST.size bv2).
-    rewrite N.eqb_refl.
-    reflexivity.
+    rewrite bitwise_binop_no_exes with (f_bool := xorb).
+    - XBV.bitvector_erase. 
+      f_equal.
+      unfold RawBV.bv_xor.
+      rewrite wf0, wf1, N.eqb_refl.
+      reflexivity.
+    - intros [] []; reflexivity.
   Qed.
   
+  (* These lemmas are defined here so this has to stay, but maybe the
+     lemmas should also be in Bitvector.v *)
+  Hint Rewrite
+    bitwise_and_no_exes
+    bitwise_or_no_exes
+    bitwise_xor_no_exes
+    : xbv.
+
   Definition select_bit_bv {w1 w2} (vec : BV.bitvector w1) (idx : BV.bitvector w2) : BV.bitvector 1 :=
     BV.of_bits [BV.bitOf (N.to_nat (BV.to_N idx)) vec].
   
@@ -1331,100 +1315,69 @@ Section ExpressionFacts.
   Lemma eval_arithmeticop_to_bv op w (lhs rhs : BV.bitvector w) :
     exists bv, XBV.to_bv (eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
   Proof.
-    destruct op; simp eval_arithmeticop.
-    - funelim (bv_binop (BV.bv_add (n:=w)) (XBV.from_bv lhs) (XBV.from_bv rhs));
-        rewrite XBV.xbv_bv_inverse in *; crush.
-    - funelim (bv_binop (fun bvl bvr : BV.bitvector w => BV.bv_subt bvl bvr) (XBV.from_bv lhs) (XBV.from_bv rhs));
-        rewrite XBV.xbv_bv_inverse in *;
-        crush.
-    - funelim (bv_binop (BV.bv_mult (n:=w)) (XBV.from_bv lhs) (XBV.from_bv rhs));
-        rewrite XBV.xbv_bv_inverse in *;
-        crush.
+    destruct op.
+    all: simp eval_arithmeticop.
+    all: match goal with [ |- context[bv_binop ?op ?l ?r] ] =>
+           funelim (bv_binop op l r)
+         end.
+    all: rewrite XBV.xbv_bv_inverse in *.
+    all: crush.
   Qed.
   
   Lemma eval_bitwiseop_to_bv op w (lhs rhs : BV.bitvector w) :
     exists bv, XBV.to_bv (eval_bitwiseop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
   Proof.
-    destruct op; simp eval_bitwiseop.
-    - (* andb *)
-      erewrite bitwise_and_no_exes;
-        try erewrite XBV.xbv_bv_inverse;
-        try crush.
-    - (* orb *)
-      erewrite bitwise_or_no_exes;
-        try erewrite XBV.xbv_bv_inverse;
-        try crush.
-    - (* xorb *)
-      erewrite bitwise_xor_no_exes;
-        try erewrite XBV.xbv_bv_inverse;
-        try crush.
+    destruct op.
+    all: autorewrite with eval_bitwiseop xbv.
+    all: eauto.
   Qed.
   
   Lemma eval_shiftop_to_bv op w1 w2 (lhs : BV.bitvector w1) (rhs : BV.bitvector w2) :
     exists bv, XBV.to_bv (eval_shiftop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
   Proof.
-    destruct op; simp eval_shiftop.
-    - (* shift right *)
-      rewrite XBV.to_N_from_bv.
-      simpl.
-      rewrite XBV.shr_to_bv.
-      eauto.
-    - (* shift left *)
-      rewrite XBV.to_N_from_bv.
-      simpl.
-      rewrite XBV.shl_to_bv.
-      eauto.
-    - (* shift left (arithmetic) *)
-      rewrite XBV.to_N_from_bv.
-      simpl.
-      rewrite XBV.shl_to_bv.
-      eauto.
+    destruct op.
+    all: autorewrite with eval_shiftop xbv.
+    all: eauto.
   Qed.
   
   Lemma eval_arithmeticop_no_exes op w (lhs rhs : BV.bitvector w) :
     exists bv, eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
   Proof.
     edestruct eval_arithmeticop_to_bv as [bv Hbv].
-    exists bv.
     apply XBV.bv_xbv_inverse in Hbv.
-    crush.
+    eauto.
   Qed.
   
   Lemma eval_bitwiseop_no_exes op w (lhs rhs : BV.bitvector w) :
     exists bv, eval_bitwiseop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
   Proof.
     edestruct eval_bitwiseop_to_bv as [bv Hbv].
-    exists bv.
     apply XBV.bv_xbv_inverse in Hbv.
-    crush.
+    eauto.
   Qed.
   
   Lemma eval_shiftop_no_exes op w1 w2 (lhs : BV.bitvector w1) (rhs : BV.bitvector w2) :
     exists bv, eval_shiftop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
   Proof.
     edestruct eval_shiftop_to_bv as [bv Hbv].
-    exists bv.
     apply XBV.bv_xbv_inverse in Hbv.
-    crush.
+    eauto.
   Qed.
   
   Lemma eval_unop_to_bv op w (e : BV.bitvector w) :
     exists bv, XBV.to_bv (eval_unaryop op (XBV.from_bv e)) = Some bv.
   Proof.
-    destruct op; simp eval_unaryop.
-    - rewrite XBV.xbv_bv_inverse. eauto.
-    - rewrite XBV.not_no_exes.
-      rewrite XBV.xbv_bv_inverse.
-      eauto.
+    destruct op.
+    all: autorewrite with eval_unaryop xbv.
+    all: eauto.
   Qed.
   
   Lemma eval_unop_no_exes op w (e : BV.bitvector w) :
     exists bv, eval_unaryop op (XBV.from_bv e) = XBV.from_bv bv.
   Proof.
     edestruct eval_unop_to_bv as [bv Hbv].
-    exists bv.
     apply XBV.bv_xbv_inverse in Hbv.
-    crush.
+    eauto.
   Qed.
   
   Lemma eval_conditional_no_exes w_cond w (cond : BV.bitvector w_cond) (ifT ifF : BV.bitvector w) :
@@ -1447,6 +1400,8 @@ Section ExpressionFacts.
     - apply XBV.xbv_bv_inverse.
   Qed.
 
+  Hint Rewrite select_bit_no_exes using lia : xbv.
+
   Import SigTNotations.
   Import EqNotations. 
 
@@ -1464,50 +1419,47 @@ Section ExpressionFacts.
   Lemma convert_no_exes w_from w_to (from : BV.bitvector w_from) :
     convert w_to (XBV.from_bv from) = XBV.from_bv (convert_bv w_to from).
   Proof.
-    funelim (convert w_to (XBV.from_bv from));
-      try destruct_rew; clear Heqcall.
-    - rewrite XBV.zeros_from_bv.
-      rewrite XBV.concat_no_exes. simpl.
-      funelim (convert_bv (to - from + from) from0); [|lia|lia].
-      clear Heqcall.
+    funelim (convert w_to (XBV.from_bv from)); clear Heqcall.
+    all: try destruct_rew.
+    - autorewrite with xbv.
+      funelim (convert_bv (to - from + from) from0); [|lia|lia];
+        clear Heqcall.
       apply XBV.of_bits_equal.
       destruct_rew.
       repeat f_equal.
       crush.
-    - rewrite XBV.extr_no_exes by crush.
+    - autorewrite with xbv.
       funelim (convert_bv to from0); [lia| |lia].
       reflexivity.
     - funelim (convert_bv from from0); [lia|lia|].
       now rewrite <- eq_rect_eq.
   Qed.
+
+  Hint Rewrite convert_no_exes : xbv.
   
   Lemma convert_from_bv w_from w_to (from : BV.bitvector w_from) :
     exists bv : BV.bitvector w_to, XBV.to_bv (convert w_to (XBV.from_bv from)) = Some bv.
   Proof.
-    funelim (convert w_to (XBV.from_bv from));
-      try destruct_rew; try rewrite <- Heqcall; clear Heqcall; simpl.
-    - rewrite XBV.zeros_from_bv, XBV.concat_to_bv.
-      eauto.
-    - rewrite XBV.extr_no_exes by crush.
-      rewrite XBV.xbv_bv_inverse.
-      eauto.
-    - rewrite XBV.xbv_bv_inverse.
-      eauto.
+    funelim (convert w_to (XBV.from_bv from)).
+    all: try destruct_rew; simpl.
+    all: autorewrite with xbv.
+    all: eauto.
   Qed.
   
   Lemma eval_expr_defined w regs e :
       RegisterState.defined_value_for (fun v => List.In v (Verilog.expr_reads e)) regs ->
       exists bv, eval_expr (w:=w) regs e = Some (XBV.from_bv bv).
   Proof.
-    induction e; intros * Hdefined;
-      simp eval_expr expr_reads in *;
-      simpl in *; monad_inv;
-      RegisterState.unpack_defined_value_for;
-      repeat match goal with
-        | [ IH : context[RegisterState.defined_value_for _ _ -> exists _, _] |- _ ] =>
-            let IH' := fresh "IH" in
-            edestruct IH as [? IH']; eauto; clear IH; inv IH'
-        end.
+    induction e.
+    all: intros * Hdefined.
+    all: simp eval_expr expr_reads in *; simpl in *.
+    all: monad_inv.
+    all: RegisterState.unpack_defined_value_for.
+    all: repeat match goal with
+                | [ IH : context[RegisterState.defined_value_for _ _ -> exists _, _] |- _ ] =>
+                    let IH' := fresh "IH" in
+                    edestruct IH as [? IH']; eauto; clear IH; inv IH'
+                end.
     - (* arithmeticop *)
       edestruct eval_arithmeticop_no_exes as [bv Hbv].
       exists bv. now rewrite Hbv.
@@ -1524,31 +1476,24 @@ Section ExpressionFacts.
       edestruct eval_conditional_no_exes as [bv Hbv].
       exists bv. now rewrite Hbv.
     - (* range select *) (* Not sure why it appears 4 times *)
-      rewrite XBV.extr_no_exes by lia. eauto.
-    - rewrite XBV.extr_no_exes by lia. eauto.
-    - rewrite XBV.extr_no_exes by lia. eauto.
-    - rewrite XBV.extr_no_exes by lia. eauto.
+      autorewrite with xbv. eauto.
+    - autorewrite with xbv. eauto.
+    - autorewrite with xbv. eauto.
+    - autorewrite with xbv. eauto.
     - (* bit select (in bounds by literal) *)
-      rewrite select_bit_no_exes by assumption.
-      eauto.
+      autorewrite with xbv. eauto.
     - (* bit select (in bounds by literal) *)
-      rewrite select_bit_no_exes; cycle 1. {
-        pose proof (BV.to_N_max_bound _ x1).
-        lia.
-      }
-      eauto.
+      pose proof (BV.to_N_max_bound w_sel x1).
+      autorewrite with xbv. eauto.
     - (* concat *)
-      rewrite XBV.concat_no_exes.
-      eauto.
+      autorewrite with xbv. eauto.
     - (* replicate *)
-      rewrite XBV.replicate_no_exes.
-      eauto.
+      autorewrite with xbv. eauto.
     - (* literal *)
       eauto.
     - (* variable *)
       eauto.
-    - rewrite convert_no_exes.
-      eauto.
+    - autorewrite with xbv. eauto.
   Qed.
   
   Lemma eval_expr_no_exes w regs e :
@@ -1564,6 +1509,22 @@ Section ExpressionFacts.
   Qed.
   
 End ExpressionFacts.
+
+(* We duplicate the hints from above because we can't use #[global]
+   inside Module *)
+#[global]
+Hint Rewrite
+  bitwise_and_no_exes
+  bitwise_or_no_exes
+  bitwise_xor_no_exes
+  : xbv.
+#[global]
+Hint Rewrite
+  select_bit_no_exes
+  convert_no_exes
+  using lia
+  : xbv.
+
 
 Module Facts.
   Import CombinationalOnly.
@@ -1594,16 +1555,14 @@ Module Facts.
     regs =(Verilog.expr_reads e)= regs' ->
     eval_expr regs e = eval_expr regs' e.
   Proof.
-    induction e; intros; simp eval_expr expr_reads in *;
-      RegisterState.unpack_match_on;
-      try erewrite IHe with (regs':=regs') by assumption;
-      try erewrite IHe1 with (regs':=regs') by assumption;
-      try erewrite IHe2 with (regs':=regs') by assumption;
-      try erewrite IHe3 with (regs':=regs') by assumption;
-      try reflexivity;
-      [idtac].
-    unfold "_ =( _ )= _" in H. insterU H.
-    crush.
+    induction e.
+    all: intros.
+    all: simp eval_expr expr_reads in *.
+    all: RegisterState.unpack_match_on.
+    all: repeat match goal with [ IH : forall _ _, _ -> eval_expr _ _ = eval_expr _ _ |- _ ] =>
+           erewrite IH by eassumption; clear IH
+	 end. 
+    all: crush.
   Qed.
 
   Lemma eval_expr_has_values_some w (e : Verilog.expression w) regs :
@@ -1611,13 +1570,14 @@ Module Facts.
     exists x, eval_expr regs e = Some x.
   Proof.
     intros Hhas_value.
-    induction e; intros; simp eval_expr expr_reads in *;
-    RegisterState.unpack_has_value_for;
-    try (destruct IHe; [assumption|replace (eval_expr regs e)]);
-    try (destruct IHe1; [assumption|replace (eval_expr regs e1)]);
-    try (destruct IHe2; [assumption|replace (eval_expr regs e2)]);
-    try (destruct IHe3; [assumption|replace (eval_expr regs e3)]);
-    simpl; eauto; expect 1.
+    induction e.
+    all: intros.
+    all: simp eval_expr expr_reads in *.
+    all: RegisterState.unpack_has_value_for.
+    all: repeat match goal with [ IH : _ -> exists _, eval_expr _ ?e = Some _ |- _ ] =>
+           destruct IH; [assumption|replace (eval_expr regs e)]
+	 end.
+    all: simpl; eauto; expect 1.
     apply Hhas_value. crush.
   Qed.
 
@@ -1896,14 +1856,15 @@ Module Facts.
     Exists (fun var => rs var = None) (Verilog.expr_reads e).
   Proof.
     rewrite Exists_exists.
-    intros. induction e;
-      simp eval_expr expr_reads in *;
-      repeat setoid_rewrite in_app_iff;
-      monad_inv;
-      try match goal with
-      | [ H : None = None -> _ |- _ ] => edestruct H
-      end;
-      crush.
+    intros.
+    induction e.
+    all: simp eval_expr expr_reads in *.
+    all: repeat setoid_rewrite in_app_iff.
+    all: monad_inv.
+    all: try match goal with [ H : None = None -> _ |- _ ] =>
+           edestruct H
+	 end.
+    all: crush.
   Qed.
 
   Lemma exec_module_item_none_inv rs1 rs2 x mi :
@@ -1924,18 +1885,18 @@ Module Facts.
     rs1 =( Verilog.expr_reads expr )= rs2 ->
     eval_expr rs2 expr = None.
   Proof.
-    induction expr; intros;
-      simp eval_expr expr_reads in *;
-      monad_inv; RegisterState.unpack_match_on.
-    all:
-      match goal with
+    induction expr.
+    all: intros.
+    all: simp eval_expr expr_reads in *.
+    all: monad_inv.
+    all: RegisterState.unpack_match_on.
+    all: try match goal with
       | [ Hfail : eval_expr _ ?e = None, IH : context[eval_expr _ ?e = None -> _] |- _] =>
         insterU IH; rewrite IH; crush
-      | _ => idtac
       end.
+    all: expect 1.
     (* Variable reference is the only interesting case *)
-    unfold "_ =( _ )= _" in H0.
-    erewrite <- H0; crush.
+    rewrite <- H0; crush.
   Qed.
 
   Lemma exec_module_body_permute : forall body1 body2 rs0,

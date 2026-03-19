@@ -1669,7 +1669,7 @@ Module XBV.
   #[global]
   Instance dec_has_x {n} (x : xbv n) : DecProp (has_x x) := _.
 
-  Lemma shl_to_bv n vec shamt :
+  Lemma shl_no_exes n vec shamt :
     to_bv (shl (from_bv vec) shamt) = Some (BV.shl (n:=n) vec shamt).
   Proof.
     unfold BV.to_N, BV.shl.
@@ -1689,7 +1689,7 @@ Module XBV.
       apply H.
   Qed.
   
-  Lemma shr_to_bv n vec shamt :
+  Lemma shr_no_exes n vec shamt :
     to_bv (shr (from_bv vec) shamt) = Some (BV.shr (n:=n) vec shamt).
   Proof.
     unfold BV.to_N, BV.shr.
@@ -1979,3 +1979,25 @@ Module XBV.
     apply List.map_nth.
   Qed.
 End XBV.
+
+#[global]
+Hint Rewrite
+  XBV.xbv_bv_inverse
+  XBV.shr_no_exes
+  XBV.shl_no_exes
+  XBV.not_no_exes
+  XBV.concat_no_exes
+  XBV.replicate_no_exes
+  XBV.to_N_from_bv
+  XBV.zeros_from_bv
+  XBV.ones_from_bv
+  : xbv.
+
+#[global]
+Hint Rewrite
+  XBV.exes_to_bv
+  XBV.extr_no_exes 
+  using lia
+  : xbv.
+
+
