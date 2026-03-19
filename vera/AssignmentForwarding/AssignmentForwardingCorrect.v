@@ -327,5 +327,3 @@ Proof.
     apply forward_assignments_correct.
     assumption.
 Qed.
-
-Print Assumptions assignment_forwarding_exact_equivalence.

@@ -313,8 +313,6 @@ Proof.
   - apply H. now inv Hnodup.
 Qed.  
 
-Print Assumptions module_body_keep_vars_correct.
-
 Lemma exact_by_output_equality v1 v2:
   module_inputs v1 = module_inputs v2 ->
   module_outputs v1 = module_outputs v2 ->

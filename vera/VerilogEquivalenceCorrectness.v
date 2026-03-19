@@ -890,8 +890,6 @@ Proof.
     + destruct H0. assumption.
 Qed.
 
-Print Assumptions no_counterexample_equivalent_iff.
-
 Lemma not_equivalent_counterexample_iff v1 v2 :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->

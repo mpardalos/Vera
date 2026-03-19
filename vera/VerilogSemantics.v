@@ -2127,8 +2127,6 @@ Module Clean.
       + assumption.
       + assumption.
   Qed.
-
-  Print Assumptions clean_module_statically.
 End Clean.
 
 Module Equivalence.
