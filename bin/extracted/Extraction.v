@@ -1,6 +1,7 @@
 From vera Require VerilogSMT.
 From vera Require Verilog.
 From vera Require VerilogEquivalence.
+From vera Require EquivalenceTop.
 From vera Require VerilogToSMT.
 From vera Require Common.
 From vera Require Bitvector.
@@ -45,6 +46,7 @@ Extraction "Vera.ml"
   int_from_nat
   int_to_nat
   VerilogEquivalence.equivalence_query
+  EquivalenceTop.equivalence_query_general
   Verilog.Typecheck.tc_vmodule
   VerilogToSMT.expr_to_smt
   AssignmentForwarding.forward_assignments

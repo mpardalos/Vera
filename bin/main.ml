@@ -42,9 +42,9 @@ let smt_of_file filename =
 
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =
-    let* m1 = internals_dropped_of_file filename1 in
-    let* m2 = internals_dropped_of_file filename2 in
-    Vera.equivalence_query m1 m2
+    let* m1 = typed_module_of_file filename1 in
+    let* m2 = typed_module_of_file filename2 in
+    Vera.equivalence_query_general m1 m2
   in
   match query_result with
   | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
