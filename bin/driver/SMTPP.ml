@@ -68,9 +68,15 @@ module SMTLib = struct
   let assertion varNames fmt t =
     fprintf fmt "(assert %a)" (term varNames) t
 
-  let query fmt (query : SMT.smt_with_namemap) =
+  let raw_query fmt (query : SMT.smt_with_namemap) =
     pp_print_list (declaration query.nameMap) fmt query.query.declarations ~pp_sep:pp_force_newline;
     pp_force_newline fmt ();
     pp_force_newline fmt ();
     pp_print_list (assertion query.nameMap) fmt query.query.assertions ~pp_sep:pp_force_newline
+
+  let query fmt (query : SMT.smt_with_namemap) =
+    fprintf fmt "(set-info :smt-lib-version 2.6)\n";
+    fprintf fmt "(set-logic QF_BV)\n";
+    raw_query fmt query;
+    fprintf fmt "(check-sat)\n";
 end

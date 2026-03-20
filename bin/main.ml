@@ -40,15 +40,26 @@ let smt_of_file filename =
   Vera.verilog_to_smt VerilogLeft (Vera.int_to_nat 0)
   =<< internals_dropped_of_file filename
 
-let compare solver filename1 filename2 =
-  let queryResult =
+let compare ~solver ~dump_query filename1 filename2 =
+  let query_result =
     let* m1 = internals_dropped_of_file filename1 in
     let* m2 = internals_dropped_of_file filename2 in
     Vera.equivalence_query m1 m2
   in
-  match queryResult with
+  match query_result with
   | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
   | Vera.Inr query -> (
+      (match dump_query with
+      | Some "-" ->
+         printf "Query:\n%a\n" SMTPP.SMTLib.query query;
+         flush stdout
+      | Some fp ->
+         let f = open_out fp in
+         SMTPP.SMTLib.query (Format.formatter_of_out_channel f) query;
+         close_out f;
+         eprintf "Query written to %s\n" fp;
+         flush stderr; flush stdout
+      | _ -> ());
       match solver query with
       | SMTLIB.UNSAT, out ->
           printf "Equivalent (UNSAT)\n";
@@ -77,7 +88,8 @@ let rec lower level filename =
   | `Sorted ->
       display_or_error VerilogPP.Typed.vmodule (sorted_module_of_file filename)
   | `InternalsDropped ->
-      display_or_error VerilogPP.Typed.vmodule (internals_dropped_of_file filename)
+      display_or_error VerilogPP.Typed.vmodule
+        (internals_dropped_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
   | `All ->
       printf "\n-- parsed -- \n";
@@ -95,6 +107,7 @@ let compare_cmd =
         ("z3", SMTLIB.run_query_z3);
         ("cvc5", SMTLIB.run_query_cvc5);
         ("bitwuzla", SMTLIB.run_query_bitwuzla);
+        ("none", SMTLIB.run_query_dummy);
       ]
   in
   Cmd.v (Cmd.info "compare")
@@ -104,6 +117,12 @@ let compare_cmd =
       required
       & opt (some solver_enum) None
       & info [ "s"; "solver" ] ~docv:"SOLVER" ~doc:"Solver to use (z3, cvc5)")
+  and+ dump_query =
+    Arg.(
+      value
+      & opt (some filepath) None
+      & info [ "dump-query" ] ~docv:"FILE"
+          ~doc:"Dump the generated query into this file")
   and+ file_left =
     Arg.(
       required
@@ -115,7 +134,7 @@ let compare_cmd =
       & pos 1 (some file) None
       & info [] ~docv:"FILE_RIGHT" ~doc:"Second verilog file to compare")
   in
-  compare solver file_left file_right
+  compare ~solver ~dump_query file_left file_right
 
 let lower_cmd =
   let open Cmdliner.Term.Syntax in
