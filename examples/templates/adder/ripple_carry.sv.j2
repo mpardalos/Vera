@@ -1,0 +1,24 @@
+{% set N = N | int -%}
+module adder_{{ N }}_bit (
+    input  wire [{{ N-1 }}:0] a,
+    input  wire [{{ N-1 }}:0] b,
+    output wire [{{ N }}:0] sum
+);
+
+    // Bit 0 (Half Adder)
+    wire s0;
+    wire c0;
+    assign s0 = a[0] ^ b[0];
+    assign c0 = a[0] & b[0];
+
+    {% for i in range(1, N) -%}
+    // Bit {{ i }}
+    wire s{{ i }};
+    wire c{{ i }};
+    assign s{{ i }} = a[{{ i }}] ^ b[{{ i }}] ^ c{{ i-1 }};
+    assign c{{ i }} = (a[{{ i }}] & b[{{ i }}]) | (a[{{ i }}] & c{{ i-1 }}) | (b[{{ i }}] & c{{ i-1 }});
+    {% endfor %}
+
+    assign sum = {c{{ N-1 }}, {% for i in range(N-1, -1, -1) %}s{{ i }}{{ ", " if not loop.last }}{% endfor %}};
+
+endmodule

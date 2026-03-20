@@ -1,0 +1,8 @@
+{% set N = N | int -%}
+module adder_plus (
+    input  wire [{{ N-1 }}:0] a,
+    input  wire [{{ N-1 }}:0] b,
+    output wire [{{ N }}:0] sum
+);
+   assign sum = a + b;
+endmodule

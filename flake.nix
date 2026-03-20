@@ -43,6 +43,7 @@
           pkgs.cvc5
           pkgs.yosys
           pkgs.iverilog
+          pkgs.jinja2-cli
           (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
           pkgs.z3
           pkgs.cvc5
