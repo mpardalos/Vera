@@ -1,0 +1,9 @@
+synth_*
+gen_*
+*.synth.sv
+*.log
+*.smt2
+*.time
+/summary.csv
+/out/
+.shake/

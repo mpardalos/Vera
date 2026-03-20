@@ -1,0 +1,9 @@
+{% set N = N | int -%}
+module conditional (
+    input  logic [0:0] in1,
+    input  logic [{{ N-1 }}:0] in2,
+    input  logic [{{ N-1 }}:0] in3,
+    output logic [{{ N-1 }}:0] out
+);
+   assign out = in1 ? in2 : in3;
+endmodule

@@ -1,0 +1,9 @@
+{% set N = N | int -%}
+{% set OUT_W = 2 * N -%}
+module combinational_star (
+    input  logic [{{ N-1 }}:0] in1,
+    input  logic [{{ N-1 }}:0] in2,
+    output logic [{{ OUT_W-1 }}:0] out
+);
+   assign out = in1 * in2;
+endmodule

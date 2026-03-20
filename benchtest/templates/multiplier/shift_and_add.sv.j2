@@ -1,0 +1,15 @@
+{% set N = N | int -%}
+{% set OUT_W = 2 * N -%}
+module combinational_single_cycle (
+    input  logic [{{ N-1 }}:0] in1,
+    input  logic [{{ N-1 }}:0] in2,
+    output logic [{{ OUT_W-1 }}:0] out
+);
+{% for i in range(N) %}
+  wire [{{ OUT_W-1 }}:0] part{{ i }};
+  assign part{{ i }} = (in1[{{ OUT_W }}'d{{ i }}] ? in2 << {{ OUT_W }}'d{{ i }} : {{ OUT_W }}'d0);
+{% endfor %}
+
+  assign out = {% for i in range(N) %}part{{ i }}{{ " + " if not loop.last else ";" }}{% endfor %}
+
+endmodule
