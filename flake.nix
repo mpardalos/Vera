@@ -45,6 +45,7 @@
           pkgs.iverilog
           pkgs.jinja2-cli
           (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
+          (pkgs.haskellPackages.ghcWithPackages (ps: with ps; [ shake ]))
           pkgs.z3
           pkgs.cvc5
 	  coqPackages.coq-lsp

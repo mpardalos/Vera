@@ -1,2 +1,4 @@
-synth_*.sv
-synth_*.log
+synth_*
+gen_*
+*.synth.sv
+*.log
