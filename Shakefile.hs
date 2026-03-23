@@ -1,30 +1,45 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE MultiWayIf #-}
 
 import Development.Shake
 import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Util
 import Data.Tuple (swap)
-import Data.List (isSuffixOf, isInfixOf, isPrefixOf, stripPrefix, unsnoc)
+import Data.List (isSuffixOf, isInfixOf, isPrefixOf, stripPrefix, unsnoc, find, intercalate)
 import Data.Bifunctor (bimap)
 import Data.Char (isDigit)
-import Data.Maybe (isJust)
-import Control.Monad (forM_, guard)
-import System.Directory qualified
+import Data.Maybe (isJust, fromMaybe)
+import Control.Monad (forM, forM_, guard, join)
+import System.Directory qualified as SD
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
+import Text.Printf (printf)
+import System.Exit(ExitCode(..))
+import Data.Function ((&))
 import Debug.Trace
 
 vera :: FilePath
 vera = "_build/install/default/bin/vera"
 
+-- | Timeout for vera runs (in seconds)
+veraTimeout :: Double
+veraTimeout = 5
+
+-- | Value of --solver= flag for vera
+veraSolver :: String
+veraSolver = "bitwuzla"
+
+-- | Standard power-of-two sizes, plus some weird ones for variety
+runSizes :: [Int]
+-- runSizes = [4,5,8,12,16,32,43,64,128]
+runSizes = [4,8]
+
 main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
-  phony "vera" $ need [vera]
-  vera %> \out -> cmd_ "dune" "build"
-
   phony "clean" $ do
     need ["clean-synth", "clean-gen", "clean-run"]
+    removeFilesAfterVerbose "" ["examples/summary.csv"]
 
   phony "synth" $ do
     sources <- filter (not . (".synth.sv" `isSuffixOf`))
@@ -73,11 +88,11 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     genDirs <- filter ("gen_" `isPrefixOf`) <$> getDirectoryDirs "examples"
     forM_ genDirs $ \dir -> do
       putInfo $ "Removing " <> ("examples" </> dir) <> "/"
-      runAfter $ System.Directory.removeDirectoryRecursive ("examples" </> dir)
+      runAfter $ SD.removeDirectoryRecursive ("examples" </> dir)
 
   -- Running vera
-  "*.vera.time" %> \out -> need [ out -<.> "log" ]
-  "*.vera.smt2" %> \out -> need [ out -<.> "log" ]
+  "//*.vera.time" %> \out -> need [ out -<.> "log" ]
+  "//*.vera.smt2" %> \out -> need [ out -<.> "log" ]
   "//*_vs_*.vera.log" %> \out -> do
     let Just [dir, mod1, mod2] = filePattern "//*_vs_*.vera.log" out
         smtFile = out -<.> "smt2"
@@ -86,18 +101,81 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         right = dir </> mod2 <.> "sv"
     need [vera, left, right]
     begin <- liftIO getCurrentTime
-    cmd_
+    (Exit exitCode) <- cmd
       (Traced "vera")
-      (Timeout 60)
+      (Timeout veraTimeout)
       (FileStdout out)
       (FileStderr out)
-      "time" vera "compare" "--solver=cvc5" ("--dump-query=" ++ smtFile) left right
+      (AddEnv "OCAMLRUNPARAM" "b")
+      "time" vera "compare" ("--solver=" ++ veraSolver) ("--dump-query=" ++ smtFile) left right
+    case exitCode of
+      ExitFailure 130 -> liftIO $ appendFile out "Timed out"
+      _ -> pure ()
     end <- liftIO getCurrentTime
     writeFile' timeFile (show (diffUTCTime end begin))
+
+  phony "vera" $ need [vera]
+  vera %> \out -> do
+    need =<< getDirectoryFiles "" ["*.v", "*.ml"]
+    cmd_ "dune" "build"
 
   phony "clean-run" $ do
     removeFilesAfterVerbose "examples"
       ["//*.vera.log", "//*.vera.time", "//*.vera.smt2"]
+
+  "examples/summary.csv" %> \out -> do
+    concreteExampleDirs :: [String] <-
+      filter (\dir -> dir `notElem` ["templates"] && not ("gen_" `isPrefixOf` dir))
+        <$> getDirectoryDirs "examples"
+    concreteExamples <- fmap join <$> forM concreteExampleDirs $ \exampleDir -> do
+      baseModuleFiles <- getDirectoryFiles ("examples" </> exampleDir) ["*.sv"]
+      let moduleNames =
+            baseModuleFiles
+            & filter (not . (".synth.sv" `isSuffixOf`))
+            & map dropExtensions
+            & map (\m -> [m, m <.> "synth"])
+            & join
+      return
+        [ (exampleDir, left, right)
+        | (left, right) <- allPairs moduleNames
+        ]
+    templateExampleDirs <- getDirectoryDirs ("examples" </> "templates")
+    templateExamples <- fmap join <$> forM templateExampleDirs $ \exampleTemplateDir -> do
+      moduleTemplates <- getDirectoryFiles ("examples" </> "templates" </> exampleTemplateDir) ["*.sv.j2"]
+      let moduleNames =
+            moduleTemplates
+            & map dropExtensions
+            & map (\m -> [m, m <.> "synth"])
+            & join
+      let exampleDir size = "gen_" <> exampleTemplateDir <> "_" <> show size
+      return
+        [ (exampleDir size, left, right)
+        | (left, right) <- allPairs moduleNames
+        , size <- runSizes
+        ]
+    let examples = concreteExamples ++ templateExamples
+    let logFiles =
+          [ "examples" </> dir </> (left ++ "_vs_" ++ right ++ ".vera.log")
+            | (dir, left, right) <- examples
+          ]
+    let timeFiles = map (-<.> "time") logFiles
+    logs <- forP logFiles readFileLines
+    let results =
+          [ if
+              | "Equivalent (UNSAT)" `elem` logLines -> "Equivalent"
+              | "Non-equivalent (SAT)" `elem` logLines -> "Non-equivalent"
+              | "Timed out" `elem` logLines -> "Timed out"
+              | Just errorLine <- find ("Error" `isPrefixOf`) logLines -> errorLine
+              | ("Stack overflow" `isInfixOf`) `any` logLines -> "Stack overflow"
+              | otherwise -> "??"
+            | logLines <- logs
+          ]
+    times <- forP timeFiles readFile'
+    writeFileLines out
+      [ intercalate "," [dir, left, right, result, time]
+      | ((dir, left, right), result, time) <- zip3 examples results times
+      ]
+
 
 -- Helpers
 
@@ -141,3 +219,7 @@ removeFilesAfterVerbose dir pat = do
 
 pattern Snoc :: [a] -> a -> [a]
 pattern Snoc xs x <- (unsnoc -> Just (xs, x))
+
+allPairs :: [a] -> [(a, a)]
+allPairs [] = []
+allPairs (x:xs) = map (x,) xs ++ allPairs xs
