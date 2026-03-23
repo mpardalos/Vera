@@ -1,0 +1,71 @@
+{% set N = N | int -%}
+{% set GS = (GS | default(4)) | int -%}
+{% set NG = ((N - 1) // GS) + 1 -%}
+{#- CLA carry expression macro.
+    Produces: g[base+k-1] | (p[base+k-1] & g[base+k-2]) | ...
+    If cin is nonempty, appends: | (p[base+k-1] & ... & p[base] & cin)
+-#}
+{%- macro cla_carry(g, p, base, k, cin) -%}
+{{ g }}{{ base + k - 1 }}
+{%- for t in range(1, k) %} | (
+{%- for m in range(t) %}{{ p }}{{ base + k - 1 - m }} & {% endfor %}
+{{- g }}{{ base + k - 1 - t }})
+{%- endfor %}
+{%- if cin %} | (
+{%- for m in range(k) %}{{ p }}{{ base + k - 1 - m }} & {% endfor %}
+{{- cin }})
+{%- endif %}
+{%- endmacro -%}
+
+module adder_carry_lookahead (
+    input  wire [{{ N-1 }}:0] a,
+    input  wire [{{ N-1 }}:0] b,
+    output wire [{{ N }}:0] sum
+);
+    // Per-bit generate and propagate signals
+{%- for i in range(N) %}
+    wire g{{ i }}; assign g{{ i }} = a[{{ i }}] & b[{{ i }}];
+{%- endfor %}
+
+{%- for i in range(N) %}
+    wire p{{ i }}; assign p{{ i }} = a[{{ i }}] ^ b[{{ i }}];
+{%- endfor %}
+
+{%- for grp in range(NG) %}
+{%- set base = grp * GS %}
+{%- set gs = [GS, N - base] | min %}
+{%- if grp == 0 %}
+{%- set cin = "" %}
+{%- else %}
+{%- set cin = "CGin" ~ grp %}
+{%- endif %}
+
+    // Group {{ grp }} (bits {{ base }}{% if gs > 1 %}-{{ base + gs - 1 }}{% endif %})
+{%- if grp > 0 %}
+    wire CGin{{ grp }}; assign CGin{{ grp }} = {{ cla_carry("GG", "PP", 0, grp, "") }};
+{%- endif %}
+{%- for k in range(1, gs) %}
+    wire c{{ base + k }}; assign c{{ base + k }} = {{ cla_carry("g", "p", base, k, cin) }};
+{%- endfor %}
+    wire GG{{ grp }}; assign GG{{ grp }} = {{ cla_carry("g", "p", base, gs, "") }};
+{%- if grp > 0 %}
+    wire PP{{ grp }}; assign PP{{ grp }} = {% for m in range(gs) %}{% if m > 0 %} & {% endif %}p{{ base + gs - 1 - m }}{% endfor %};
+{%- endif %}
+{%- endfor %}
+
+    // Carry out
+    wire c{{ N }}; assign c{{ N }} = {{ cla_carry("GG", "PP", 0, NG, "") }};
+
+    // Sum bits
+{%- for i in range(N) %}
+{%- if i == 0 %}
+    wire s{{ i }}; assign s{{ i }} = p{{ i }};
+{%- elif i % GS == 0 %}
+    wire s{{ i }}; assign s{{ i }} = p{{ i }} ^ CGin{{ i // GS }};
+{%- else %}
+    wire s{{ i }}; assign s{{ i }} = p{{ i }} ^ c{{ i }};
+{%- endif %}
+{%- endfor %}
+
+    assign sum = {c{{ N }}{% for i in range(N-1, -1, -1) %}, s{{ i }}{% endfor %}};
+endmodule
