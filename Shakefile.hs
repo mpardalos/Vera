@@ -12,12 +12,19 @@ import Data.Char (isDigit)
 import Data.Maybe (isJust)
 import Control.Monad (forM_, guard)
 import System.Directory qualified
+import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import Debug.Trace
+
+vera :: FilePath
+vera = "_build/install/default/bin/vera"
 
 main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
+  phony "vera" $ need [vera]
+  vera %> \out -> cmd_ "dune" "build"
+
   phony "clean" $ do
-    need ["clean-synth", "clean-gen"]
+    need ["clean-synth", "clean-gen", "clean-run"]
 
   phony "synth" $ do
     sources <- filter (not . (".synth.sv" `isSuffixOf`))
@@ -67,6 +74,30 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     forM_ genDirs $ \dir -> do
       putInfo $ "Removing " <> ("examples" </> dir) <> "/"
       runAfter $ System.Directory.removeDirectoryRecursive ("examples" </> dir)
+
+  -- Running vera
+  "*.vera.time" %> \out -> need [ out -<.> "log" ]
+  "*.vera.smt2" %> \out -> need [ out -<.> "log" ]
+  "//*_vs_*.vera.log" %> \out -> do
+    let Just [dir, mod1, mod2] = filePattern "//*_vs_*.vera.log" out
+        smtFile = out -<.> "smt2"
+        timeFile = out -<.> "time"
+        left = dir </> mod1 <.> "sv"
+        right = dir </> mod2 <.> "sv"
+    need [vera, left, right]
+    begin <- liftIO getCurrentTime
+    cmd_
+      (Traced "vera")
+      (Timeout 60)
+      (FileStdout out)
+      (FileStderr out)
+      "time" vera "compare" "--solver=cvc5" ("--dump-query=" ++ smtFile) left right
+    end <- liftIO getCurrentTime
+    writeFile' timeFile (show (diffUTCTime end begin))
+
+  phony "clean-run" $ do
+    removeFilesAfterVerbose "examples"
+      ["//*.vera.log", "//*.vera.time", "//*.vera.smt2"]
 
 -- Helpers
 
