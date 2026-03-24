@@ -1,32 +1,37 @@
 {% set N = N | int -%}
-{% set H = N // 2 -%}
+{% set H_LOW = N // 2 -%}
+{% set H_HIGH = N - H_LOW -%}
 {% set OUT_W = 2 * N -%}
-{% set SUM_W = H + 1 -%}
+{% set Z0_W = 2 * H_LOW -%}
+{% set Z2_W = 2 * H_HIGH -%}
+{% set SUM_W = H_HIGH + 1 -%}
 {% set SUM_PROD_W = 2 * SUM_W -%}
-{% set Z1_PAD = OUT_W - SUM_PROD_W - H -%}
+{% set Z2_SHIFT = 2 * H_LOW -%}
+{% set Z1_PAD = OUT_W - SUM_PROD_W - H_LOW -%}
+{% set Z0_PAD = OUT_W - Z0_W -%}
 module karatsuba (
     input  logic [{{ N-1 }}:0] in1,
     input  logic [{{ N-1 }}:0] in2,
     output logic [{{ OUT_W-1 }}:0] out
 );
-    // Split inputs into high and low halves
-    wire [{{ H-1 }}:0] a1;
-    wire [{{ H-1 }}:0] a0;
-    wire [{{ H-1 }}:0] b1;
-    wire [{{ H-1 }}:0] b0;
+    // Split inputs into high and low halves (asymmetric for odd N)
+    wire [{{ H_HIGH-1 }}:0] a1;
+    wire [{{ H_LOW-1 }}:0] a0;
+    wire [{{ H_HIGH-1 }}:0] b1;
+    wire [{{ H_LOW-1 }}:0] b0;
 
-    assign a1 = in1[{{ N-1 }}:{{ H }}];
-    assign a0 = in1[{{ H-1 }}:0];
-    assign b1 = in2[{{ N-1 }}:{{ H }}];
-    assign b0 = in2[{{ H-1 }}:0];
+    assign a1 = in1[{{ N-1 }}:{{ H_LOW }}];
+    assign a0 = in1[{{ H_LOW-1 }}:0];
+    assign b1 = in2[{{ N-1 }}:{{ H_LOW }}];
+    assign b0 = in2[{{ H_LOW-1 }}:0];
 
     // Three Karatsuba sub-products
-    wire [{{ N-1 }}:0] z0;
-    wire [{{ N-1 }}:0] z2;
+    wire [{{ Z0_W-1 }}:0] z0;
+    wire [{{ Z2_W-1 }}:0] z2;
     assign z0 = a0 * b0;
     assign z2 = a1 * b1;
 
-    // Sums can overflow by 1 bit
+    // Sums can overflow by 1 bit (zero-extend a0/b0 to match a1/b1 width)
     wire [{{ SUM_W-1 }}:0] sum_a;
     wire [{{ SUM_W-1 }}:0] sum_b;
     assign sum_a = a1 + a0;
@@ -40,18 +45,18 @@ module karatsuba (
     wire [{{ SUM_PROD_W-1 }}:0] z1;
     assign z1 = sum_prod - z2 - z0;
 
-    // Recombine: z2 * 2^N + z1 * 2^H + z0
+    // Recombine: z2 * 2^(2*H_LOW) + z1 * 2^H_LOW + z0
     wire [{{ OUT_W-1 }}:0] z2_shifted;
     wire [{{ OUT_W-1 }}:0] z1_shifted;
     wire [{{ OUT_W-1 }}:0] z0_extended;
 
-    assign z2_shifted  = {% raw %}{{% endraw %}z2, {{ N }}'d0{% raw %}}{% endraw %};
+    assign z2_shifted  = {% raw %}{{% endraw %}z2, {{ Z2_SHIFT }}'d0{% raw %}}{% endraw %};
 {% if Z1_PAD > 0 -%}
-    assign z1_shifted  = {% raw %}{{% endraw %}{{ Z1_PAD }}'b0, z1, {{ H }}'d0{% raw %}}{% endraw %};
+    assign z1_shifted  = {% raw %}{{% endraw %}{{ Z1_PAD }}'b0, z1, {{ H_LOW }}'d0{% raw %}}{% endraw %};
 {% else -%}
-    assign z1_shifted  = {% raw %}{{% endraw %}z1, {{ H }}'d0{% raw %}}{% endraw %};
+    assign z1_shifted  = {% raw %}{{% endraw %}z1, {{ H_LOW }}'d0{% raw %}}{% endraw %};
 {% endif -%}
-    assign z0_extended = {% raw %}{{% endraw %}{{ N }}'d0, z0{% raw %}}{% endraw %};
+    assign z0_extended = {% raw %}{{% endraw %}{{ Z0_PAD }}'d0, z0{% raw %}}{% endraw %};
 
     assign out = z2_shifted + z1_shifted + z0_extended;
 

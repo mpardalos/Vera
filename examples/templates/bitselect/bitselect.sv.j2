@@ -1,11 +1,12 @@
 {% set N = N | int -%}
-{%- if N <= 2 -%}{% set IDX_W = 1 %}
-{%- elif N <= 4 -%}{% set IDX_W = 2 %}
-{%- elif N <= 8 -%}{% set IDX_W = 3 %}
-{%- elif N <= 16 -%}{% set IDX_W = 4 %}
-{%- elif N <= 32 -%}{% set IDX_W = 5 %}
-{%- elif N <= 64 -%}{% set IDX_W = 6 %}
-{%- elif N <= 128 -%}{% set IDX_W = 7 %}
+{# No log function in jinja2, have to do it manually #}
+{%- if N < 2 -%}{% set IDX_W = 0 %}
+{%- elif N < 4 -%}{% set IDX_W = 1 %}
+{%- elif N < 8 -%}{% set IDX_W = 2 %}
+{%- elif N < 16 -%}{% set IDX_W = 3 %}
+{%- elif N < 32 -%}{% set IDX_W = 4 %}
+{%- elif N < 64 -%}{% set IDX_W = 5 %}
+{%- elif N < 128 -%}{% set IDX_W = 6 %}
 {%- else -%}{% set IDX_W = 8 %}
 {%- endif -%}
 module bitselect (
