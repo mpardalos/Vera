@@ -250,7 +250,7 @@ Module Verilog.
   | BitSelect_width {w_val w_sel}
     (val : expression w_val)
     (sel : expression w_sel)
-    (wf : (2 ^ w_sel < w_val)%N)
+    (wf : (2 ^ w_sel <= w_val)%N)
     : expression 1
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
@@ -505,11 +505,11 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   | RawVerilog.IntegerLiteral lit =>
     let* wf := assert_dec
       (BV.to_N (BV.of_bits lit) < w_vec)%N
-      "bit-select index out of bounds"%string in
+      "bit-select index out of bounds (literal)"%string in
     inr (1%N; Verilog.BitSelect_const t_vec (BV.of_bits lit) wf)
   | _ =>
     let* (w_idx; t_idx) := tc_expr idx in
-    let* wf := assert_dec _ "bit-select index out of bounds"%string in
+    let* wf := assert_dec _ "bit-select index out of bounds (width)"%string in
     inr (1%N; Verilog.BitSelect_width t_vec t_idx wf)
   end
 | RawVerilog.Concatenation lhs rhs =>
