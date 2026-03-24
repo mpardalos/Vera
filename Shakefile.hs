@@ -43,7 +43,7 @@ main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
   phony "clean" $ do
     need ["clean-synth", "clean-gen", "clean-run"]
-    removeFilesAfterVerbose "" ["examples/out/summary.csv"]
+    removeFilesAfter "" ["examples/summary.csv"]
 
   phony "synth" $ do
     sources <- filter (not . (".synth.sv" `isSuffixOf`))
@@ -52,7 +52,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     need targets
 
   phony "clean-synth" $ do
-    removeFilesAfterVerbose "examples" ["//*.synth.sv", "//*.synth.log"]
+    removeFilesAfter "examples" ["//*.synth.sv", "//*.synth.log"]
 
   -- Run yosys synthesis. Needs to take priority over the gen_ rule
   -- below, since they both match gen_*/*.synth.sv
@@ -89,11 +89,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     _ -> Nothing
 
   phony "clean-gen" $ do
-      let dir = "examples" </> "out"
-      exists <- liftIO $ SD.doesDirectoryExist dir
-      when exists $ do
-        putInfo $ "Removing " <> ("examples" </> "out") <> "/"
-        runAfter $ SD.removeDirectoryRecursive dir
+    removeFilesAfter "examples" [ "gen_*" ]
 
   -- Running vera
   "//*.vera.time" %> \out -> need [ out -<.> "log" ]
@@ -126,8 +122,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     cmd_ "dune" "build"
 
   phony "clean-run" $ do
-    removeFilesAfterVerbose "examples"
-      ["//*.vera.log", "//*.vera.time", "//*.vera.smt2"]
+    removeFilesAfter "examples"
+      [ "//*.log", "//*.time", "//*.vera.smt2" ]
 
   phony "plots" $ do
     templateExampleDirs <- getDirectoryDirs ("examples" </> "templates")
@@ -241,12 +237,6 @@ templateForInstantiation _ = Nothing
 
 isTemplateInstantiation :: FilePath -> Bool
 isTemplateInstantiation = isJust . templateForInstantiation
-
-removeFilesAfterVerbose :: FilePath -> [FilePattern] -> Action ()
-removeFilesAfterVerbose dir pat = do
-  synthFiles <- getDirectoryFiles dir pat
-  mapM_ (\f -> putInfo $ "Removing " <> f) synthFiles
-  removeFilesAfter dir pat
 
 pattern Snoc :: [a] -> a -> [a]
 pattern Snoc xs x <- (unsnoc -> Just (xs, x))
