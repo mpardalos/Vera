@@ -14,6 +14,7 @@
 
         coq = pkgs.coq;
         coqPackages = pkgs.coqPackages;
+        eqy = pkgs.callPackage nix/eqy.nix {};
 
         deps = [
           coq
@@ -42,6 +43,8 @@
           pkgs.cvc4
           pkgs.cvc5
           pkgs.yosys
+          pkgs.sby
+          eqy
           pkgs.iverilog
           pkgs.jinja2-cli
           (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
