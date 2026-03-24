@@ -1,0 +1,5 @@
+{% set N = N | int -%}
+{% set HALF = N // 2 -%}
+module rangeselect(input [{{ N-1 }}:0] in, output [{{ HALF-1 }}:0] out);
+   assign out = in[{{ N-1 }}:{{ HALF }}];
+endmodule

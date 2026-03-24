@@ -1,0 +1,58 @@
+{% set N = N | int -%}
+{% set H = N // 2 -%}
+{% set OUT_W = 2 * N -%}
+{% set SUM_W = H + 1 -%}
+{% set SUM_PROD_W = 2 * SUM_W -%}
+{% set Z1_PAD = OUT_W - SUM_PROD_W - H -%}
+module karatsuba (
+    input  logic [{{ N-1 }}:0] in1,
+    input  logic [{{ N-1 }}:0] in2,
+    output logic [{{ OUT_W-1 }}:0] out
+);
+    // Split inputs into high and low halves
+    wire [{{ H-1 }}:0] a1;
+    wire [{{ H-1 }}:0] a0;
+    wire [{{ H-1 }}:0] b1;
+    wire [{{ H-1 }}:0] b0;
+
+    assign a1 = in1[{{ N-1 }}:{{ H }}];
+    assign a0 = in1[{{ H-1 }}:0];
+    assign b1 = in2[{{ N-1 }}:{{ H }}];
+    assign b0 = in2[{{ H-1 }}:0];
+
+    // Three Karatsuba sub-products
+    wire [{{ N-1 }}:0] z0;
+    wire [{{ N-1 }}:0] z2;
+    assign z0 = a0 * b0;
+    assign z2 = a1 * b1;
+
+    // Sums can overflow by 1 bit
+    wire [{{ SUM_W-1 }}:0] sum_a;
+    wire [{{ SUM_W-1 }}:0] sum_b;
+    assign sum_a = a1 + a0;
+    assign sum_b = b1 + b0;
+
+    // Middle product
+    wire [{{ SUM_PROD_W-1 }}:0] sum_prod;
+    assign sum_prod = sum_a * sum_b;
+
+    // z1 = (a1+a0)*(b1+b0) - z2 - z0 = a1*b0 + a0*b1
+    wire [{{ SUM_PROD_W-1 }}:0] z1;
+    assign z1 = sum_prod - z2 - z0;
+
+    // Recombine: z2 * 2^N + z1 * 2^H + z0
+    wire [{{ OUT_W-1 }}:0] z2_shifted;
+    wire [{{ OUT_W-1 }}:0] z1_shifted;
+    wire [{{ OUT_W-1 }}:0] z0_extended;
+
+    assign z2_shifted  = {% raw %}{{% endraw %}z2, {{ N }}'d0{% raw %}}{% endraw %};
+{% if Z1_PAD > 0 -%}
+    assign z1_shifted  = {% raw %}{{% endraw %}{{ Z1_PAD }}'b0, z1, {{ H }}'d0{% raw %}}{% endraw %};
+{% else -%}
+    assign z1_shifted  = {% raw %}{{% endraw %}z1, {{ H }}'d0{% raw %}}{% endraw %};
+{% endif -%}
+    assign z0_extended = {% raw %}{{% endraw %}{{ N }}'d0, z0{% raw %}}{% endraw %};
+
+    assign out = z2_shifted + z1_shifted + z0_extended;
+
+endmodule

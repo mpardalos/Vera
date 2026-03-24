@@ -1,0 +1,5 @@
+{% set N = N | int -%}
+{% set HALF = N // 2 -%}
+module rangeselect(input [{{ N-1 }}:0] in, output [{{ HALF-1 }}:0] out);
+   assign out = {% raw %}{{% endraw %}{% for i in range(N-1, HALF-1, -1) %}in[{{ i }}]{{ ", " if not loop.last }}{% endfor %}{% raw %}}{% endraw %};
+endmodule
