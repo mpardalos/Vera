@@ -198,10 +198,10 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
             | logLines <- logs
           ]
     times <- forP timeFiles readFile'
-    writeFileLines out
+    writeFileLines out ("Example,Module1,Module2,Result,Time" :
       [ intercalate "," [dir, left, right, result, time]
       | ((dir, left, right), result, time) <- zip3 examples results times
-      ]
+      ])
 
 
 -- Helpers
