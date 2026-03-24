@@ -53,6 +53,8 @@ Only **purely combinational** logic using `assign` statements is supported.
 - Module instantiation / sub-modules
 - Multi-driven nets
 - `integer`, `real`, or other non-logic types
+- Replication: `{N{expr}}` syntax (e.g., `{8{1'b0}}`)
+- Dynamic bit selection with out-of-bounds index (index width must guarantee in-bounds access)
 
 ## Important rules
 
@@ -92,3 +94,75 @@ endmodule
 3. **Build incrementally** - Start with simple test cases before creating complex ones. For example, test `~(a & b)` before testing nested expressions like `~((a & b) | c)`.
 
 4. **It's okay to create tests for future features** - You can write test cases that use unimplemented operators. They'll error out now but will work once the feature is implemented.
+
+## Width-Generic Templates (Jinja2)
+
+For testing across multiple bit widths, use Jinja2 templates instead of hardcoded modules.
+
+### Template Location & Build
+
+- **Template files**: `examples/templates/<category>/<name>.sv.j2`
+- **Generated output**: `examples/gen_<category>_<N>/<name>.sv`
+- **Build command**: `shake examples/summary.csv` generates and tests all configured widths
+- **Manual render**: `jinja2 -D N=8 examples/templates/<category>/<name>.sv.j2`
+
+### Template Patterns
+
+```jinja2
+{% set N = N | int -%}
+{% set HALF = N // 2 -%}
+{% set OUT_W = 2 * N -%}
+module example (
+    input  logic [{{ N-1 }}:0] in,
+    output logic [{{ OUT_W-1 }}:0] out
+);
+```
+
+**Common patterns:**
+
+| Pattern | Jinja2 Syntax |
+|---------|---------------|
+| Width parameter | `{% set N = N \| int -%}` |
+| Derived width | `{% set HALF = N // 2 -%}` |
+| Verilog `{` brace | `{% raw %}{{% endraw %}` |
+| Whitespace control | `{%-` and `-%}` to trim newlines |
+| Loop (descending) | `{% for i in range(N-1, -1, -1) %}...{% endfor %}` |
+| Conditional | `{% if COND %}...{% else %}...{% endif %}` |
+
+**Manual log2** (Jinja2 has no log function):
+```jinja2
+{%- if N < 2 -%}{% set IDX_W = 0 %}
+{%- elif N < 4 -%}{% set IDX_W = 1 %}
+{%- elif N < 8 -%}{% set IDX_W = 2 %}
+{%- elif N < 16 -%}{% set IDX_W = 3 %}
+...
+{%- endif -%}
+```
+
+### Asymmetric Splits (for odd N)
+
+For algorithms like Karatsuba that split inputs in half, handle odd widths with asymmetric splits:
+
+```jinja2
+{% set H_LOW = N // 2 -%}
+{% set H_HIGH = N - H_LOW -%}
+
+wire [{{ H_HIGH-1 }}:0] a_high;  // Larger half
+wire [{{ H_LOW-1 }}:0] a_low;    // Smaller half
+assign a_high = in[{{ N-1 }}:{{ H_LOW }}];
+assign a_low = in[{{ H_LOW-1 }}:0];
+```
+
+**Key width calculations:**
+- Products: `z_low = 2*H_LOW` bits, `z_high = 2*H_HIGH` bits
+- Sums with overflow: `H_HIGH + 1` bits (zero-extend smaller operand)
+- Shift amounts: based on `H_LOW`, not `N`
+
+### Existing Templates
+
+Reference implementations in `examples/templates/`:
+- `adder/` - plus_operator, ripple_carry, carry_lookahead
+- `multiplier/` - star_operator, shift_and_add, karatsuba
+- `rangeselect/` - rangeselect, concat
+- `bitselect/` - bitselect, shift
+- `conditional/` - ternary, gates
