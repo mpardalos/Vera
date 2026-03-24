@@ -116,8 +116,8 @@ Instance dec_Forall {A} {P : A -> Prop} {decP : forall x, DecProp (P x)} l :
 Proof.
   induction l.
   - left. constructor.
-  - destruct IHl.
-    + destruct (dec (P a)).
+  - destruct (dec (P a)).
+    + destruct IHl.
       * left. constructor; assumption.
       * right. inversion 1. contradiction.
     + right. inversion 1. contradiction.
@@ -138,7 +138,15 @@ Qed.
 
 Instance dec_In A {dec_x : forall (x y : A), DecProp (x = y)} l (x : A) :
   DecProp (In x l).
-Proof. induction l; firstorder. Qed.
+Proof.
+  induction l.
+  - firstorder.
+  - destruct (dec (x = a)).
+    + subst. firstorder.
+    + destruct IHl.
+      * left. firstorder.
+      * right. inversion 1; subst; contradiction.
+Qed.
 
 Instance dec_NoDup {A}
   `{a_dec : forall (x y: A), DecProp (x = y)}
@@ -147,11 +155,11 @@ Instance dec_NoDup {A}
 Proof.
   induction l.
   - repeat constructor.
-  - destruct IHl as [ IHl | IHl ].
-    + edestruct (List.in_dec a_dec a l).
-      * right. inversion 1. contradiction.
-      * left. constructor; assumption.
+  - edestruct (List.in_dec a_dec a l).
     + right. inversion 1. contradiction.
+    + destruct IHl as [ IHl | IHl ].
+      * left. constructor; try assumption.
+      * right. inversion 1. contradiction.
 Qed.
 
 Lemma exists_impl A (P Q : A -> Prop) :
