@@ -128,6 +128,21 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     removeFilesAfterVerbose "examples"
       ["//*.vera.log", "//*.vera.time", "//*.vera.smt2"]
 
+  phony "plots" $ do
+    templateExampleDirs <- getDirectoryDirs ("examples" </> "templates")
+    templateExamples <- fmap join <$> forM templateExampleDirs $ \exampleTemplateDir -> do
+      moduleTemplates <- getDirectoryFiles ("examples" </> "templates" </> exampleTemplateDir) ["*.sv.j2"]
+      let moduleNames = map dropExtensions moduleTemplates
+      return
+        ([ printf "examples/out/%s/%s_vs_%s.vera.summary.pdf" exampleTemplateDir left right
+        | (left, right) <- allPairs moduleNames
+        , left /= right
+        ] ++
+        [ printf "examples/out/%s/%s_vs_%s.synth.vera.summary.pdf" exampleTemplateDir m m
+        | m <- moduleNames
+        ])
+    need templateExamples
+
   "examples/out/*/*_vs_*.vera.summary.pdf" %> \out -> do
     let csv = out -<.> "csv"
     need [csv]
