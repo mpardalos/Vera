@@ -27,7 +27,8 @@ vera = "_build/install/default/bin/vera"
 
 -- | Timeout for vera runs (in seconds)
 veraTimeout :: Double
-veraTimeout = 5
+veraTimeout = 4 -- hours
+  * 60 * 60
 
 -- | Value of --solver= flag for vera
 veraSolver :: String
@@ -36,7 +37,7 @@ veraSolver = "bitwuzla"
 -- | Standard power-of-two sizes, plus some weird ones for variety
 runSizes :: [Int]
 -- runSizes = [4,5,8,12,16,32,43,64,128]
-runSizes = [4,8]
+runSizes = [4..32]
 
 main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
