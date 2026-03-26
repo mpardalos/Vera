@@ -14,7 +14,7 @@ import Data.List (isSuffixOf, isInfixOf, isPrefixOf, stripPrefix, unsnoc, find, 
 import Data.Bifunctor (bimap)
 import Data.Char (isDigit)
 import Data.Maybe (isJust, fromMaybe)
-import Control.Monad (forM, forM_, guard, join)
+import Control.Monad (forM, forM_, guard, join, when)
 import System.Directory qualified as SD
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import Text.Printf (printf)
@@ -42,7 +42,7 @@ main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
   phony "clean" $ do
     need ["clean-synth", "clean-gen", "clean-run"]
-    removeFilesAfterVerbose "" ["examples/summary.csv"]
+    removeFilesAfterVerbose "" ["examples/out/summary.csv"]
 
   phony "synth" $ do
     sources <- filter (not . (".synth.sv" `isSuffixOf`))
@@ -68,7 +68,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       "yosys" "-c" "examples/synth.tcl"
 
   -- gen_<category>_<N>/<module>.sv -> templates/<category>/<module>.sv.j2
-  "examples/gen_*/*.sv" %> \out -> do
+  "examples/out/gen_*/*.sv" %> \out -> do
     let Just (template, size) = templateForInstantiation out
         log = out -<.> "gen.log"
     need [template]
@@ -80,18 +80,19 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
 
   -- examples/gen_*/all
   phonys $ \out -> case splitDirectories out of
-    ["examples", genDir, "all"] -> do
+    ["examples", "out", genDir, "all"] -> do
       (templateName, size) <- parseTemplateDir genDir
       Just $ do
         templates <- getDirectoryFiles ("examples" </> "templates" </> templateName) ["*.sv.j2"]
-        need [ "examples" </> genDir </> dropExtension template | template <- templates ]
+        need [ "examples" </> "out" </> genDir </> dropExtension template | template <- templates ]
     _ -> Nothing
 
   phony "clean-gen" $ do
-    genDirs <- filter ("gen_" `isPrefixOf`) <$> getDirectoryDirs "examples"
-    forM_ genDirs $ \dir -> do
-      putInfo $ "Removing " <> ("examples" </> dir) <> "/"
-      runAfter $ SD.removeDirectoryRecursive ("examples" </> dir)
+      let dir = "examples" </> "out"
+      exists <- liftIO $ SD.doesDirectoryExist dir
+      when exists $ do
+        putInfo $ "Removing " <> ("examples" </> "out") <> "/"
+        runAfter $ SD.removeDirectoryRecursive dir
 
   -- Running vera
   "//*.vera.time" %> \out -> need [ out -<.> "log" ]
@@ -111,37 +112,48 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       (FileStderr out)
       (AddEnv "OCAMLRUNPARAM" "b")
       "time" vera "compare" ("--solver=" ++ veraSolver) ("--dump-query=" ++ smtFile) left right
-    case exitCode of
-      ExitFailure 130 -> liftIO $ appendFile out "Timed out"
-      _ -> pure ()
     end <- liftIO getCurrentTime
-    writeFile' timeFile (show (diffUTCTime end begin))
+    case exitCode of
+      ExitFailure 130 -> do
+        liftIO $ appendFile out "Timed out"
+        writeFile' timeFile "Timed out"
+      _ -> writeFile' timeFile (show (diffUTCTime end begin))
 
   phony "vera" $ need [vera]
   vera %> \out -> do
-    need =<< getDirectoryFiles "" ["*.v", "*.ml"]
+    need =<< getDirectoryFiles "" ["//*.v", "//*.ml"]
     cmd_ "dune" "build"
 
   phony "clean-run" $ do
     removeFilesAfterVerbose "examples"
       ["//*.vera.log", "//*.vera.time", "//*.vera.smt2"]
 
-  "examples/summary.csv" %> \out -> do
-    concreteExampleDirs :: [String] <-
-      filter (\dir -> dir `notElem` ["templates"] && not ("gen_" `isPrefixOf` dir))
-        <$> getDirectoryDirs "examples"
-    concreteExamples <- fmap join <$> forM concreteExampleDirs $ \exampleDir -> do
-      baseModuleFiles <- getDirectoryFiles ("examples" </> exampleDir) ["*.sv"]
-      let moduleNames =
-            baseModuleFiles
-            & filter (not . (".synth.sv" `isSuffixOf`))
-            & map dropExtensions
-            & map (\m -> [m, m <.> "synth"])
-            & join
-      return
-        [ (exampleDir, left, right)
-        | (left, right) <- allPairs moduleNames
-        ]
+  "examples/out/*/*_vs_*.vera.summary.pdf" %> \out -> do
+    let csv = out -<.> "csv"
+    need [csv]
+    cmd_ (Traced "gnuplot")
+      "gnuplot" "-e"
+      [ unwords
+        [ "set terminal pdf;"
+        , "set output '" ++ out ++ "';"
+        , "set datafile separator ',';"
+        , "set xlabel 'Bit width';"
+        , "set ylabel 'Time (s)';"
+        , "set title '" ++ map (\case '_' -> ' '; c -> c) (takeFileName (dropExtensions out)) ++ "';"
+        , "plot '" ++ csv ++ "' using 1:2 with linespoints notitle"
+        ] ]
+
+  "examples/out/*/*_vs_*.vera.summary.csv" %> \out -> do
+    let Just [templateName, mod1, mod2] = filePattern "examples/out/*/*_vs_*.vera.summary.csv" out
+        timeFiles = [ "examples/out"
+                      </> (printf "gen_%s_%d" templateName w)
+                      </> (printf "%s_vs_%s.vera.time" mod1 mod2)
+                    | w <- runSizes
+                    ]
+    times <- forP timeFiles readFile'
+    writeFileLines out [ intercalate "," [show w, time] | (w, time) <- zip runSizes times ]
+
+  "examples/out/summary.csv" %> \out -> do
     templateExampleDirs <- getDirectoryDirs ("examples" </> "templates")
     templateExamples <- fmap join <$> forM templateExampleDirs $ \exampleTemplateDir -> do
       moduleTemplates <- getDirectoryFiles ("examples" </> "templates" </> exampleTemplateDir) ["*.sv.j2"]
@@ -156,9 +168,9 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         | (left, right) <- allPairs moduleNames
         , size <- runSizes
         ]
-    let examples = concreteExamples ++ templateExamples
+    let examples = templateExamples
     let logFiles =
-          [ "examples" </> dir </> (left ++ "_vs_" ++ right ++ ".vera.log")
+          [ "examples" </> "out" </> dir </> (left ++ "_vs_" ++ right ++ ".vera.log")
             | (dir, left, right) <- examples
           ]
     let timeFiles = map (-<.> "time") logFiles
@@ -206,7 +218,7 @@ parseTemplateDir name = do
 
 -- .../gen_<category>_<N>/<module>.sv -> Just (.../templates/<category>/<module>.sv.j2, N)
 templateForInstantiation :: FilePath -> Maybe (FilePath, Int)
-templateForInstantiation (splitDirectories -> Snoc (Snoc rest dir) file) = do
+templateForInstantiation (splitDirectories -> Snoc (Snoc (Snoc rest "out") dir) file) = do
   (category, size) <- parseTemplateDir dir
   Just (joinPath rest </> "templates" </> category </> file <> ".j2", size)
 templateForInstantiation _ = Nothing
