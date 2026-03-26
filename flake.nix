@@ -48,7 +48,8 @@
           (pkgs.haskellPackages.ghcWithPackages (ps: with ps; [ shake ]))
           pkgs.z3
           pkgs.cvc5
-	  coqPackages.coq-lsp
+          pkgs.gnuplot
+          coqPackages.coq-lsp
         ];
       in {
         devShells.default = pkgs.mkShell {
