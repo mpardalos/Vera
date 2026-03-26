@@ -1,6 +1,9 @@
+#!/usr/bin/env runhaskell
+
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE LambdaCase #-}
 
 import Development.Shake
 import Development.Shake.Command
