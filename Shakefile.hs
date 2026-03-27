@@ -114,7 +114,10 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       ExitFailure 130 -> do
         liftIO $ appendFile out "Timed out"
         writeFile' timeFile "Timed out"
-      _ -> writeFile' timeFile (show (diffUTCTime end begin))
+      ExitFailure err -> do
+        liftIO $ appendFile out (printf "Failed with %d" err)
+        writeFile' timeFile (printf "Failed (%d)" err)
+      ExitSuccess -> writeFile' timeFile (show (diffUTCTime end begin))
 
   phony "vera" $ need [vera]
   vera %> \out -> do
