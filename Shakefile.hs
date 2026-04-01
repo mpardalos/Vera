@@ -32,18 +32,20 @@ veraTimeout = 4 -- hours
 
 -- | Value of --solver= flag for vera
 veraSolver :: String
-veraSolver = "bitwuzla"
+-- veraSolver = "bitwuzla" -- Broken with symbiyosys
+veraSolver = "cvc5"
 
 -- | Standard power-of-two sizes, plus some weird ones for variety
 runSizes :: [Int]
 -- runSizes = [4,5,8,12,16,32,43,64,128]
-runSizes = [4..32]
+runSizes = [4..16]
 
 main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
   phony "clean" $ do
-    need ["clean-synth", "clean-gen", "clean-run"]
+    need ["clean-synth", "clean-run"]
     removeFilesAfter "" ["examples/summary.csv"]
+    removeFilesAfter "examples/out" ["//"]
 
   phony "synth" $ do
     sources <- filter (not . (".synth.sv" `isSuffixOf`))
@@ -88,9 +90,6 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         need [ "examples" </> "out" </> genDir </> dropExtension template | template <- templates ]
     _ -> Nothing
 
-  phony "clean-gen" $ do
-    removeFilesAfter "examples" [ "gen_*" ]
-
   -- Running vera
   "//*.vera.time" %> \out -> need [ out -<.> "log" ]
   "//*.vera.smt2" %> \out -> need [ out -<.> "log" ]
@@ -124,6 +123,46 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     need =<< getDirectoryFiles "" ["//*.v", "//*.ml"]
     cmd_ "dune" "build"
 
+  -- Running eqy
+  "//*.eqy.time" %> \out -> need [ out -<.> "log" ]
+  "//*_vs_*/compare.eqy" %> \out -> do
+    let template = "examples" </> "compare.eqy.j2"
+        Just [dir, mod1, mod2] = filePattern "//*_vs_*/compare.eqy" out
+    need [template]
+    cmd_
+      (Traced "jinja")
+      (FileStdout out)
+      "jinja2"
+      "-D" ("SOLVER=" <> veraSolver)
+      "-D" ("SV_GOLD=" <> (".." </> mod1 <.> "sv"))
+      "-D" ("SV_GATE=" <> (".." </> mod2 <.> "sv"))
+      template
+  "//*_vs_*.eqy.log" %> \out -> do
+    let Just [dir, mod1, mod2] = filePattern "//*_vs_*.eqy.log" out
+        eqyDir = dropExtensions out
+        eqyFile = eqyDir </> "compare.eqy"
+        timeFile = out -<.> "time"
+        left = dir </> mod1 <.> "sv"
+        right = dir </> mod2 <.> "sv"
+    need [eqyFile, left, right]
+    begin <- liftIO getCurrentTime
+    (Exit exitCode) <- cmd
+      (Traced "eqy")
+      (Timeout veraTimeout)
+      (FileStdout out)
+      (FileStderr out)
+      (Cwd eqyDir)
+      "time" "eqy" "-f" "compare.eqy"
+    end <- liftIO getCurrentTime
+    case exitCode of
+      ExitFailure 130 -> do
+        liftIO $ appendFile out "Timed out"
+        writeFile' timeFile "Timed out"
+      ExitFailure err -> do
+        liftIO $ appendFile out (printf "Failed with %d" err)
+        writeFile' timeFile (printf "Failed (%d)" err)
+      ExitSuccess -> writeFile' timeFile (show (diffUTCTime end begin))
+
   phony "clean-run" $ do
     removeFilesAfter "examples"
       [ "//*.log", "//*.time", "//*.vera.smt2" ]
@@ -143,7 +182,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         ])
     need templateExamples
 
-  "examples/out/*/*_vs_*.vera.summary.pdf" %> \out -> do
+  "examples/out/*/*.summary.pdf" %> \out -> do
     let csv = out -<.> "csv"
     need [csv]
     cmd_ (Traced "gnuplot")
@@ -158,11 +197,11 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         , "plot '" ++ csv ++ "' using 1:2 with linespoints notitle"
         ] ]
 
-  "examples/out/*/*_vs_*.vera.summary.csv" %> \out -> do
-    let Just [templateName, mod1, mod2] = filePattern "examples/out/*/*_vs_*.vera.summary.csv" out
+  "examples/out/*/*_vs_*.*.summary.csv" %> \out -> do
+    let Just [templateName, mod1, mod2, tool] = filePattern "examples/out/*/*_vs_*.*.summary.csv" out
         timeFiles = [ "examples/out"
                       </> (printf "gen_%s_%d" templateName w)
-                      </> (printf "%s_vs_%s.vera.time" mod1 mod2)
+                      </> (printf "%s_vs_%s.%s.time" mod1 mod2 tool)
                     | w <- runSizes
                     ]
     times <- forP timeFiles readFile'

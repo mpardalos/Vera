@@ -1,0 +1,17 @@
+[gold]
+read_verilog {{SV_GOLD}}
+prep -auto-top
+rename -top top
+
+[gate]
+read_verilog {{SV_GATE}}
+prep -auto-top
+rename -top top
+
+[collect *]
+group *
+
+[strategy sby]
+use sby
+engine smtbmc {{SOLVER}}
+depth 0
