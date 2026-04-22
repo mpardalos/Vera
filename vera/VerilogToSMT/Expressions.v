@@ -42,159 +42,122 @@ Local Open Scope list.
 Lemma var_to_smt_value var (m : VerilogSMTBijection.t) tag regs ρ t :
     var_to_smt tag m var = inr t ->
     verilog_smt_match_states_partial (fun v => v = var) tag m regs ρ ->
-    SMTLib.interp_term ρ t =
-      (let* xbv := regs var in
-       let* bv := XBV.to_bv xbv in
-       ret (SMTLib.Value_BitVec _ bv))%monad.
+    regs var = XBV.from_bv (SMTLib.interp_term ρ t).
 Proof.
   intros Hsmt Hmatch.
   funelim (var_to_smt tag m var); try rewrite <- Heqcall in *; clear Heqcall; monad_inv.
-  unfold verilog_smt_match_states_partial in *.
-  insterU Hmatch.
-  destruct Hmatch as [smtName [Heq2 [? ? ? ? Hmatchvals]]].
-  inv Hmatchvals.
-  replace n_smt with smtName in * by congruence.
   simpl.
-  rewrite Hverilogval, XBV.xbv_bv_inverse.
-  assumption.
+  unfold verilog_smt_match_states_partial in *.
+  unfold verilog_smt_match_on_name in *.
+  insterU Hmatch.
+  crush.
 Qed.
 
-Lemma var_to_smt_valid tag m var t ρ val :
+Lemma var_to_smt_valid tag m var t (ρ : SMTLib.valuation) :
   var_to_smt tag m var = inr t ->
-  SMTLib.interp_term ρ t = Some val ->
-  exists smtName, (m (tag, var) = Some smtName /\ ρ smtName = Some val).
+  exists smtName, (m (tag, var) = Some smtName /\ ρ (SMTLib.Sort_BitVec (Verilog.varType var)) smtName = SMTLib.interp_term ρ t).
 Proof.
-  intros Htransf Hsat.
+  intros Htransf.
   funelim (var_to_smt tag m var); rewrite <- Heqcall in *; monad_inv.
   crush.
 Qed.
 
-Lemma cast_from_to_part_eval ρ from to t w1 bv1:
-  SMTLib.interp_term ρ (cast_from_to from to t) = Some (SMTLib.Value_BitVec w1 bv1) ->
-  exists w2 bv2, SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w2 bv2).
+Lemma arithmeticop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
+    eval_arithmeticop op (XBV.from_bv (SMTLib.interp_term ρ smt_lhs)) (XBV.from_bv (SMTLib.interp_term ρ smt_rhs))
+      = XBV.from_bv (SMTLib.interp_term ρ (arithmeticop_to_smt op smt_lhs smt_rhs)).
 Proof.
-  funelim (cast_from_to from to t); crush.
-Qed.
-
-Lemma arithmeticop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
-    SMTLib.interp_term ρ smt_lhs = Some (SMTLib.Value_BitVec w val_lhs) ->
-    SMTLib.interp_term ρ smt_rhs = Some (SMTLib.Value_BitVec w val_rhs) ->
-    arithmeticop_to_smt op smt_lhs smt_rhs = inr t ->
-    XBV.to_bv (eval_arithmeticop op (XBV.from_bv val_lhs) (XBV.from_bv val_rhs)) = Some val ->
-    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
-Proof.
-  intros Hinterp_lhs Hinterp_rhs Harithmeticop_to_smt Heval.
   destruct op.
   all: simp eval_arithmeticop arithmeticop_to_smt in *.
-  all: inv Harithmeticop_to_smt.
   all: cbn [SMTLib.interp_term].
-  all: rewrite Hinterp_lhs, Hinterp_rhs.
-  all: autodestruct; [|contradiction].
-  all: repeat f_equal.
-  all: rewrite <- eq_rect_eq.
-  all: autorewrite with xbv bv_binop in Heval.
-  all: now inv Heval.
+  all: autorewrite with xbv bv_binop in *.
+  all: reflexivity.
 Qed.
 
-Lemma bitwiseop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
-    SMTLib.interp_term ρ smt_lhs = Some (SMTLib.Value_BitVec w val_lhs) ->
-    SMTLib.interp_term ρ smt_rhs = Some (SMTLib.Value_BitVec w val_rhs) ->
-    bitwiseop_to_smt op smt_lhs smt_rhs = inr t ->
-    XBV.to_bv (eval_bitwiseop op (XBV.from_bv val_lhs) (XBV.from_bv val_rhs)) = Some val ->
-    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
+Lemma bitwiseop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
+    eval_bitwiseop op (XBV.from_bv (SMTLib.interp_term ρ smt_lhs)) (XBV.from_bv (SMTLib.interp_term ρ smt_rhs))
+      = XBV.from_bv (SMTLib.interp_term ρ (bitwiseop_to_smt op smt_lhs smt_rhs)).
 Proof.
-  intros Hinterp_lhs Hinterp_rhs Hbitwiseop_to_smt Heval.
   destruct op.
   all: simp eval_bitwiseop bitwiseop_to_smt in *.
-  all: inv Hbitwiseop_to_smt.
-  all: simpl.
-  all: rewrite Hinterp_lhs; rewrite Hinterp_rhs.
-  all: autodestruct; [|contradiction].
-  all: repeat f_equal.
-  all: rewrite <- eq_rect_eq.
-  all: autorewrite with xbv in Heval.
-  all: now inv Heval.
+  all: cbn [SMTLib.interp_term].
+  all: autorewrite with xbv bv_binop in *.
+  all: reflexivity.
 Qed.
 
-Lemma shiftop_to_smt_value ρ op w smt_lhs smt_rhs t val_lhs val_rhs val :
-    SMTLib.interp_term ρ smt_lhs = Some (SMTLib.Value_BitVec w val_lhs) ->
-    SMTLib.interp_term ρ smt_rhs = Some (SMTLib.Value_BitVec w val_rhs) ->
-    shiftop_to_smt op smt_lhs smt_rhs = inr t ->
-    XBV.to_bv (eval_shiftop op (XBV.from_bv val_lhs) (XBV.from_bv val_rhs)) = Some val ->
-    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
+Lemma shiftop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
+  eval_shiftop op (XBV.from_bv (SMTLib.interp_term ρ smt_lhs)) (XBV.from_bv (SMTLib.interp_term ρ smt_rhs))
+    = XBV.from_bv (SMTLib.interp_term ρ (shiftop_to_smt op smt_lhs smt_rhs)).
 Proof.
-  intros Hinterp_lhs Hinterp_rhs Hshiftop_to_smt Heval.
   destruct op.
   all: simp eval_shiftop shiftop_to_smt in *.
-  all: inv Hshiftop_to_smt.
-  all: simpl.
-  all: rewrite Hinterp_lhs, Hinterp_rhs.
-  all: autodestruct; [|contradiction].
-  all: repeat f_equal.
-  all: rewrite <- eq_rect_eq.
-  all: repeat (simpl in Heval; autorewrite with xbv in Heval).
-  all: inv Heval.
-  - apply BV.shr_swap_definition.
-  - apply BV.shl_swap_definition.
-  - apply BV.shl_swap_definition.
+  all: cbn [SMTLib.interp_term].
+  all: repeat (simpl; autorewrite with xbv bv_binop in *).
+  all: eapply XBV.to_bv_injective; [|now eapply XBV.xbv_bv_inverse].
+  1: rewrite BV.shr_swap_definition.
+  2,3: rewrite BV.shl_swap_definition.
+  all: now autorewrite with xbv bv_binop in *.
 Qed.
 
-Lemma unaryop_to_smt_value ρ op w smt_expr t val_expr val :
-    SMTLib.interp_term ρ smt_expr = Some (SMTLib.Value_BitVec w val_expr) ->
-    unaryop_to_smt op smt_expr = inr t ->
-    XBV.to_bv (eval_unaryop op (XBV.from_bv val_expr)) = Some val ->
-    SMTLib.interp_term ρ t = Some (SMTLib.Value_BitVec w val).
+Lemma unaryop_to_smt_value ρ op w (smt_expr : SMTLib.term (SMTLib.Sort_BitVec w)) :
+    eval_unaryop op (XBV.from_bv (SMTLib.interp_term ρ smt_expr))
+      = XBV.from_bv (SMTLib.interp_term ρ (unaryop_to_smt op smt_expr)).
 Proof.
-  intros Hinterp_expr Hunaryop_to_smt Heval.
-  destruct op;
-    simp eval_unaryop unaryop_to_smt in *; inv Hunaryop_to_smt;
-    simpl; rewrite Hinterp_expr; autodestruct; try contradiction;
-    repeat f_equal; try rewrite <- eq_rect_eq.
-  - rewrite XBV.xbv_bv_inverse in *. now some_inv.
-  - rewrite XBV.not_to_bv in *. now some_inv.
+  destruct op.
+  all: simp eval_unaryop unaryop_to_smt in *.
+  all: cbn [SMTLib.interp_term].
+  all: autorewrite with xbv in *.
+  all: reflexivity.
 Qed.
 
-Lemma conditional_to_smt_value ρ w_cond w smt_cond smt_ifT smt_ifF val_cond val_ifT val_ifF val :
-    SMTLib.interp_term ρ smt_cond = Some (SMTLib.Value_BitVec w_cond val_cond) ->
-    SMTLib.interp_term ρ smt_ifT = Some (SMTLib.Value_BitVec w val_ifT) ->
-    SMTLib.interp_term ρ smt_ifF = Some (SMTLib.Value_BitVec w val_ifF) ->
-    XBV.to_bv (eval_conditional
-                 (XBV.from_bv val_cond)
-                 (XBV.from_bv val_ifT)
-                 (XBV.from_bv val_ifF)) =
-      Some val ->
-    SMTLib.interp_term ρ (conditional_to_smt w_cond smt_cond smt_ifT smt_ifF) =
-      Some (SMTLib.Value_BitVec w val).
+Lemma conditional_to_smt_value ρ w_cond w
+      (smt_cond : SMTLib.term (SMTLib.Sort_BitVec w_cond))
+      (smt_ifT smt_ifF : SMTLib.term (SMTLib.Sort_BitVec w)) :
+    eval_conditional
+      (XBV.from_bv (SMTLib.interp_term ρ smt_cond))
+      (XBV.from_bv (SMTLib.interp_term ρ smt_ifT))
+      (XBV.from_bv (SMTLib.interp_term ρ smt_ifF)) =
+      XBV.from_bv (SMTLib.interp_term ρ (conditional_to_smt w_cond smt_cond smt_ifT smt_ifF)).
 Proof.
-  intros Hinterp_cond Hinterp_ifT Hinterp_ifF Heval.
   unfold eval_conditional in *.
   rewrite XBV.xbv_bv_inverse in *.
-  simpl in *. rewrite Hinterp_cond, Hinterp_ifT, Hinterp_ifF.
-  simpl.
-  destruct (N.eq_dec w_cond w_cond); try contradiction.
-  replace (rew <- [BVList.BITVECTOR_LIST.bitvector] e in BV.zeros w_cond)
-    with (BV.zeros w_cond) by apply eq_rect_eq.
-  destruct (BV.is_zero val_cond) eqn:E;
-    rewrite XBV.xbv_bv_inverse in Heval; unfold BV.is_zero in *;
-    crush.
+  simpl in *.
+  unfold BV.is_zero.
+  crush.
 Qed.
 
-Lemma cast_from_to_value ρ w_from w_to smt_from val_from :
-    (w_to > 0)%N ->
-    SMTLib.interp_term ρ smt_from = Some (SMTLib.Value_BitVec w_from val_from) ->
-    SMTLib.interp_term ρ (cast_from_to w_from w_to smt_from) =
-      Some (SMTLib.Value_BitVec w_to (convert_bv w_to val_from)).
+Opaque N.sub N.add.
+
+Lemma bv_extr_full n bv :
+  n = RawBV.size bv ->
+  RawBV.bv_extr 0 n n bv = bv.
 Proof.
-  intros Hnot_zero Hinterp_from.
+  intros ->.
+  unfold RawBV.bv_extr, RawBV.size.
+  rewrite N.add_0_r.
+  rewrite N.ltb_irrefl.
+  rewrite Nat2N.id.
+  induction bv; simpl in *.
+  - reflexivity.
+  - f_equal. apply IHbv.
+Qed.
+
+Lemma cast_from_to_value ρ w_from w_to smt_from :
+    (w_to > 0)%N ->
+    SMTLib.interp_term ρ (cast_from_to w_from w_to smt_from) = convert_bv w_to (SMTLib.interp_term ρ smt_from).
+Proof.
+  intros Hnot_zero.
+  remember (SMTLib.interp_term ρ smt_from) as val_from eqn:Hinterp_from.
   funelim (convert_bv w_to val_from); expect 3.
   all: funelim (cast_from_to from to smt_from); expect 9.
   all: autorewrite with bool_to_prop in *; try lia; expect 3.
-  all: simpl; rewrite Hinterp_from.
-  all: f_equal.
-  all: apply value_bitvec_bits_equal.
-  all: try destruct_rew.
-  all: simpl.
-  all: repeat f_equal; lia.
+  all: clear Heqcall Heqcall0 Heq Heq0.
+  all: apply BV.of_bits_equal.
+  all: repeat destruct_rew.
+  - f_equal. f_equal. lia.
+  - reflexivity.
+  - replace (1 + (from - 1) - 0)%N with from by lia.
+    apply bv_extr_full.
+    symmetry. apply BV.wf.
 Qed.
 
 Lemma to_N_convert_bv_extn from to (bv : BV.bitvector from) :
@@ -265,16 +228,14 @@ Proof.
   - destruct_rew. simpl. reflexivity.
 Qed.
 
-Lemma smt_select_bit_value ρ w_vec w_idx smt_vec smt_idx val_vec val_idx val :
-    SMTLib.interp_term ρ smt_vec = Some (SMTLib.Value_BitVec w_vec val_vec) ->
-    SMTLib.interp_term ρ smt_idx = Some (SMTLib.Value_BitVec w_idx val_idx) ->
-    XBV.to_bv (select_bit (XBV.from_bv val_vec) (XBV.from_bv val_idx)) =
-      Some val ->
-    (BV.to_N val_idx < w_vec)%N ->
-    SMTLib.interp_term ρ (smt_select_bit w_vec smt_vec w_idx smt_idx) =
-      Some (SMTLib.Value_BitVec 1 val).
+Lemma smt_select_bit_value ρ w_vec w_idx
+        (smt_vec : SMTLib.term (SMTLib.Sort_BitVec w_vec))
+	(smt_idx : SMTLib.term (SMTLib.Sort_BitVec w_idx)) :
+    (BV.to_N (SMTLib.interp_term ρ smt_idx) < w_vec)%N ->
+    select_bit (XBV.from_bv (SMTLib.interp_term ρ smt_vec)) (XBV.from_bv (SMTLib.interp_term ρ smt_idx))
+      = XBV.from_bv (SMTLib.interp_term ρ (smt_select_bit w_vec smt_vec w_idx smt_idx)).
 Proof.
-  intros Hinterp_vec Hinterp_idx Heval Hbound.
+  intros Hbound.
   unfold select_bit, smt_select_bit in *.
   rewrite XBV.to_N_from_bv in *.
   simpl.
@@ -282,17 +243,13 @@ Proof.
     try eassumption; try lia; [idtac].
   destruct (N.eq_dec (N.max w_vec w_idx) (N.max w_vec w_idx)); [|crush].
   rewrite BV.bv_shr_as_select by lia.
-  rewrite XBV.bit_of_as_bv in Heval by lia.
-  do 2 f_equal.
-  destruct_rew.
+  apply XBV.of_bits_equal. simpl.
+  f_equal.
+  rewrite XBV.bit_of_as_bv by lia.
+  f_equal.
   rewrite to_N_convert_bv_extn by lia.
   rewrite bitOf_convert_bv_extn by lia.
-  (* Ugly, but it's hard to extract a lemma - the widths don't match up *)
-  apply XBV.to_bv_some_raw_iff in Heval. simpl in Heval.
-  apply BV.of_bits_equal. simpl.
-  unfold RawXBV.to_bv, RawBV.of_bits in *; simpl in *.
-  rewrite RawXBV.bit_to_bool_inverse in Heval.
-  inv Heval. reflexivity.
+  reflexivity.
 Qed.
 
 Lemma convert_extend_to_N from to (xbv : XBV.xbv from) val :
@@ -381,10 +338,7 @@ Lemma expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ 
     verilog_smt_match_states_partial
       (fun v => List.In v (Verilog.expr_reads expr))
       tag m regs ρ ->
-    SMTLib.interp_term ρ t =
-      (let* bv := XBV.to_bv (eval_expr (w:=w) regs expr) in
-       ret (SMTLib.Value_BitVec _ bv))%monad
-.
+    eval_expr (w:=w) regs expr = XBV.from_bv (SMTLib.interp_term ρ t).
 Proof.
   induction expr.
   all: intros * Hexpr_to_smt Hmatch.
@@ -411,86 +365,49 @@ Proof.
        end.
   all: cbn - [SMTLib.interp_term eval_conditional conditional_to_smt XBV.extr N.add] in *.
   all: try rewrite XBV.xbv_bv_inverse in *.
+  all: repeat match goal with
+              | [ H : eval_expr _ _ = XBV.from_bv ?x |- _ ] =>
+	        rewrite <- H in *; clear x H
+	      end.
+  all: try (erewrite IHexpr by eauto; clear IHexpr).
+  all: try (erewrite IHexpr1 by eauto; clear IHexpr1).
+  all: try (erewrite IHexpr2 by eauto; clear IHexpr2).
+  all: try (erewrite IHexpr3 by eauto; clear IHexpr3).
   - (* arithmeticop *)
-    edestruct eval_arithmeticop_to_bv as [bv Hbv]. rewrite Hbv.
-    eauto using arithmeticop_to_smt_value.
+    apply arithmeticop_to_smt_value.
   - (* bitwiseop *)
-    edestruct eval_bitwiseop_to_bv as [bv Hbv]. rewrite Hbv.
-    now eauto using bitwiseop_to_smt_value.
+    apply bitwiseop_to_smt_value.
   - (* shiftop *)
-    edestruct eval_shiftop_to_bv as [bv Hbv]. rewrite Hbv.
-    edestruct eval_shiftop_to_bv as [bv_out Hbv_out].
-    erewrite cast_from_to_value; [|assumption|]; cycle 1.
-    + eapply shiftop_to_smt_value.
-      * erewrite cast_from_to_value; [reflexivity|lia|].
-        apply IHexpr1.
-      * erewrite cast_from_to_value; [reflexivity|lia|].
-        apply IHexpr2.
-      * eassumption.
-      * apply Hbv_out.
-    + repeat f_equal.
-      apply XBV.bv_xbv_inverse in Hbv, Hbv_out.
-      apply XBV.from_bv_injective.
-      rewrite Hbv.
-      rewrite <- convert_no_exes. rewrite Hbv_out.
-      rewrite <- ! convert_no_exes.
-      eapply eval_shiftop_remove_converts. lia.
+    erewrite cast_from_to_value by assumption.
+    rewrite <- convert_no_exes.
+    rewrite <- shiftop_to_smt_value.
+    rewrite ! cast_from_to_value by lia.
+    rewrite <- ! convert_no_exes.
+    rewrite eval_shiftop_remove_converts by lia.
+    reflexivity.
   - (* unop *)
-    simpl in *; try rewrite XBV.xbv_bv_inverse in *.
-    edestruct eval_unop_to_bv as [bv Hbv]. rewrite Hbv.
-    now eauto using unaryop_to_smt_value.
+    apply unaryop_to_smt_value.
   - (* conditional *)
-    destruct eval_conditional_no_exes
-      with (cond := x) (ifT := x0) (ifF := x1) as [bv Hbv].
-    rewrite Hbv. rewrite XBV.xbv_bv_inverse.
-    eapply conditional_to_smt_value; try eassumption; expect 1.
-    rewrite Hbv, XBV.xbv_bv_inverse.
-    reflexivity.
+    eapply conditional_to_smt_value.
   - (* Range select *)
-    rewrite XBV.extr_no_exes by lia.
-    rewrite XBV.xbv_bv_inverse.
-    cbn [SMTLib.interp_term]. rewrite IHexpr. 
-    autodestruct_eqn E; [|lia].
-    f_equal.
-    apply SMTLib.value_eqb_eq.
-    cbn [SMTLib.value_eqb].
-    autodestruct; [|lia].
-    destruct e. cbn.
-    apply BV.bv_eq_reflect.
-    f_equal. apply N2Nat.id.
+    apply XBV.extr_no_exes.
+    lia.
   - (* Bitselect (literal) *)
-    erewrite smt_select_bit_value with (val_vec := x) (val_idx := sel);
-      eauto; expect 2.
-    + rewrite select_bit_no_exes by assumption.
-      rewrite XBV.xbv_bv_inverse.
-      reflexivity.
-    + rewrite select_bit_no_exes by assumption.
-      rewrite XBV.xbv_bv_inverse.
-      reflexivity.
-  - (* Bitselect (width) *)
-    erewrite smt_select_bit_value
-      with (val_vec := x) (val_idx := x0);
-      eauto.
-    + simpl.
-      rewrite select_bit_no_exes; cycle 1. {
-        pose proof (BV.to_N_max_bound _ x0). lia.
-      }
-      now rewrite XBV.xbv_bv_inverse.
-    + rewrite select_bit_no_exes; cycle 1. {
-        pose proof (BV.to_N_max_bound _ x0). lia.
-      }
-      now rewrite XBV.xbv_bv_inverse.
-    + pose proof (BV.to_N_max_bound _ x0). lia.
-  - (* concat *)
-    rewrite XBV.concat_to_bv.
-    simpl.
-    rewrite IHexpr1, IHexpr2.
+    rewrite <- smt_select_bit_value by (simpl; lia).
     reflexivity.
+  - (* Bitselect (width) *)
+    apply smt_select_bit_value.
+    pose proof (BV.to_N_max_bound _ (SMTLib.interp_term ρ t1)).
+    lia.
+  - (* concat *)
+    apply XBV.concat_no_exes.
   - (* literal *)
     reflexivity.
   - (* variable *)
-    edestruct Hmatch as [smtName [Heq2 [? ? ? ? Hmatchvals]]]. { repeat econstructor. }
-    rewrite Hverilogval.
+    unfold verilog_smt_match_states_partial in Hmatch.
+    unfold verilog_smt_match_on_name in Hmatch.
+    edestruct Hmatch as [smtName [Heq2 Hmatchvals]]. { repeat econstructor. }
+    rewrite Hmatchvals.
     inv Hexpr_to_smt.
     funelim (var_to_smt tag m var);
         rewrite <- Heqcall in *; clear Heqcall; [|discriminate].
@@ -499,21 +416,17 @@ Proof.
     inv Hmatchvals.
     inv H0. simpl.
     replace n_smt with smtName in * by congruence.
-    now rewrite Hsmtval, XBV.xbv_bv_inverse.
+    assumption.
   - (* resize *)
-    rewrite convert_no_exes.
-    rewrite XBV.xbv_bv_inverse.
-    apply cast_from_to_value; eauto.
+    rewrite cast_from_to_value by lia.
+    apply convert_no_exes.
 Qed.
 
-Lemma expr_to_smt_valid w tag m expr t regs ρ val :
+(* DELETEME: Duplicate *)
+Lemma expr_to_smt_valid w tag m expr t regs ρ :
   expr_to_smt (w := w) tag m expr = inr t ->
-  SMTLib.interp_term ρ t = Some val ->
   verilog_smt_match_states_partial (fun v => List.In v (Verilog.expr_reads expr)) tag m regs ρ ->
-  verilog_smt_match_value (eval_expr regs expr) val.
+  eval_expr regs expr = XBV.from_bv (SMTLib.interp_term ρ t).
 Proof.
-  intros * Hexpr_to_smt Hinterp Hmatch_states.
-  erewrite expr_to_smt_value in Hinterp; eauto.
-  monad_inv.
-  eauto using verilog_smt_match_to_bv.
+  eapply expr_to_smt_value.
 Qed.

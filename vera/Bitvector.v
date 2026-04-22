@@ -292,6 +292,17 @@ Module BV.
   Definition to_N {n} (bv : bitvector n) : N :=
     RawBV.to_N (bits bv).
 
+  Lemma bv_neq_reflect (n : N) (a b : bitvector n) :
+    bv_eq a b = false <-> a <> b.
+  Proof.
+    split.
+    all: intro H.
+    1: intro contra.
+    2: destruct (bv_eq a b) eqn:contra; [|reflexivity].
+    all: apply BV.bv_eq_reflect in contra.
+    all: congruence.
+  Qed.
+
   Lemma of_bits_equal n (bv1 bv2 : bitvector n) :
     bits bv1 = bits bv2 ->
     bv1 = bv2.

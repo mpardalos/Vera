@@ -97,73 +97,6 @@ Proof.
   eassumption.
 Qed.
 
-Lemma transfer_clean v1 v2 :
-  v1 ~~~ v2 ->
-  clean_module v1 ->
-  clean_module v2.
-Proof.
-  intros [Hinput_names Houtput_names Hequiv].
-  unfold clean_module.
-  rewrite <- Hinput_names, Houtput_names.
-  intros Hclean e Hinputs_defined.
-  specialize (Hclean e Hinputs_defined).
-  destruct Hclean as [Hinputs Houtputs_defined].
-  specialize (Hequiv (run_vmodule v1 (e // Verilog.module_inputs v1))). destruct Hequiv as [Hequiv _].
-  unfold "⇓" in Hequiv. edestruct Hequiv as [Hinputs'' [Houtputs_defined'' Hmatch'']]; clear Hequiv.
-  - unpack_goal.
-    + setoid_rewrite <- Hinputs at 1.
-      apply VerilogToSMTCorrect.defined_value_for_has_value_for.
-      apply Hinputs_defined.
-    + rewrite <- Houtput_names in *.
-      apply VerilogToSMTCorrect.defined_value_for_has_value_for.
-      apply Houtputs_defined.
-    + setoid_rewrite <- Hinputs at 1.
-      reflexivity.
-  - rewrite <- Hinput_names in *.
-    rewrite <- Houtput_names in *.
-    setoid_rewrite <- Hinputs in Hmatch'' at 1.
-    RegisterState.unpack_match_on.
-    rename_match (run_vmodule v2 _ =( Verilog.module_inputs _ )= run_vmodule v1 _) into Hmatch_inputs.
-    rename_match (run_vmodule v2 _ =( Verilog.module_outputs _ )= run_vmodule v1 _) into Hmatch_outputs.
-    unpack_goal.
-    + rewrite Hmatch_inputs. assumption.
-    + rewrite Hmatch_outputs. assumption.
-Qed.
-
-Global Instance Proper_equivalent_behaviour_exact_equivalence :
-  Proper
-    (exact_equivalence ==> exact_equivalence ==> iff)
-    (equivalent_behaviour).
-Proof.
-  intros v1 v2 Heq v1' v2' Heq'. split; intro Heq_behaviour.
-  - constructor.
-    + destruct Heq, Heq', Heq_behaviour. congruence.
-    + destruct Heq, Heq', Heq_behaviour. congruence.
-    + destruct Heq_behaviour.
-      eapply transfer_clean; eassumption.
-    + destruct Heq_behaviour.
-      eapply transfer_clean; eassumption.
-    + destruct Heq, Heq', Heq_behaviour.
-      setoid_rewrite <- execution_match0.
-      setoid_rewrite <- execution_match1.
-      setoid_rewrite <- inputs_same0.
-      setoid_rewrite <- outputs_same0.
-      assumption.
-  - constructor.
-    + destruct Heq, Heq', Heq_behaviour. congruence.
-    + destruct Heq, Heq', Heq_behaviour. congruence.
-    + destruct Heq_behaviour.
-      eapply transfer_clean; try symmetry; eassumption.
-    + inv Heq_behaviour.
-      eapply transfer_clean; try symmetry; eassumption.
-    + destruct Heq, Heq', Heq_behaviour.
-      setoid_rewrite execution_match0.
-      setoid_rewrite execution_match1.
-      setoid_rewrite inputs_same0.
-      setoid_rewrite outputs_same0.
-      assumption.
-Qed.
-
 Theorem equivalence_query_general_unsat_correct v1 v2 smt :
   equivalence_query_general v1 v2 = inr smt ->
   (forall ρ, ~ satisfied_by ρ (SMT.query smt)) ->
@@ -188,13 +121,15 @@ Lemma counterexample_transfer v1 v2 v1' v2' e1 e2 :
   counterexample_execution v1 e1 v2 e2 ->
   counterexample_execution v1' e1 v2' e2.
 Proof.
-  intros [] [] Hcounterexample.
-  unfold counterexample_execution in *.
-  rewrite <- execution_match0.
-  rewrite <- execution_match1.
-  rewrite <- inputs_same0.
-  rewrite <- outputs_same0.
-  assumption.
+  unfold counterexample_execution.
+  intros Heq1 Heq2 [Hadmit1 [Hadmit2 [Hmatch_inputs Hmatch_outputs]]].
+  unpack_goal.
+  - rewrite <- Heq1. apply Hadmit1.
+  - rewrite <- Heq2. apply Hadmit2.
+  - erewrite <- ExactEquivalence.inputs_same by eassumption.
+    assumption.
+  - erewrite <- ExactEquivalence.outputs_same by eassumption.
+    assumption.
 Qed.
 
 Global Instance Proper_counterexample_execution_exact_equivalence :

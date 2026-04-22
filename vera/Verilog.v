@@ -2,6 +2,7 @@ From Stdlib Require Import String.
 From Stdlib Require Import ZArith.
 From Stdlib Require Import BinNums.
 From Stdlib Require Import Program.Equality.
+From Stdlib Require Import ProofIrrelevance.
 
 From ExtLib Require Import Programming.Show.
 From ExtLib Require Import Structures.Monads.
@@ -89,6 +90,9 @@ Variant bitwiseop :=
     vector_declaration_width Scalar := 1%N ;
     vector_declaration_width (Vector hi lo) := 1%N + (N.max hi lo) - (N.min hi lo).
 
+  Lemma vector_declaration_width_gt v : (vector_declaration_width v > 0)%N.
+  Proof. funelim (vector_declaration_width v); lia. Qed.
+
   Variant StorageType := Reg | Wire.
 
   Record variable_declaration :=
@@ -109,11 +113,26 @@ Variant bitwiseop :=
     MkVariable
       { varName : name
       ; varType : vtype
+
+      (*
+      Seems weird to use `N` and then add this proof, when we could
+      just use `positive` instead.
+
+      Verilog does not have zero-width vectors. But SMTLIB does, and
+      both it, and out bitvector library use `N`. So it is convenient
+      to use `N` for Verilog too. Most things work without this proof
+      (there is no reason why Verilog couldn't have zero-width
+      BVs). But sometimes it comes up (see
+      `execution_match_on_verilog_smt_match_states_partial`).
+      *)
+
+      ; varTypeWf : (varType > 0)%N
       }.
 
   Definition variable_of_decl (decl : variable_declaration) : variable :=
     {| varName := varDeclName decl
     ; varType := varDeclWidth decl
+    ; varTypeWf := vector_declaration_width_gt _
     |}.
 
   Equations inputs_of_decls : list variable_declaration -> list variable := {
@@ -191,7 +210,8 @@ Module Verilog.
     destruct x as [x0 x1], y as [y0 y1].
     destruct (dec (x0 = y0)). 2: right; crush.
     destruct (dec (x1 = y1)). 2: right; crush.
-    subst. left. reflexivity.
+    subst. left.
+    f_equal. apply proof_irrelevance.
   Qed.
 
   (* Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=

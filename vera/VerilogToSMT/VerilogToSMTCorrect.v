@@ -173,45 +173,35 @@ Proof.
   }
   apply XBV.to_from_bv_inverse in Hbv_rhs. rewrite Hbv_rhs in *.
 
-  erewrite var_to_smt_value with (var := var) (regs := (RegisterState.set_reg var (XBV.from_bv bv_rhs) regs)); eauto; cycle 1.
+  apply BV.bv_eq_reflect.
+  apply XBV.from_bv_injective.
+
+  erewrite <- var_to_smt_value with (var := var) (regs := (RegisterState.set_reg var (XBV.from_bv bv_rhs) regs)); eauto; cycle 1.
   {
     eapply verilog_smt_match_states_partial_impl; [|eassumption].
     intros. subst.
     simp module_item_reads module_item_writes statement_writes statement_reads expr_reads.
     eauto with datatypes.
   }
-  rewrite RegisterState.set_reg_get_in. simpl. rewrite XBV.xbv_bv_inverse.
+  rewrite RegisterState.set_reg_get_in. simpl.
+  rewrite <- Hbv_rhs.
 
-  erewrite expr_to_smt_value with (expr := rhs) (regs := regs); eauto; cycle 1. {
-    eapply verilog_smt_match_states_partial_set_reg_out; cycle 1.
-    - eapply verilog_smt_match_states_partial_impl; [|eassumption].
-      intros. simpl.
-      simp module_item_reads module_item_writes statement_writes statement_reads expr_reads.
-      eauto with datatypes.
-    - rewrite List.Forall_forall in *.
-      eapply disjoint_r_intro in Hdisjoint; eauto.
-  }
-  rewrite Hbv_rhs. simpl. rewrite XBV.xbv_bv_inverse.
-  autodestruct; [|contradiction].
-  repeat f_equal. apply BV.bv_eq_reflect. apply eq_rect_eq.
+  eapply expr_to_smt_value; [eassumption|].
+  eapply verilog_smt_match_states_partial_set_reg_out; cycle 1.
+  - eapply verilog_smt_match_states_partial_impl; [|eassumption].
+    intros. simpl.
+    simp module_item_reads module_item_writes statement_writes statement_reads expr_reads.
+    eauto with datatypes.
+  - rewrite List.Forall_forall in *.
+    eapply disjoint_r_intro in Hdisjoint; eauto.
 Qed.
 
-Lemma smt_eq_sat_iff ρ l r :
+Lemma smt_eq_sat_iff s ρ (l r : SMTLib.term s) :
   SMTQueries.term_satisfied_by ρ (SMTLib.Term_Eq l r) <->
-    (exists v,
-        SMTLib.interp_term ρ l = Some v /\
-        SMTLib.interp_term ρ r = Some v).
+    (SMTLib.interp_term ρ l = SMTLib.interp_term ρ r).
 Proof.
   unfold SMTQueries.term_satisfied_by.
-  split; intros H.
-  - inv H. simpl in *. autodestruct_eqn E.
-    apply_somewhere SMTLib.value_eqb_eq.
-    subst. eauto.
-  - destruct H as [v [Hl Hr]].
-    repeat constructor. simpl.
-    rewrite Hl, Hr.
-    repeat f_equal.
-    now apply SMTLib.value_eqb_eq.
+  simpl. apply SMTLib.value_eqb_eq.
 Qed.
 
 Lemma module_item_to_smt_valid tag m (mi : Verilog.module_item) inputs outputs :
@@ -233,10 +223,9 @@ Proof.
   simp module_item_reads module_item_writes statement_writes statement_reads expr_reads in *.
   simp exec_module_item exec_statement in *.
   monad_inv.
-  rewrite smt_eq_sat_iff in Hsat. destruct Hsat as [v [Ht0 Ht1]].
+  rewrite smt_eq_sat_iff in Hsat.
   pose proof expr_to_smt_valid as Hvalue_match. insterU Hvalue_match.
   inv Hvalue_match. simpl.
-  edestruct var_to_smt_valid as [xbv_var [Heval_var Hmatch_var]]; eauto.
   unpack_verilog_smt_match_states_partial.
   - apply verilog_smt_match_states_partial_set_reg_out; [|assumption].
     unfold disjoint in *.
@@ -244,19 +233,14 @@ Proof.
     firstorder.
   - unfold verilog_smt_match_states_partial.
     intros. inv H; [|crush].
+    edestruct var_to_smt_valid as [xbv_var [Heval_var Hmatch_var]]; eauto.
     eexists. split; [eassumption|].
-    econstructor; [eassumption|idtac|econstructor].
-    apply RegisterState.set_reg_get_in.
+    unfold verilog_smt_match_on_name.
+    rewrite Hmatch_var.
+    rewrite RegisterState.set_reg_get_in.
+    rewrite Hsat.
+    assumption.
 Qed.
-
-Definition inputs_of_execution
-  (input_vars : list Verilog.variable)
-  (e : execution) :
-  option (list {n : N & XBV.xbv n}) :=
-  List.mapT_list (fun var => match e var with
-                          | Some xbv => Some (_; xbv)
-                          | None => None
-                          end) input_vars.
 
 Lemma mapT_list_eq_nil A B (f : A -> option B) l :
   List.mapT_list f l = Some []%list ->
@@ -360,16 +344,6 @@ Qed.
 
 Import Facts.
 
-Lemma execution_of_valuation_has_value_defined_value C tag m ρ : 
-  RegisterState.has_value_for C (SMT.execution_of_valuation tag m ρ) ->
-  RegisterState.defined_value_for C (SMT.execution_of_valuation tag m ρ).
-Proof.
-  unfold RegisterState.has_value_for, RegisterState.defined_value_for.
-  intros H * HC. insterU H. destruct H as [xbv Hxbv]. rewrite Hxbv.
-  unfold SMT.execution_of_valuation in Hxbv. autodestruct_eqn E.
-  rewrite <- eq_rect_eq. crush.
-Qed.
-
 Local Open Scope verilog.
 
 Lemma transfer_module_body_satisfiable v tag (m : VerilogSMTBijection.t) ρ q :
@@ -379,33 +353,41 @@ Lemma transfer_module_body_satisfiable v tag (m : VerilogSMTBijection.t) ρ q :
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
     module_items_sorted (Verilog.module_inputs v) (Verilog.modBody v) ->
     transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
+    SMT.match_map_vars tag m (Verilog.modVariables v) ->
     v ⇓ (SMT.execution_of_valuation tag m ρ) ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q.
 Proof.
-  intros * Hwrites_ndup Hreads_subset Hwrites_permute Hdisjoint Hsorted Htransfer Hvalid.
-  destruct Hvalid as [? [? ?]].
+  intros * Hwrites_ndup Hreads_subset Hwrites_permute Hdisjoint Hsorted Htransfer Hmatch_vars Hvalid .
+  unfold "⇓" in Hvalid.
   RegisterState.unpack_match_on.
   rename_match (_ =( Verilog.module_inputs _ )= _) into Hmatch_inputs.
   rename_match (_ =( Verilog.module_outputs _ )= _) into Hmatch_outputs.
   repeat unfold mk_initial_state, run_vmodule in *.
   rewrite ! sort_module_items_stable in * by eassumption.
-  rewrite RegisterState.limit_to_regs_twice in *.
   eapply transfer_module_body_exec_satisfiable; eauto.
   (* apply transfer_module_body_inputs in Htransfer.
    * rewrite List.Forall_forall in Htransfer. *)
   apply execution_match_on_verilog_smt_match_states_partial.
-  + RegisterState.unpack_defined_value_for.
-    * setoid_rewrite Hreads_subset.
+  - RegisterState.unpack_defined_value_for.
+    + setoid_rewrite Hreads_subset.
       rewrite Hmatch_inputs.
-      apply execution_of_valuation_has_value_defined_value.
+      eapply RegisterState.defined_value_for_impl;
+        [|now apply SMT.execution_of_valuation_defined_value].
+      simpl. intros.
+      apply Hmatch_vars.
+      apply Verilog.module_input_in_vars.
       assumption.
-    * setoid_rewrite Hwrites_permute.
+    + setoid_rewrite Hwrites_permute.
       setoid_rewrite Hmatch_outputs.
-      apply execution_of_valuation_has_value_defined_value.
-      assumption. 
-  + RegisterState.unpack_match_on.
-    * setoid_rewrite Hreads_subset. apply Hmatch_inputs.
-    * setoid_rewrite Hwrites_permute. apply Hmatch_outputs.
+      eapply RegisterState.defined_value_for_impl;
+        [|now apply SMT.execution_of_valuation_defined_value].
+      simpl. intros.
+      apply Hmatch_vars.
+      apply Verilog.module_outputs_in_vars.
+      assumption.
+  - RegisterState.unpack_match_on.
+    + setoid_rewrite Hreads_subset. apply Hmatch_inputs.
+    + setoid_rewrite Hwrites_permute. apply Hmatch_outputs.
 Qed.
 
 Global Instance verilog_smt_match_states_partial_proper C :
@@ -418,11 +400,13 @@ Proof.
   split; intros.
   - edestruct H as [smtName [Hlookup Hmatch]]; [eassumption|].
     eexists. split; [eauto|].
-    inv Hmatch. econstructor; eauto.
+    inv Hmatch.
+    unfold verilog_smt_match_on_name.
     now rewrite <- H1.
   - edestruct H as [smtName [Hlookup Hmatch]]; [eassumption|].
     eexists. split; [eauto|].
-    inv Hmatch. econstructor; eauto.
+    inv Hmatch. 
+    unfold verilog_smt_match_on_name.
     now rewrite H1.
 Qed.
 
@@ -433,12 +417,11 @@ Lemma transfer_module_body_exec_valid inputs outputs body : forall tag m ρ q,
     List.Forall (SMTQueries.term_satisfied_by ρ) q ->
     forall r1,
       verilog_smt_match_states_partial
-        (fun var => List.In var inputs)
-        tag m r1 ρ ->
-          verilog_smt_match_states_partial
-            (fun var =>
-               List.In var (inputs ++ Verilog.module_body_writes body)
-            ) tag m (exec_module_body r1 body) ρ.
+        (fun var => List.In var inputs) tag m
+	r1 ρ ->
+      verilog_smt_match_states_partial
+        (fun var => List.In var (inputs ++ Verilog.module_body_writes body)) tag m
+	(exec_module_body r1 body) ρ.
 Proof.
   induction body.
   all: intros * Hdisjoint Houtputs_in Htransfer Hsat * Hmatch1.
@@ -470,11 +453,6 @@ Proof.
     + setoid_rewrite List.in_app_iff. auto.
 Qed.
 
-Lemma defined_value_for_has_value_for C e :
-  RegisterState.defined_value_for C e -> 
-  RegisterState.has_value_for C e.
-Proof. unfold RegisterState.defined_value_for, RegisterState.has_value_for. crush. Qed.
-
 Lemma transfer_module_body_valid tag m v ρ q :
   module_items_sorted (Verilog.module_inputs v) (Verilog.modBody v) ->
   list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v) ->
@@ -482,57 +460,31 @@ Lemma transfer_module_body_valid tag m v ρ q :
   List.NoDup (Verilog.module_body_writes (Verilog.modBody v)) ->
   disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
   transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
-  (forall var : Verilog.variable, List.In var (Verilog.modVariables v) -> valuation_has_var tag m ρ var) ->
   List.Forall (SMTQueries.term_satisfied_by ρ) q ->
+  SMT.match_map_vars tag m (Verilog.modVariables v) ->
   valid_execution v (SMT.execution_of_valuation tag m ρ).
 Proof.
-  intros * Hsorted Hinputs_subset Houtputs_permute Hnodup_writes Hdisjoint Htransfer Hhas_vars Hsat.
-  (* pose proof transfer_module_body_exec_valid
-   *   with (r1 := (SMT.execution_of_valuation tag m ρ) // (Verilog.module_inputs v)). *)
-  (* - eassumption.
-   * - rewrite Houtputs_permute. reflexivity.
-   * - eassumption.
-   * - eassumption.
-   * - eapply verilog_smt_match_states_partial_change_regs
-   *     with (r1 := SMT.execution_of_valuation tag m ρ). {
-   *     intros.
-   *     unfold list_subset in Hinputs_subset.
-   *     rewrite List.Forall_forall in Hinputs_subset.
-   *     unfold RegisterState.limit_to_regs.
-   *     autodestruct; crush.
-   *   }
-   *   apply verilog_smt_match_states_execution_of_valuation_same.
-   *   intros. apply Hhas_vars. apply Verilog.module_input_in_vars. assumption.
-   * - admit. *)
+  intros * Hsorted Hinputs_subset Houtputs_permute Hnodup_writes Hdisjoint Htransfer Hsat Hmatch_vars.
   unfold valid_execution.
-  (* destruct Hsortable as [sorted Hsort]. *)
   repeat unfold mk_initial_state, run_vmodule in *.
   rewrite sort_module_items_stable by assumption. simpl.
-  rewrite RegisterState.limit_to_regs_twice.
-  unpack_goal.
-  - apply defined_value_for_has_value_for.
-    eapply verilog_smt_match_states_partial_execution_defined_value_for.
-    apply verilog_smt_match_states_execution_of_valuation_same.
-    intros. apply Hhas_vars. apply Verilog.module_input_in_vars. assumption.
-  - apply defined_value_for_has_value_for.
-    eapply verilog_smt_match_states_partial_execution_defined_value_for.
-    apply verilog_smt_match_states_execution_of_valuation_same.
-    intros. apply Hhas_vars. apply Verilog.module_outputs_in_vars.
-    assumption.
-  - eapply verilog_smt_match_states_partial_execution_match_on.
-    setoid_rewrite <- Houtputs_permute.
-    eapply transfer_module_body_exec_valid.
-    + eassumption.
-    + rewrite Houtputs_permute. reflexivity.
-    + eassumption.
-    + eassumption.
-    + assert (H : SMT.execution_of_valuation tag m ρ // Verilog.module_inputs v =( Verilog.module_inputs v )= SMT.execution_of_valuation tag m ρ). {
-        apply RegisterState.match_on_limit_to_regs_iff.
-        apply RegisterState.limit_to_regs_twice.
-      }
-      rewrite H.
-      apply verilog_smt_match_states_execution_of_valuation_same.
-      auto using Verilog.module_input_in_vars.
+  eapply verilog_smt_match_states_partial_execution_match_on.
+  setoid_rewrite <- Houtputs_permute.
+  eapply transfer_module_body_exec_valid.
+  - eassumption.
+  - rewrite Houtputs_permute. reflexivity.
+  - eassumption.
+  - eassumption.
+  - assert (H : SMT.execution_of_valuation tag m ρ // Verilog.module_inputs v =( Verilog.module_inputs v )= SMT.execution_of_valuation tag m ρ). {
+      apply RegisterState.match_on_limit_to_regs_iff.
+      apply RegisterState.limit_to_regs_twice.
+    } rewrite H. clear H.
+    eapply verilog_smt_match_states_partial_impl; cycle 1.
+    + apply verilog_smt_match_states_execution_of_valuation_same.
+    + simpl. intros.
+      apply Hmatch_vars.
+      apply Verilog.module_input_in_vars.
+      assumption.
 Qed.
 
 Lemma bij_gsi (m : VerilogSMTBijection.t) tag var smtName prf1 prf2 :
@@ -561,140 +513,7 @@ Proof.
       rewrite bij_gso; crush.
 Qed.
 
-Lemma declarations_satisfied_valuation_has_var tag m start var vars ρ :
-  List.Forall
-    (fun '(n, s) => exists v : SMTLib.value, ρ n = Some v /\ SMTQueries.value_has_sort v s)
-    (mk_declarations (assign_vars start vars)) ->
-  mk_bijection tag (assign_vars start vars) = inr m ->
-  List.In var vars ->
-  valuation_has_var tag m ρ var.
-Proof.
-  intros H Hbijection Hin.
-  rewrite <- assign_vars_vars with (start:=start) in Hin.
-  generalize dependent (assign_vars start vars).
-  clear vars.
-  intro assignments. intros.
-
-  unfold mk_declarations in H.
-  rewrite List.Forall_map, List.Forall_forall in H.
-
-  rewrite List.in_map_iff in Hin.
-  destruct Hin as [[var' smtName] [Heq Hin]].
-  simpl in Heq. subst var'.
-
-  specialize (H (var, smtName) ltac:(assumption)).
-  simpl in H. destruct H as [v [Hv Hhas_sort]].
-
-  inv Hhas_sort.
-  unfold valuation_has_var.
-  exists smtName, bv. split; [|eassumption].
-
-  eauto using mk_bijection_lookup.
-Qed.
-
 Import EqNotations.
-
-Lemma execution_of_valuation_inv tag m ρ var xbv :
-  SMT.execution_of_valuation tag m ρ var = Some xbv ->
-  exists smtName bv,
-    m (tag, var) = Some smtName /\
-      XBV.to_bv xbv = Some bv /\
-      ρ smtName = Some (SMTLib.Value_BitVec (Verilog.varType var) bv).
-Proof.
-  unfold SMT.execution_of_valuation.
-  intros H.
-  autodestruct_eqn E.
-  simpl.
-  rewrite XBV.xbv_bv_inverse.
-  eauto.
-Qed.
-
-Lemma complete_execution_valuation_satisfied_declarations tag m v ρ start :
-  mk_bijection tag (assign_vars start (Verilog.modVariables v)) = inr m ->
-  complete_execution v (SMT.execution_of_valuation tag m ρ) ->
-  List.Forall
-    (fun '(n, s) => exists v0 : SMTLib.value, ρ n = Some v0 /\ SMTQueries.value_has_sort v0 s)
-    (mk_declarations (assign_vars start (Verilog.modVariables v))).
-Proof.
-  unfold mk_declarations.
-  rewrite Lists.List.Forall_map.
-  rewrite List.Forall_forall.
-  unfold complete_execution.
-  intros Hbijection H [var smtName] Hin.
-  assert (List.In var (Verilog.modVariables v)) as Hin2. {
-    replace var with (fst (var, smtName)) by reflexivity.
-    erewrite <- assign_vars_vars with (start:=start).
-    apply List.in_map.
-    assumption.
-  }
-  apply H in Hin2.
-  destruct Hin2 as [xbv Hlookup].
-  apply execution_of_valuation_inv in Hlookup.
-  destruct Hlookup as [smtName' [bv Hlookup]].
-  decompose record Hlookup. clear Hlookup.
-  assert (m (tag, var) = Some smtName)
-    by eauto using mk_bijection_lookup.
-  replace smtName' with smtName in * by congruence.
-  eexists. split; [eassumption|constructor].
-Qed.
-
-Lemma valid_execution_inputs_have_value v e var :
-  valid_execution v e ->
-  List.In var (Verilog.module_inputs v) ->
-  exists xbv, e var = Some xbv.
-Proof.
-  unfold valid_execution.
-  intros [e' [Hrun Hmatch]] Hin.
-  unfold "_ =( _ )= _" in Hmatch.
-  setoid_rewrite List.in_app_iff in Hmatch.
-  eauto.
-Qed.
-
-Lemma valid_execution_outputs_have_value v e var :
-  valid_execution v e ->
-  List.In var (Verilog.module_outputs v) ->
-  exists xbv, e var = Some xbv.
-Proof.
-  unfold valid_execution.
-  intros [e' [Hrun Hmatch]] Hin.
-  unfold "_ =( _ )= _" in Hmatch.
-  setoid_rewrite List.in_app_iff in Hmatch.
-  eauto.
-Qed.
-
-Lemma valid_execution_complete v : forall e,
-    Permutation (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v) ->
-    all_vars_driven v ->
-    valid_execution v e ->
-    complete_execution v e.
-Proof.
-  unfold all_vars_driven, complete_execution, RegisterState.has_value_for.
-  induction (Verilog.modVariables v); [crush|].
-  intros * Hpermute Hdriven Hvalid * Hin.
-  inv Hdriven.
-  inv Hin.
-  - destruct H1.
-    + eauto using valid_execution_inputs_have_value.
-    + rewrite Hpermute in *.
-      eapply valid_execution_outputs_have_value; eassumption.
-  - eauto.
-Qed.
-
-Lemma verilog_to_smt_has_vars tag start v smt ρ :
-  verilog_to_smt tag start v = inr smt ->
-  SMTQueries.satisfied_by ρ (SMT.query smt) ->
-  forall var : Verilog.variable,
-    List.In var (Verilog.modVariables v) ->
-    valuation_has_var tag (SMT.nameMap smt) ρ var.
-Proof.
-  intros Hfunc Hsat var Hin.
-  unfold verilog_to_smt in Hfunc.
-  monad_inv. simpl in *.
-  eapply declarations_satisfied_valuation_has_var.
-  + inv Hsat. eassumption.
-  + eauto using mk_bijection_smt_map_match.
-  + assumption.
-Qed.
 
 Theorem verilog_to_smt_correct tag start v smt :
   verilog_to_smt tag start v = inr smt ->
@@ -702,20 +521,18 @@ Theorem verilog_to_smt_correct tag start v smt :
     (SMT.query smt)
     (fun ρ => valid_execution v (SMT.execution_of_valuation tag (SMT.nameMap smt) ρ)).
 Proof.
-  intros H ρ _.
+  intros H ρ.
   split.
   - intros Hsat.
-    pose proof (verilog_to_smt_has_vars _ _ _ _ _ H Hsat) as Hhas_vars.
-    unfold verilog_to_smt in H. monad_inv. simpl in *.
-    eapply transfer_module_body_valid; try (some_inv; eassumption); expect 1.
+    unfold verilog_to_smt in H.
+    monad_inv. simpl in *.
+    eapply transfer_module_body_valid.
+    all: eauto using mk_bijection_smt_map_match.
   - intros Hvalid.
     unfold verilog_to_smt in H. monad_inv. simpl in *.
     unfold SMTQueries.satisfied_by. simpl.
-    split.
-    + eapply complete_execution_valuation_satisfied_declarations.
-      * eassumption.
-      * apply valid_execution_complete; eassumption.
-    + eapply transfer_module_body_satisfiable; eassumption.
+    eapply transfer_module_body_satisfiable.
+    all: eauto using mk_bijection_smt_map_match.
 Qed.
 
 Lemma defined_value_for_execution_match_on C e' e :
@@ -731,6 +548,7 @@ Proof.
 Qed.
 
 (* Move me to semantics *)
+(* Should be replaced by just clean_module *)
 Lemma valid_execution_no_exes_written v : forall e tag start q,
     verilog_to_smt tag start v = inr q ->
     valid_execution v e ->
@@ -738,7 +556,7 @@ Lemma valid_execution_no_exes_written v : forall e tag start q,
     RegisterState.defined_value_for (fun var => List.In var (Verilog.module_body_writes (Verilog.modBody v))) e.
 Proof.
   unfold valid_execution, all_vars_driven.
-  intros * Htransf [Hinput_has_value [Houtput_has_value Hmatch]] Hinputs_defined.
+  intros * Htransf Hmatch Hinputs_defined.
   unfold verilog_to_smt in Htransf. monad_inv.
   rename_match (module_items_sorted _ _) into Hsorted.
   rename_match (Permutation _ _) into Hout_permute.
@@ -752,7 +570,6 @@ Proof.
   - assumption.
   - apply list_subset_app_r.
   - unfold mk_initial_state.
-    rewrite RegisterState.limit_to_regs_twice in *.
     assert (Hdrop_limit : e // Verilog.module_inputs v =( Verilog.module_inputs v )= e). {
         apply RegisterState.match_on_limit_to_regs_iff.
         apply RegisterState.limit_to_regs_twice.

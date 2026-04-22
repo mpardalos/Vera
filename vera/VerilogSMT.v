@@ -12,7 +12,7 @@ From Equations Require Import Equations.
 From vera Require Import Common.
 From vera Require Import Decidable.
 From vera Require Import Bitvector.
-From vera Require VerilogSemantics.
+From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
 From vera Require Import Tactics.
 From vera Require SMTQueries.
@@ -117,83 +117,108 @@ Module SMT.
       }.
 
   Definition max_declaration (q : SMTQueries.query) : nat :=
-    List.list_max (List.map fst (SMTQueries.declarations q)).
-
-  Lemma max_declaration_declarations q name s :
-    In (name, s) (SMTQueries.declarations q) ->
-    name <= max_declaration q.
-  Proof.
-    unfold max_declaration, SMTQueries.domain.
-    destruct q. simpl in *. rewrite List.Forall_forall in *.
-    intros Hin_domain. clear wf0. clear assertions.
-    revert name s Hin_domain.
-    induction declarations; [crush|].
-    intros.
-    inv Hin_domain; simpl in *; [lia|].
-    insterU IHdeclarations.
-    lia.
-  Qed.
+    List.list_max (SMTQueries.domain q).
 
   Lemma max_declaration_domain q name :
     In name (SMTQueries.domain q) ->
     name <= max_declaration q.
   Proof.
-    intros Hin_domain.
-    pose proof (SMTQueries.wf q) as wf.
-    rewrite List.Forall_forall in wf.
-    edestruct wf as [s Hin_decls]; [eassumption|].
-    eapply max_declaration_declarations.
-    eassumption.
+    unfold max_declaration, SMTQueries.domain.
+    revert name. rewrite <- Forall_forall.
+    apply list_max_le.
+    trivial.
   Qed.
 
-  Program Definition valuation_of_execution (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (e : execution) : SMTQueries.valuation :=
-    fun n =>
-      match bij_inverse m n with
-      | None => None
-      | Some (t, vname) =>
-          if dec (t = tag)
-          then
-            match XBV.to_bv (e vname) with
-            (* TODO: Fix handling of Xs *)
-            | None => None
-            | Some val => Some (SMTLib.Value_BitVec _ val)
-            end
-          else None
-      end.
+  Equations default (s : SMTLib.sort) : SMTLib.interp_sort s :=
+    default (SMTLib.Sort_Bool) := false;
+    default (SMTLib.Sort_BitVec n) := BV.zeros n.
 
   Import EqNotations.
 
-  Definition execution_of_valuation (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (v : SMTQueries.valuation) : execution :=
+  Definition execution_of_valuation (tag : TaggedVariable.Tag) (m : VerilogSMTBijection.t) (ρ : SMTLib.valuation) : execution :=
     fun var =>
       match m (tag, var) with
-      | Some smtName =>
-          match v smtName with
-          | Some (SMTLib.Value_BitVec w bv) =>
-              match dec (w = Verilog.varType var) with
-              | left e => rew e in (XBV.from_bv bv)
-              | _ => XBV.exes _
-              end
-          | _ => XBV.exes _
-          end
+      | Some smtName => XBV.from_bv (ρ (SMTLib.Sort_BitVec (Verilog.varType var)) smtName)
       | None => XBV.exes _
       end
   .
 
-  Definition valuation_of_executions (m : VerilogSMTBijection.t) (e1 e2 : execution) : SMTQueries.valuation :=
-    fun n =>
-      match bij_inverse m n with
-      | None => None
-      | Some (tag, var) =>
-          let e :=
-            match tag with
-            | TaggedVariable.VerilogLeft => e1
-            | TaggedVariable.VerilogRight => e2
-            end
-          in
-            match XBV.to_bv (e var) with
-            (* TODO: Fix handling of Xs *)
-            | None => None
-            | Some val => Some (SMTLib.Value_BitVec _ val)
-            end
+  Lemma execution_of_valuation_defined_value tag (m : VerilogSMTBijection.t) ρ:
+    RegisterState.defined_value_for
+      (fun var => exists smtName, m (tag, var) = Some smtName)
+      (SMT.execution_of_valuation tag m ρ).
+  Proof.
+    unfold SMT.execution_of_valuation.
+    intros var [smtName Hvar].
+    rewrite Hvar.
+    eauto.
+  Qed.
+
+  Definition valuation_of_executions (m : VerilogSMTBijection.t) (e1 e2 : execution) : SMTLib.valuation :=
+    fun s smtName =>
+      match s as s' return SMTLib.interp_sort s' with
+      | SMTLib.Sort_Bool => default _
+      | SMTLib.Sort_BitVec w => 
+        match bij_inverse m smtName with
+	| None => default _
+	| Some (tag, verilogVar) =>
+	  match dec (Verilog.varType verilogVar = w) with
+	  | right _ => default _
+	  | left E =>
+            let e :=
+              match tag with
+              | TaggedVariable.VerilogLeft => e1
+              | TaggedVariable.VerilogRight => e2
+              end
+            in
+              match XBV.to_bv (e verilogVar) with
+              (* TODO: Fix handling of Xs *)
+              | None => default _
+              | Some val => rew E in val
+              end
+	  end
+	end
       end.
+
+  Lemma execution_of_valuation_left_match_on (m : VerilogSMTBijection.t) e1 e2 l :
+    RegisterState.defined_value_for (fun var => In var l) e1 ->
+    SMT.match_map_vars TaggedVariable.VerilogLeft m l ->
+    SMT.execution_of_valuation TaggedVariable.VerilogLeft m
+      (SMT.valuation_of_executions m e1 e2) =( l )= e1.
+  Proof.
+    unfold SMT.execution_of_valuation, SMT.valuation_of_executions.
+    (* intros Hdefined Hexists var Hvar_in. *)
+    intros Hdefined Hmatch var Hvar_in.
+    pose proof Hvar_in as H.
+    apply Hmatch in H. destruct H as [smtName HsmtName].
+    rewrite HsmtName.
+    rewrite VerilogSMTBijection.bij_wf in HsmtName.
+    rewrite HsmtName.
+    apply Hdefined in Hvar_in. destruct Hvar_in as [bv Hbv].
+    rewrite Hbv, XBV.xbv_bv_inverse.
+    autodestruct; [|contradiction].
+    rewrite <- eq_rect_eq.
+    reflexivity.
+  Qed.
+
+  Lemma execution_of_valuation_right_match_on (m : VerilogSMTBijection.t) e1 e2 l :
+    RegisterState.defined_value_for (fun var => In var l) e2 ->
+    SMT.match_map_vars TaggedVariable.VerilogRight m l ->
+    SMT.execution_of_valuation TaggedVariable.VerilogRight m
+      (SMT.valuation_of_executions m e1 e2) =( l )= e2.
+  Proof.
+    unfold SMT.execution_of_valuation, SMT.valuation_of_executions.
+    (* intros Hdefined Hexists var Hvar_in. *)
+    intros Hdefined Hmatch var Hvar_in.
+    pose proof Hvar_in as H.
+    apply Hmatch in H. destruct H as [smtName HsmtName].
+    rewrite HsmtName.
+    rewrite VerilogSMTBijection.bij_wf in HsmtName.
+    rewrite HsmtName.
+    apply Hdefined in Hvar_in. destruct Hvar_in as [bv Hbv].
+    rewrite Hbv, XBV.xbv_bv_inverse.
+    autodestruct; [|contradiction].
+    rewrite <- eq_rect_eq.
+    reflexivity.
+  Qed.
 End SMT.

@@ -57,7 +57,7 @@ Section Apply.
   Qed.
   
   Lemma apply_substitution_expr_correct {w} v r (e : expression w) regs :
-    Some (eval_expr regs r) = regs v ->
+    eval_expr regs r = regs v ->
     eval_expr regs (apply_substitution_expr v r e) = eval_expr regs e.
   Proof.
     funelim (apply_substitution_expr v r e);
@@ -70,7 +70,7 @@ Section Apply.
   Qed.
 
   Lemma apply_substitution_module_body_valid v r (body : list module_item) regs :
-    Some (eval_expr regs r) = regs v ->
+    eval_expr regs r = regs v ->
     ~ In v (module_body_writes body) ->
     disjoint (module_body_writes body) (expr_reads r) ->
     exec_module_body regs (apply_substitution_module_body v r body) =
@@ -88,7 +88,6 @@ Section Apply.
     apply H; try assumption; expect 1.
     rewrite RegisterState.set_reg_get_out by crush.
     rewrite <- Heval.
-    f_equal.
     apply eval_expr_change_regs.
     apply RegisterState.match_on_set_reg_elim.
     assumption.
@@ -235,7 +234,6 @@ Proof.
     + apply list_subset_app_r. assumption.
   - apply apply_substitution_module_body_valid.
     + rewrite RegisterState.set_reg_get_in.
-      f_equal.
       apply eval_expr_change_regs.
       apply RegisterState.match_on_set_reg_elim.
       rename_match (list_subset (expr_reads rhs) vars) into Hrhs_in_vars.

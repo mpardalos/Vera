@@ -548,6 +548,13 @@ Module RegisterState.
       autodestruct; crush.
   Qed.
 
+  Lemma limit_to_regs_match_on r l :
+    r // l =( l )= r.
+  Proof.
+    apply match_on_limit_to_regs_iff.
+    apply limit_to_regs_twice.
+  Qed.
+
   Lemma defined_value_for_limit_to_regs vars st :
     RegisterState.defined_value_for (fun var => In var vars) st ->
     RegisterState.defined_value_for (fun var => In var vars) (st // vars).
@@ -1107,6 +1114,19 @@ Module CombinationalOnly.
     | Some sorted => exec_module_body (mk_initial_state v inputs) sorted
     end.
 
+  Global Instance Proper_run_vmodule_match_on v :
+    Proper
+      (RegisterState.match_on (fun var => In var (Verilog.module_inputs v)) ==> eq)
+      (run_vmodule v).
+  Proof.
+    intros r1 r2 Heq.
+    unfold run_vmodule.
+    unfold mk_initial_state.
+    autodestruct.
+    - rewrite Heq. reflexivity.
+    - reflexivity.
+  Qed.
+
   Notation execution := RegisterState.t.
 
   (* TODO: This could possible use module_body_writes instead of
@@ -1122,7 +1142,7 @@ Module CombinationalOnly.
     the internal state, maybe this is the version we want.)
     *)
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
-    run_vmodule v (e // Verilog.module_inputs v) =( Verilog.module_inputs v ++ Verilog.module_outputs v )= e.
+    run_vmodule v e =( Verilog.module_inputs v ++ Verilog.module_outputs v )= e.
 
   Infix "⇓" := valid_execution (at level 20) : verilog.
 
@@ -1227,18 +1247,6 @@ Section ExpressionFacts.
     simpl.
     unfold RawXBV.to_bv. simpl.
     rewrite RawXBV.bit_to_bool_inverse.
-    reflexivity.
-  Qed.
-  
-  Lemma value_bitvec_bits_equal n1 n2 bv1 bv2 :
-    BV.bits bv1 = BV.bits bv2 ->
-    SMTLib.Value_BitVec n1 bv1 = SMTLib.Value_BitVec n2 bv2.
-  Proof.
-    intros H.
-    destruct bv1 as [bv1 wf1], bv2 as [bv2 wf2]. cbn in *.
-    subst bv2.
-    assert (n1 = n2) by crush.
-    subst.
     reflexivity.
   Qed.
   
@@ -1651,6 +1659,27 @@ Module Facts.
 
   (************* /module bodies ***********)
 
+  (************* modules ***********)
+
+  Lemma run_vmodule_preserve_inputs v e :
+    vmodule_sortable v ->
+    run_vmodule v e =( Verilog.module_inputs v )= e.
+  Proof.
+    unfold vmodule_sortable, run_vmodule.
+    intros [sorted Hsort]. rewrite Hsort.
+    symmetry.
+    unfold mk_initial_state.
+    rewrite <- exec_module_body_preserve.
+    - symmetry.
+      apply RegisterState.limit_to_regs_match_on.
+    - symmetry.
+      apply module_items_sorted_no_overwrite.
+      eapply sort_module_items_sorted.
+      eassumption.
+  Qed.
+
+  (************* /modules ***********)
+
   Lemma set_reg_swap var1 var2 x1 x2 regs :
     var1 <> var2 ->
     RegisterState.set_reg var1 x1 (RegisterState.set_reg var2 x2 regs) =
@@ -1718,13 +1747,14 @@ Module Clean.
   Import Verilog.
   Import CombinationalOnly.
 
-  Definition clean_module_body inputs body := forall e,
-    RegisterState.defined_value_for (fun var => In var inputs) e ->
-      (* Does not overwrite its inputs *)
-      e =( inputs )= exec_module_body (e // inputs) body
-      (* Produces defined outputs*)
-      /\ RegisterState.defined_value_for (fun var => In var (Verilog.module_body_writes body))
-                                        (exec_module_body (e // inputs) body).
+  Record clean_module_body inputs body := MkCleanModuleBody { 
+    body_preserve_inputs : forall e, exec_module_body (e // inputs) body =( inputs )= e;
+    body_defined_outputs : forall e,
+      RegisterState.defined_value_for (fun var => In var inputs) e ->
+      RegisterState.defined_value_for
+        (fun var => In var (Verilog.module_body_writes body))
+	(exec_module_body (e // inputs) body)
+  }.
 
   Lemma exec_statement_defined l_before l_after r stmt:
     list_subset (Verilog.statement_reads stmt) l_before ->
@@ -1799,33 +1829,90 @@ Module Clean.
       + eapply exec_module_item_defined; eauto; reflexivity.
   Qed.
 
+  Lemma run_vmodule_defined r v:
+    vmodule_sortable v ->
+    (* Using module_body_reads here implicitly requires that the module has been
+    sorted + internals dropped. It doesn't leave space for internal
+    variables which are undefined before running. Really, we need an
+    alternative to module_body_reads, which excludes internal vars *)
+    list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v) ->
+    RegisterState.defined_value_for
+      (fun var : variable => In var (Verilog.module_body_reads (Verilog.modBody v)))
+      r ->
+    RegisterState.defined_value_for
+      (fun var : variable => In var (Verilog.module_body_writes (Verilog.modBody v)))
+      (run_vmodule v r).
+  Proof.
+    intros [sorted Hsort] Hreads_inputs Hdefined.
+    unfold run_vmodule. rewrite Hsort.
+    eapply exec_module_body_defined.
+    - rewrite <- sort_module_items_permutation by eassumption. reflexivity.
+    - rewrite <- sort_module_items_permutation with (body':=sorted) by eassumption.
+      apply list_subset_app_r.
+    - unfold mk_initial_state.
+      assert (H : r // module_inputs v =( module_body_reads (modBody v) )= r). {
+        setoid_rewrite Hreads_inputs.
+	apply RegisterState.limit_to_regs_match_on.
+      } rewrite H. clear H.
+      apply Hdefined.
+  Qed.
+
   Lemma clean_module_body_statically inputs body :
     disjoint (Verilog.module_body_writes body) inputs ->
     NoDup (Verilog.module_body_writes body) ->
     list_subset (Verilog.module_body_reads body) inputs ->
     clean_module_body inputs body.
   Proof.
-    unfold clean_module_body.
-    intros * Hio_disjoint Hnodup_writes Hreads_in_inputs e Hdefined.
-    split.
-    - rewrite <- Facts.exec_module_body_preserve by now symmetry.
-      apply RegisterState.match_on_limit_to_regs_iff.
-      rewrite RegisterState.limit_to_regs_twice.
-      reflexivity.
-    - eapply exec_module_body_defined.
+    intros * Hio_disjoint Hnodup_writes Hreads_in_inputs.
+    constructor.
+    - intros e. 
+      rewrite <- Facts.exec_module_body_preserve by now symmetry.
+      apply RegisterState.limit_to_regs_match_on.
+    - intros e Hdefined.
+      eapply exec_module_body_defined.
       + eassumption.
       + apply list_subset_app_r.
       + apply RegisterState.defined_value_for_limit_to_regs.
         assumption.
   Qed.
 
-  Definition clean_module v := forall e,
-    RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
-        (* Does not overwrite its inputs *)
-      e =( Verilog.module_inputs v )= run_vmodule v  (e // Verilog.module_inputs v)
-        (* Produces defined outputs*)
-      /\ RegisterState.defined_value_for (fun var => In var (Verilog.module_outputs v))
-                                        (run_vmodule v (e // Verilog.module_inputs v)).
+  Record clean_module v := MkCleanModule { 
+    preserve_inputs : forall e, run_vmodule v e =( Verilog.module_inputs v )= e;
+    defined_outputs : forall e,
+      RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
+      RegisterState.defined_value_for (fun var => In var (Verilog.module_outputs v)) (run_vmodule v e)
+  }.
+
+  (* TODO: This is not here to be used, but rather to maybe
+  demonstrate what syntactic predicates (sortable, reads from inputs)
+  are required to show clean_module.
+
+  Not sure if we want to carry around the syntactic predicates
+  (assumptions here) or the semantic ones (conclusion). Syntactic
+  might be more flexible, since you don't need all of them in all
+  circumstances, but the semantic ones make it easier to hide it when
+  we weaken the syntactic requirements.
+
+  *)
+  Remark sortable_clean v :
+    vmodule_sortable v ->
+    list_subset (module_body_reads (modBody v)) (module_inputs v) ->
+    list_subset (module_outputs v) (module_body_writes (modBody v)) ->
+    clean_module v.
+  Proof.
+    intros Hsortable Hreads_inputs Hwrites_outputs.
+    constructor.
+    - intros e.
+      apply Facts.run_vmodule_preserve_inputs. 
+      assumption.
+    - intros e Hinputs_defined.
+      setoid_rewrite Hwrites_outputs.
+      apply run_vmodule_defined.
+      + assumption.
+      + assumption.
+      + setoid_rewrite Hreads_inputs.
+	assumption.
+  Qed.
 
   Lemma clean_module_body_module v :
     Permutation (module_body_writes (modBody v)) (module_outputs v) ->
@@ -1833,15 +1920,16 @@ Module Clean.
     clean_module_body (module_inputs v) (modBody v) ->
     clean_module v.
   Proof.
-    unfold clean_module, clean_module_body.
-    intros Hwrites Hsorted Hclean e Hdefined.
-    unfold run_vmodule.
-    rewrite sort_module_items_stable by assumption.
-    simpl. unfold mk_initial_state.
-    rewrite ! RegisterState.limit_to_regs_twice.
-    setoid_rewrite <- Hwrites.
-    apply Hclean.
-    apply Hdefined.
+    intros Hwrites Hsorted Hclean.
+    constructor.
+    all: unfold run_vmodule.
+    all: rewrite sort_module_items_stable by assumption.
+    all: unfold mk_initial_state; simpl.
+    - intros e. apply Hclean.
+    - intros e Hdefined.
+      setoid_rewrite <- Hwrites.
+      apply Hclean.
+      apply Hdefined.
   Qed.
 
   Lemma clean_module_statically v :
@@ -1860,6 +1948,16 @@ Module Clean.
       + rewrite Hwrites_outputs_perm. symmetry. assumption.
       + assumption.
       + assumption.
+  Qed.
+
+  Lemma admit_run_vmodule v e:
+    clean_module v ->
+    v ⇓ (run_vmodule v e).
+  Proof.
+    unfold "⇓".
+    intros [Hpreserve_inputs Hdefined].
+    setoid_rewrite Hpreserve_inputs at 2.
+    reflexivity.
   Qed.
 End Clean.
 
@@ -1951,7 +2049,7 @@ Module ExactEquivalence.
     MkEquivalentBehaviour {
       inputs_same : Verilog.module_inputs v1 = Verilog.module_inputs v2;
       outputs_same : Verilog.module_outputs v1 = Verilog.module_outputs v2;
-      execution_match : forall e, (v1 ⇓ e <-> v2 ⇓ e)
+      execution_match : forall init, run_vmodule v1 init =( Verilog.module_inputs v1 ++ Verilog.module_outputs v1 )= run_vmodule v2 init
     }.
 
   Infix "~~~" := exact_equivalence (at level 20) : verilog.
@@ -1964,7 +2062,9 @@ Module ExactEquivalence.
     constructor.
     - symmetry. assumption.
     - symmetry. assumption.
-    - symmetry. auto.
+    - symmetry.
+      rewrite <- inputs_same0, <- outputs_same0.
+      auto.
   Qed.
 
   Lemma exact_equivalence_trans v1 v2 v3:
@@ -1974,7 +2074,9 @@ Module ExactEquivalence.
     constructor.
     - congruence.
     - congruence.
-    - etransitivity; eauto.
+    - etransitivity.
+      all: rewrite <- inputs_same0, <- outputs_same0 in *.
+      all: eauto.
   Qed.
 
   Lemma exact_equivalence_refl v : v ~~~ v.
@@ -1991,7 +2093,12 @@ Module ExactEquivalence.
     Proper (exact_equivalence ==> eq ==> iff) valid_execution.
   Proof.
     repeat intro. subst.
-    destruct H. auto.
+    destruct H.
+    unfold "⇓".
+    rewrite execution_match0.
+    rewrite inputs_same0.
+    rewrite outputs_same0.
+    reflexivity.
   Qed.
 
   Lemma equal_exact_equivalence v1 v2 :
@@ -2018,13 +2125,15 @@ Module ExactEquivalence.
     v1 ~~~ v2 ->
     v1 ~~ v2.
   Proof.
-    intros Hclean1 Hclean2 [].
+    intros Hclean1 Hclean2 Hequiv.
     constructor.
+    - destruct Hequiv. assumption.
+    - destruct Hequiv. assumption.
     - assumption.
     - assumption.
-    - assumption.
-    - assumption.
-    - auto.
+    - intros.
+      rewrite Hequiv.
+      reflexivity.
   Qed.
 
   Lemma exact_by_output_equality v1 v2:
@@ -2037,15 +2146,69 @@ Module ExactEquivalence.
     v1 ~~~ v2.
   Proof.
     intros Heq_inputs Heq_outputs Hmatch.
-    constructor; try eassumption; expect 1.
-    unfold "⇓". intros e.
-    rewrite <- Heq_inputs. rewrite <- Heq_outputs.
-    split; intros Hmatch_e.
-    - etransitivity.
-      + symmetry. apply Hmatch.
-      + apply Hmatch_e.
-    - etransitivity.
-      + apply Hmatch.
-      + apply Hmatch_e.
+    constructor.
+    all: eassumption.
+  Qed.
+
+  Lemma transfer_clean v1 v2 :
+    v1 ~~~ v2 ->
+    clean_module v1 ->
+    clean_module v2.
+  Proof.
+    intros [Hinput_names Houtput_names Hequiv].
+    intros Hclean1.
+    constructor.
+    - intros e.
+      rewrite <- Hinput_names.
+      transitivity (run_vmodule v1 e).
+      + symmetry.
+        specialize (Hequiv e).
+        RegisterState.unpack_match_on. assumption.
+      + apply preserve_inputs. apply Hclean1.
+    - intros e Hinputs_defined.
+      specialize (Hequiv e).
+      rewrite <- Houtput_names.
+      RegisterState.unpack_match_on.
+      rename_match (run_vmodule v1 e =( Verilog.module_outputs v1 )= run_vmodule v2 e)
+        into Hmatch_outputs.
+      rewrite <- Hmatch_outputs.
+      apply Hclean1.
+      rewrite Hinput_names.
+      apply Hinputs_defined.
+  Qed.
+
+  (* a ~~~ b -> b ~~ c -> a ~~ c *)
+  Global Instance Proper_equivalent_behaviour_exact_equivalence :
+    Proper
+      (exact_equivalence ==> exact_equivalence ==> iff)
+      (equivalent_behaviour).
+  Proof.
+    intros v1 v2 Heq v1' v2' Heq'. split; intro Heq_behaviour.
+    - constructor.
+      + destruct Heq, Heq', Heq_behaviour. congruence.
+      + destruct Heq, Heq', Heq_behaviour. congruence.
+      + destruct Heq_behaviour.
+        eapply transfer_clean; eassumption.
+      + destruct Heq_behaviour.
+        eapply transfer_clean; eassumption.
+      + intros e Hinputs_defined.
+        rewrite <- Heq. rewrite <- Heq'.
+	eapply (execution_match _ _ Heq_behaviour).
+	rewrite (ExactEquivalence.inputs_same v1 v2) by assumption.
+	rewrite (ExactEquivalence.outputs_same v1 v2) by assumption.
+	apply Hinputs_defined.
+    - constructor.
+      + destruct Heq, Heq', Heq_behaviour. congruence.
+      + destruct Heq, Heq', Heq_behaviour. congruence.
+      + destruct Heq_behaviour.
+        eapply transfer_clean; try symmetry; eassumption.
+      + inv Heq_behaviour.
+        eapply transfer_clean; try symmetry; eassumption.
+      + intros e Hinputs_defined.
+        rewrite Heq. rewrite Heq'.
+	eapply (execution_match _ _ Heq_behaviour).
+	rewrite <- (ExactEquivalence.inputs_same v1 v2) by assumption.
+	rewrite <- (ExactEquivalence.outputs_same v1 v2) by assumption.
+	apply Hinputs_defined.
   Qed.
 End ExactEquivalence.
