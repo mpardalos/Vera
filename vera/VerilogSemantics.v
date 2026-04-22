@@ -1300,18 +1300,6 @@ Section ExpressionFacts.
     reflexivity.
   Qed.
   
-  Lemma value_bitvec_bits_equal n1 n2 bv1 bv2 :
-    BV.bits bv1 = BV.bits bv2 ->
-    SMTLib.Value_BitVec n1 bv1 = SMTLib.Value_BitVec n2 bv2.
-  Proof.
-    intros H.
-    destruct bv1 as [bv1 wf1], bv2 as [bv2 wf2]. cbn in *.
-    subst bv2.
-    assert (n1 = n2) by crush.
-    subst.
-    reflexivity.
-  Qed.
-  
   Lemma eval_arithmeticop_to_bv op w (lhs rhs : BV.bitvector w) :
     exists bv, XBV.to_bv (eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
   Proof.
