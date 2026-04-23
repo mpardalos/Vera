@@ -94,13 +94,13 @@ let read_type_as_vector str =
       with Not_found -> (0, 0) in
     if is_signed then
       failwith (Printf.sprintf "Signed types not implemented (Got '%s')" str)
-    else Vera.RawVerilog.Vector (hi, lo)
+    else Vera.RawVerilog.Vector (Z.of_int hi, Z.of_int lo)
   else raise (SlangUnexpectedValueFor ("Verilog type", str))
 
 let read_type_as_width str =
   match read_type_as_vector str with
-  | Vera.RawVerilog.Vector (hi, lo) -> abs (hi - lo) + 1
-  | Vera.RawVerilog.Scalar -> 1
+  | Vera.RawVerilog.Vector (hi, lo) -> Z.(abs (hi - lo) + one)
+  | Vera.RawVerilog.Scalar -> Z.one
 
 let parse_variable json : Vera.RawVerilog.variable_declaration =
   expect_kind "Variable" json;
@@ -137,7 +137,7 @@ let hex_to_bits width hex : bool list =
            else
              ( w - 4,
                List.append acc
-                 (Vera.bits_from_int 4 (int_of_string ("0x" ^ String.make 1 c)))
+                 (Vera.bits_from_int (Z.of_int 4) (Z.of_int (int_of_string ("0x" ^ String.make 1 c))))
              ))
          (width, []) hex)
   in
@@ -160,26 +160,26 @@ let read_constant const_str =
   try
     (* Try matching sized and unsized formats *)
     if Str.string_match sized_decimal_re const_str 0 then
-      let width = int_of_string (Str.matched_group 1 const_str) in
-      let value = int_of_string (Str.matched_group 2 const_str) in
+      let width = Z.of_string (Str.matched_group 1 const_str) in
+      let value = Z.of_string (Str.matched_group 2 const_str) in
       Vera.bits_from_int width value
     else if Str.string_match sized_binary_re const_str 0 then
-      let width = int_of_string (Str.matched_group 1 const_str) in
-      let value = int_of_string ("0b" ^ Str.matched_group 2 const_str) in
+      let width = Z.of_string (Str.matched_group 1 const_str) in
+      let value = Z.of_string ("0b" ^ Str.matched_group 2 const_str) in
       Vera.bits_from_int width value
     else if Str.string_match sized_hex_re const_str 0 then
       let width = int_of_string (Str.matched_group 1 const_str) in
       let hex = Str.matched_group 2 const_str in
       hex_to_bits width hex
     else if Str.string_match unsized_decimal_re const_str 0 then
-      let value = int_of_string const_str in
-      Vera.bits_from_int 32 value (* Default to 32-bit for unsized decimal *)
+      let value = Z.of_string const_str in
+      Vera.bits_from_int (Z.of_int 32) value (* Default to 32-bit for unsized decimal *)
     else if Str.string_match unsized_prefixed_decimal_re const_str 0 then
-      let value = int_of_string (Str.matched_group 1 const_str) in
-      Vera.bits_from_int 32 value (* Default to 32-bit for unsized decimal *)
+      let value = Z.of_string (Str.matched_group 1 const_str) in
+      Vera.bits_from_int (Z.of_int 32) value (* Default to 32-bit for unsized decimal *)
     else if Str.string_match unsized_prefixed_binary_re const_str 0 then
-      let value = int_of_string ("0b" ^ Str.matched_group 1 const_str) in
-      Vera.bits_from_int 32 value (* Default to 32-bit for unsized binary *)
+      let value = Z.of_string ("0b" ^ Str.matched_group 1 const_str) in
+      Vera.bits_from_int (Z.of_int 32) value (* Default to 32-bit for unsized binary *)
     else if Str.string_match unsized_prefixed_hex_re const_str 0 then
       let hex = Str.matched_group 1 const_str in
       hex_to_bits 32 hex (* Default to 32-bit for unsized hex *)
@@ -263,9 +263,9 @@ let rec parse_expression json =
       let count_expression = json |> member "count" in
       expect_kind "IntegerLiteral" count_expression;
       (* We need an int value here, not a bitvector, so just use
-      int_of_string. It will fail if it gets a sized int (32'd8) but
+      Z.of_string. It will fail if it gets a sized int (32'd8) but
       that's ok.*)
-      let count = count_expression |> member "constant" |> to_string |> int_of_string in
+      let count = count_expression |> member "constant" |> to_string |> Z.of_string in
       let concat_expression = json |> member "concat" in
       expect_kind "Concatenation" concat_expression;
       let expr = concat_expression |> parse_expression in

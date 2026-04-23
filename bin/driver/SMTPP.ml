@@ -6,11 +6,11 @@ module SMTLib = struct
     match nameMap.bij_inverse nameIdx with
     | Some (VerilogLeft, n) -> fprintf fmt "|l_%s|" (Util.lst_to_string n.varName)
     | Some (VerilogRight, n) -> fprintf fmt "|r_%s|" (Util.lst_to_string n.varName)
-    | None -> fprintf fmt "|v%d|" (int_from_nat nameIdx)
+    | None -> fprintf fmt "|v%a|" Z.pp_print (int_from_nat nameIdx)
 
-  let bitvector fmt bits =
+  let bitvector fmt (bits : bool list) =
     fprintf fmt "#b%s"
-      (Util.lst_to_string (map (function true -> '1' | false -> '0') (List.rev bits)))
+      (String.of_seq (List.to_seq (map (function true -> '1' | false -> '0') (List.rev bits))))
 
   let unaryOp fmt = function
     | BVNot -> fprintf fmt "bvnot"
@@ -29,7 +29,7 @@ module SMTLib = struct
 
   let rec term varNames fmt = function
     | Term_Const name -> var varNames fmt name
-    | Term_Int n -> fprintf fmt "%d" n
+    | Term_Int n -> fprintf fmt "%a" Z.pp_print n
     | Term_Geq (l, r) ->
         fprintf fmt "(geq %a %a)" (term varNames) l (term varNames) r
     | Term_Eq (l, r) ->
@@ -48,7 +48,7 @@ module SMTLib = struct
     | Term_BVConcat (l, r) ->
         fprintf fmt "(concat %a %a)" (term varNames) l (term varNames) r
     | Term_BVExtract (lo, hi, t) ->
-        fprintf fmt "((_ extract %d %d) %a)" (int_from_nat lo) (int_from_nat hi)
+        fprintf fmt "((_ extract %a %a) %a)" Z.pp_print (int_from_nat lo) Z.pp_print (int_from_nat hi)
           (term varNames) t
     | Term_BVUnaryOp (op, t) ->
         fprintf fmt "(%a %a)" unaryOp op (term varNames) t
@@ -59,7 +59,7 @@ module SMTLib = struct
         fprintf fmt "(bvult %a %a)" (term varNames) t1 (term varNames) t2
 
   let sort fmt = function
-    | Sort_BitVec n -> fprintf fmt "(_ BitVec %d)" n
+    | Sort_BitVec n -> fprintf fmt "(_ BitVec %a)" Z.pp_print n
     | _ -> failwith "Unexpected sort"
 
   let declaration varNames fmt (v, s) =

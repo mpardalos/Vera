@@ -60,7 +60,7 @@ Proof. funelim (apply_substitution_module_body v r l); crush. Qed.
 Equations forward_assignments_body (mis : list module_item) : string + list module_item by wf (List.length mis) lt := {
 | [] => inr []
 | (AlwaysComb (BlockingAssign (NamedExpression var) rhs) :: tl) =>
-  let* tl' := forward_assignments_body (apply_substitution_module_body var rhs tl) in
+  let* tl' := forward_assignments_body (trace ("Applied: " ++ Verilog.varName var) (apply_substitution_module_body var rhs tl)) in
   inr (AlwaysComb (BlockingAssign (NamedExpression var) rhs) :: tl')
 | (_ :: _) => inl "always_comb block with invalid structure in inlining stage"
 }.
@@ -69,7 +69,7 @@ Next Obligation. rewrite apply_substitution_module_body_length. lia. Qed.
 Definition forward_assignments (m : vmodule) : string + vmodule :=
   assert_dec (List.NoDup (module_body_writes (modBody m))) "Duplicate write";;
   assert_dec (module_items_sorted (module_inputs m) (modBody m)) "Module items unsorted" ;;
-  let* body := forward_assignments_body (modBody m) in
+  let* body := trace ("Forward assignments for " ++ Verilog.modName m) forward_assignments_body (modBody m) in
   inr {|
     modName := modName m;
     modVariableDecls := modVariableDecls m;
