@@ -172,35 +172,29 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     removeFilesAfter "examples"
       [ "//*.log", "//*.time", "//*.vera.smt2" ]
 
-  phony "plots" $ need
-    [ "examples/out/vera_all_plots.pdf"
-    , "examples/out/eqy_all_plots.pdf"
-    ]
+  phony "plots" $ need ["examples/out/summary.pdf"]
 
-  "examples/out/*_all_plots.pdf" %> \out -> do
-    let Just [tool] = filePattern "examples/out/*_all_plots.pdf" out
+  "examples/out/summary.pdf" %> \out -> do
     templateExampleDirs <- getDirectoryDirs ("examples" </> "templates")
     templateExamples <- fmap join <$> forM templateExampleDirs $ \exampleTemplateDir -> do
       moduleTemplates <- getDirectoryFiles ("examples" </> "templates" </> exampleTemplateDir) ["*.sv.j2"]
       let moduleNames = map dropExtensions moduleTemplates
       return
-        ([ printf "examples/out/%s/%s_vs_%s.%s.summary.pdf" exampleTemplateDir left right tool
+        [ printf "examples/out/%s/%s_vs_%s.summary.pdf" exampleTemplateDir left right
         | (left, right) <- allPairs moduleNames
         , left /= right
         ]
-        -- ++ [ printf "examples/out/%s/%s_vs_%s.synth.vera.summary.pdf" exampleTemplateDir m m
-        -- | m <- moduleNames
-        -- ]
-        )
     need templateExamples
     cmd_ "gs" "-dBATCH" "-dNOPAUSE" "-q" "-sDEVICE=pdfwrite" ("-sOutputFile=" ++ out) templateExamples
 
-  "examples/out/*/*.*.summary.pdf" %> \out -> do
-    let csv = out -<.> "csv"
-        Just [category, name, tool] = filePattern "examples/out/*/*.*.summary.pdf" out
-        cleanName = map (\case '_' -> ' '; c -> c) (takeFileName (dropExtensions name))
-        title :: String = printf "%s - %s - %s" category cleanName tool
-    need [csv]
+  "examples/out/*/*.summary.pdf" %> \out -> do
+    let Just [category, name] = filePattern "examples/out/*/*.summary.pdf" out
+        base = dropExtensions out
+        veraCsv = base <.> "vera.summary.csv"
+        eqyCsv = base <.> "eqy.summary.csv"
+        cleanName = map (\case '_' -> ' '; c -> c) (takeFileName name)
+        title :: String = printf "%s - %s" category cleanName
+    need [veraCsv, eqyCsv]
     (Exit code) <-
       cmd
         (Traced "gnuplot")
@@ -212,7 +206,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
           , "set xlabel 'Bit width';"
           , "set ylabel 'Time (s)';"
           , "set title '" ++ title ++ "';"
-          , "plot '" ++ csv ++ "' using 1:2 with linespoints notitle"
+          , "plot '" ++ veraCsv ++ "' using 1:2 with linespoints title 'vera'"
+          , "   , '" ++ eqyCsv ++ "' using 1:2 with linespoints title 'eqy'"
           ] ]
     case code of
       ExitSuccess -> pure ()
@@ -224,12 +219,12 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
             [ "set terminal pdf;"
             , "set output '" ++ out ++ "';"
             , "set title '" ++ title ++ "';"
-            , "unset border;"      -- Removes the graph box
-            , "unset tics;"        -- Removes the x/y axis numbers
-            , "set xrange [0:1];"  -- Dummy range to prevent the crash you just escaped
+            , "unset border;"
+            , "unset tics;"
+            , "set xrange [0:1];"
             , "set yrange [0:1];"
             , "set label 1 'Error: Plot generation failed or missing data' at 0.5, 0.5 center font ',14';"
-            , "plot NaN notitle"   -- Plots literally nothing, but satisfies Gnuplot's need for a plot command
+            , "plot NaN notitle"
             ]
           ]
 
