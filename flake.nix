@@ -33,6 +33,7 @@
           coq.ocamlPackages.ppxlib
           coq.ocamlPackages.yojson
           coq.ocamlPackages.cmdliner
+          coq.ocamlPackages.zarith
 
           stable-pkgs.sv-lang
         ];

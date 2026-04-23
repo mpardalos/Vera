@@ -738,3 +738,7 @@ Definition opt_to_sum {E A} (e: E) (o : option A) : E + A :=
   | None => inl e
   | Some a => inr a
   end.
+
+(* Debug tracing — computes to identity in proofs, extracts to Printf *)
+Definition trace {A : Type} (_msg : string) (x : A) : A := x.
+Arguments trace / _ _.

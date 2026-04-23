@@ -1,5 +1,5 @@
 (library
  (name driver)
  (synopsis "Verified verilog equivalence checker - driver module")
- (libraries unix yojson str cmdliner extracted)
+ (libraries unix yojson str cmdliner zarith extracted)
  (preprocess (pps ppx_deriving.show)))

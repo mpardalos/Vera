@@ -14,8 +14,10 @@ From vera Require SMTLib.
 From Stdlib Require Extraction.
 From Stdlib Require Import BinNat.
 From Stdlib Require Import extraction.ExtrOcamlBasic.
-From Stdlib Require Import extraction.ExtrOcamlString.
-From Stdlib Require Import extraction.ExtrOcamlZInt.
+From Stdlib Require Import extraction.ExtrOcamlNativeString.
+From Stdlib Require Import extraction.ExtrOcamlZBigInt.
+From Stdlib Require Import extraction.ExtrOcamlNatBigInt.
+From Stdlib Require Import extraction.ExtrOcamlIntConv.
 From Stdlib Require Import BinInt.
 From Stdlib Require Import String.
 
@@ -23,7 +25,22 @@ Import SigTNotations.
 
 Extraction Language OCaml.
 
+(* The following assume that N,Z,nat are extracted to the same type *)
+(* Map conversion functions to identity to avoid recursive of_succ_nat *)
+Extract Inlined Constant N.of_nat => "(fun x -> x)".
+Extract Inlined Constant N.to_nat => "(fun x -> x)".
+Extract Inlined Constant Z.of_nat => "(fun x -> x)".
+Extract Inlined Constant Z.to_nat => "(fun x -> x)".
+
+(* If you use positive numbers directly *)
+Extract Inlined Constant Pos.of_nat => "(fun x -> x)".
+Extract Inlined Constant Pos.to_nat => "(fun x -> x)".
+
 Extract Inlined Constant List.flat_map => "List.concat_map".
+
+(* Debug tracing — override extraction to print *)
+Extract Inlined Constant Common.trace =>
+  "(fun msg x -> Printf.printf ""%s\n%!"" msg; x)".
 
 Definition int_from_nat :=
   N.of_nat.

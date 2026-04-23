@@ -182,8 +182,13 @@ Module Verilog.
   Include VerilogCommon.
 
   #[global]
-  Instance dec_eq_variable (x y : variable) : DecProp (x = y) :=
-    mk_dec_eq.
+  Instance dec_eq_variable (x y : variable) : DecProp (x = y).
+  Proof.
+    destruct x as [x0 x1], y as [y0 y1].
+    destruct (dec (x0 = y0)). 2: right; crush.
+    destruct (dec (x1 = y1)). 2: right; crush.
+    subst. left. reflexivity.
+  Qed.
 
   (* Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=
    *   match expr with
@@ -504,8 +509,8 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   match idx with
   | RawVerilog.IntegerLiteral lit =>
     let* wf := assert_dec
-      (BV.to_N (BV.of_bits lit) < w_vec)%N
-      "bit-select index out of bounds (literal)"%string in
+      (RawBV.to_N lit < w_vec)%N
+      ("bit-select index out of bounds (literal)")%string in
     inr (1%N; Verilog.BitSelect_const t_vec (BV.of_bits lit) wf)
   | _ =>
     let* (w_idx; t_idx) := tc_expr idx in

@@ -11,4 +11,5 @@
  (synopsis "Extracted Rocq code")
  (wrapped false)
  (modules Vera)
+ (libraries zarith)
  (flags (:standard -w -20-32-39)))

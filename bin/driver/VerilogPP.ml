@@ -43,11 +43,11 @@ let unaryop fmt = function
 let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"
 
-let vtype fmt t = fprintf fmt "<%d>" t
+let vtype fmt t = fprintf fmt "<%a>" Z.pp_print t
 
 let vector_declaration fmt t =
   match t with
-  | Verilog.Vector (high, low) -> fprintf fmt "[%d:%d]" high low
+  | Verilog.Vector (high, low) -> fprintf fmt "[%a:%a]" Z.pp_print high Z.pp_print low
   | Verilog.Scalar -> ()
 
 let port_declaration fmt = function
@@ -71,7 +71,7 @@ module Raw = struct
     Format.fprintf fmt "@[";
     (match e with
     | RawVerilog.IntegerLiteral v ->
-        fprintf fmt "%d'b%s" (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
+        fprintf fmt "%a'b%s" Z.pp_print (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
     | RawVerilog.RangeSelect (target, hi, lo) ->
         fprintf fmt "%a[%a:%a]" expression target expression hi expression lo
     | RawVerilog.BitSelect (target, index) ->
@@ -79,7 +79,7 @@ module Raw = struct
     | RawVerilog.Concatenation (lhs, rhs) ->
         fprintf fmt "{%a %a}" expression lhs expression rhs
     | RawVerilog.Replication (count, expr) ->
-        fprintf fmt "{%d{%a}}" count expression expr
+        fprintf fmt "{%a{%a}}" Z.pp_print count expression expr
     | RawVerilog.Conditional (cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f
@@ -137,7 +137,7 @@ module Typed = struct
     Format.fprintf fmt "@[";
     (match e with
     | Verilog.IntegerLiteral (_, v) ->
-        fprintf fmt "%d'b%s" (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
+        fprintf fmt "%a'b%s" Z.pp_print (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
     | Verilog.Resize (_, t, e) ->
         fprintf fmt "( %a@ as@ %a )" expression e vtype t
     | Verilog.ArithmeticOp (_, op, l, r) ->
@@ -149,7 +149,7 @@ module Typed = struct
     | Verilog.UnaryOp (_, op, e) ->
         fprintf fmt "( %a@ %a )" unaryop op expression e
     | Verilog.RangeSelect (_, target, hi, lo) ->
-        fprintf fmt "%a[%d:%d]" expression target hi lo
+        fprintf fmt "%a[%a:%a]" expression target Z.pp_print hi Z.pp_print lo
     | Verilog.BitSelect_width (_, _, target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
     | Verilog.BitSelect_const (_, w_index, target, index) ->
@@ -157,7 +157,7 @@ module Typed = struct
     | Verilog.Concatenation (_, _, lhs, rhs) ->
         fprintf fmt "{%a %a}" expression lhs expression rhs
     | Verilog.Replication (_, count, expr) ->
-        fprintf fmt "{%d{%a}}" count expression expr
+        fprintf fmt "{%a{%a}}" Z.pp_print count expression expr
     | Verilog.Conditional (_, _, cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f
