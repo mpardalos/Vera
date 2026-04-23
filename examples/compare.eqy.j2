@@ -1,10 +1,10 @@
 [gold]
-read_verilog {{SV_GOLD}}
+read_verilog -sv {{SV_GOLD}}
 prep -auto-top
 rename -top top
 
 [gate]
-read_verilog {{SV_GATE}}
+read_verilog -sv {{SV_GATE}}
 prep -auto-top
 rename -top top
 
