@@ -172,8 +172,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       ExitSuccess -> writeFile' timeFile (show (diffUTCTime end begin))
 
   phony "clean-run" $ do
-    removeFilesAfter "examples"
-      [ "//*.log", "//*.time", "//*.vera.smt2" ]
+    removeFilesAfter "examples/out"
+      [ "//*.log", "//*.time", "//*.vera.smt2", "//*.csv", "//*.pdf" ]
 
   phony "plots" $ need ["examples/out/summary.pdf"]
 
