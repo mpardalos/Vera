@@ -125,7 +125,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
 
   phony "vera" $ need [vera]
   vera %> \out -> do
-    need =<< getDirectoryFiles "" ["//*.v", "//*.ml"]
+    need =<< getDirectoryFiles "" ["vera//*.v", "vera//*.ml", "bin//*.ml", "bin//*.v"]
     cmd_ "dune" "build"
 
   -- Running eqy
