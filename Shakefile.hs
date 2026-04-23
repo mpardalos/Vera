@@ -38,10 +38,9 @@ veraSolver :: String
 -- veraSolver = "bitwuzla" -- Broken with symbiyosys
 veraSolver = "cvc5"
 
--- | Standard power-of-two sizes, plus some weird ones for variety
+-- | Sizes which templated examples will be evaluated at
 runSizes :: [Int]
--- runSizes = [4,5,8,12,16,32,43,64,128]
-runSizes = [4..16]
+runSizes = [4..64]
 
 main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
