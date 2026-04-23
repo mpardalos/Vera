@@ -181,10 +181,11 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         ([ printf "examples/out/%s/%s_vs_%s.vera.summary.pdf" exampleTemplateDir left right
         | (left, right) <- allPairs moduleNames
         , left /= right
-        ] ++
-        [ printf "examples/out/%s/%s_vs_%s.synth.vera.summary.pdf" exampleTemplateDir m m
-        | m <- moduleNames
-        ])
+        ]
+        -- ++ [ printf "examples/out/%s/%s_vs_%s.synth.vera.summary.pdf" exampleTemplateDir m m
+        -- | m <- moduleNames
+        -- ]
+        )
     need templateExamples
 
   "examples/out/*/*.summary.pdf" %> \out -> do
