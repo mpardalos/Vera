@@ -25,10 +25,9 @@ import Debug.Trace
 vera :: FilePath
 vera = "_build/install/default/bin/vera"
 
--- | Timeout for vera runs (in seconds)
-veraTimeout :: Double
-veraTimeout = 4 -- hours
-  * 60 * 60
+-- | Timeout for vera/eqy runs (in seconds)
+timeout :: Double
+timeout = 600
 
 -- | Timeout for yosys synthesis (NOT symbiyosys/eqy equivalence checking)
 yosysTimeout :: Double
@@ -108,7 +107,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     begin <- liftIO getCurrentTime
     (Exit exitCode) <- cmd
       (Traced "vera")
-      (Timeout veraTimeout)
+      (Timeout timeout)
       (FileStdout out)
       (FileStderr out)
       (AddEnv "OCAMLRUNPARAM" "b")
@@ -153,7 +152,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     begin <- liftIO getCurrentTime
     (Exit exitCode) <- cmd
       (Traced "eqy")
-      (Timeout veraTimeout)
+      (Timeout timeout)
       (FileStdout out)
       (FileStderr out)
       (Cwd eqyDir)
