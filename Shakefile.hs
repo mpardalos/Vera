@@ -30,6 +30,10 @@ veraTimeout :: Double
 veraTimeout = 4 -- hours
   * 60 * 60
 
+-- | Timeout for yosys synthesis (NOT symbiyosys/eqy equivalence checking)
+yosysTimeout :: Double
+yosysTimeout = 600
+
 -- | Value of --solver= flag for vera
 veraSolver :: String
 -- veraSolver = "bitwuzla" -- Broken with symbiyosys
@@ -66,6 +70,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       (Traced "yosys")
       (AddEnv "SV_INPUT" src)
       (AddEnv "SV_OUTPUT" out)
+      (Timeout yosysTimeout)
       (FileStdout log)
       (FileStderr log)
       "yosys" "-c" "examples/synth.tcl"
