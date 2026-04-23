@@ -17,18 +17,18 @@
 {%- endif %}
 {%- endmacro -%}
 
-module adder_carry_lookahead (
+module adder_{{ N }}_bit (
     input  wire [{{ N-1 }}:0] a,
     input  wire [{{ N-1 }}:0] b,
     output wire [{{ N }}:0] sum
 );
     // Per-bit generate and propagate signals
 {%- for i in range(N) %}
-    wire g{{ i }}; assign g{{ i }} = a[{{ i }}] & b[{{ i }}];
+    wire cl_g{{ i }}; assign cl_g{{ i }} = a[{{ i }}] & b[{{ i }}];
 {%- endfor %}
 
 {%- for i in range(N) %}
-    wire p{{ i }}; assign p{{ i }} = a[{{ i }}] ^ b[{{ i }}];
+    wire cl_p{{ i }}; assign cl_p{{ i }} = a[{{ i }}] ^ b[{{ i }}];
 {%- endfor %}
 
 {%- for grp in range(NG) %}
@@ -37,35 +37,35 @@ module adder_carry_lookahead (
 {%- if grp == 0 %}
 {%- set cin = "" %}
 {%- else %}
-{%- set cin = "CGin" ~ grp %}
+{%- set cin = "cl_CGin" ~ grp %}
 {%- endif %}
 
     // Group {{ grp }} (bits {{ base }}{% if gs > 1 %}-{{ base + gs - 1 }}{% endif %})
 {%- if grp > 0 %}
-    wire CGin{{ grp }}; assign CGin{{ grp }} = {{ cla_carry("GG", "PP", 0, grp, "") }};
+    wire cl_CGin{{ grp }}; assign cl_CGin{{ grp }} = {{ cla_carry("cl_GG", "cl_PP", 0, grp, "") }};
 {%- endif %}
 {%- for k in range(1, gs) %}
-    wire c{{ base + k }}; assign c{{ base + k }} = {{ cla_carry("g", "p", base, k, cin) }};
+    wire cl_c{{ base + k }}; assign cl_c{{ base + k }} = {{ cla_carry("cl_g", "cl_p", base, k, cin) }};
 {%- endfor %}
-    wire GG{{ grp }}; assign GG{{ grp }} = {{ cla_carry("g", "p", base, gs, "") }};
+    wire cl_GG{{ grp }}; assign cl_GG{{ grp }} = {{ cla_carry("cl_g", "cl_p", base, gs, "") }};
 {%- if grp > 0 %}
-    wire PP{{ grp }}; assign PP{{ grp }} = {% for m in range(gs) %}{% if m > 0 %} & {% endif %}p{{ base + gs - 1 - m }}{% endfor %};
+    wire cl_PP{{ grp }}; assign cl_PP{{ grp }} = {% for m in range(gs) %}{% if m > 0 %} & {% endif %}cl_p{{ base + gs - 1 - m }}{% endfor %};
 {%- endif %}
 {%- endfor %}
 
     // Carry out
-    wire c{{ N }}; assign c{{ N }} = {{ cla_carry("GG", "PP", 0, NG, "") }};
+    wire cl_c{{ N }}; assign cl_c{{ N }} = {{ cla_carry("cl_GG", "cl_PP", 0, NG, "") }};
 
     // Sum bits
 {%- for i in range(N) %}
 {%- if i == 0 %}
-    wire s{{ i }}; assign s{{ i }} = p{{ i }};
+    wire cl_s{{ i }}; assign cl_s{{ i }} = cl_p{{ i }};
 {%- elif i % GS == 0 %}
-    wire s{{ i }}; assign s{{ i }} = p{{ i }} ^ CGin{{ i // GS }};
+    wire cl_s{{ i }}; assign cl_s{{ i }} = cl_p{{ i }} ^ cl_CGin{{ i // GS }};
 {%- else %}
-    wire s{{ i }}; assign s{{ i }} = p{{ i }} ^ c{{ i }};
+    wire cl_s{{ i }}; assign cl_s{{ i }} = cl_p{{ i }} ^ cl_c{{ i }};
 {%- endif %}
 {%- endfor %}
 
-    assign sum = {c{{ N }}{% for i in range(N-1, -1, -1) %}, s{{ i }}{% endfor %}};
+    assign sum = {cl_c{{ N }}{% for i in range(N-1, -1, -1) %}, cl_s{{ i }}{% endfor %}};
 endmodule
