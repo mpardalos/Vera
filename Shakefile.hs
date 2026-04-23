@@ -172,13 +172,19 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     removeFilesAfter "examples"
       [ "//*.log", "//*.time", "//*.vera.smt2" ]
 
-  phony "plots" $ do
+  phony "plots" $ need
+    [ "examples/out/vera_all_plots.pdf"
+    , "examples/out/eqy_all_plots.pdf"
+    ]
+
+  "examples/out/*_all_plots.pdf" %> \out -> do
+    let Just [tool] = filePattern "examples/out/*_all_plots.pdf" out
     templateExampleDirs <- getDirectoryDirs ("examples" </> "templates")
     templateExamples <- fmap join <$> forM templateExampleDirs $ \exampleTemplateDir -> do
       moduleTemplates <- getDirectoryFiles ("examples" </> "templates" </> exampleTemplateDir) ["*.sv.j2"]
       let moduleNames = map dropExtensions moduleTemplates
       return
-        ([ printf "examples/out/%s/%s_vs_%s.vera.summary.pdf" exampleTemplateDir left right
+        ([ printf "examples/out/%s/%s_vs_%s.%s.summary.pdf" exampleTemplateDir left right tool
         | (left, right) <- allPairs moduleNames
         , left /= right
         ]
@@ -187,21 +193,45 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         -- ]
         )
     need templateExamples
+    cmd_ "gs" "-dBATCH" "-dNOPAUSE" "-q" "-sDEVICE=pdfwrite" ("-sOutputFile=" ++ out) templateExamples
 
-  "examples/out/*/*.summary.pdf" %> \out -> do
+  "examples/out/*/*.*.summary.pdf" %> \out -> do
     let csv = out -<.> "csv"
+        Just [category, name, tool] = filePattern "examples/out/*/*.*.summary.pdf" out
+        cleanName = map (\case '_' -> ' '; c -> c) (takeFileName (dropExtensions name))
+        title :: String = printf "%s - %s - %s" category cleanName tool
     need [csv]
-    cmd_ (Traced "gnuplot")
-      "gnuplot" "-e"
-      [ unwords
-        [ "set terminal pdf;"
-        , "set output '" ++ out ++ "';"
-        , "set datafile separator ',';"
-        , "set xlabel 'Bit width';"
-        , "set ylabel 'Time (s)';"
-        , "set title '" ++ map (\case '_' -> ' '; c -> c) (takeFileName (dropExtensions out)) ++ "';"
-        , "plot '" ++ csv ++ "' using 1:2 with linespoints notitle"
-        ] ]
+    (Exit code) <-
+      cmd
+        (Traced "gnuplot")
+        "gnuplot" "-e"
+        [ unwords
+          [ "set terminal pdf;"
+          , "set output '" ++ out ++ "';"
+          , "set datafile separator ',';"
+          , "set xlabel 'Bit width';"
+          , "set ylabel 'Time (s)';"
+          , "set title '" ++ title ++ "';"
+          , "plot '" ++ csv ++ "' using 1:2 with linespoints notitle"
+          ] ]
+    case code of
+      ExitSuccess -> pure ()
+      ExitFailure _ ->
+        cmd_
+          (Traced "gnuplot_dummy")
+          "gnuplot" "-e"
+          [ unwords
+            [ "set terminal pdf;"
+            , "set output '" ++ out ++ "';"
+            , "set title '" ++ title ++ "';"
+            , "unset border;"      -- Removes the graph box
+            , "unset tics;"        -- Removes the x/y axis numbers
+            , "set xrange [0:1];"  -- Dummy range to prevent the crash you just escaped
+            , "set yrange [0:1];"
+            , "set label 1 'Error: Plot generation failed or missing data' at 0.5, 0.5 center font ',14';"
+            , "plot NaN notitle"   -- Plots literally nothing, but satisfies Gnuplot's need for a plot command
+            ]
+          ]
 
   "examples/out/*/*_vs_*.*.summary.csv" %> \out -> do
     let Just [templateName, mod1, mod2, tool] = filePattern "examples/out/*/*_vs_*.*.summary.csv" out
