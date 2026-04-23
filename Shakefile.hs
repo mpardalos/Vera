@@ -150,7 +150,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         right = dir </> mod2 <.> "sv"
     need [eqyFile, left, right]
     begin <- liftIO getCurrentTime
-    (Exit exitCode) <- cmd
+    (Exit exitCode, Stdout output) <- cmd
       (Traced "eqy")
       (Timeout timeout)
       (FileStdout out)
@@ -163,8 +163,12 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         liftIO $ appendFile out "Timed out"
         writeFile' timeFile "Timed out"
       ExitFailure err -> do
-        liftIO $ appendFile out (printf "Failed with %d" err)
-        writeFile' timeFile (printf "Failed (%d)" err)
+        let reason =
+              if ("EQY ---- Keyboard interrupt or external termination signal ----" `isInfixOf` output)
+              then "Timed out"
+              else printf "Failed with %d" err
+        liftIO $ appendFile out reason
+        writeFile' timeFile reason
       ExitSuccess -> writeFile' timeFile (show (diffUTCTime end begin))
 
   phony "clean-run" $ do
