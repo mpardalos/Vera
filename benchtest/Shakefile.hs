@@ -257,7 +257,47 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
             ]
       )
 
+  -- EPFL benchmarks
+  let
+    blifToVerilog :: CmdResult r => FilePath -> FilePath -> Action r
+    blifToVerilog from to = do
+      need [ from ]
+      let log = to <.> "log"
+      cmd (FileStdout log) (FileStderr log) "yosys" "--commands" [ printf "read_blif %s; write_verilog %s" from to :: String ]
+
+  "out/EPFL-benchmarks/*/*/orig.sv" !%> \out [category, name] -> do
+    let src = "EPFL-benchmarks" </> category </> name -<.> "v"
+    copyFile' src out
+
+  "out/EPFL-benchmarks/*/*/orig_blif.sv" !%> \out [category, name] -> do
+    let src = "EPFL-benchmarks" </> category </> name -<.> "blif"
+    blifToVerilog src out
+
+  "out/EPFL-benchmarks/*/*/best_size.sv" !%> \out [_category, name] -> do
+    [src] <- getDirectoryFiles "" [ printf "EPFL-benchmarks/best_results/size/%s_size_*.blif" name ]
+    blifToVerilog src out
+
+  "out/EPFL-benchmarks/*/*/best_depth.sv" !%> \out [_category, name] -> do
+    [src] <- getDirectoryFiles "" [ printf "EPFL-benchmarks/best_results/depth/%s_depth_*.blif" name ]
+    blifToVerilog src out
+
+  phony "clean-epfl" $ removeFilesAfter "out/EPFL-benchmarks" ["//"]
+
+  phony "epfl" $ do
+    verilogFiles <- getDirectoryFiles "" [ "EPFL-benchmarks/arithmetic/*.v", "EPFL-benchmarks/random_control/*.v"]
+    need [ "out/EPFL-benchmarks" </> category </> name </> printf "orig_vs_%s.vera.log" target
+         | target <- ["orig_blif", "best_size", "best_depth"]
+         , verilogFile <- verilogFiles
+         , let Just [ category, name ] = filePattern "EPFL-benchmarks/*/*.v" verilogFile
+         ]
+
 -- Helpers
+
+-- | Like (%>), but you also get the list of matched components
+(!%>) :: FilePath -> (FilePath -> [FilePath] -> Action ()) -> Rules ()
+(!%>) pat act = pat %> \target ->
+  let Just split = filePattern pat target
+  in act target split
 
 -- Split the list on the first instance of the separator
 splitOn :: Eq a => a -> [a] -> ([a], [a])
