@@ -6,3 +6,4 @@ gen_*
 *.time
 /summary.csv
 /out/
+.shake/

@@ -4,5 +4,4 @@
 /test/out/
 vera_query.smt
 *.ast.json
-/.shake/
 /report.html
