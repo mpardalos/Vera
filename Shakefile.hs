@@ -103,23 +103,37 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         left = dir </> mod1 <.> "sv"
         right = dir </> mod2 <.> "sv"
     need [vera, left, right]
-    begin <- liftIO getCurrentTime
-    (Exit exitCode) <- cmd
+    (Exit veraExitCode) <- cmd
       (Traced "vera")
       (Timeout timeout)
       (FileStdout out)
       (FileStderr out)
       (AddEnv "OCAMLRUNPARAM" "b")
-      "time" vera "compare" ("--solver=" ++ veraSolver) ("--dump-query=" ++ smtFile) left right
-    end <- liftIO getCurrentTime
-    case exitCode of
+      vera "compare" ("--solver=none" ) ("--dump-query=" ++ smtFile) left right
+    case veraExitCode of
       ExitFailure 130 -> do
-        liftIO $ appendFile out "Timed out"
-        writeFile' timeFile "Timed out"
+        liftIO $ appendFile out "Vera timed out"
+        writeFile' timeFile "Vera timed out"
       ExitFailure err -> do
         liftIO $ appendFile out (printf "Failed with %d" err)
         writeFile' timeFile (printf "Failed (%d)" err)
-      ExitSuccess -> writeFile' timeFile (show (diffUTCTime end begin))
+      ExitSuccess -> do
+        begin <- liftIO getCurrentTime
+        (Exit smtExitCode, Stdout solverOut) <- cmd
+          (Traced (veraSolver ++ "for vera"))
+          (Timeout veraTimeout)
+          (FileStdout out)
+          (FileStderr out)
+          veraSolver smtFile
+        end <- liftIO getCurrentTime
+        case smtExitCode of
+          ExitFailure 130 -> do
+            liftIO $ appendFile out "Timed out"
+            writeFile' timeFile "Timed out"
+          ExitFailure err -> do
+            liftIO $ appendFile out (printf "Failed with %d" err)
+            writeFile' timeFile (printf "Failed (%d)" err)
+          ExitSuccess -> writeFile' timeFile (show (diffUTCTime end begin))
 
   phony "vera" $ need [vera]
   vera %> \out -> do
