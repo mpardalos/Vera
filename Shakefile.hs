@@ -21,6 +21,7 @@ import Text.Printf (printf)
 import System.Exit(ExitCode(..))
 import Data.Function ((&))
 import Debug.Trace
+import Data.List.Extra (firstJust)
 
 vera :: FilePath
 vera = "_build/install/default/bin/vera"
@@ -94,16 +95,14 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     _ -> Nothing
 
   -- Running vera
-  "//*.vera.time" %> \out -> need [ out -<.> "log" ]
   "//*.vera.smt2" %> \out -> need [ out -<.> "log" ]
   "//*_vs_*.vera.log" %> \out -> do
     let Just [dir, mod1, mod2] = filePattern "//*_vs_*.vera.log" out
         smtFile = out -<.> "smt2"
-        timeFile = out -<.> "time"
         left = dir </> mod1 <.> "sv"
         right = dir </> mod2 <.> "sv"
     need [vera, left, right]
-    (Exit veraExitCode) <- cmd
+    (Exit veraExitCode, CmdTime veraTime) <- cmd
       (Traced "vera")
       (Timeout timeout)
       (FileStdout out)
@@ -111,29 +110,26 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       (AddEnv "OCAMLRUNPARAM" "b")
       vera "compare" ("--solver=none" ) ("--dump-query=" ++ smtFile) left right
     case veraExitCode of
-      ExitFailure 130 -> do
-        liftIO $ appendFile out "Vera timed out"
-        writeFile' timeFile "Vera timed out"
-      ExitFailure err -> do
-        liftIO $ appendFile out (printf "Failed with %d" err)
-        writeFile' timeFile (printf "Failed (%d)" err)
+      ExitFailure 130 -> liftIO $ do
+        appendFile out "__time_vera: Vera timed out"
+        appendFile out "__time_smt: Vera timed out"
+      ExitFailure err -> liftIO $ do
+        appendFile out (printf "__time_vera: Vera failed (%d)" err)
+        appendFile out (printf "__time_smt: Vera failed (%d)" err)
       ExitSuccess -> do
-        begin <- liftIO getCurrentTime
-        (Exit smtExitCode, Stdout solverOut) <- cmd
-          (Traced (veraSolver ++ "for vera"))
-          (Timeout veraTimeout)
-          (FileStdout out)
-          (FileStderr out)
+        liftIO $ appendFile out (printf "__time_vera: %f" veraTime)
+        (Exit smtExitCode, CmdTime smtTime, Stdouterr output) <- cmd
+          (Traced (veraSolver ++ " for vera"))
+          (Timeout timeout)
           veraSolver smtFile
-        end <- liftIO getCurrentTime
+        liftIO $ appendFile out ("\n" ++ output)
         case smtExitCode of
-          ExitFailure 130 -> do
-            liftIO $ appendFile out "Timed out"
-            writeFile' timeFile "Timed out"
+          ExitFailure 130 ->
+            liftIO $ appendFile out "__time_smt: SMT Timed out"
           ExitFailure err -> do
-            liftIO $ appendFile out (printf "Failed with %d" err)
-            writeFile' timeFile (printf "Failed (%d)" err)
-          ExitSuccess -> writeFile' timeFile (show (diffUTCTime end begin))
+            liftIO $ appendFile out (printf "__time_smt: SMT failed (%d)" err)
+          ExitSuccess ->
+            liftIO $ appendFile out (printf "__time_smt: %f" smtTime)
 
   phony "vera" $ need [vera]
   vera %> \out -> do
@@ -141,7 +137,6 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     cmd_ "dune" "build"
 
   -- Running eqy
-  "//*.eqy.time" %> \out -> need [ out -<.> "log" ]
   "//*_vs_*/compare.eqy" %> \out -> do
     let template = "examples" </> "compare.eqy.j2"
         Just [dir, mod1, mod2] = filePattern "//*_vs_*/compare.eqy" out
@@ -158,31 +153,27 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     let Just [dir, mod1, mod2] = filePattern "//*_vs_*.eqy.log" out
         eqyDir = dropExtensions out
         eqyFile = eqyDir </> "compare.eqy"
-        timeFile = out -<.> "time"
         left = dir </> mod1 <.> "sv"
         right = dir </> mod2 <.> "sv"
     need [eqyFile, left, right]
-    begin <- liftIO getCurrentTime
-    (Exit exitCode, Stdout output) <- cmd
+    (Exit exitCode, Stdout output, CmdTime eqyTime) <- cmd
       (Traced "eqy")
       (Timeout timeout)
       (FileStdout out)
       (FileStderr out)
       (Cwd eqyDir)
-      "time" "eqy" "-f" "compare.eqy"
-    end <- liftIO getCurrentTime
+      "eqy" "-f" "compare.eqy"
     case exitCode of
       ExitFailure 130 -> do
-        liftIO $ appendFile out "Timed out"
-        writeFile' timeFile "Timed out"
+        liftIO $ appendFile out "__time_eqy: Timed out"
       ExitFailure err -> do
         let reason =
               if ("EQY ---- Keyboard interrupt or external termination signal ----" `isInfixOf` output)
               then "Timed out"
               else printf "Failed with %d" err
-        liftIO $ appendFile out reason
-        writeFile' timeFile reason
-      ExitSuccess -> writeFile' timeFile (show (diffUTCTime end begin))
+        liftIO $ appendFile out (printf "__time_eqy: %s" reason)
+      ExitSuccess ->
+        liftIO $ appendFile out (printf "__time_eqy: %f" eqyTime)
 
   phony "clean-run" $ do
     removeFilesAfter "examples/out"
@@ -246,13 +237,21 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
 
   "examples/out/*/*_vs_*.*.summary.csv" %> \out -> do
     let Just [templateName, mod1, mod2, tool] = filePattern "examples/out/*/*_vs_*.*.summary.csv" out
-        timeFiles = [ "examples/out"
-                      </> (printf "gen_%s_%d" templateName w)
-                      </> (printf "%s_vs_%s.%s.time" mod1 mod2 tool)
-                    | w <- runSizes
-                    ]
-    times <- forP timeFiles readFile'
-    writeFileLines out [ intercalate "," [show w, time] | (w, time) <- zip runSizes times ]
+        logFiles =
+          [ "examples/out"
+              </> (printf "gen_%s_%d" templateName w)
+              </> (printf "%s_vs_%s.%s.log" mod1 mod2 tool)
+          | w <- runSizes
+          ]
+
+    times <- forP logFiles $ \logFile -> do
+      let marker = case tool of
+            "vera" -> "__time_smt: "
+            "eqy" -> "__time_eqy: "
+      log <- readFile' logFile
+      return (fromMaybe "Missing" $ firstJust (stripPrefix marker) (lines log))
+
+    writeFileLines out [intercalate "," [show w, time] | (w, time) <- zip runSizes times]
 
   "examples/out/summary.csv" %> \out -> do
     templateExampleDirs <- getDirectoryDirs ("examples" </> "templates")
