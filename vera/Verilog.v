@@ -81,50 +81,6 @@ Variant bitwiseop :=
     (* | UnaryReduce... (* ^~ *) *)
   .
 
-  Section op_show.
-    Local Open Scope string.
-    Import ShowNotation.
-    Global Instance arithmeticop_Show : Show arithmeticop :=
-      { show u :=
-          match u with
-          | ArithmeticPlus => "+"
-          | ArithmeticMinus => "-"
-          | ArithmeticStar => "*"
-          (* | BinarySlash => "/" *)
-          (* | BinaryPercent => "%" *)
-          (* | BinaryExponent => "**" *)
-          end
-      }.
-
-    Global Instance shiftop_Show : Show shiftop :=
-      { show u :=
-          match u with
-          | BinaryShiftRight => ">>"
-          | BinaryShiftLeft => "<<"
-          (* | BinaryShiftRightArithmetic => ">>>" *)
-          | BinaryShiftLeftArithmetic => "<<<"
-          end
-      }.
-
-    Global Instance bitwiseop_Show : Show bitwiseop :=
-      { show u :=
-          match u with
-          | BinaryBitwiseAnd => "&"
-          | BinaryBitwiseOr => "|"
-          | BinaryBitwiseXor => "^"
-          end
-      }.
-
-    Global Instance unaryop_Show : Show unaryop :=
-      { show u :=
-          match u with
-          | UnaryPlus => "+"
-          | UnaryNot => "~"
-          (* | UnaryMinus => "-" *)
-          end
-      }.
-  End op_show.
-
   Variant vector_declaration :=
     | Scalar
     | Vector (msb : N) (lsb : N).
@@ -175,6 +131,54 @@ Variant bitwiseop :=
       | _ => outputs_of_decls ds
     }
   }.
+
+  Section show.
+    Local Open Scope string.
+    Import ShowNotation.
+
+    Global Instance variable_Show : Show variable :=
+      { show v := (varName v ++ "[" ++ to_string (N.to_nat (varType v - 1)) ++ ":0]")%string } .
+
+    Global Instance arithmeticop_Show : Show arithmeticop :=
+      { show u :=
+          match u with
+          | ArithmeticPlus => "+"
+          | ArithmeticMinus => "-"
+          | ArithmeticStar => "*"
+          (* | BinarySlash => "/" *)
+          (* | BinaryPercent => "%" *)
+          (* | BinaryExponent => "**" *)
+          end
+      }.
+
+    Global Instance shiftop_Show : Show shiftop :=
+      { show u :=
+          match u with
+          | BinaryShiftRight => ">>"
+          | BinaryShiftLeft => "<<"
+          (* | BinaryShiftRightArithmetic => ">>>" *)
+          | BinaryShiftLeftArithmetic => "<<<"
+          end
+      }.
+
+    Global Instance bitwiseop_Show : Show bitwiseop :=
+      { show u :=
+          match u with
+          | BinaryBitwiseAnd => "&"
+          | BinaryBitwiseOr => "|"
+          | BinaryBitwiseXor => "^"
+          end
+      }.
+
+    Global Instance unaryop_Show : Show unaryop :=
+      { show u :=
+          match u with
+          | UnaryPlus => "+"
+          | UnaryNot => "~"
+          (* | UnaryMinus => "-" *)
+          end
+      }.
+  End show.
 
 End VerilogCommon.
 

@@ -9,6 +9,7 @@ From Stdlib Require Import Sorting.Permutation.
 From Stdlib Require Import Structures.Equalities.
 From Stdlib Require Import ZArith.
 
+From ExtLib Require Import Programming.Show.
 From ExtLib Require Import Structures.Maps.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Structures.Applicative.
@@ -742,3 +743,7 @@ Definition opt_to_sum {E A} (e: E) (o : option A) : E + A :=
 (* Debug tracing — computes to identity in proofs, extracts to Printf *)
 Definition trace {A : Type} (_msg : string) (x : A) : A := x.
 Arguments trace / _ _.
+
+Definition traceShowId {A : Type} `{Show A} (prefix : string) (x : A) : A :=
+  trace (prefix ++ to_string x) x.
+Arguments traceShowId / _ _.
