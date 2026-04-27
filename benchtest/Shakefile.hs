@@ -48,6 +48,10 @@ data ConfigSolver = ConfigSolver
   deriving (Show, Typeable, Eq, Generic, Hashable, Binary, NFData)
 type instance RuleResult ConfigSolver = String
 
+data ConfigVeraMemoryLimit = ConfigVeraMemoryLimit
+  deriving (Show, Typeable, Eq, Generic, Hashable, Binary, NFData)
+type instance RuleResult ConfigVeraMemoryLimit = Int
+
 data ConfigVeraTimeout = ConfigVeraTimeout
   deriving (Show, Typeable, Eq, Generic, Hashable, Binary, NFData)
 type instance RuleResult ConfigVeraTimeout = Double
@@ -70,6 +74,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
   addOracle $ \ConfigSolver -> pure "cvc5"
   -- Timeout for vera/eqy runs (in seconds)
   addOracle $ \ConfigVeraTimeout -> pure 600
+  -- Vera memory limit (in bytes)
+  addOracle $ \ConfigVeraMemoryLimit -> pure (1 * 1024 * 1024 * 1024) -- 1G
   -- Timeout for yosys synthesis (NOT symbiyosys/eqy equivalence checking)
   addOracle $ \ConfigYosysTimeout -> pure 600
 
@@ -121,6 +127,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         left = dir </> mod1 <.> "sv"
         right = dir </> mod2 <.> "sv"
     timeout <- askOracle ConfigVeraTimeout
+    memoryLimit <- askOracle ConfigVeraMemoryLimit
     veraSolver <- askOracle ConfigSolver
     need [vera, left, right]
     (Exit veraExitCode, CmdTime veraTime) <- cmd
@@ -129,6 +136,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       (FileStdout out)
       (FileStderr out)
       (AddEnv "OCAMLRUNPARAM" "b")
+      (AddEnv "VERA_MAX_MEMORY" (show memoryLimit))
       vera "compare" ("--solver=none" ) ("--dump-query=" ++ smtFile) left right
     case veraExitCode of
       ExitFailure 130 -> liftIO $ do

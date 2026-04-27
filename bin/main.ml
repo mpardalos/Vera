@@ -161,5 +161,30 @@ let lower_cmd =
   and+ file = Arg.(required & pos 1 (some file) None & info [] ~docv:"FILE") in
   lower lower_level file
 
-let vera_cmd = Cmd.group (Cmd.info "vera") [ lower_cmd; compare_cmd ]
-let () = Cmd.eval vera_cmd |> exit
+let vera_cmd =
+  let envs = [
+    Cmd.Env.info "VERA_MAX_MEMORY"
+      ~doc:"Maximum heap memory usage in bytes. If set, the program will raise \
+            an out-of-memory exception when the OCaml heap exceeds this limit."
+  ] in
+  Cmd.group (Cmd.info "vera" ~envs) [ lower_cmd; compare_cmd ]
+
+let () =
+  (match Sys.getenv_opt "VERA_MAX_MEMORY" with
+  | Some s ->
+    Printf.eprintf "Found VERA_MAX_MEMORY=%s\n%!" s ;
+    let max_heap_bytes =
+      match int_of_string_opt s with
+      | Some n -> n
+      | None ->
+        Printf.eprintf "VERA_MAX_MEMORY: expected integer (bytes), got %S\n" s;
+        exit 1
+    in
+    let _ = Gc.create_alarm (fun () ->
+      let stat = Gc.quick_stat () in
+      let bytes = stat.heap_words * (Sys.word_size / 8) in
+      (* Printf.eprintf "GC!! (%d/%d)\n%!" bytes max_heap_bytes; *)
+      if bytes > max_heap_bytes then raise Out_of_memory
+    ) in ()
+  | None -> ());
+  Cmd.eval vera_cmd |> exit
