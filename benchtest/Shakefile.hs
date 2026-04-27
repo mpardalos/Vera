@@ -4,6 +4,10 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 import Development.Shake
 import Development.Shake.Command
@@ -23,32 +27,47 @@ import Data.Function ((&))
 import Debug.Trace
 import Data.List.Extra (firstJust)
 import Data.Functor ((<&>))
+import Data.Text (Text)
+import Data.Data (Typeable)
+import Data.Hashable (Hashable)
+import Data.Binary (Binary)
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
 
+-- | Path to vera binary
 vera :: FilePath
 vera = "../_build/install/default/bin/vera"
 
--- | Timeout for vera/eqy runs (in seconds)
-timeout :: Double
-timeout = 5
+data ConfigRunSizes = ConfigRunSizes
+  deriving (Show, Typeable, Eq, Generic, Hashable, Binary, NFData)
+type instance RuleResult ConfigRunSizes = [Int]
 
--- | Timeout for yosys synthesis (NOT symbiyosys/eqy equivalence checking)
-yosysTimeout :: Double
-yosysTimeout = 600
+data ConfigSolver = ConfigSolver
+  deriving (Show, Typeable, Eq, Generic, Hashable, Binary, NFData)
+type instance RuleResult ConfigSolver = String
 
--- | Value of --solver= flag for vera
-veraSolver :: String
--- veraSolver = "bitwuzla" -- Broken with symbiyosys
-veraSolver = "cvc5"
+data ConfigVeraTimeout = ConfigVeraTimeout
+  deriving (Show, Typeable, Eq, Generic, Hashable, Binary, NFData)
+type instance RuleResult ConfigVeraTimeout = Double
 
--- | Sizes which templated examples will be evaluated at
-runSizes :: [Int]
-runSizes = [4..6]
+data ConfigYosysTimeout = ConfigYosysTimeout
+  deriving (Show, Typeable, Eq, Generic, Hashable, Binary, NFData)
+type instance RuleResult ConfigYosysTimeout = Double
 
 tools :: [String]
 tools = ["vera", "eqy"]
 
 main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
+  -- Sizes which templated examples will be evaluated at
+  addOracle $ \ConfigRunSizes -> pure [4..8]
+  -- Value of --solver= flag for vera
+  addOracle $ \ConfigSolver -> pure "cvc5"
+  -- Timeout for vera/eqy runs (in seconds)
+  addOracle $ \ConfigVeraTimeout -> pure 600
+  -- Timeout for yosys synthesis (NOT symbiyosys/eqy equivalence checking)
+  addOracle $ \ConfigYosysTimeout -> pure 600
+  
   phony "clean" $ do
     need ["clean-synth", "clean-run"]
     removeFilesAfter "" ["out/templates/summary.csv"]
@@ -69,6 +88,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     let src = dropExtensions out <> ".sv"
     let log = dropExtensions out <> ".synth.log"
     need ["templates/synth.tcl", src]
+    yosysTimeout <- askOracle ConfigYosysTimeout
     cmd_
       (Traced "yosys")
       (AddEnv "SV_INPUT" src)
@@ -96,6 +116,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         smtFile = out -<.> "smt2"
         left = dir </> mod1 <.> "sv"
         right = dir </> mod2 <.> "sv"
+    timeout <- askOracle ConfigVeraTimeout
+    veraSolver <- askOracle ConfigSolver
     need [vera, left, right]
     (Exit veraExitCode, CmdTime veraTime) <- cmd
       (Traced "vera")
@@ -142,11 +164,12 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     let template = "templates/compare.eqy.j2"
         Just [dir, mod1, mod2] = filePattern "//*_vs_*/compare.eqy" out
     need [template]
+    solver <- askOracle ConfigSolver
     cmd_
       (Traced "jinja")
       (FileStdout out)
       "jinja2"
-      "-D" ("SOLVER=" <> veraSolver)
+      "-D" ("SOLVER=" <> solver)
       "-D" ("SV_GOLD=" <> (".." </> mod1 <.> "sv"))
       "-D" ("SV_GATE=" <> (".." </> mod2 <.> "sv"))
       template
@@ -156,6 +179,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         eqyFile = eqyDir </> "compare.eqy"
         left = dir </> mod1 <.> "sv"
         right = dir </> mod2 <.> "sv"
+    timeout <- askOracle ConfigVeraTimeout
     need [eqyFile, left, right]
     (Exit exitCode, Stdout output, CmdTime eqyTime) <- cmd
       (Traced "eqy")
@@ -238,6 +262,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
 
   "out/templates/*/*_vs_*.summary.csv" %> \out -> do
     let Just [templateName, mod1, mod2] = filePattern "out/templates/*/*_vs_*.summary.csv" out
+    runSizes <- askOracle ConfigRunSizes
 
     -- [(vera time, eqy time)]
     (times :: [(String, String)]) <- forP runSizes $ \size -> do
