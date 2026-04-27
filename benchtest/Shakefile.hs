@@ -28,6 +28,8 @@ import Debug.Trace
 import Data.List.Extra (firstJust)
 import Data.Functor ((<&>))
 import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.IO qualified as T
 import Data.Data (Typeable)
 import Data.Hashable (Hashable)
 import Data.Binary (Binary)
@@ -286,27 +288,54 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
 
   -- EPFL benchmarks
   let
-    blifToVerilog :: CmdResult r => FilePath -> FilePath -> Action r
+    blifToVerilog :: FilePath -> FilePath -> Action ()
     blifToVerilog from to = do
       need [ from ]
       let log = to <.> "log"
-      cmd (FileStdout log) (FileStderr log) "yosys" "--commands" [ printf "read_blif %s; write_verilog %s" from to :: String ]
+      cmd_ (FileStdout log) (FileStderr log) "yosys" "--commands" [ printf "read_blif %s; write_verilog %s" from to :: String ]
+      trackWrite [to]
+
+  -- | Rename the ports in the target file to match those in the source file
+  let
+    renamePorts :: FilePath -> FilePath -> Action ()
+    renamePorts base target = do
+        let portFilter = ".design.members[1].body.members[] | select(.kind == \"Port\") | .name"
+        Stdout baseJson <- cmd "slang" "-q" "--ast-json=-" base
+        Stdout basePorts <- cmd (Stdin baseJson) "jq" "-r" [portFilter]
+        Stdout targetJson <- cmd "slang" "-q" "--ast-json=-" target
+        Stdout targetPorts <- cmd (Stdin targetJson) "jq" "-r" [portFilter]
+        -- The port we are renaming to needs to be escaped. This:
+        --   a) Assumes that it is not already escaped in what we get from slang
+        --   b) Adds a space afterwards so that the escaping doesn't "eat" any chars that happen to be after the identifier
+        let portPairs = [ (printf "\\%s " basePort, targetPort)
+                        | (basePort, targetPort) <- zip (lines basePorts) (lines targetPorts)
+                        ]
+        contents <- liftIO $ T.readFile target
+        let contents' = foldl (\acc (to, from) -> T.replace (T.pack from) (T.pack to) acc) contents portPairs
+        liftIO $ T.writeFile target contents'
+
 
   "out/EPFL-benchmarks/*/*/orig.sv" !%> \out [category, name] -> do
     let src = "EPFL-benchmarks" </> category </> name -<.> "v"
     copyFile' src out
 
   "out/EPFL-benchmarks/*/*/orig_blif.sv" !%> \out [category, name] -> do
+    let base = "EPFL-benchmarks" </> category </> name -<.> "v"
     let src = "EPFL-benchmarks" </> category </> name -<.> "blif"
     blifToVerilog src out
+    renamePorts base out
 
-  "out/EPFL-benchmarks/*/*/best_size.sv" !%> \out [_category, name] -> do
+  "out/EPFL-benchmarks/*/*/best_size.sv" !%> \out [category, name] -> do
+    let base = "EPFL-benchmarks" </> category </> name -<.> "v"
     [src] <- getDirectoryFiles "" [ printf "EPFL-benchmarks/best_results/size/%s_size_*.blif" name ]
     blifToVerilog src out
+    renamePorts base out
 
-  "out/EPFL-benchmarks/*/*/best_depth.sv" !%> \out [_category, name] -> do
+  "out/EPFL-benchmarks/*/*/best_depth.sv" !%> \out [category, name] -> do
+    let base = "EPFL-benchmarks" </> category </> name -<.> "v"
     [src] <- getDirectoryFiles "" [ printf "EPFL-benchmarks/best_results/depth/%s_depth_*.blif" name ]
     blifToVerilog src out
+    renamePorts base out
 
   phony "clean-epfl" $ removeFilesAfter "out/EPFL-benchmarks" ["//"]
 
