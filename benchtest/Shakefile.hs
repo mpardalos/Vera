@@ -18,7 +18,7 @@ import Data.List (isSuffixOf, isInfixOf, isPrefixOf, stripPrefix, unsnoc, find, 
 import Data.Bifunctor (bimap)
 import Data.Char (isDigit)
 import Data.Maybe (isJust, fromMaybe)
-import Control.Monad (forM, forM_, guard, join, when)
+import Control.Monad (forM, forM_, guard, join, when, void)
 import System.Directory qualified as SD
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import Text.Printf (printf)
@@ -54,8 +54,10 @@ data ConfigYosysTimeout = ConfigYosysTimeout
   deriving (Show, Typeable, Eq, Generic, Hashable, Binary, NFData)
 type instance RuleResult ConfigYosysTimeout = Double
 
-tools :: [String]
-tools = ["vera", "eqy"]
+data RunResult = RunResult
+  { runTime :: String
+  , output :: String
+  }
 
 main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
@@ -67,7 +69,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
   addOracle $ \ConfigVeraTimeout -> pure 600
   -- Timeout for yosys synthesis (NOT symbiyosys/eqy equivalence checking)
   addOracle $ \ConfigYosysTimeout -> pure 600
-  
+
   phony "clean" $ do
     need ["clean-synth", "clean-run"]
     removeFilesAfter "" ["out/templates/summary.csv"]
@@ -127,13 +129,13 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       vera "compare" ("--solver=none" ) ("--dump-query=" ++ smtFile) left right
     case veraExitCode of
       ExitFailure 130 -> liftIO $ do
-        appendFile out "__time_vera: Vera timed out"
-        appendFile out "__time_smt: Vera timed out"
+        appendFile out "__time_vera: Vera timed out\n"
+        appendFile out "__time_smt: Vera timed out\n"
       ExitFailure err -> liftIO $ do
-        appendFile out (printf "__time_vera: Vera failed (%d)" err)
-        appendFile out (printf "__time_smt: Vera failed (%d)" err)
+        appendFile out (printf "__time_vera: Vera failed (%d)\n" err)
+        appendFile out (printf "__time_smt: Vera failed (%d)\n" err)
       ExitSuccess -> do
-        liftIO $ appendFile out (printf "__time_vera: %f" veraTime)
+        liftIO $ appendFile out (printf "__time_vera: %f\n" veraTime)
         (Exit smtExitCode, CmdTime smtTime, Stdouterr output) <- cmd
           (Traced (veraSolver ++ " for vera"))
           (Timeout timeout)
@@ -141,11 +143,11 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         liftIO $ appendFile out ("\n" ++ output)
         case smtExitCode of
           ExitFailure 130 ->
-            liftIO $ appendFile out "__time_smt: SMT Timed out"
+            liftIO $ appendFile out "__time_smt: SMT Timed out\n"
           ExitFailure err -> do
-            liftIO $ appendFile out (printf "__time_smt: SMT failed (%d)" err)
+            liftIO $ appendFile out (printf "__time_smt: SMT failed (%d)\n" err)
           ExitSuccess ->
-            liftIO $ appendFile out (printf "__time_smt: %f" smtTime)
+            liftIO $ appendFile out (printf "__time_smt: %f\n" smtTime)
 
   phony "vera" $ need [vera]
   vera %> \out -> do
@@ -256,19 +258,24 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
             ]
           ]
 
+  let compareVera dir modA modB = do
+        output <- readFile' (dir </> (printf "%s_vs_%s.vera.log" modA modB))
+        let runTime = findPrefixedLine "__time_smt: " output
+        return RunResult { runTime, output }
+
+  let compareEqy dir modA modB = do
+        output <- readFile' (dir </> (printf "%s_vs_%s.eqy.log" modA modB))
+        let runTime = findPrefixedLine "__time_eqy: " output
+        return RunResult { runTime, output }
+
   "out/templates/*/*_vs_*.summary.csv" !%> \out [templateName, mod1, mod2] -> do
     runSizes <- askOracle ConfigRunSizes
 
-    -- [(vera time, eqy time)]
     (times :: [(String, String)]) <- forP runSizes $ \size -> do
-      veraLog <- readFile' $
-        "out/templates" </> (printf "gen_%s_%d" templateName size) </> (printf "%s_vs_%s.vera.log" mod1 mod2)
-      let veraTime = veraLog & lines & firstJust (stripPrefix "__time_smt: ") & fromMaybe "Missing"
-      eqyLog <- readFile' $
-        "out/templates" </> (printf "gen_%s_%d" templateName size) </> (printf "%s_vs_%s.eqy.log" mod1 mod2)
-      let eqyTime = eqyLog & lines & firstJust (stripPrefix "__time_eqy: ") & fromMaybe "Missing"
+      RunResult { runTime = veraTime } <- compareVera ("out/templates" </> printf "gen_%s_%d" templateName size) mod1 mod2
+      RunResult { runTime = eqyTime } <- compareEqy ("out/templates" </> printf "gen_%s_%d" templateName size) mod1 mod2
       return (veraTime, eqyTime)
-  
+
     writeFileLines
       out
       ( ("Size,Vera,EQY")
@@ -303,13 +310,22 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
 
   phony "clean-epfl" $ removeFilesAfter "out/EPFL-benchmarks" ["//"]
 
-  phony "epfl" $ do
+  phony "epfl" $ need ["out/EPFL-benchmarks/summary.csv" ]
+  "out/EPFL-benchmarks/summary.csv" %> \out  -> do
     verilogFiles <- getDirectoryFiles "" [ "EPFL-benchmarks/arithmetic/*.v", "EPFL-benchmarks/random_control/*.v"]
-    need [ "out/EPFL-benchmarks" </> category </> name </> printf "orig_vs_%s.vera.log" target
-         | target <- ["orig_blif", "best_size", "best_depth"]
-         , verilogFile <- verilogFiles
+    let targets =
+         [ (category, name, "orig", target)
+         | verilogFile <- verilogFiles
+         , target <- ["orig_blif", "best_size", "best_depth"]
          , let Just [ category, name ] = filePattern "EPFL-benchmarks/*/*.v" verilogFile
          ]
+    lines <- forP targets $ \(category, name, modA, modB) -> do
+      let dir = "out/EPFL-benchmarks" </> category </> name
+      RunResult { runTime = veraTime } <- compareVera dir modA modB
+      RunResult { runTime = eqyTime } <- compareEqy dir modA modB
+      return (intercalate "," [category, name, modA, modB, veraTime, eqyTime])
+    writeFile' out (unlines ( "Category,Name,A,B,Vera Time,EQY Time" : lines))
+
 
 -- Helpers
 
@@ -357,3 +373,9 @@ pattern Snoc xs x <- (unsnoc -> Just (xs, x))
 allPairs :: [a] -> [(a, a)]
 allPairs [] = []
 allPairs (x:xs) = map (x,) xs ++ allPairs xs
+
+findPrefixedLine :: String -> String -> String
+findPrefixedLine prefix =
+  fromMaybe "Missing"
+  . firstJust (stripPrefix prefix)
+  . lines
