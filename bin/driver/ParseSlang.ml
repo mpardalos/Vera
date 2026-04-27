@@ -331,16 +331,19 @@ let collect_instance_member (ports : port list ref)
 
 let apply_ports (ports : port list)
     (variables : Vera.RawVerilog.variable_declaration list ref) =
-  List.iter
-    (fun port ->
-      variables :=
-        List.map
-          (fun var ->
-            if Util.lst_to_string (var.Vera.VerilogCommon.varDeclName) = port.name
-            then { var with Vera.VerilogCommon.varDeclPort = Some port.direction }
-            else var)
-          !variables)
-    ports
+  (* Remove the variables for ports from whatever order they appeared
+     in, and put them at the front, in the order of the ports *)
+  let orig_variables = !variables in
+  let find_variable name : Vera.RawVerilog.variable_declaration =
+    List.find (fun decl -> decl.Vera.RawVerilog.varDeclName = name) orig_variables
+  in
+  let port_exists name : bool =
+    List.exists (fun p -> p.name = name) ports
+  in
+  variables :=
+    List.append
+      (List.map (fun port -> { (find_variable port.name) with Vera.RawVerilog.varDeclPort = Some port.direction }) ports)
+      (List.filter (fun decl -> not (port_exists decl.Vera.RawVerilog.varDeclName)) orig_variables)
 
 let parse_instance_body (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
   expect_kind "InstanceBody" json;
