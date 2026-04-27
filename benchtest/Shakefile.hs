@@ -57,8 +57,9 @@ data ConfigYosysTimeout = ConfigYosysTimeout
 type instance RuleResult ConfigYosysTimeout = Double
 
 data RunResult = RunResult
-  { runTime :: String
-  , output :: String
+  { veraTime :: String
+  , veraSolverTime :: String
+  , eqyTime :: String
   }
 
 main :: IO ()
@@ -260,23 +261,22 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
             ]
           ]
 
-  let compareVera dir modA modB = do
-        output <- readFile' (dir </> (printf "%s_vs_%s.vera.log" modA modB))
-        let runTime = findPrefixedLine "__time_smt: " output
-        return RunResult { runTime, output }
-
-  let compareEqy dir modA modB = do
-        output <- readFile' (dir </> (printf "%s_vs_%s.eqy.log" modA modB))
-        let runTime = findPrefixedLine "__time_eqy: " output
-        return RunResult { runTime, output }
+  let runEquivalenceCheckers dir modA modB = do
+        veraOutput <- readFile' (dir </> (printf "%s_vs_%s.vera.log" modA modB))
+        eqyOutput <- readFile' (dir </> (printf "%s_vs_%s.eqy.log" modA modB))
+        let
+           veraTime = findPrefixedLine "__time_vera: " veraOutput
+           veraSolverTime = findPrefixedLine "__time_smt: " veraOutput
+           eqyTime = findPrefixedLine "__time_eqy: " eqyOutput
+        return RunResult { veraTime, veraSolverTime, eqyTime }
 
   "out/templates/*/*_vs_*.summary.csv" !%> \out [templateName, mod1, mod2] -> do
     runSizes <- askOracle ConfigRunSizes
 
     (times :: [(String, String)]) <- forP runSizes $ \size -> do
-      RunResult { runTime = veraTime } <- compareVera ("out/templates" </> printf "gen_%s_%d" templateName size) mod1 mod2
-      RunResult { runTime = eqyTime } <- compareEqy ("out/templates" </> printf "gen_%s_%d" templateName size) mod1 mod2
-      return (veraTime, eqyTime)
+      RunResult { veraSolverTime, eqyTime } <- runEquivalenceCheckers
+        ("out/templates" </> printf "gen_%s_%d" templateName size) mod1 mod2
+      return (veraSolverTime, eqyTime)
 
     writeFileLines
       out
@@ -350,10 +350,9 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
          ]
     lines <- forP targets $ \(category, name, modA, modB) -> do
       let dir = "out/EPFL-benchmarks" </> category </> name
-      RunResult { runTime = veraTime } <- compareVera dir modA modB
-      RunResult { runTime = eqyTime } <- compareEqy dir modA modB
-      return (intercalate "," [category, name, modA, modB, veraTime, eqyTime])
-    writeFile' out (unlines ( "Category,Name,A,B,Vera Time,EQY Time" : lines))
+      RunResult { veraTime, veraSolverTime, eqyTime } <- runEquivalenceCheckers dir modA modB
+      return (intercalate "," [category, name, modA, modB, veraTime, veraSolverTime, eqyTime])
+    writeFile' out (unlines ( "Category,Name,A,B,Vera Time,Vera Solver time,EQY Time" : lines))
 
 
 -- Helpers
