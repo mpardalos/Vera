@@ -111,9 +111,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
 
   -- Running vera
   "//*.vera.smt2" %> \out -> need [ out -<.> "log" ]
-  "//*_vs_*.vera.log" %> \out -> do
-    let Just [dir, mod1, mod2] = filePattern "//*_vs_*.vera.log" out
-        smtFile = out -<.> "smt2"
+  "//*_vs_*.vera.log" !%> \out [dir, mod1, mod2] -> do
+    let smtFile = out -<.> "smt2"
         left = dir </> mod1 <.> "sv"
         right = dir </> mod2 <.> "sv"
     timeout <- askOracle ConfigVeraTimeout
@@ -160,9 +159,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     cmd_ "dune" "build"
 
   -- Running eqy
-  "//*_vs_*/compare.eqy" %> \out -> do
+  "//*_vs_*/compare.eqy" !%> \out [dir, mod1, mod2] -> do
     let template = "templates/compare.eqy.j2"
-        Just [dir, mod1, mod2] = filePattern "//*_vs_*/compare.eqy" out
     need [template]
     solver <- askOracle ConfigSolver
     cmd_
@@ -173,9 +171,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       "-D" ("SV_GOLD=" <> (".." </> mod1 <.> "sv"))
       "-D" ("SV_GATE=" <> (".." </> mod2 <.> "sv"))
       template
-  "//*_vs_*.eqy.log" %> \out -> do
-    let Just [dir, mod1, mod2] = filePattern "//*_vs_*.eqy.log" out
-        eqyDir = dropExtensions out
+  "//*_vs_*.eqy.log" !%> \out [dir, mod1, mod2] -> do
+    let eqyDir = dropExtensions out
         eqyFile = eqyDir </> "compare.eqy"
         left = dir </> mod1 <.> "sv"
         right = dir </> mod2 <.> "sv"
@@ -219,9 +216,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     need templateExamples
     cmd_ "gs" "-dBATCH" "-dNOPAUSE" "-q" "-sDEVICE=pdfwrite" ("-sOutputFile=" ++ out) templateExamples
 
-  "out/templates/*/*.summary.pdf" %> \out -> do
-    let Just [category, name] = filePattern "out/templates/*/*.summary.pdf" out
-        base = dropExtensions out
+  "out/templates/*/*.summary.pdf" !%> \out [category, name] -> do
+    let base = dropExtensions out
         summaryCSV = base <.> "summary.csv"
         cleanName = map (\case '_' -> ' '; c -> c) (takeFileName name)
         title :: String = printf "%s - %s" category cleanName
@@ -260,8 +256,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
             ]
           ]
 
-  "out/templates/*/*_vs_*.summary.csv" %> \out -> do
-    let Just [templateName, mod1, mod2] = filePattern "out/templates/*/*_vs_*.summary.csv" out
+  "out/templates/*/*_vs_*.summary.csv" !%> \out [templateName, mod1, mod2] -> do
     runSizes <- askOracle ConfigRunSizes
 
     -- [(vera time, eqy time)]
