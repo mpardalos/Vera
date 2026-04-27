@@ -68,6 +68,7 @@ let compare ~solver ~dump_query filename1 filename2 =
           printf "Non-equivalent (SAT)\n";
           printf "%s\n" out
       | SMTLIB.Error, out ->
+         (* TODO: This gets printed for the dummy solver. *)
           printf "Error\n";
           printf "%s\n" out)
 

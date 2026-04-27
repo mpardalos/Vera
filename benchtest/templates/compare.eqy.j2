@@ -2,6 +2,8 @@
 read_verilog -sv {{SV_GOLD}}
 prep -auto-top
 rename -top top
+# Consider this to hide internal wires
+# rename -hide w:* %D x:* %i
 
 [gate]
 read_verilog -sv {{SV_GATE}}
