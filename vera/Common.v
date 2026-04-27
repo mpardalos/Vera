@@ -23,6 +23,7 @@ Import FunctorNotation.
 From Equations Require Import Equations.
 From Stdlib Require Import Psatz.
 From Stdlib Require Import String.
+From Stdlib Require Import Ascii.
 From Stdlib Require Import Logic.ProofIrrelevance.
 From Stdlib Require Import Arith.PeanoNat.
 From Stdlib Require Import NArith.
@@ -739,6 +740,8 @@ Definition opt_to_sum {E A} (e: E) (o : option A) : E + A :=
   | None => inl e
   | Some a => inr a
   end.
+
+Definition newline : string := String "010" EmptyString.
 
 (* Debug tracing — computes to identity in proofs, extracts to Printf *)
 Definition trace {A : Type} (_msg : string) (x : A) : A := x.

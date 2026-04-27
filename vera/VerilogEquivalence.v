@@ -171,8 +171,20 @@ Proof.
 Qed.
 
 Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string (SMT.smt_with_namemap) :=
-  let* inputs_ok1 := assert_dec (Verilog.module_inputs verilog1 = Verilog.module_inputs verilog2) "Inputs don't match" in
-  let* outputs_ok1 := assert_dec (Verilog.module_outputs verilog1 = Verilog.module_outputs verilog2) "Outputs don't match" in
+  let* inputs_ok1 :=
+    assert_dec
+      (Verilog.module_inputs verilog1 = Verilog.module_inputs verilog2)
+      ("Inputs don't match:" ++ newline
+      ++ to_string (Verilog.module_inputs verilog1) ++ newline
+      ++ to_string (Verilog.module_inputs verilog2) )
+    in
+  let* outputs_ok1 :=
+    assert_dec
+      (Verilog.module_outputs verilog1 = Verilog.module_outputs verilog2)
+      ("Outputs don't match:" ++ newline
+      ++ to_string (Verilog.module_outputs verilog1) ++ newline
+      ++ to_string (Verilog.module_outputs verilog2) )
+    in
 
   let* ( smt1 ; prf1 ) := sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogLeft 0 verilog1) in
   let* ( smt2 ; prf2 ) := sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogRight (S (length (Verilog.modVariables verilog1))) verilog2) in
