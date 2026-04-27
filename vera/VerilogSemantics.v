@@ -837,13 +837,14 @@ Module Sort.
   Equations sort_module_items_select (vars_ready : list variable) (mis : list module_item) : option (selection mis) := {
     | vars_ready, [] => @None _
     | vars_ready, hd :: tl with
-      dec (list_subset (module_item_reads hd) vars_ready),
-      dec (disjoint (module_item_writes hd) vars_ready) => {
-      | right _, _ => None
-      | left _, right _ =>
-          let* (MkSelection _ selected selected_tl _) := sort_module_items_select vars_ready tl in
-          Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ )
-      | left prf1, left prf2 => Some (MkSelection (hd :: tl) hd tl _)
+      dec (disjoint (module_item_writes hd) vars_ready),
+      dec (list_subset (module_item_reads hd) vars_ready) => {
+      | right _, _ => None (* conflicting write *)
+      | left _, right _ => (* No conflicting write, but not ready *)
+        let* (MkSelection _ selected selected_tl _) := sort_module_items_select vars_ready tl in
+        Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ )
+      | left prf1, left prf2 => (* Ready *)
+        Some (MkSelection (hd :: tl) hd tl _)
     }
   }.
   Next Obligation.
