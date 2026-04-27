@@ -35,6 +35,7 @@ import Data.Hashable (Hashable)
 import Data.Binary (Binary)
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
+import System.Posix.Resource (setResourceLimit, getResourceLimit, Resource(ResourceOpenFiles), ResourceLimit(..), ResourceLimits(..))
 
 -- | Path to vera binary
 vera :: FilePath
@@ -68,12 +69,17 @@ data RunResult = RunResult
 
 main :: IO ()
 main = shakeArgs shakeOptions {shakeThreads=0} $ do
+  liftIO $ do
+    -- Set open file soft limit to the hard limit
+    ResourceLimits {hardLimit} <- getResourceLimit ResourceOpenFiles
+    setResourceLimit ResourceOpenFiles (ResourceLimits hardLimit hardLimit)
+
   -- Sizes which templated examples will be evaluated at
   addOracle $ \ConfigRunSizes -> pure [4..8]
   -- Value of --solver= flag for vera
   addOracle $ \ConfigSolver -> pure "cvc5"
   -- Timeout for vera/eqy runs (in seconds)
-  addOracle $ \ConfigVeraTimeout -> pure 600
+  addOracle $ \ConfigVeraTimeout -> pure 10
   -- Vera memory limit (in bytes)
   addOracle $ \ConfigVeraMemoryLimit -> pure (1 * 1024 * 1024 * 1024) -- 1G
   -- Timeout for yosys synthesis (NOT symbiyosys/eqy equivalence checking)
