@@ -158,7 +158,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         | dir <- ["../vera", "../bin"],
           ext <- ["*.v", "*.ml"]
         ]
-    cmd_ "dune" "build"
+    cmd_ (Cwd "..") "dune" "build"
 
   -- Running eqy
   "//*_vs_*/compare.eqy" !%> \out [dir, mod1, mod2] -> do
