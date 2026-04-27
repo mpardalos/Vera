@@ -23,6 +23,7 @@ From vera Require Import Decidable.
 
 From Equations Require Import Equations.
 
+From ExtLib Require Import Programming.Show.
 From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Structures.MonadExc.
@@ -820,6 +821,18 @@ Module Sort.
     - simpl. assumption.
   Qed.
 
+  Section mi_show.
+    Local Open Scope string.
+    Import ShowNotation.
+    Global Instance moduleitem_Show : Show module_item :=
+      { show u :=
+          match u with
+    	| Verilog.AlwaysComb (Verilog.BlockingAssign (Verilog.NamedExpression var) _) =>
+    	  ("always_comb " ++ Verilog.varName var ++ " = ...")%string
+    	| Verilog.AlwaysComb _ => "always_comb ..."%string
+          end
+      }.
+  End mi_show.
   
   Equations sort_module_items_select (vars_ready : list variable) (mis : list module_item) : option (selection mis) := {
     | vars_ready, [] => @None _
