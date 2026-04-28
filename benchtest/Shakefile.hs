@@ -8,6 +8,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 import Development.Shake
 import Development.Shake.Command
@@ -62,9 +63,9 @@ data ConfigYosysTimeout = ConfigYosysTimeout
 type instance RuleResult ConfigYosysTimeout = Double
 
 data RunResult = RunResult
-  { veraTime :: String
-  , veraSolverTime :: String
-  , eqyTime :: String
+  { veraTime :: Text
+  , veraSolverTime :: Text
+  , eqyTime :: Text
   }
 
 main :: IO ()
@@ -276,8 +277,11 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
           ]
 
   let runEquivalenceCheckers dir modA modB = do
-        veraOutput <- readFile' (dir </> (printf "%s_vs_%s.vera.log" modA modB))
-        eqyOutput <- readFile' (dir </> (printf "%s_vs_%s.eqy.log" modA modB))
+        let veraLog = dir </> (printf "%s_vs_%s.vera.log" modA modB)
+        let eqyLog = dir </> (printf "%s_vs_%s.eqy.log" modA modB)
+        need [veraLog, eqyLog]
+        veraOutput <- liftIO $ T.readFile veraLog
+        eqyOutput <- liftIO $ T.readFile eqyLog
         let
            veraTime = findPrefixedLine "__time_vera: " veraOutput
            veraSolverTime = findPrefixedLine "__time_smt: " veraOutput
@@ -287,18 +291,16 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
   "out/templates/*/*_vs_*.summary.csv" !%> \out [templateName, mod1, mod2] -> do
     runSizes <- askOracle ConfigRunSizes
 
-    (times :: [(String, String)]) <- forP runSizes $ \size -> do
+    (times :: [(Text, Text)]) <- forP runSizes $ \size -> do
       RunResult { veraSolverTime, eqyTime } <- runEquivalenceCheckers
         ("out/templates" </> printf "gen_%s_%d" templateName size) mod1 mod2
       return (veraSolverTime, eqyTime)
 
-    writeFileLines
-      out
-      ( ("Size,Vera,EQY")
-          : [ intercalate "," [show w, veraTime, eqyTime]
-            | (w, (veraTime, eqyTime)) <- zip runSizes times
-            ]
-      )
+    liftIO $ T.writeFile out $ T.unlines (
+      ("Size,Vera,EQY")
+      : [ T.intercalate "," [T.show w, veraTime, eqyTime]
+        | (w, (veraTime, eqyTime)) <- zip runSizes times
+        ])
 
   -- EPFL benchmarks
   let
@@ -416,8 +418,8 @@ allPairs :: [a] -> [(a, a)]
 allPairs [] = []
 allPairs (x:xs) = map (x,) xs ++ allPairs xs
 
-findPrefixedLine :: String -> String -> String
+findPrefixedLine :: Text -> Text -> Text
 findPrefixedLine prefix =
   fromMaybe "Missing"
-  . firstJust (stripPrefix prefix)
-  . lines
+  . firstJust (T.stripPrefix prefix)
+  . T.lines
