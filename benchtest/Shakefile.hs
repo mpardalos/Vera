@@ -8,7 +8,6 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 import Development.Shake
 import Development.Shake.Command
@@ -28,6 +27,11 @@ import Data.Function ((&))
 import Debug.Trace
 import Data.List.Extra (firstJust)
 import Data.Functor ((<&>))
+import Data.ByteString (ByteString)
+import Data.ByteString.Char8 qualified as BS8
+import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
@@ -37,6 +41,7 @@ import Data.Binary (Binary)
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 import System.Posix.Resource (setResourceLimit, getResourceLimit, Resource(ResourceOpenFiles), ResourceLimit(..), ResourceLimits(..))
+import qualified Data.Text.Encoding as T
 
 -- | Path to vera binary
 vera :: FilePath
@@ -283,9 +288,9 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         veraOutput <- liftIO $ T.readFile veraLog
         eqyOutput <- liftIO $ T.readFile eqyLog
         let
-           veraTime = findPrefixedLine "__time_vera: " veraOutput
-           veraSolverTime = findPrefixedLine "__time_smt: " veraOutput
-           eqyTime = findPrefixedLine "__time_eqy: " eqyOutput
+           veraTime = findPrefixedLine (T.pack "__time_vera: " )veraOutput
+           veraSolverTime = findPrefixedLine (T.pack "__time_smt: " )veraOutput
+           eqyTime = findPrefixedLine (T.pack "__time_eqy: " )eqyOutput
         return RunResult { veraTime, veraSolverTime, eqyTime }
 
   "out/templates/*/*_vs_*.summary.csv" !%> \out [templateName, mod1, mod2] -> do
@@ -297,8 +302,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
       return (veraSolverTime, eqyTime)
 
     liftIO $ T.writeFile out $ T.unlines (
-      ("Size,Vera,EQY")
-      : [ T.intercalate "," [T.show w, veraTime, eqyTime]
+      (T.pack "Size,Vera,EQY")
+      : [ T.intercalate (T.pack ",") [T.show w, veraTime, eqyTime]
         | (w, (veraTime, eqyTime)) <- zip runSizes times
         ])
 
@@ -316,20 +321,17 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     renamePorts :: FilePath -> FilePath -> Action ()
     renamePorts base target = do
         let portFilter = ".design.members[1].body.members[] | select(.kind == \"Port\") | .name"
-        Stdout baseJson <- cmd "slang" "-q" "--ast-json=-" base
-        Stdout basePorts <- cmd (Stdin baseJson) "jq" "-r" [portFilter]
-        Stdout targetJson <- cmd "slang" "-q" "--ast-json=-" target
-        Stdout targetPorts <- cmd (Stdin targetJson) "jq" "-r" [portFilter]
+        Stdout (basePorts :: ByteString) <- cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" base portFilter :: String)
+        Stdout (targetPorts :: ByteString) <- cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" target portFilter :: String)
         -- The port we are renaming to needs to be escaped. This:
         --   a) Assumes that it is not already escaped in what we get from slang
         --   b) Adds a space afterwards so that the escaping doesn't "eat" any chars that happen to be after the identifier
-        let portPairs = [ (printf "\\%s " basePort, targetPort)
-                        | (basePort, targetPort) <- zip (lines basePorts) (lines targetPorts)
+        let portPairs = [ (BS8.pack "\\" <> basePort <> BS8.pack " ", targetPort)
+                        | (basePort, targetPort) <- zip (BS8.lines basePorts) (BS8.lines targetPorts)
                         ]
-        contents <- liftIO $ T.readFile target
-        let contents' = foldl (\acc (to, from) -> T.replace (T.pack from) (T.pack to) acc) contents portPairs
-        liftIO $ T.writeFile target contents'
-
+        let sedScript = BS8.unlines [BS8.pack "s/" <> from <> BS8.pack "/" <> to <> BS8.pack "/g" | (to, from) <- portPairs]
+        liftIO $ BS.writeFile (target <.> "sed") sedScript
+        cmd_ "sed" ["-i", "-f", target <.> "sed", target]
 
   "out/EPFL-benchmarks/*/*/orig.sv" !%> \out [category, name] -> do
     let src = "EPFL-benchmarks" </> category </> name -<.> "v"
@@ -367,8 +369,8 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     lines <- forP targets $ \(category, name, modA, modB) -> do
       let dir = "out/EPFL-benchmarks" </> category </> name
       RunResult { veraTime, veraSolverTime, eqyTime } <- runEquivalenceCheckers dir modA modB
-      return (intercalate "," [category, name, modA, modB, veraTime, veraSolverTime, eqyTime])
-    writeFile' out (unlines ( "Category,Name,A,B,Vera Time,Vera Solver time,EQY Time" : lines))
+      return (T.intercalate (T.pack ",") [T.pack category, T.pack name, T.pack modA, T.pack modB, veraTime, veraSolverTime, eqyTime])
+    liftIO $ T.writeFile out (T.unlines ( T.pack "Category,Name,A,B,Vera Time,Vera Solver time,EQY Time" : lines))
 
 
 -- Helpers
@@ -420,6 +422,6 @@ allPairs (x:xs) = map (x,) xs ++ allPairs xs
 
 findPrefixedLine :: Text -> Text -> Text
 findPrefixedLine prefix =
-  fromMaybe "Missing"
+  fromMaybe (T.pack "Missing")
   . firstJust (T.stripPrefix prefix)
   . T.lines
