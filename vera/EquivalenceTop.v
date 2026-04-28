@@ -62,11 +62,14 @@ Theorem sort_module_equivalent v1 v2 :
   sort_module v1 = inr v2 ->
   v1 ~~~ v2.
 Proof.
-  unfold sort_module. intros H. monad_inv.
+  unfold sort_module. intros H.
+  monad_inv.
+  rename_match (sort_module_items _ _ = Some _) into Hsort.
   apply equal_exact_equivalence; try reflexivity; expect 1.
   unfold run_vmodule. simpl.
   unfold Verilog.module_inputs in *; simpl in *.
-  intros regs. rewrite E0.
+  apply functional_extensionality.
+  intros regs. rewrite Hsort.
   rewrite sort_module_items_stable
     by eauto using sort_module_items_sorted.
   reflexivity.
@@ -104,25 +107,27 @@ Proof.
   rewrite <- Hinput_names, Houtput_names.
   intros Hclean e Hinputs_defined.
   specialize (Hclean e Hinputs_defined).
-  destruct Hclean as [e' [Hrun [Hinputs Houtputs_defined]]].
-  specialize (Hequiv e'). destruct Hequiv as [Hequiv _].
-  unfold "⇓" in Hequiv. edestruct Hequiv as [e'' [Hrun'' [Hinputs'' [Houtputs_defined'' Hmatch'']]]]; clear Hequiv. 
-  - exists e'. repeat split.
+  destruct Hclean as [Hinputs Houtputs_defined].
+  specialize (Hequiv (run_vmodule v1 (e // Verilog.module_inputs v1))). destruct Hequiv as [Hequiv _].
+  unfold "⇓" in Hequiv. edestruct Hequiv as [Hinputs'' [Houtputs_defined'' Hmatch'']]; clear Hequiv.
+  - unpack_goal.
     + setoid_rewrite <- Hinputs at 1.
-      apply Hrun.
-    + setoid_rewrite <- Hinputs. 
       apply VerilogToSMTCorrect.defined_value_for_has_value_for.
       apply Hinputs_defined.
-    + apply VerilogToSMTCorrect.defined_value_for_has_value_for.
-      rewrite <- Houtput_names in Houtputs_defined.
+    + rewrite <- Houtput_names in *.
+      apply VerilogToSMTCorrect.defined_value_for_has_value_for.
       apply Houtputs_defined.
-  - symmetry in Hmatch''.
-    rewrite <- Hinput_names, <- Houtput_names in *.
+    + setoid_rewrite <- Hinputs at 1.
+      reflexivity.
+  - rewrite <- Hinput_names in *.
+    rewrite <- Houtput_names in *.
+    setoid_rewrite <- Hinputs in Hmatch'' at 1.
     RegisterState.unpack_match_on.
-    exists e''. repeat split.
-    + rewrite Hinputs at 1. apply Hrun''.
-    + transitivity e'; eassumption.
-    + rewrite <- H0. apply Houtputs_defined.
+    rename_match (run_vmodule v2 _ =( Verilog.module_inputs _ )= run_vmodule v1 _) into Hmatch_inputs.
+    rename_match (run_vmodule v2 _ =( Verilog.module_outputs _ )= run_vmodule v1 _) into Hmatch_outputs.
+    unpack_goal.
+    + rewrite Hmatch_inputs. assumption.
+    + rewrite Hmatch_outputs. assumption.
 Qed.
 
 Global Instance Proper_equivalent_behaviour_exact_equivalence :

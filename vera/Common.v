@@ -542,6 +542,18 @@ Goal (forall (l r : list nat), DecProp (disjoint l r)). typeclasses eauto. Qed.
 Definition list_subset {A} (sub sup : list A) : Prop :=
   Forall (fun x => In x sup) sub.
 
+Ltac propertize_lists1 H :=
+  match type of H with
+  | list_subset _ _ =>
+    unfold list_subset in H; rewrite Forall_forall in H
+  end.
+
+Ltac propertize_lists :=
+  repeat match goal with
+         | [ H : _ |- _ ] => propertize_lists1 H
+         | [ |- list_subset _ _ ] => unfold list_subset; rewrite Forall_forall
+         end.
+
 Lemma list_subset_refl {A} (l : list A) :
   list_subset l l .
 Proof. unfold list_subset. rewrite ! List.Forall_forall. crush. Qed.
@@ -572,6 +584,20 @@ Proof.
   unfold Basics.flip, list_subset, disjoint in *.
   rewrite ! Forall_forall in *.
   crush.
+Qed.
+
+Lemma list_subset_app_r A (l1 l2 : list A) :
+  list_subset l1 (l1 ++ l2).
+Proof.
+ unfold list_subset. rewrite ! Forall_forall. setoid_rewrite in_app_iff.
+ crush.
+Qed.
+
+Lemma list_subset_app_l A (l1 l2 : list A) :
+  list_subset l1 (l2 ++ l1).
+Proof.
+ unfold list_subset. rewrite ! Forall_forall. setoid_rewrite in_app_iff.
+ crush.
 Qed.
 
 Lemma list_subset_app A (l1 l2 l3 : list A) :

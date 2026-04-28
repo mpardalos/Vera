@@ -382,8 +382,7 @@ Lemma expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ 
       (fun v => List.In v (Verilog.expr_reads expr))
       tag m regs ρ ->
     SMTLib.interp_term ρ t =
-      (let* xbv := eval_expr (w:=w) regs expr in
-       let* bv := XBV.to_bv xbv in
+      (let* bv := XBV.to_bv (eval_expr (w:=w) regs expr) in
        ret (SMTLib.Value_BitVec _ bv))%monad
 .
 Proof.
@@ -511,7 +510,7 @@ Lemma expr_to_smt_valid w tag m expr t regs ρ val :
   expr_to_smt (w := w) tag m expr = inr t ->
   SMTLib.interp_term ρ t = Some val ->
   verilog_smt_match_states_partial (fun v => List.In v (Verilog.expr_reads expr)) tag m regs ρ ->
-  exists xbv, (eval_expr regs expr = Some xbv /\ verilog_smt_match_value xbv val).
+  verilog_smt_match_value (eval_expr regs expr) val.
 Proof.
   intros * Hexpr_to_smt Hinterp Hmatch_states.
   erewrite expr_to_smt_value in Hinterp; eauto.

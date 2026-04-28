@@ -133,11 +133,17 @@ module Typed = struct
   let direction fmt d =
     match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"
 
+  let variable fmt var =
+    fprintf fmt "%s%a"
+      (Util.lst_to_string var.Verilog.varName)
+      vtype var.Verilog.varType
+
   let rec expression fmt e =
     Format.fprintf fmt "@[";
     (match e with
     | Verilog.IntegerLiteral (_, v) ->
-        fprintf fmt "%a'b%s" Z.pp_print (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
+        fprintf fmt "%a'b%s" Z.pp_print (Vera.RawBV.size v)
+          (Util.lst_to_string (Vera.bits_to_binary_string v))
     | Verilog.Resize (_, t, e) ->
         fprintf fmt "( %a@ as@ %a )" expression e vtype t
     | Verilog.ArithmeticOp (_, op, l, r) ->
@@ -153,7 +159,8 @@ module Typed = struct
     | Verilog.BitSelect_width (_, _, target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
     | Verilog.BitSelect_const (_, w_index, target, index) ->
-        fprintf fmt "%a[%a]" expression target expression (Verilog.IntegerLiteral (w_index, index))
+        fprintf fmt "%a[%a]" expression target expression
+          (Verilog.IntegerLiteral (w_index, index))
     | Verilog.Concatenation (_, _, lhs, rhs) ->
         fprintf fmt "{%a %a}" expression lhs expression rhs
     | Verilog.Replication (_, count, expr) ->
@@ -161,14 +168,13 @@ module Typed = struct
     | Verilog.Conditional (_, _, cond, t, f) ->
         fprintf fmt "( %a ?@ %a :@ %a )" expression cond expression t expression
           f
-    | Verilog.NamedExpression {varName; varType} ->
-        fprintf fmt "%s%a" (Util.lst_to_string varName) vtype varType);
+    | Verilog.NamedExpression var -> variable fmt var);
     Format.fprintf fmt "@]"
 
   let statement (fmt : formatter) (s : Verilog.statement) =
     match s with
-    | Verilog.BlockingAssign (_, lhs, rhs) ->
-        fprintf fmt "%a = %a" expression lhs expression rhs
+    | Verilog.BlockingAssign (lhs, rhs) ->
+        fprintf fmt "%a = %a" variable lhs expression rhs
 
   let mod_item (fmt : formatter) (i : Verilog.module_item) =
     fprintf fmt "always_comb %a" statement i

@@ -68,10 +68,9 @@ Definition valuation_has_var tag (m : VerilogSMTBijection.t) ρ var : Prop :=
       ρ smtName = Some (SMTLib.Value_BitVec (Verilog.varType var) bv).
 
 Inductive verilog_smt_match_on_name (regs : RegisterState.t) (ρ : SMTQueries.valuation) var smtName : Prop :=
-| verilog_smt_match_on_names_intro xbv val
+| verilog_smt_match_on_names_intro val
     (Hsmtval : ρ smtName = Some val)
-    (Hverilogval : regs var = Some xbv)
-    (Hmatchvals : verilog_smt_match_value xbv val).
+    (Hmatchvals : verilog_smt_match_value (regs var) val).
 
 (* TODO: No longer used, deleteme *)
 Definition verilog_smt_match_states
@@ -95,9 +94,19 @@ Definition verilog_smt_match_states_partial
       m (tag, var) = Some smtName
       /\ verilog_smt_match_on_name regs ρ var smtName.
 
+(* Might not be needed *)
 Global Instance verilog_smt_match_states_partial_proper :
   Proper
     (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> eq ==> eq ==> iff)
+    verilog_smt_match_states_partial.
+Proof.
+  repeat intro. subst.
+  crush.
+Qed.
+
+Global Instance verilog_smt_match_states_partial_impl_proper :
+  Proper
+    (pointwise_relation Verilog.variable Basics.impl ==> eq ==> eq ==> eq ==> eq ==> Basics.flip Basics.impl)
     verilog_smt_match_states_partial.
 Proof.
   repeat intro. subst.
@@ -120,8 +129,7 @@ Proof.
     autodestruct; [|contradiction].
     f_equal.
     rewrite <- eq_rect_eq.
-    reflexivity.
-  - constructor.
+    constructor.
 Qed.
 
 Lemma verilog_smt_match_states_partial_impl P1 P2 tag m regs ρ :
@@ -142,7 +150,7 @@ Proof.
     + subst. contradiction.
     + insterU H. destruct H as [smtName [? []]].
       econstructor. split. { eassumption. }
-      rewrite RegisterState.set_reg_get_out in Hverilogval by congruence.
+      rewrite RegisterState.set_reg_get_out in Hmatchvals by congruence.
       econstructor; eassumption.
   - destruct (dec (var0 = var)).
     + subst. contradiction.
@@ -189,12 +197,13 @@ Proof.
     rewrite RegisterState.set_reg_get_in.
     repeat f_equal.
     rewrite H0 in Hsmtval.
-    inv Hsmtval. reflexivity.
+    inv Hsmtval. constructor.
   - insterU Hvar. destruct Hvar as [? [? ?]].
     insterU Hrest. destruct Hrest as [? [? []]].
     inv Hmatchvals.
     repeat econstructor; try eassumption; [idtac].
     rewrite RegisterState.set_reg_get_out; eauto.
+    rewrite <- H3. constructor.
 Qed.
 
 Lemma verilog_smt_match_states_partial_change_regs C tag m r1 r2 ρ :
@@ -252,7 +261,6 @@ Proof.
   crush.
 Qed.
 
-
 Lemma verilog_smt_match_states_partial_execution_defined_value_for C tag m ρ e :
     verilog_smt_match_states_partial C tag m e ρ ->
     RegisterState.defined_value_for C e.
@@ -272,11 +280,19 @@ Proof.
   unfold RegisterState.defined_value_for, verilog_smt_match_states_partial, "_ =( _ )= _".
   intros Hdefined Heq var Hvar.
   insterU Hdefined. insterU Heq.
-  unfold SMT.execution_of_valuation in Heq.
   destruct Hdefined as [bv Hbv]. 
-  autodestruct_eqn E; simpl in *; try crush; [idtac].
+  rewrite Hbv in Heq.
+  unfold SMT.execution_of_valuation in Heq.
+  (* The problem is with 0-length Xs. They look identical to 0-length non-Xs *)
+  autodestruct_eqn E.
+  all: apply f_equal with (f:=XBV.to_bv) in Heq.
+  all: assert (Verilog.varType var > 0)%N by admit.
+  all: autorewrite with xbv in Heq.
+  all: try discriminate; expect 1.
   subst. simpl in *.
+  autorewrite with xbv in Heq. inv Heq.
   eexists. split; [reflexivity|].
   econstructor; eauto.
+  rewrite Hbv.
   constructor.
-Qed.
+Admitted.

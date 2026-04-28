@@ -29,11 +29,10 @@ Local Open Scope verilog.
 
 Equations module_body_keep_vars (vars : list variable) (body : list module_item) : list (module_item) :=
   module_body_keep_vars vars [] := [];
-  module_body_keep_vars vars (AlwaysComb (BlockingAssign (NamedExpression var) rhs) :: body) with dec (In var vars) := {
+  module_body_keep_vars vars (AlwaysComb (BlockingAssign var rhs) :: body) with dec (In var vars) := {
     | right _ => module_body_keep_vars vars body
-    | left _ => AlwaysComb (BlockingAssign (NamedExpression var) rhs) :: module_body_keep_vars vars body
+    | left _ => AlwaysComb (BlockingAssign var rhs) :: module_body_keep_vars vars body
   };
-  module_body_keep_vars vars (item :: body) := item :: body
   .
 
 Definition decls_drop_internal := List.filter
@@ -167,85 +166,74 @@ Lemma module_body_keep_vars_correct init vars inputs body :
   module_items_sorted inputs body ->
   NoDup (module_body_writes body) ->
   list_subset (module_body_reads body) inputs ->
-  RegisterState.has_value_for (fun var => In var inputs) init ->
   (exec_module_body init (module_body_keep_vars vars body))
-    =?( vars )?=
+    =( vars )=
   (exec_module_body init body).
 Proof.
   revert init.
-  funelim (module_body_keep_vars vars body);
-    intros init Hsorted Hnodup Hreads Hhas_values;
-    simp exec_module_body exec_module_item exec_statement; simpl;
-    clear Heqcall; try reflexivity; expect 2.
-  - destruct (eval_expr init rhs) eqn:Heval_expr;
-      [|reflexivity].
-    inv Hsorted.
-    simp module_body_writes module_item_writes statement_writes
-         module_body_reads module_item_reads statement_reads expr_reads
-      in *.
-    unpack_list_subset. disjoint_saturate.
-    eapply H with (inputs:=inputs); try assumption; expect 2.
-    + eapply module_items_sorted_skip1; simpl in *; [|eassumption].
-      unfold list_subset in *. rewrite Forall_forall in *. crush.
-    + apply RegisterState.has_value_for_set_reg. assumption.
+  funelim (module_body_keep_vars vars body).
+  all: intros init Hsorted Hnodup Hreads.
+  all: simp exec_module_body exec_module_item exec_statement; simpl.
+  all: clear Heqcall.
+  1: reflexivity.
   - inv Hsorted.
     simp module_body_writes module_item_writes statement_writes
          module_body_reads module_item_reads statement_reads expr_reads
       in *.
     unpack_list_subset. disjoint_saturate.
-    edestruct (eval_expr_has_values_some _ rhs) as [x Heval_rhs]; expect 2. {
-      eapply RegisterState.has_value_for_impl; [|eassumption].
-      simpl. apply Forall_forall. assumption. 
-    }
-    rewrite Heval_rhs.
+    apply H with (inputs:=inputs); try assumption; expect 1.
+    eapply module_items_sorted_skip1; simpl in *; [|eassumption].
+    unfold list_subset in *. rewrite Forall_forall in *. crush.
+  - inv Hsorted.
+    simp module_body_writes module_item_writes statement_writes
+         module_body_reads module_item_reads statement_reads expr_reads
+      in *.
+    unpack_list_subset. disjoint_saturate.
+    (* edestruct (eval_expr_has_values_some _ rhs) as [x Heval_rhs]; expect 2. {
+     *   eapply RegisterState.has_value_for_impl; [|eassumption].
+     *   simpl. apply Forall_forall. assumption. 
+     * } *)
+    (* rewrite Heval_rhs. *)
     simpl in *.
-    erewrite H with (inputs:=inputs); try assumption; expect 2; cycle 1.
-    + eapply module_items_sorted_skip1; simpl in *; [|eassumption].
-      unfold list_subset in *. rewrite Forall_forall in *. crush.
+    rewrite H with (inputs:=inputs); try assumption; expect 2.
     + apply exec_module_body_change_preserve.
       * rewrite RegisterState.match_on_set_reg_elim; [reflexivity|].
         unfold list_subset in *. rewrite Forall_forall in *. crush.
       * rewrite RegisterState.match_on_set_reg_elim; [reflexivity|].
         assumption.
+    + eapply module_items_sorted_skip1; simpl in *; [|eassumption].
+      unfold list_subset in *. rewrite Forall_forall in *. crush.
 Qed.
 
 Lemma module_body_keep_vars_preserve init vars l inputs body :
   module_items_sorted inputs body ->
   NoDup (module_body_writes body) ->
   list_subset (module_body_reads body) inputs ->
-  RegisterState.has_value_for (fun var => In var inputs) init ->
   disjoint l (module_body_writes body) ->
   (exec_module_body init (module_body_keep_vars vars body))
-    =?( l )?=
+    =( l )=
   (exec_module_body init body).
 Proof.
   revert init.
-  funelim (module_body_keep_vars vars body);
-    intros init Hsorted Hnodup Hreads Hhas_values Hnot_written;
-    simp exec_module_body exec_module_item exec_statement; simpl;
-    clear Heqcall; try reflexivity; expect 2.
-  - destruct (eval_expr init rhs) eqn:Heval_expr;
-      [|reflexivity].
-    inv Hsorted.
+  funelim (module_body_keep_vars vars body).
+  all: intros init Hsorted Hnodup Hreads Hnot_written.
+  all: simp exec_module_body exec_module_item exec_statement; simpl.
+  all: clear Heqcall.
+  all: try reflexivity; expect 2.
+  - inv Hsorted.
     simp module_body_writes module_item_writes statement_writes
          module_body_reads module_item_reads statement_reads expr_reads
       in *.
     unpack_list_subset. disjoint_saturate.
-    eapply H with (inputs:=inputs); try assumption.
+    apply H with (inputs:=inputs); try assumption.
     + eapply module_items_sorted_skip1; simpl in *; [|eassumption].
       unfold list_subset in *. rewrite Forall_forall in *. crush.
-    + apply RegisterState.has_value_for_set_reg. assumption.
     + symmetry. assumption.
   - inv Hsorted.
     simp module_body_writes module_item_writes statement_writes
          module_body_reads module_item_reads statement_reads expr_reads
       in *.
     unpack_list_subset. disjoint_saturate.
-    edestruct (eval_expr_has_values_some _ rhs) as [x Heval_rhs]; expect 2. {
-      eapply RegisterState.has_value_for_impl; [|eassumption].
-      simpl. apply Forall_forall. assumption. 
-    }
-    rewrite Heval_rhs.
     simpl in *.
     erewrite H with (inputs:=inputs); try assumption; expect 3; cycle 1.
     + eapply module_items_sorted_skip1; simpl in *; [|eassumption].
@@ -313,37 +301,6 @@ Proof.
   - apply H. now inv Hnodup.
 Qed.  
 
-Lemma exact_by_output_equality v1 v2:
-  module_inputs v1 = module_inputs v2 ->
-  module_outputs v1 = module_outputs v2 ->
-  (forall initial,
-    RegisterState.has_value_for (fun var => In var (module_inputs v1)) initial ->
-    run_vmodule v1 initial
-      =?( module_inputs v1 ++ module_outputs v1 )?= 
-    run_vmodule v2 initial) ->
-  v1 ~~~ v2.
-Proof.
-  intros Heq_inputs Heq_outputs Hmatch.
-  constructor; try eassumption; expect 1.
-  unfold "⇓". intros e. split; intros [e' [Hrun [Hhas_inputs [Hhas_outputs Hmatch_e]]]].
-  - rewrite <- Heq_inputs. rewrite <- Heq_outputs.
-    specialize (Hmatch
-      (e // module_inputs v1)
-      ltac:(auto using RegisterState.has_value_for_limit_to_regs)).
-    rewrite Hrun in Hmatch. inv Hmatch. eexists. repeat split.
-    + assumption.
-    + assumption.
-    + transitivity e'; (symmetry + idtac); assumption.
-  - rewrite <- Heq_inputs in *. rewrite <- Heq_outputs in *.
-    specialize (Hmatch
-      (e // module_inputs v1)
-      ltac:(auto using RegisterState.has_value_for_limit_to_regs)).
-    rewrite Hrun in Hmatch. inv Hmatch. eexists. repeat split.
-    + assumption.
-    + assumption.
-    + transitivity e'; (symmetry + idtac); assumption.
-Qed.
-
 Theorem drop_internal_correct v1 v2 :
   drop_internal v1 = inr v2 ->
   v1 ~~~ v2.
@@ -370,8 +327,6 @@ Proof.
       rewrite decls_drop_internal_keep_inputs in *.
       symmetry.
       RegisterState.unpack_match_on.
-      * apply RegisterState.has_value_for_limit_to_regs in H.
-        eapply module_body_keep_vars_preserve; try eassumption.
-      * apply RegisterState.has_value_for_limit_to_regs in H.
-        eapply module_body_keep_vars_correct; eassumption.
+      * eapply module_body_keep_vars_preserve; try eassumption.
+      * eapply module_body_keep_vars_correct; eassumption.
 Qed.

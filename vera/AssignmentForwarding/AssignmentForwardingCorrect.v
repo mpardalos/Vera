@@ -57,19 +57,20 @@ Section Apply.
   Qed.
   
   Lemma apply_substitution_expr_correct {w} v r (e : expression w) regs :
-    eval_expr regs r = regs v ->
+    Some (eval_expr regs r) = regs v ->
     eval_expr regs (apply_substitution_expr v r e) = eval_expr regs e.
   Proof.
     funelim (apply_substitution_expr v r e);
-      intros; simp apply_substitution_expr eval_expr;
+      intros Hval; simp apply_substitution_expr eval_expr;
       try rewrite H by assumption;
       try rewrite H0 by assumption;
       try rewrite H1 by assumption;
-      try reflexivity.
+      try rewrite <- Hval;
+      reflexivity.
   Qed.
 
   Lemma apply_substitution_module_body_valid v r (body : list module_item) regs :
-    eval_expr regs r = regs v ->
+    Some (eval_expr regs r) = regs v ->
     ~ In v (module_body_writes body) ->
     disjoint (module_body_writes body) (expr_reads r) ->
     exec_module_body regs (apply_substitution_module_body v r body) =
@@ -84,10 +85,10 @@ Section Apply.
     destruct lhs; simp expr_reads exec_statement in *; simpl; try reflexivity; expect 1.
     disjoint_saturate.
     rewrite ! apply_substitution_expr_correct by assumption.
-    destruct (eval_expr regs rhs) eqn:E; [|reflexivity].
     apply H; try assumption; expect 1.
     rewrite RegisterState.set_reg_get_out by crush.
     rewrite <- Heval.
+    f_equal.
     apply eval_expr_change_regs.
     apply RegisterState.match_on_set_reg_elim.
     assumption.
@@ -204,27 +205,25 @@ Proof.
   crush.
 Qed.
 
-Lemma forward_assignments_body_correct vars regs body body' :
+Lemma forward_assignments_body_correct vars regs body :
   NoDup (module_body_writes body) ->
   module_items_sorted vars body ->
-  forward_assignments_body body = inr body' ->
-  exec_module_body regs body' = exec_module_body regs body.
+  exec_module_body regs (forward_assignments_body body) = exec_module_body regs body.
 Proof.
-  intros Hnodup Hsorted Hexec.
-  funelim (forward_assignments_body body);
-    rewrite <- Heqcall in *; clear Heqcall; inv Hexec;
-    try reflexivity; expect 1.
-  monad_inv.
+  intros Hnodup Hsorted.
+  funelim (forward_assignments_body body).
+  all: try rewrite <- Heqcall in *; clear Heqcall.
+  all: try reflexivity; expect 1.
   simp module_body_writes module_item_writes statement_writes expr_reads in *.
   inv Hnodup. inv Hsorted.
+  disjoint_saturate.
   simp
     module_body_writes module_item_writes statement_writes expr_reads
     module_body_reads module_item_reads statement_reads expr_reads
+    exec_module_body exec_module_item exec_statement
     in *.
-  disjoint_saturate.
-  simp exec_module_body exec_module_item exec_statement.
-  destruct (eval_expr regs rhs) eqn:Heval; simpl; [|reflexivity].
-  specialize (H ([var] ++ vars) (RegisterState.set_reg var x regs) l).
+  simpl.
+  specialize (H ([var] ++ vars) (RegisterState.set_reg var (eval_expr regs rhs) regs)).
   rewrite H; cycle 1.
   - rewrite apply_substitution_writes. assumption.
   - apply apply_substitution_sorted; eauto.
@@ -234,13 +233,14 @@ Proof.
       rename_match (disjoint vars (module_body_writes tl)) into Hno_overwrite.
       rewrite Hrhs_in_vars. symmetry. apply Hno_overwrite.
     + apply list_subset_app_r. assumption.
-  - reflexivity.
   - apply apply_substitution_module_body_valid.
     + rewrite RegisterState.set_reg_get_in.
-      erewrite eval_expr_change_regs; [eassumption|].
+      f_equal.
+      apply eval_expr_change_regs.
       apply RegisterState.match_on_set_reg_elim.
       rename_match (list_subset (expr_reads rhs) vars) into Hrhs_in_vars.
-      rewrite Hrhs_in_vars. assumption.
+      rewrite Hrhs_in_vars.
+      now disjoint_saturate.
     + assumption.
     + rename_match (module_items_sorted _ tl) into Hsorted_tl.
       apply module_items_sorted_no_overwrite in Hsorted_tl. disjoint_saturate.
@@ -249,30 +249,25 @@ Proof.
       rewrite Hrhs_in_vars. symmetry. apply Hno_overwrite.
 Qed.
 
-Lemma forward_assignments_body_writes body body' :
-  forward_assignments_body body = inr body' ->
-  module_body_writes body' = module_body_writes body.
+Lemma forward_assignments_body_writes body :
+  module_body_writes (forward_assignments_body body) = module_body_writes body.
 Proof.
-  intros H.
-  funelim (forward_assignments_body body);
-    rewrite <- Heqcall in *; clear Heqcall; monad_inv;
-    [reflexivity|].
+  funelim (forward_assignments_body body); [reflexivity|].
   simp module_body_writes module_item_writes statement_writes expr_reads.
+  simpl.
   rewrite H by auto.
   rewrite apply_substitution_writes.
   reflexivity.
 Qed. 
 
-Lemma forward_assignments_body_sorted inputs body body' :
+Lemma forward_assignments_body_sorted inputs body :
   NoDup (module_body_writes body) ->
   module_items_sorted inputs body ->
-  forward_assignments_body body = inr body' ->
-  module_items_sorted inputs body'.
+  module_items_sorted inputs (forward_assignments_body body).
 Proof.
-  intros Hnodup Hsorted Hforward.
-  funelim (forward_assignments_body body);
-    rewrite <- Heqcall in *; clear Heqcall; monad_inv;
-    [assumption|].
+  intros Hnodup Hsorted.
+  funelim (forward_assignments_body body); [assumption|].
+  clear Heqcall.
   inv Hsorted.
   autorewrite with
     expr_reads module_item_reads statement_reads
@@ -294,7 +289,6 @@ Proof.
         rename_match (disjoint inputs (module_body_writes tl)) into Hno_overwrite.
 	rewrite Hrhs_in_vars. symmetry. apply Hno_overwrite.
       * apply list_subset_app_r. assumption.
-    + reflexivity.
 Qed.
 
 Lemma forward_assignments_correct regs v1 v2 :
@@ -303,14 +297,21 @@ Lemma forward_assignments_correct regs v1 v2 :
 Proof.
   intros.
   unfold forward_assignments, run_vmodule, opt_to_sum in *.
-  monad_inv. simpl in *.
+  pose proof (module_inputs_same v1 v2) as Hinputs_same.
+  pose proof (initial_state_same v1 v2) as Hinitial_state_same.
+  inv H.
+  repeat match type of H1 with
+  | (match ?x with _ => _ end = inr _) => destruct x; try discriminate
+  | (inr _ = inr _) => inv H1
+  end; expect 1.
+  simpl in *.
+  rewrite <- Hinputs_same in * by reflexivity.
+  rewrite <- Hinitial_state_same in * by reflexivity.
   rewrite ! sort_module_items_stable
     by eauto using forward_assignments_body_sorted.
-  replace (mk_initial_state
-     {| modName := modName v1; modVariableDecls := modVariableDecls v1; modBody := l |} regs)
-     with (mk_initial_state v1 regs) by now apply initial_state_same.
   symmetry.
-  eapply forward_assignments_body_correct; eassumption.
+  eapply forward_assignments_body_correct.
+  all: eassumption.
 Qed.
 
 Lemma assignment_forwarding_exact_equivalence v1 v2 :
@@ -323,7 +324,8 @@ Proof.
     unfold forward_assignments in *. monad_inv. reflexivity.
   - apply module_outputs_same.
     unfold forward_assignments in *. monad_inv. reflexivity.
-  - intros.
+  - apply functional_extensionality.
+    intros.
     apply forward_assignments_correct.
     assumption.
 Qed.

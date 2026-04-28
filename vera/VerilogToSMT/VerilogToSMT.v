@@ -204,13 +204,12 @@ Section expr_to_smt.
   .
 
   Equations transfer_module_item : Verilog.module_item -> transf SMTLib.term :=
-    transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign (Verilog.NamedExpression var) rhs)) :=
+    transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign var rhs)) :=
       assert_dec (In var outputs) "Assignment target must be module outputs"%string ;;
       assert_dec (List.Forall (fun n => In n inputs) (Verilog.expr_reads rhs)) "Only reads from module inputs allowed"%string ;;
       let* lhs_smt := var_to_smt var in
       let* rhs_smt := expr_to_smt rhs in
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
-    transfer_module_item (Verilog.AlwaysComb _) := raise "Only single-assignment always_comb (assign) allowed"%string;
   .
 
   Equations transfer_module_body : list Verilog.module_item -> transf (list SMTLib.term) :=
@@ -284,11 +283,8 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
       (Verilog.module_body_writes (Verilog.modBody vmodule))
       (Verilog.module_outputs vmodule)
       writes_nodup ) ;;
-  assert_dec
-    (Forall clean_module_item_structure (Verilog.modBody vmodule))
-    "Invalid module item"%string ;;
   (* This is implied by the above, so it could be removed, added to
-  void writing a proof. *)
+     avoid writing a proof. *)
   assert_dec
     (module_items_sorted (Verilog.module_inputs vmodule) (Verilog.modBody vmodule))
     "Module items unsorted"%string ;;

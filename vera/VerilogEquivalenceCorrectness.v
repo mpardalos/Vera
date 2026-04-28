@@ -389,7 +389,7 @@ Proof.
         eassumption.
     + simpl. intros ρ [Hvalues_left Hvalues_right].
       split; intros H; decompose record H; clear H;
-        repeat split; try eassumption.
+        unpack_goal; try eassumption.
       * erewrite execution_of_valuation_map_equal; [eassumption|].
         replace m_combined. intros. symmetry.
         eapply VerilogSMTBijection.combine_different_tag_left
@@ -748,6 +748,10 @@ Ltac inv_equivalence_query_sat :=
 
 Local Open Scope verilog.
 
+Global Instance match_on_eq_subrelation (P : Verilog.variable -> Prop) : 
+  subrelation eq (RegisterState.match_on P).
+Proof. intros a b <-. reflexivity. Qed.
+
 Global Instance Proper_valid_execution v :
   Proper
     (RegisterState.match_on (fun var => In var (Verilog.module_inputs v ++ Verilog.module_outputs v)) ==> iff)
@@ -756,40 +760,44 @@ Proof.
   repeat intro.
   unfold valid_execution.
   RegisterState.unpack_match_on.
-  rename_match (_ =( Verilog.module_inputs _ )= _ ) into inputs_same.
-  rename_match (_ =( Verilog.module_outputs _ )= _ ) into outputs_same.
   split.
-  - intros H. decompose record H; clear H.
+  - intros H1. decompose record H1. clear H1.
     RegisterState.unpack_match_on.
-    rewrite inputs_same in *; clear inputs_same.
-    rewrite outputs_same in *; clear outputs_same.
-    exists x0. repeat split; RegisterState.unpack_match_on; try eassumption.
-  - intros H. decompose record H; clear H.
+    setoid_rewrite H0 at 2 in H3.
+    rewrite H0 in *.
+    rewrite H in *.
+    unpack_goal; try eassumption; expect 1.
+    RegisterState.unpack_match_on; eassumption.
+  - intros H1. decompose record H1. clear H1.
     RegisterState.unpack_match_on.
-    rewrite <- inputs_same in *; clear inputs_same.
-    rewrite <- outputs_same in *; clear outputs_same.
-    exists x0. repeat split; RegisterState.unpack_match_on; try eassumption.
+    setoid_rewrite <- H0 at 2 in H3.
+    rewrite <- H0 in *.
+    rewrite <- H in *.
+    unpack_goal; try eassumption; expect 1.
+    RegisterState.unpack_match_on; eassumption.
 Qed.
 
-Lemma transfer_execution v e :
-  clean_module v ->
-  RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
-  exists e', e =!!( Verilog.module_inputs v )!!= e' /\ v ⇓ e'.
-Proof.
-  unfold clean_module.
-  intros Hclean Hinputs. specialize (Hclean _ Hinputs).
-  destruct Hclean as [e' [Hrun [Hmatch Houtputs]]].
-  exists e'. split.
-  - crush.
-  - unfold "⇓". exists e'. repeat split.
-    + setoid_rewrite <- Hmatch at 1.
-      apply Hrun.
-    + setoid_rewrite <- Hmatch. 
-      apply VerilogToSMTCorrect.defined_value_for_has_value_for.
-      apply Hinputs.
-    + apply VerilogToSMTCorrect.defined_value_for_has_value_for.
-      apply Houtputs.
-Qed.
+(* Lemma transfer_execution v e :
+ *   clean_module v ->
+ *   RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
+ *   exists e', e =!!( Verilog.module_inputs v )!!= e' /\ v ⇓ e'.
+ * Proof.
+ *   unfold clean_module.
+ *   intros Hclean Hinputs.
+ *   specialize (Hclean _ Hinputs).
+ *   destruct Hclean as [Hmatch Houtputs].
+ *   exists (run_vmodule v (e // Verilog.module_inputs v)). split.
+ *   - crush.
+ *   - unfold "⇓". unpack_goal.
+ *     + setoid_rewrite <- Hmatch at 1.
+ *       apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+ *       apply Hinputs.
+ *     + setoid_rewrite <- Hmatch. 
+ *       apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+ *       apply Hinputs.
+ *     + apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+ *       apply Houtputs.
+ * Qed. *)
 
 Lemma clean_defined_outputs v e :
   clean_module v ->
@@ -800,13 +808,61 @@ Lemma clean_defined_outputs v e :
     (fun var : Verilog.variable => In var (Verilog.module_outputs v)) e.
 Proof.
   unfold clean_module, "⇓".
-  intros Hclean [e' [Hrun [Hinputs_e' [Houtputs_e' Hmatch]]]] Hinputs. 
+  intros Hclean [Hinputs_e [Houtputs_e Hmatch]] Hinputs. 
   specialize (Hclean e). insterU Hclean.
-  destruct Hclean as [e'' [Hclean [Hmatch'' Houtputs_e'']]]. 
-  replace e'' with e' in * by congruence.
+  destruct Hclean as [Hmatch_inputs Hdefined_outputs].
+  (* replace e'' with e' in * by congruence. *)
   RegisterState.unpack_match_on.
-  rename_match (e' =( Verilog.module_outputs v )= e) into Hmatch_outputs.
-  rewrite <- Hmatch_outputs. assumption.
+  rename_match (_ =( Verilog.module_outputs v )= e) into Hmatch_outputs.
+  rewrite <- Hmatch_outputs.
+  assumption.
+Qed.
+
+Ltac assert_rewrite r :=
+  let H := fresh "H" in
+  assert ( H : r ); [|rewrite H; clear H].
+
+Lemma list_subset_empty {A} (l : list A) :
+  list_subset [] l.
+Proof. apply Forall_nil. Qed.
+
+(* Lemma module_items_sorted_reads inputs body :
+ *   module_items_sorted inputs body ->
+ *   list_subset (Verilog.module_body_reads body) inputs.
+ * Proof.
+ *   induction 1.
+ *   - simp module_body_reads.
+ *     apply list_subset_empty.
+ *   - simp module_body_reads.
+ *     apply list_subset_app. split.
+ *     + assumption.
+ *     +  *)
+
+(* Move me to semantics *)
+Lemma run_vmodule_defined r v:
+  (* This should just be "sortable", not "sorted" *)
+  module_items_sorted (Verilog.module_inputs v) (Verilog.modBody v) ->
+  (* This should be removed, see exec_module_body_defined note *)
+  list_subset (Verilog.module_body_reads (Verilog.modBody v)) (Verilog.module_inputs v) ->
+  list_subset (Verilog.module_outputs v) (Verilog.module_body_writes (Verilog.modBody v)) ->
+  RegisterState.defined_value_for
+    (fun var : Verilog.variable => In var (Verilog.module_inputs v))
+    r ->
+  RegisterState.defined_value_for
+    (fun var : Verilog.variable => In var (Verilog.module_outputs v))
+    (run_vmodule v r).
+Proof.
+  intros * Hsorted Hreads_in Houtputs_in Hinputs_defined.
+  unfold run_vmodule, mk_initial_state.
+  rewrite sort_module_items_stable by assumption.
+  eapply exec_module_body_defined.
+  - reflexivity.
+  - etransitivity.
+    + eassumption.
+    + apply list_subset_app_r.
+  - setoid_rewrite Hreads_in.
+    apply RegisterState.defined_value_for_limit_to_regs.
+    assumption.
 Qed.
 
 Lemma execution_congruent v e1 e2 :
@@ -818,77 +874,122 @@ Proof.
   intros Hadmit1 Hadmit2 Hinput_match.
   decompose record Hadmit1. clear Hadmit1.
   decompose record Hadmit2. clear Hadmit2.
-  match goal with
-  | [ H : run_vmodule v (e1 // Verilog.module_inputs v) = Some ?x |- _ ] =>
-    rename H into Hrun1; rename x into e1'
-  end.
-  match goal with
-  | [ H : run_vmodule v (e2 // Verilog.module_inputs v) = Some ?x |- _ ] =>
-    rename H into Hrun2; rename x into e2'
-  end.
-  rewrite <- Hinput_match in Hrun2.
-  replace e2' with e1' in * by congruence.
   RegisterState.unpack_match_on.
-  transitivity e1'.
-  - symmetry. assumption.
-  - assumption.
+  rename_match (run_vmodule v (e1 // _) =( Verilog.module_outputs _ )= e1) into Houtputs1.
+  rewrite <- Houtputs1.
+  rename_match (run_vmodule v (e2 // _) =( Verilog.module_outputs _ )= e2) into Houtputs2.
+  rewrite <- Houtputs2.
+  rewrite Hinput_match.
+  reflexivity.
 Qed.
+
+Lemma admit_run_vmodule v e:
+  RegisterState.has_value_for (fun var => In var (Verilog.module_inputs v)) e ->
+  v ⇓ (run_vmodule v (e // Verilog.module_inputs v)).
+Proof.
+  intros Hhas_inputs.
+  unfold "⇓".
+  unpack_goal.
+  - admit. (* has inputs *)
+  - admit. (* has outputs *)
+  - admit. (* preserve inputs *)
+Admitted.
 
 Lemma no_counterexample_equivalent_iff v1 v2 :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
   clean_module v1 ->
   clean_module v2 ->
-  (forall e1 e2, ~ counterexample_execution v1 e1 v2 e2) <-> (equivalent_behaviour v1 v2).
+  (forall e1 e2, ~ counterexample_execution v1 e1 v2 e2) <-> (v1 ~~ v2).
 Proof.
   intros Hinput_match Houtput_match Hclean1 Hclean2.
   unfold counterexample_execution.
   split. 
-  - intros H. constructor; try assumption; [idtac].
+  - intros H.
+    constructor; try assumption; [idtac].
     intros e Hno_exes.
     split; intros He.
+    (* This is duplicated, ideally we want a "without loss of generality" tactic *)
     + RegisterState.unpack_defined_value_for.
-      destruct (transfer_execution v2 e) as [e' [Hinput_values He']];
-        [assumption|rewrite <- Hinput_match; assumption|]. 
-      rewrite <- Hinput_match in Hinput_values.
-      specialize (H e e').
+      assert (Hrun2 : v2 ⇓ run_vmodule v2 (e // Verilog.module_inputs v2)). {
+        apply admit_run_vmodule. 
+	apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+	rewrite <- Hinput_match.
+	assumption.
+      }
+      assert (Hmatch_inputs : e =!!( Verilog.module_inputs v1 )!!= run_vmodule v2 (e // Verilog.module_inputs v2)). {
+	split; [|assumption].
+	edestruct Hclean2.
+	- rewrite <- Hinput_match.
+	  eassumption.
+	- rewrite Hinput_match.
+	  eassumption.
+      }
+      specialize (H e (run_vmodule v2 (e // Verilog.module_inputs v2))).
       apply not_and_or in H. destruct H; [contradiction|].
       apply not_and_or in H. destruct H; [contradiction|].
       apply not_and_or in H. destruct H; [contradiction|].
       apply NNPP in H.
-      eapply Proper_valid_execution; [|eassumption].
-      rewrite <- Hinput_match, <- Houtput_match.
-      destruct Hinput_values.
-      RegisterState.unpack_match_on; assumption.
+      assert (Hmatch_all :
+        e =( Verilog.module_inputs v2 ++ Verilog.module_outputs v2
+	  )= run_vmodule v2 (e // Verilog.module_inputs v2)). {
+	  RegisterState.unpack_match_on.
+	- rewrite Hinput_match in Hmatch_inputs.
+	  destruct Hmatch_inputs. assumption.
+	- rewrite Houtput_match in H. assumption.
+      }
+      rewrite Hmatch_all.
+      assumption.
     + RegisterState.unpack_defined_value_for.
-      destruct (transfer_execution v1 e) as [e' [Hinput_values He']];
-        [assumption|assumption|]. 
-      (* rewrite Hinput_match in Hinput_values. *)
-      symmetry in Hinput_values.
-      specialize (H e' e).
+      assert (Hrun1 : v1 ⇓ run_vmodule v1 (e // Verilog.module_inputs v1)). {
+        apply admit_run_vmodule. 
+	apply VerilogToSMTCorrect.defined_value_for_has_value_for.
+	assumption.
+      }
+      assert (Hmatch_inputs : e =!!( Verilog.module_inputs v1 )!!= run_vmodule v1 (e // Verilog.module_inputs v1)). {
+	split; [|assumption].
+	unfold clean_module in Hclean1.
+	edestruct Hclean1.
+	- eassumption.
+	- eassumption.
+      }
+      specialize (H (run_vmodule v1 (e // Verilog.module_inputs v1)) e).
       apply not_and_or in H. destruct H; [contradiction|].
       apply not_and_or in H. destruct H; [contradiction|].
-      apply not_and_or in H. destruct H; [contradiction|].
+      apply not_and_or in H. destruct H; [symmetry in Hmatch_inputs; contradiction|].
       apply NNPP in H.
-      destruct Hinput_values.
-      setoid_replace e with e'
-        using relation (RegisterState.match_on (fun var => In var (Verilog.module_inputs v1 ++ Verilog.module_outputs v1)))
-	by (RegisterState.unpack_match_on; symmetry; assumption).
+      assert_rewrite (
+          e =(
+	    Verilog.module_inputs v1 ++ Verilog.module_outputs v1
+          )= run_vmodule v1 (e // Verilog.module_inputs v1)). {
+	RegisterState.unpack_match_on.
+	- destruct Hmatch_inputs. assumption.
+	- symmetry. assumption.
+      }
       assumption.
   - intros [] e1 e2 Hcontra. decompose record Hcontra. clear Hcontra.
-    erewrite <- execution_match0 in H1; cycle 1. {
+    rename_match (v1 ⇓ e1) into Hadmit1.
+    rename_match (v2 ⇓ e2) into Hadmit2.
+    rename_match (e1 =!!( Verilog.module_inputs v1 )!!= e2) into Hmatch_inputs.
+    rename_match (~ (e1 =( Verilog.module_outputs v1 )= e2)) into Hno_match_outputs.
+    erewrite <- execution_match0 in Hadmit2; cycle 1. {
       RegisterState.unpack_defined_value_for.
-      - destruct H0. rewrite <- H0. assumption.
+      - destruct Hmatch_inputs as [Hmatch_inputs ?]. rewrite <- Hmatch_inputs. assumption.
       - rewrite Houtput_match.
         apply clean_defined_outputs; try assumption; expect 1.
-	rewrite <- Hinput_match. destruct H0.
-	rewrite <- H0. assumption.
+	destruct Hmatch_inputs as [Hmatch_inputs Hdefined_inputs].
+	rewrite <- Hinput_match.
+	rewrite <- Hmatch_inputs.
+	assumption.
     }
-    apply H3. apply execution_congruent.
+    contradict Hno_match_outputs.
+    apply execution_congruent.
     + assumption.
     + assumption.
-    + destruct H0. assumption.
+    + destruct Hmatch_inputs. assumption.
 Qed.
+
+Print Assumptions no_counterexample_equivalent_iff.
 
 Lemma not_equivalent_counterexample_iff v1 v2 :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
@@ -915,7 +1016,6 @@ Record verilog_to_smt_checked (v : Verilog.vmodule) := MkVerilogToSMTChecked {
     no_duplicate_writes : NoDup (Verilog.module_body_writes (Verilog.modBody v));
     no_duplicate_outputs : NoDup (Verilog.module_outputs v);
     writes_outputs : Permutation (Verilog.module_body_writes (Verilog.modBody v)) (Verilog.module_outputs v);
-    all_module_items_clean : Forall clean_module_item_structure (Verilog.modBody v);
     sorted : module_items_sorted (Verilog.module_inputs v) (Verilog.modBody v);
 }.
 
@@ -1114,6 +1214,25 @@ Proof.
   rewrite Heq. reflexivity.
 Qed.
 
+Global Instance Proper_defined_match_on_impl :
+  Proper
+    ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> eq ==> Basics.impl)
+    RegisterState.execution_defined_match_on.
+Proof. repeat intro. subst. crush. Qed.
+
+Global Instance Proper_defined_match_on_match_on C:
+  Proper
+    (RegisterState.match_on C ==> RegisterState.match_on C ==> iff)
+    (RegisterState.execution_defined_match_on C).
+Proof.
+  repeat intro.
+  subst.
+  unfold RegisterState.execution_defined_match_on.
+  rewrite H.
+  rewrite H0.
+  reflexivity.
+Qed.
+
 Lemma counterexample_execution_rewrite_left v e1 e1' v2 e2 :
   e1 =( Verilog.module_inputs v ++ Verilog.module_outputs v )= e1' ->
   counterexample_execution v e1 v2 e2 <-> counterexample_execution v e1' v2 e2.
@@ -1121,30 +1240,21 @@ Proof.
   unfold counterexample_execution.
   intros H.
   split; intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]];
-    repeat split; try eassumption.
+    unpack_goal; try eassumption.
   - rewrite H in Hvalid1. assumption.
-  - RegisterState.unpack_match_on. transitivity e1.
-    + symmetry. assumption.
-    + destruct Hdefined_in. assumption.
   - RegisterState.unpack_match_on.
     rewrite <- H.
-    destruct Hdefined_in. assumption.
-  - intro. contradict Hnot_defined_out.
-    RegisterState.unpack_match_on.
-    transitivity e1'; assumption.
+    assumption.
+  - RegisterState.unpack_match_on.
+    rewrite <- H0.
+    assumption.
   - rewrite H. assumption.
   - RegisterState.unpack_match_on.
-    transitivity e1'.
-    + assumption.
-    + destruct Hdefined_in. assumption.
-  - RegisterState.unpack_match_on.
     rewrite H.
-    destruct Hdefined_in. assumption.
-  - intro. contradict Hnot_defined_out.
-    RegisterState.unpack_match_on.
-    transitivity e1.
-    + symmetry. assumption.
-    + assumption.
+    assumption.
+  - RegisterState.unpack_match_on.
+    rewrite H0.
+    assumption.
 Qed.
 
 Lemma counterexample_execution_rewrite_right v1 e1 v2 e2 e2' :
@@ -1155,36 +1265,21 @@ Lemma counterexample_execution_rewrite_right v1 e1 v2 e2 e2' :
 Proof.
   unfold counterexample_execution.
   intros inputs_same outputs_same H.
-  split; intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]];
-    repeat split; try eassumption.
-  - rewrite H in Hvalid2. assumption.
-  - rewrite inputs_same in *.
-    RegisterState.unpack_match_on. transitivity e2.
-    + destruct Hdefined_in. assumption.
-    + assumption.
-  - rewrite inputs_same in *.
-    RegisterState.unpack_match_on.
-    destruct Hdefined_in. assumption.
-  - rewrite outputs_same in *.
-    intro. contradict Hnot_defined_out.
-    RegisterState.unpack_match_on.
-    transitivity e2'.
-    + assumption.
-    + symmetry. assumption.
-  - rewrite H. assumption.
-  - rewrite inputs_same in *.
-    RegisterState.unpack_match_on.
-    transitivity e2'.
-    + destruct Hdefined_in. assumption.
-    + symmetry. assumption.
-  - RegisterState.unpack_match_on.
-    destruct Hdefined_in. assumption.
-  - rewrite outputs_same in *.
-    intro. contradict Hnot_defined_out.
-    RegisterState.unpack_match_on.
-    transitivity e2.
-    + assumption.
-    + assumption.
+  split; intros [Hvalid1 [Hvalid2 [Hmatch_in Hnot_defined_out]]];
+    unpack_goal; try eassumption.
+  1,4: match goal with
+       | [ |- ?v2 ⇓ ?e' ] =>
+         rewrite H || rewrite <- H; assumption
+       end.
+  all: rewrite <- inputs_same in *.
+  all: rewrite <- outputs_same in *.
+  all: RegisterState.unpack_match_on.
+  all: rename_match (e2 =( Verilog.module_inputs v1 )= e2') into Hmatch_inputs.
+  all: rename_match (e2 =( Verilog.module_outputs v1 )= e2') into Hmatch_outputs.
+  - rewrite <- Hmatch_inputs. assumption.
+  - rewrite <- Hmatch_outputs. assumption.
+  - rewrite Hmatch_inputs. assumption.
+  - rewrite Hmatch_outputs. assumption.
 Qed.
 
 Lemma match_map_execution_map_equal (m1 m2 : VerilogSMTBijection.t) tag e:

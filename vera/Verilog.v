@@ -272,7 +272,7 @@ Module Verilog.
   Definition expr_type {w} (e : expression w) := w.
 
   Inductive statement :=
-  | BlockingAssign {w} (lhs rhs : expression w)
+  | BlockingAssign (lhs : Verilog.variable) (rhs : expression (Verilog.varType lhs))
   .
 
   Inductive module_item :=
@@ -372,7 +372,7 @@ Module Verilog.
   Equations
     statement_writes : Verilog.statement -> list Verilog.variable :=
     statement_writes (Verilog.BlockingAssign lhs rhs) :=
-      expr_reads lhs ; (* ONLY looking at lhs here *)
+      [lhs] ; (* ONLY looking at lhs here *)
   .
 
   Equations module_item_reads : Verilog.module_item -> list Verilog.variable :=
@@ -542,7 +542,7 @@ Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
 | RawVerilog.BlockingAssign (RawVerilog.NamedExpression var) rhs =>
   let* (w_rhs; t_rhs) := tc_expr rhs in
   let* t_rhs' := cast_width "Different widths in blocking assign" (Verilog.varType var) t_rhs in
-  inr (Verilog.BlockingAssign (Verilog.NamedExpression var) t_rhs')
+  inr (Verilog.BlockingAssign var t_rhs')
 | RawVerilog.BlockingAssign lhs rhs =>
   inl "Unsupported assignment target"%string
 }

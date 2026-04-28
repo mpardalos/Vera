@@ -153,14 +153,10 @@ Module SMT.
       | Some (t, vname) =>
           if dec (t = tag)
           then
-            match e vname with
+            match XBV.to_bv (e vname) with
+            (* TODO: Fix handling of Xs *)
             | None => None
-            | Some x =>
-                match XBV.to_bv x with
-                (* TODO: Fix handling of Xs *)
-                | None => None
-                | Some val => Some (SMTLib.Value_BitVec _ val)
-                end
+            | Some val => Some (SMTLib.Value_BitVec _ val)
             end
           else None
       end.
@@ -174,39 +170,14 @@ Module SMT.
           match v smtName with
           | Some (SMTLib.Value_BitVec w bv) =>
               match dec (w = Verilog.varType var) with
-              | left e => Some (rew e in (XBV.from_bv bv))
-              | _ => None
+              | left e => rew e in (XBV.from_bv bv)
+              | _ => XBV.exes _
               end
-          | _ => None
+          | _ => XBV.exes _
           end
-      | None => None
+      | None => XBV.exes _
       end
   .
-
-  Lemma execution_of_valuation_no_exes tag m ρ n xbv :
-    SMT.execution_of_valuation tag m ρ n = Some xbv ->
-    ~ XBV.has_x xbv.
-  Proof.
-    unfold execution_of_valuation.
-    intros.
-    autodestruct.
-    simpl.
-    rewrite XBV.has_x_to_bv.
-    rewrite XBV.xbv_bv_inverse.
-    discriminate.
-  Qed.
-
-  Lemma execution_of_valuation_some tag (m : VerilogSMTBijection.t) ρ smtName var bv :
-    m (tag, var) = Some smtName ->
-    ρ smtName = Some (SMTLib.Value_BitVec (Verilog.varType var) bv) ->
-    execution_of_valuation tag m ρ var = Some (XBV.from_bv bv).
-  Proof.
-    unfold execution_of_valuation.
-    intros H1 H2.
-    rewrite H1; rewrite H2.
-    autodestruct; [|contradiction].
-    now rewrite <- eq_rect_eq.
-  Qed.
 
   Definition valuation_of_executions (m : VerilogSMTBijection.t) (e1 e2 : execution) : SMTQueries.valuation :=
     fun n =>
@@ -219,85 +190,10 @@ Module SMT.
             | TaggedVariable.VerilogRight => e2
             end
           in
-          match e var with
-          | None => None
-          | Some xbv =>
-              match XBV.to_bv xbv with
-              (* TODO: Fix handling of Xs *)
-              | None => None
-              | Some val => Some (SMTLib.Value_BitVec _ val)
-              end
-          end
+            match XBV.to_bv (e var) with
+            (* TODO: Fix handling of Xs *)
+            | None => None
+            | Some val => Some (SMTLib.Value_BitVec _ val)
+            end
       end.
-
-  Lemma valuation_of_executions_some_left var nameSMT xbv bv (m : VerilogSMTBijection.t) e1 e2 :
-    e1 var = Some xbv ->
-    XBV.to_bv xbv = Some bv ->
-    m (TaggedVariable.VerilogLeft, var) = Some nameSMT ->
-    (valuation_of_executions m e1 e2) nameSMT =
-      Some (SMTLib.Value_BitVec (Verilog.varType var) bv).
-  Proof.
-    intros Hexec Hexes Hname.
-    unfold valuation_of_executions; simpl.
-
-    pose proof (bij_wf m) as Hinverse.
-    specialize (Hinverse (TaggedVariable.VerilogLeft, var) nameSMT).
-    apply Hinverse in Hname. clear Hinverse.
-    rewrite Hname.
-
-    rewrite Hexec.
-    rewrite Hexes.
-    reflexivity.
-  Qed.
-
-  Lemma valuation_of_executions_some_right var nameSMT xbv bv (m : VerilogSMTBijection.t) e1 e2 :
-    e2 var = Some xbv ->
-    XBV.to_bv xbv = Some bv ->
-    m (TaggedVariable.VerilogRight, var) = Some nameSMT ->
-    (valuation_of_executions m e1 e2) nameSMT =
-      Some (SMTLib.Value_BitVec (Verilog.varType var) bv).
-  Proof.
-    intros Hexec Hexes Hname.
-    unfold valuation_of_executions; simpl.
-
-    pose proof (bij_wf m) as Hinverse.
-    specialize (Hinverse (TaggedVariable.VerilogRight, var) nameSMT).
-    apply Hinverse in Hname. clear Hinverse.
-    rewrite Hname.
-
-    rewrite Hexec.
-    rewrite Hexes.
-    reflexivity.
-  Qed.
-
-  Section inverse.
-    Variable m : VerilogSMTBijection.t.
-    Variable v : Verilog.vmodule.
-    Variable e : execution.
-    Variable tag : TaggedVariable.Tag.
-    Context (Hcomplete : complete_execution v e).
-    Context (Hmatch : match_map_vars tag m (Verilog.modVariables v)).
-
-    Lemma valuation_of_execution_some var nameSMT xbv bv :
-      e var = Some (xbv) ->
-      XBV.to_bv xbv = Some bv ->
-      m (tag, var) = Some nameSMT ->
-      (valuation_of_execution tag m e) nameSMT =
-        Some (SMTLib.Value_BitVec (Verilog.varType var) bv).
-    Proof.
-      intros Hexec Hexes Hname.
-      unfold valuation_of_execution; simpl.
-
-      pose proof (bij_wf m) as Hinverse.
-      specialize (Hinverse (tag, var) nameSMT).
-      apply Hinverse in Hname.
-      rewrite Hname.
-
-      destruct (dec (tag = tag)); [|contradiction].
-
-      rewrite Hexec.
-      rewrite Hexes.
-      reflexivity.
-    Qed.
-  End inverse.
 End SMT.
