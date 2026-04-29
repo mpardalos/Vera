@@ -313,7 +313,18 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     blifToVerilog from to = do
       need [ from ]
       let log = to <.> "log"
-      cmd_ (FileStdout log) (FileStderr log) "yosys" "--commands" [ printf "read_blif %s; write_verilog %s" from to :: String ]
+      -- rename -hide gives the internal wires of the module private
+      -- names. This prevents eqy from trying to match them up with
+      -- wires in the other module that this will be compared to.
+      -- These private names are something like `_0793_`, which
+      -- doesn't look globally unique, so I'm not sure this will work
+      -- if it is run on both this and the orig that this is compared
+      -- to, so we only run the rename here (on the blif), and not on
+      -- the orig file. If we compare two Verilogs which both come
+      -- from blifs from this function, there might be trouble.
+      cmd_ (FileStdout log) (FileStderr log)
+        "yosys" "--commands"
+        [ printf "read_blif %s; rename -hide *; write_verilog %s" from to :: String ]
       trackWrite [to]
 
   -- | Rename the ports in the target file to match those in the source file
