@@ -329,7 +329,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         let portPairs = [ (BS8.pack "\\\\" <> basePort <> BS8.pack " ", targetPort)
                         | (basePort, targetPort) <- zip (BS8.lines basePorts) (BS8.lines targetPorts)
                         ]
-        let sedScript = BS8.unlines [BS8.pack "s/" <> from <> BS8.pack "/" <> to <> BS8.pack "/g" | (to, from) <- portPairs]
+        let sedScript = BS8.unlines [BS8.pack "s/\\<" <> from <> BS8.pack "\\>/" <> to <> BS8.pack "/g" | (to, from) <- portPairs]
         liftIO $ BS.writeFile (target <.> "sed") sedScript
         cmd_ "sed" ["-i", "-f", target <.> "sed", target]
 
