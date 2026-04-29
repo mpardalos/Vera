@@ -14,7 +14,7 @@ import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Util
 import Data.Tuple (swap)
-import Data.List (isSuffixOf, isInfixOf, isPrefixOf, stripPrefix, unsnoc, find, intercalate)
+import Data.List (isSuffixOf, isInfixOf, isPrefixOf, stripPrefix, unsnoc, find, intercalate, sort)
 import Data.Bifunctor (bimap)
 import Data.Char (isDigit)
 import Data.Maybe (isJust, fromMaybe)
@@ -332,17 +332,23 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     renamePorts :: FilePath -> FilePath -> Action ()
     renamePorts base target = do
         let portFilter = ".design.members[1].body.members[] | select(.kind == \"Port\") | .name"
-        Stdout (basePorts :: ByteString) <- cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" base portFilter :: String)
-        Stdout (targetPorts :: ByteString) <- cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" target portFilter :: String)
-        -- The port we are renaming to needs to be escaped. This:
-        --   a) Assumes that it is not already escaped in what we get from slang
-        --   b) Adds a space afterwards so that the escaping doesn't "eat" any chars that happen to be after the identifier
-        let portPairs = [ (BS8.pack "\\\\" <> basePort <> BS8.pack " ", targetPort)
-                        | (basePort, targetPort) <- zip (BS8.lines basePorts) (BS8.lines targetPorts)
-                        ]
-        let sedScript = BS8.unlines [BS8.pack "s/\\<" <> from <> BS8.pack "\\>/" <> to <> BS8.pack "/g" | (to, from) <- portPairs]
-        liftIO $ BS.writeFile (target <.> "sed") sedScript
-        cmd_ "sed" ["-i", "-f", target <.> "sed", target]
+        Stdout (basePortsLines :: ByteString) <- cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" base portFilter :: String)
+        Stdout (targetPortsLines :: ByteString) <- cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" target portFilter :: String)
+        let basePorts :: [ByteString] = BS8.lines basePortsLines
+        let targetPorts :: [ByteString] = BS8.lines targetPortsLines
+        if (sort basePorts /= sort targetPorts)
+          then do
+            -- The port we are renaming to needs to be escaped. This:
+            --   a) Assumes that it is not already escaped in what we get from slang
+            --   b) Adds a space afterwards so that the escaping doesn't "eat" any chars that happen to be after the identifier
+            let portPairs = [ (BS8.pack "\\\\" <> basePort <> BS8.pack " ", targetPort)
+                            | (basePort, targetPort) <- zip basePorts targetPorts
+                            ]
+            let sedScript = BS8.unlines [BS8.pack "s/\\<" <> from <> BS8.pack "\\>/" <> to <> BS8.pack "/g" | (to, from) <- portPairs]
+            liftIO $ BS.writeFile (target <.> "sed") sedScript
+            cmd_ "sed" ["-i", "-f", target <.> "sed", target]
+            liftIO $ T.appendFile target (T.pack "\n// PORTS RENAMED\n")
+          else liftIO $ T.appendFile target (T.pack "\n// PORTS NOT RENAMED\n")
 
   "out/EPFL-benchmarks/*/*/orig.sv" !%> \out [category, name] -> do
     let src = "EPFL-benchmarks" </> category </> name -<.> "v"
