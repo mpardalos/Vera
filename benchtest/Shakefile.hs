@@ -326,7 +326,7 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         -- The port we are renaming to needs to be escaped. This:
         --   a) Assumes that it is not already escaped in what we get from slang
         --   b) Adds a space afterwards so that the escaping doesn't "eat" any chars that happen to be after the identifier
-        let portPairs = [ (BS8.pack "\\" <> basePort <> BS8.pack " ", targetPort)
+        let portPairs = [ (BS8.pack "\\\\" <> basePort <> BS8.pack " ", targetPort)
                         | (basePort, targetPort) <- zip (BS8.lines basePorts) (BS8.lines targetPorts)
                         ]
         let sedScript = BS8.unlines [BS8.pack "s/" <> from <> BS8.pack "/" <> to <> BS8.pack "/g" | (to, from) <- portPairs]
