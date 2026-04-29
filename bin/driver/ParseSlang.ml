@@ -373,4 +373,5 @@ let parse_verilog_file (path : string) : Vera.RawVerilog.vmodule =
     Unix.open_process_in (Format.sprintf "slang --quiet --ast-json - %s" path)
   in
   let slang_json = Yojson.Safe.from_channel slang_out in
+  let _ = Unix.close_process_in slang_out in
   parse_slang slang_json

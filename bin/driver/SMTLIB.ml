@@ -13,8 +13,8 @@ let run_solver (run_cmd : string) ?(read_output = def_read_output) q =
   let smt_fmt = Format.formatter_of_out_channel solver_in in
   SMTLib.query smt_fmt q;
   close_out solver_in;
-
   let full_output = In_channel.input_all solver_out in
+  let _ = Unix.close_process (solver_out, solver_in) in
   (read_output full_output, full_output)
 
 let run_query_z3 = run_solver "z3 -model -in"

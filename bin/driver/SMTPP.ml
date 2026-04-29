@@ -79,4 +79,5 @@ module SMTLib = struct
     fprintf fmt "(set-logic QF_BV)\n";
     raw_query fmt query;
     fprintf fmt "(check-sat)\n";
+    fprintf fmt "(exit)\n";
 end
