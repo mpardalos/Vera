@@ -72,6 +72,13 @@ Module RawBV.
     | b::bs => to_string bs ++ (if b then "1" else "0")
     end.
 
+  Goal (to_string (of_N_full 14) = "1110"%string).
+  Proof. reflexivity. Qed.
+  Goal (to_string (of_N_full 8) = "1000"%string).
+  Proof. reflexivity. Qed.
+  Goal (to_string (of_bits [false; false; false; true]) = "1000"%string).
+  Proof. reflexivity. Qed.
+
   Definition bv_map2_common_map2 (f : bool -> bool -> bool) (bv1 bv2 : bitvector) :
     map2 f bv1 bv2 = (Common.map2 f bv1 bv2).
   Proof.
