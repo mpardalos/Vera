@@ -128,22 +128,42 @@ let parse_net json : Vera.RawVerilog.variable_declaration =
     Vera.RawVerilog.varDeclVectorDeclaration = vector_declaration;
   }
 
+let bool_as_bit fmt bool =
+  if bool
+     then Format.fprintf fmt "1"
+     else Format.fprintf fmt "0"
+
 let hex_to_bits width hex : bool list =
-  let r =
-    snd
-      (String.fold_left
-         (fun (w, acc) c ->
-           if w <= 0 then (0, acc)
-           else
-             ( w - 4,
-               List.append acc
-                 (Vera.bits_from_int (Z.of_int 4) (Z.of_int (int_of_string ("0x" ^ String.make 1 c))))
-             ))
-         (width, []) hex)
+  let raw_bits =
+    hex |> String.to_seq |> List.of_seq
+    |> List.concat_map (function
+      | '0' -> [ false; false; false; false ]
+      | '1' -> [ false; false; false; true ]
+      | '2' -> [ false; false; true; false ]
+      | '3' -> [ false; false; true; true ]
+      | '4' -> [ false; true; false; false ]
+      | '5' -> [ false; true; false; true ]
+      | '6' -> [ false; true; true; false ]
+      | '7' -> [ false; true; true; true ]
+      | '8' -> [ true; false; false; false ]
+      | '9' -> [ true; false; false; true ]
+      | 'a' | 'A' -> [ true; false; true; false ]
+      | 'b' | 'B' -> [ true; false; true; true ]
+      | 'c' | 'C' -> [ true; true; false; false ]
+      | 'd' | 'D' -> [ true; true; false; true ]
+      | 'e' | 'E' -> [ true; true; true; false ]
+      | 'f' | 'F' -> [ true; true; true; true ]
+      | c -> failwith ("Invalid char in hex literal: " ^ String.make 1 c))
   in
-  if List.length r < width then
-    List.append (List.init (width - List.length r) (fun _ -> false)) r
-  else r
+  let padded_bits =
+    if List.length raw_bits < width then
+      List.init (width - List.length raw_bits) (fun _ -> false) @ raw_bits
+    else if List.length raw_bits > width then
+      failwith "Too short width for hex literal"
+    else raw_bits
+  in
+  (* Bitvectors in the Rocq side are LITTLE-ENDIAN *)
+  List.rev padded_bits
 
 let read_constant const_str =
   let const_str = String.trim const_str in
