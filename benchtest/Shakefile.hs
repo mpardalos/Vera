@@ -8,6 +8,9 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NoFieldSelectors #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 import Development.Shake
 import Development.Shake.Command
@@ -68,9 +71,14 @@ data ConfigYosysTimeout = ConfigYosysTimeout
 type instance RuleResult ConfigYosysTimeout = Double
 
 data RunResult = RunResult
-  { veraTime :: Text
-  , veraSolverTime :: Text
-  , eqyTime :: Text
+  { time :: Text
+  , result :: Text
+  }
+
+data BenchmarkResult = BenchmarkResult
+  { vera :: RunResult
+  , veraSolver :: RunResult
+  , eqy :: RunResult
   }
 
 main :: IO ()
@@ -142,35 +150,45 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
     memoryLimit <- askOracle ConfigVeraMemoryLimit
     veraSolver <- askOracle ConfigSolver
     need [vera, left, right]
-    (Exit veraExitCode, CmdTime veraTime) <- cmd
-      (Traced "vera")
-      (Timeout timeout)
-      (FileStdout out)
-      (FileStderr out)
-      (AddEnv "OCAMLRUNPARAM" "b")
-      (AddEnv "VERA_MAX_MEMORY" (show memoryLimit))
-      vera "compare" ("--solver=none" ) ("--dump-query=" ++ smtFile) left right
+    (Exit veraExitCode, CmdTime veraTime) <-
+      cmd
+        (Traced "vera")
+        (Timeout timeout)
+        (FileStdout out)
+        (FileStderr out)
+        (AddEnv "OCAMLRUNPARAM" "b")
+        (AddEnv "VERA_MAX_MEMORY" (show memoryLimit))
+        vera
+        "compare"
+        ("--solver=none")
+        ("--dump-query=" ++ smtFile)
+        left
+        right
+    liftIO $ appendFile out (printf "__time_vera: %.2f\n" veraTime)
     case veraExitCode of
-      ExitFailure 130 -> liftIO $ do
-        appendFile out "__time_vera: Vera timed out\n"
-        appendFile out "__time_smt: Vera timed out\n"
+      ExitFailure (-2) -> liftIO $ do
+        appendFile out "__result_vera: Timeout\n"
       ExitFailure err -> liftIO $ do
-        appendFile out (printf "__time_vera: Vera failed (%d)\n" err)
-        appendFile out (printf "__time_smt: Vera failed (%d)\n" err)
+        appendFile out (printf "__result_vera: failed (%d)\n" err)
       ExitSuccess -> do
-        liftIO $ appendFile out (printf "__time_vera: %f\n" veraTime)
-        (Exit smtExitCode, CmdTime smtTime, Stdouterr output) <- cmd
-          (Traced (veraSolver ++ " for vera"))
-          (Timeout timeout)
-          veraSolver smtFile
+        liftIO $ appendFile out "__result_vera: OK\n"
+        (Exit smtExitCode, CmdTime smtTime, Stdouterr output) <-
+          cmd
+            (Traced (veraSolver ++ " for vera"))
+            (Timeout timeout)
+            veraSolver
+            smtFile
         liftIO $ appendFile out ("\n" ++ output)
+        liftIO $ appendFile out (printf "__time_smt: %.2f\n" smtTime)
         case smtExitCode of
           ExitFailure 130 ->
-            liftIO $ appendFile out "__time_smt: SMT Timed out\n"
+            liftIO $ appendFile out "__result_smt: Timeout\n"
           ExitFailure err -> do
-            liftIO $ appendFile out (printf "__time_smt: SMT failed (%d)\n" err)
+            liftIO $ appendFile out (printf "__result_smt: failed (%d)\n" err)
           ExitSuccess ->
-            liftIO $ appendFile out (printf "__time_smt: %f\n" smtTime)
+            if "unsat" `isInfixOf` output
+              then liftIO $ appendFile out "__result_smt: OK\n"
+              else liftIO $ appendFile out "__result_smt: Incorrect result\n"
 
   phony "vera" $ need [vera]
   vera %> \out -> do
@@ -203,28 +221,32 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         right = dir </> mod2 <.> "sv"
     timeout <- askOracle ConfigVeraTimeout
     need [eqyFile, left, right]
-    (Exit exitCode, Stdout output, CmdTime eqyTime) <- cmd
-      (Traced "eqy")
-      (Timeout timeout)
-      (FileStdout out)
-      (FileStderr out)
-      (Cwd eqyDir)
-      "eqy" "-f" "compare.eqy"
+    (Exit exitCode, Stdout output, CmdTime eqyTime) <-
+      cmd
+        (Traced "eqy")
+        (Timeout timeout)
+        (FileStdout out)
+        (FileStderr out)
+        (Cwd eqyDir)
+        "eqy"
+        "-f"
+        "compare.eqy"
+    liftIO $ appendFile out (printf "__time_eqy: %.2f\n" eqyTime)
     case exitCode of
       ExitFailure 130 -> do
-        liftIO $ appendFile out "__time_eqy: Timed out"
-      ExitFailure err -> do
-        let reason =
-              if ("EQY ---- Keyboard interrupt or external termination signal ----" `isInfixOf` output)
-              then "Timed out"
-              else printf "Failed with %d" err
-        liftIO $ appendFile out (printf "__time_eqy: %s" reason)
+        liftIO $ appendFile out "__result_eqy: Timeout\n"
+      ExitFailure err
+        | "EQY ---- Keyboard interrupt or external termination signal ----" `isInfixOf` output ->
+            liftIO $ appendFile out "__result_eqy: Timeout\n"
+        | otherwise ->
+            liftIO $ appendFile out (printf "__result_eqy: Failed (%d)\n" err)
       ExitSuccess ->
-        liftIO $ appendFile out (printf "__time_eqy: %f" eqyTime)
+        liftIO $ appendFile out "__result_eqy: OK\n"
 
   phony "clean-run" $ do
-    removeFilesAfter "out/templates"
-      [ "//*.log", "//*.time", "//*.vera.smt2", "//*.csv", "//*.pdf" ]
+    removeFilesAfter
+      "out/templates"
+      ["//*.log", "//*.time", "//*.vera.smt2", "//*.csv", "//*.pdf"]
 
   phony "plots" $ need ["out/templates/summary.pdf"]
 
@@ -287,25 +309,24 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
         need [veraLog, eqyLog]
         veraOutput <- liftIO $ T.readFile veraLog
         eqyOutput <- liftIO $ T.readFile eqyLog
-        let
-           veraTime = findPrefixedLine (T.pack "__time_vera: " )veraOutput
-           veraSolverTime = findPrefixedLine (T.pack "__time_smt: " )veraOutput
-           eqyTime = findPrefixedLine (T.pack "__time_eqy: " )eqyOutput
-        return RunResult { veraTime, veraSolverTime, eqyTime }
-
-  "out/templates/*/*_vs_*.summary.csv" !%> \out [templateName, mod1, mod2] -> do
-    runSizes <- askOracle ConfigRunSizes
-
-    (times :: [(Text, Text)]) <- forP runSizes $ \size -> do
-      RunResult { veraSolverTime, eqyTime } <- runEquivalenceCheckers
-        ("out/templates" </> printf "gen_%s_%d" templateName size) mod1 mod2
-      return (veraSolverTime, eqyTime)
-
-    liftIO $ T.writeFile out $ T.unlines (
-      (T.pack "Size,Vera,EQY")
-      : [ T.intercalate (T.pack ",") [T.show w, veraTime, eqyTime]
-        | (w, (veraTime, eqyTime)) <- zip runSizes times
-        ])
+        return
+          BenchmarkResult
+            { vera =
+                RunResult
+                  { time = findPrefixedLine (T.pack "__time_vera: ") veraOutput
+                  , result = findPrefixedLine (T.pack "__result_vera: ") veraOutput
+                  }
+            , veraSolver =
+                RunResult
+                  { time = findPrefixedLine (T.pack "__time_smt: ") veraOutput
+                  , result = findPrefixedLine (T.pack "__result_smt: ") veraOutput
+                  }
+            , eqy =
+                RunResult
+                  { time = findPrefixedLine (T.pack "__time_eqy: ") eqyOutput
+                  , result = findPrefixedLine (T.pack "__result_eqy: ") eqyOutput
+                  }
+            }
 
   -- EPFL benchmarks
   let
@@ -385,10 +406,30 @@ main = shakeArgs shakeOptions {shakeThreads=0} $ do
          ]
     lines <- forP targets $ \(category, name, modA, modB) -> do
       let dir = "out/EPFL-benchmarks" </> category </> name
-      RunResult { veraTime, veraSolverTime, eqyTime } <- runEquivalenceCheckers dir modA modB
-      return (T.intercalate (T.pack ",") [T.pack category, T.pack name, T.pack modA, T.pack modB, veraTime, veraSolverTime, eqyTime])
-    liftIO $ T.writeFile out (T.unlines ( T.pack "Category,Name,A,B,Vera Time,Vera Solver time,EQY Time" : lines))
-
+      result <- runEquivalenceCheckers dir modA modB
+      return
+        ( T.intercalate
+            (T.pack ",")
+            [ T.pack category
+            , T.pack name
+            , T.pack modA
+            , T.pack modB
+            , result.vera.result
+            , result.vera.time
+            , result.veraSolver.result
+            , result.veraSolver.time
+            , result.eqy.result
+            , result.eqy.time
+            ]
+        )
+    liftIO $
+      T.writeFile
+        out
+        ( T.unlines
+            ( T.pack "Category,Name,A,B,Vera Result,Vera time,Vera solver result,Vera solver time,EQY result,EQY time"
+                : lines
+            )
+        )
 
 -- Helpers
 
@@ -439,6 +480,6 @@ allPairs (x:xs) = map (x,) xs ++ allPairs xs
 
 findPrefixedLine :: Text -> Text -> Text
 findPrefixedLine prefix =
-  fromMaybe (T.pack "Missing")
+  fromMaybe (T.pack "-")
   . firstJust (T.stripPrefix prefix)
   . T.lines
