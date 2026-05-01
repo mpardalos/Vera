@@ -43,17 +43,18 @@ Local Open Scope monad_scope.
 Local Open Scope string.
 
 Equations mk_var_same (var : Verilog.variable) (m : VerilogSMTBijection.t)
-  : sum string SMTLib.term := {
+  : sum string (SMTLib.term SMTLib.Sort_Bool) := {
   | var, m with m (TaggedVariable.VerilogLeft, var), m (TaggedVariable.VerilogRight, var) => {
     | Some smt_name1, Some smt_name2 =>
-        inr (SMTLib.Term_Eq (SMTLib.Term_Const smt_name1) (SMTLib.Term_Const smt_name2))
+      let t := SMTLib.Sort_BitVec (Verilog.varType var)
+      in inr (SMTLib.Term_Eq (SMTLib.Term_Const t smt_name1) (SMTLib.Term_Const t smt_name2))
     | _, _ => inl "mk_var_same"%string
     }
   }
   .
 
 Equations mk_inputs_same (inputs : list Verilog.variable) (m : VerilogSMTBijection.t)
-  : sum string SMTLib.term := {
+  : sum string (SMTLib.term SMTLib.Sort_Bool) := {
   | [], m => inr SMTLib.Term_True
   | (var :: vars), m =>
       match
@@ -67,17 +68,18 @@ Equations mk_inputs_same (inputs : list Verilog.variable) (m : VerilogSMTBijecti
   }.
 
 Equations mk_var_distinct (var : Verilog.variable) (m : VerilogSMTBijection.t)
-  : sum string SMTLib.term := {
+  : sum string (SMTLib.term SMTLib.Sort_Bool) := {
   | var, m with m (TaggedVariable.VerilogLeft, var), m (TaggedVariable.VerilogRight, var) => {
     | Some smt_name1, Some smt_name2 =>
-        inr (SMTLib.Term_Not (SMTLib.Term_Eq (SMTLib.Term_Const smt_name1) (SMTLib.Term_Const smt_name2)))
+      let t := SMTLib.Sort_BitVec (Verilog.varType var)
+      in inr (SMTLib.Term_Not (SMTLib.Term_Eq (SMTLib.Term_Const t smt_name1) (SMTLib.Term_Const t smt_name2)))
     | _, _ => inl "mk_var_distinct"%string
     }
   }
   .
 
 Equations mk_outputs_distinct (inputs : list Verilog.variable) (m : VerilogSMTBijection.t)
-  : sum string SMTLib.term := {
+  : sum string (SMTLib.term SMTLib.Sort_Bool) := {
   | [], m => inr SMTLib.Term_False
   | (var :: vars), m =>
       match
@@ -182,20 +184,9 @@ Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum
   let* inputs_same := mk_inputs_same (Verilog.module_inputs verilog1) nameMap in
   let* outputs_distinct := mk_outputs_distinct (Verilog.module_outputs verilog1) nameMap in
 
-  let* sortable1 := assert_dec (vmodule_sortable verilog1) "Left verilog module is not sortable" in
-  let* sortable2 := assert_dec (vmodule_sortable verilog2) "Right verilog module is not sortable" in
-  let* prf1 := assert_dec _ "Unknown variables in inputs_same assertion" in
-  let* prf2 := assert_dec _ "Unknown variables in outputs_distinct assertion" in
-
   ret {|
       SMT.nameMap := nameMap ;
-      SMT.query :=
-        SMTQueries.add_assertion outputs_distinct
-          (SMTQueries.add_assertion inputs_same
-             (SMTQueries.combine (SMT.query smt1) (SMT.query smt2))
-             prf1
-          )
-          prf2
+      SMT.query := outputs_distinct :: inputs_same :: (SMT.query smt1 ++ SMT.query smt2)
     |}
 .
 Next Obligation.
