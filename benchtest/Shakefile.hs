@@ -45,6 +45,7 @@ import System.Directory qualified as SD
 import System.Exit (ExitCode (..))
 import System.Posix.Resource (Resource (ResourceOpenFiles), ResourceLimit (..), ResourceLimits (..), getResourceLimit, setResourceLimit)
 import Text.Printf (printf)
+import Safe (fromJustNote, readMay)
 
 -- | Path to vera binary
 vera :: FilePath
@@ -76,7 +77,8 @@ data RunResult = RunResult
   }
 
 data BenchmarkResult = BenchmarkResult
-  { vera :: RunResult
+  { size :: Int
+  , vera :: RunResult
   , veraSolver :: RunResult
   , eqy :: RunResult
   }
@@ -317,14 +319,20 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
           ]
 
   let runEquivalenceCheckers dir modA modB = do
-        let veraLog = dir </> (printf "%s_vs_%s.vera.log" modA modB)
-        let eqyLog = dir </> (printf "%s_vs_%s.eqy.log" modA modB)
-        need [veraLog, eqyLog]
-        veraOutput <- liftIO $ T.readFile veraLog
-        eqyOutput <- liftIO $ T.readFile eqyLog
+        let genALogFile = dir </> (printf "%s.sv.log" modA)
+        let genBLogFile = dir </> (printf "%s.sv.log" modB)
+        let veraLogFile = dir </> (printf "%s_vs_%s.vera.log" modA modB)
+        let eqyLogFile = dir </> (printf "%s_vs_%s.eqy.log" modA modB)
+        need [genALogFile, genBLogFile, veraLogFile, eqyLogFile]
+        aSize <- readDesignSize <$> liftIO (T.readFile genALogFile)
+        bSize <- readDesignSize <$> liftIO (T.readFile genBLogFile)
+
+        veraOutput <- liftIO $ T.readFile veraLogFile
+        eqyOutput <- liftIO $ T.readFile eqyLogFile
         return
           BenchmarkResult
-            { vera =
+            { size = aSize + bSize
+            , vera =
                 RunResult
                   { time = findPrefixedLine (T.pack "__time_vera: ") veraOutput
                   , result = findPrefixedLine (T.pack "__result_vera: ") veraOutput
@@ -361,7 +369,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         (FileStderr log)
         "yosys"
         "--commands"
-        [printf "read_blif %s; rename -hide *; write_verilog %s" from to :: String]
+        [printf "read_blif %s; rename -hide *; write_verilog %s; stat" from to :: String]
       trackWrite [to]
 
   -- \| Rename the ports in the target file to match those in the source file
@@ -388,9 +396,25 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
           liftIO $ T.appendFile target (T.pack "\n// PORTS RENAMED\n")
         else liftIO $ T.appendFile target (T.pack "\n// PORTS NOT RENAMED\n")
 
+  "out/EPFL-benchmarks//*.sv.log" !%> \out [path, name] ->
+    need ["out/EPFL-benchmarks" </> path </> name <.> "sv" ]
+
   "out/EPFL-benchmarks/*/*/orig.sv" !%> \out [category, name] -> do
     let src = "EPFL-benchmarks" </> category </> name -<.> "v"
     copyFile' src out
+
+  -- For the ones that come from blifs, the blifToVerilog generates a
+  -- log. For the originals, we need to run yosys
+  "out/EPFL-benchmarks//*.sv.log" %> \out -> need [dropExtension out]
+  priority 2 $ do
+    "out/EPFL-benchmarks/*/*/orig.sv.log" !%> \out [category, name] -> do
+      cmd_
+        (FileStdout out)
+        (FileStderr out)
+        (Cwd ("out/EPFL-benchmarks" </> category </> name))
+        "yosys"
+        "--commands"
+        ["read_verilog -sv orig.sv; stat"]
 
   "out/EPFL-benchmarks/*/*/orig_blif.sv" !%> \out [category, name] -> do
     let base = "EPFL-benchmarks" </> category </> name -<.> "v"
@@ -431,6 +455,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             , T.pack name
             , T.pack modA
             , T.pack modB
+            , T.show result.size
             , result.vera.result
             , result.vera.time
             , result.veraSolver.result
@@ -443,7 +468,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
       T.writeFile
         out
         ( T.unlines
-            ( T.pack "Category,Name,A,B,Vera Result,Vera time,Vera solver result,Vera solver time,EQY result,EQY time"
+            ( T.pack "Category,Name,A,B,Size,Vera Result,Vera time,Vera solver result,Vera solver time,EQY result,EQY time"
                 : lines
             )
         )
@@ -502,3 +527,17 @@ findPrefixedLine prefix =
   fromMaybe (T.pack "-")
     . firstJust (T.stripPrefix prefix)
     . T.lines
+
+-- Read design size out of a yosys log with the `stat` command
+readDesignSize :: Text -> Int
+readDesignSize txt =
+  txt
+  & T.lines
+  & map T.strip
+  & map T.words
+  & map (map T.unpack)
+  & firstJust (\case
+                  [readMay -> Just count, "wire", "bits"] -> Just count
+                  _ -> Nothing
+                  )
+  & fromMaybe (-1)
