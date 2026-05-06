@@ -396,9 +396,6 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
           liftIO $ T.appendFile target (T.pack "\n// PORTS RENAMED\n")
         else liftIO $ T.appendFile target (T.pack "\n// PORTS NOT RENAMED\n")
 
-  "out/EPFL-benchmarks//*.sv.log" !%> \out [path, name] ->
-    need ["out/EPFL-benchmarks" </> path </> name <.> "sv" ]
-
   "out/EPFL-benchmarks/*/*/orig.sv" !%> \out [category, name] -> do
     let src = "EPFL-benchmarks" </> category </> name -<.> "v"
     copyFile' src out
@@ -408,13 +405,14 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
   "out/EPFL-benchmarks//*.sv.log" %> \out -> need [dropExtension out]
   priority 2 $ do
     "out/EPFL-benchmarks/*/*/orig.sv.log" !%> \out [category, name] -> do
+      let svFile = "out/EPFL-benchmarks" </> category </> name </> "orig.sv"
+      need [svFile]
       cmd_
         (FileStdout out)
         (FileStderr out)
-        (Cwd ("out/EPFL-benchmarks" </> category </> name))
         "yosys"
         "--commands"
-        ["read_verilog -sv orig.sv; stat"]
+        [printf "read_verilog -sv %s; stat" svFile :: String]
 
   "out/EPFL-benchmarks/*/*/orig_blif.sv" !%> \out [category, name] -> do
     let base = "EPFL-benchmarks" </> category </> name -<.> "v"
