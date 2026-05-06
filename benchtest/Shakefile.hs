@@ -83,6 +83,9 @@ data BenchmarkResult = BenchmarkResult
   , eqy :: RunResult
   }
 
+gibiBytes :: Int -> Int
+gibiBytes = (1024 * 1024 * 1024 * )
+
 main :: IO ()
 main = shakeArgs shakeOptions{shakeThreads = 0} $ do
   liftIO $ do
@@ -90,14 +93,16 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     ResourceLimits{hardLimit} <- getResourceLimit ResourceOpenFiles
     setResourceLimit ResourceOpenFiles (ResourceLimits hardLimit hardLimit)
 
+  memResource <- newResource "RAM GB" 256
+
   -- Sizes which templated examples will be evaluated at
   addOracle $ \ConfigRunSizes -> pure [4 .. 8]
   -- Value of --solver= flag for vera
   addOracle $ \ConfigSolver -> pure "cvc5"
   -- Timeout for vera/eqy runs (in seconds)
-  addOracle $ \ConfigVeraTimeout -> pure 10
-  -- Vera memory limit (in bytes)
-  addOracle $ \ConfigVeraMemoryLimit -> pure (1 * 1024 * 1024 * 1024) -- 1G
+  addOracle $ \ConfigVeraTimeout -> pure 3600
+  -- Vera memory limit (in GB)
+  addOracle $ \ConfigVeraMemoryLimit -> pure 64
   -- Timeout for yosys synthesis (NOT symbiyosys/eqy equivalence checking)
   addOracle $ \ConfigYosysTimeout -> pure 600
 
@@ -124,7 +129,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
       let log = dropExtensions out <> ".synth.log"
       need ["templates/synth.tcl", src]
       yosysTimeout <- askOracle ConfigYosysTimeout
-      cmd_
+      withResource memResource 1 $ cmd_
         (Traced "yosys")
         (AddEnv "SV_INPUT" src)
         (AddEnv "SV_OUTPUT" out)
@@ -160,13 +165,13 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     veraSolver <- askOracle ConfigSolver
     need [vera, left, right]
     (Exit veraExitCode, CmdTime veraTime) <-
-      cmd
+      withResource memResource memoryLimit $ cmd
         (Traced "vera")
         (Timeout timeout)
         (FileStdout out)
         (FileStderr out)
         (AddEnv "OCAMLRUNPARAM" "b")
-        (AddEnv "VERA_MAX_MEMORY" (show memoryLimit))
+        (AddEnv "VERA_MAX_MEMORY" (show (gibiBytes memoryLimit)))
         vera
         "compare"
         ("--solver=none")
@@ -182,7 +187,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
       ExitSuccess -> do
         liftIO $ appendFile out "__result_vera: OK\n"
         (Exit smtExitCode, CmdTime smtTime, Stdouterr output) <-
-          cmd
+          withResource memResource 32 $ cmd
             (Traced (veraSolver ++ " for vera"))
             (Timeout timeout)
             veraSolver
@@ -234,7 +239,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     timeout <- askOracle ConfigVeraTimeout
     need [eqyFile, left, right]
     (Exit exitCode, Stdout output, CmdTime eqyTime) <-
-      cmd
+      withResource memResource 32 $ cmd
         (Traced "eqy")
         (Timeout timeout)
         (FileStdout out)
@@ -377,8 +382,10 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     renamePorts :: FilePath -> FilePath -> Action ()
     renamePorts base target = do
       let portFilter = ".design.members[1].body.members[] | select(.kind == \"Port\") | .name"
-      Stdout (basePortsLines :: ByteString) <- cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" base portFilter :: String)
-      Stdout (targetPortsLines :: ByteString) <- cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" target portFilter :: String)
+      Stdout (basePortsLines :: ByteString) <- withResource memResource 32 $
+          cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" base portFilter :: String)
+      Stdout (targetPortsLines :: ByteString) <- withResource memResource 32 $
+          cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" target portFilter :: String)
       let basePorts :: [ByteString] = BS8.lines basePortsLines
       let targetPorts :: [ByteString] = BS8.lines targetPortsLines
       if (sort basePorts /= sort targetPorts)
