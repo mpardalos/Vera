@@ -239,7 +239,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     timeout <- askOracle ConfigVeraTimeout
     need [eqyFile, left, right]
     (Exit exitCode, Stdout output, CmdTime eqyTime) <-
-      withResource memResource 32 $ cmd
+      withResource memResource 8 $ cmd
         (Traced "eqy")
         (Timeout timeout)
         (FileStdout out)
