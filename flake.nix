@@ -53,6 +53,7 @@
           pkgs.z3
           pkgs.cvc5
           pkgs.gnuplot
+          pkgs.jq
           coqPackages.coq-lsp
         ];
       in {
