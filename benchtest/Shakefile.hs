@@ -88,23 +88,33 @@ gibiBytes = (1024 * 1024 * 1024 * )
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeThreads = 0} $ do
-  liftIO $ do
-    -- Set open file soft limit to the hard limit
-    ResourceLimits{hardLimit} <- getResourceLimit ResourceOpenFiles
-    setResourceLimit ResourceOpenFiles (ResourceLimits hardLimit hardLimit)
-
+  --- SETTINGS ---------------------------------------------
+  -- Total memory on the machine in GB. Used to limit parallelism. Must be
+  -- higher than ConfigVeraMemoryLimit below
   memResource <- newResource "RAM GB" 256
-
-  -- Sizes which templated examples will be evaluated at
-  addOracle $ \ConfigRunSizes -> pure [4 .. 8]
-  -- Value of --solver= flag for vera
-  addOracle $ \ConfigSolver -> pure "cvc5"
+  -- Solver used by both Vera and eqy. The artifact environment allows
+  -- for "cvc5" or "z3". "Bitwuzla" was attempted too but appears to
+  -- be buggy for this version of EQY.
+  addOracle $ \ConfigSolver -> pure "z3"
   -- Timeout for vera/eqy runs (in seconds)
   addOracle $ \ConfigVeraTimeout -> pure 3600
   -- Vera memory limit (in GB)
   addOracle $ \ConfigVeraMemoryLimit -> pure 64
-  -- Timeout for yosys synthesis (NOT symbiyosys/eqy equivalence checking)
+  ----------------------------------------------------------
+
+  -- The following are only relevant for the templated tests, which
+  -- are not part of the evaluation on the paper. These make no
+  -- difference for the EPFL benchmarks
+
+  -- Sizes which templated examples will be evaluated at
+  addOracle $ \ConfigRunSizes -> pure [4 .. 8]
+  -- Timeout for yosys synthesis (in)(NOT symbiyosys/eqy equivalence checking)
   addOracle $ \ConfigYosysTimeout -> pure 600
+
+  liftIO $ do
+    -- Set open file soft limit to the hard limit
+    ResourceLimits{hardLimit} <- getResourceLimit ResourceOpenFiles
+    setResourceLimit ResourceOpenFiles (ResourceLimits hardLimit hardLimit)
 
   phony "clean" $ do
     need ["clean-synth", "clean-run"]
