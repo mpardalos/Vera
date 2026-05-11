@@ -230,58 +230,6 @@ Module SMT.
           end
       end.
 
-  Lemma execution_left_of_valuation_of_executions m v e1 e2 :
-    (* TODO: Remove assumption *)
-    (forall n xbv, e1 n = Some xbv -> ~ XBV.has_x xbv) ->
-    (forall n xbv, e2 n = Some xbv -> ~ XBV.has_x xbv) ->
-    match_map_vars TaggedVariable.VerilogLeft m (Verilog.modVariables v) ->
-    complete_execution v e1 ->
-    execution_of_valuation TaggedVariable.VerilogLeft m (valuation_of_executions m e1 e2) = e1.
-  Proof.
-    intros * Hno_exes1 Hno_exes2 Hmatch Hcomplete.
-    unfold valuation_of_executions.
-    unfold execution_of_valuation.
-    apply functional_extensionality_dep.
-    intros [varName varType].
-    autodestruct_eqn E;
-      simpl in *; try subst; repeat apply_somewhere inj_pair2; try subst.
-    - destruct v1 as [n1 t1]. simpl in *.
-      replace n1 with varName in * by (apply bij_wf in E; crush).
-      simpl in *.
-      replace (e1 {| Verilog.varName := varName; Verilog.varType := t1 |}). repeat f_equal.
-      apply XBV.bv_xbv_inverse. assumption.
-    - destruct v1 as [n1 t1]. simpl in *.
-      replace n1 with varName in * by (apply bij_wf in E; crush).
-      rewrite bij_wf in *. congruence.
-    - rewrite bij_wf in *. congruence.
-    - rewrite bij_wf in *. congruence.
-    - destruct v0 as [n1 t1]. simpl in *. replace n1 with varName in * by (apply bij_wf in E; crush).
-      apply_somewhere (Hno_exes1 {| Verilog.varName := varName; Verilog.varType := t1 |}).
-      now rewrite <- XBV.has_x_to_bv in *.
-    - destruct v0 as [n1 t1]. simpl in *. replace n1 with varName in * by (apply bij_wf in E; crush).
-      apply_somewhere (Hno_exes2 {| Verilog.varName := varName; Verilog.varType := t1 |}).
-      now rewrite <- XBV.has_x_to_bv in *.
-    - destruct v0 as [n1 t1]. simpl in *.
-      replace n1 with varName in * by (apply bij_wf in E; crush).
-      replace t1 with varType in * by (apply bij_wf in E; crush).
-      crush.
-    - destruct v0 as [n1 t1]. simpl in *.
-      replace n1 with varName in * by (apply bij_wf in E; crush).
-      replace t1 with varType in * by (apply bij_wf in E; crush).
-      rewrite bij_wf in *; congruence.
-    - rewrite bij_wf in *; congruence.
-    - admit.
-  Admitted.
-
-  Lemma execution_right_of_valuation_of_executions m v e1 e2 :
-    (* TODO: Remove assumption *)
-    (forall n xbv, e1 n = Some xbv -> ~ XBV.has_x xbv) ->
-    (forall n xbv, e2 n = Some xbv -> ~ XBV.has_x xbv) ->
-    match_map_vars TaggedVariable.VerilogRight m (Verilog.modVariables v) ->
-    complete_execution v e2 ->
-    execution_of_valuation TaggedVariable.VerilogRight m (valuation_of_executions m e1 e2) = e2.
-  Proof. Admitted.
-
   Lemma valuation_of_executions_some_left var nameSMT xbv bv (m : VerilogSMTBijection.t) e1 e2 :
     e1 var = Some xbv ->
     XBV.to_bv xbv = Some bv ->

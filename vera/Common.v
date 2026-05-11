@@ -104,11 +104,6 @@ Module MapExtras(M: FMapInterface.WS).
 
   Definition combine {A} (l r : M.t A) : M.t A := M.map2 opt_or l r.
 
-  Lemma gcombine {A} k (l r : M.t A) :
-    M.find k (combine l r) = opt_or (M.find k l) (M.find k r)
-  .
-  Admitted.
-
   Definition union_both {A B} (l : M.t A) (r : M.t B)
     : M.t (option A * option B) :=
     M.map2
