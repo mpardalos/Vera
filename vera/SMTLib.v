@@ -12,6 +12,7 @@
 From Stdlib Require Import Lia.
 From Stdlib Require Program.Wf.
 From Stdlib Require Import ZArith.
+From Stdlib Require Import String.
 
 From vera Require Import BVList.
 Import BITVECTOR_LIST.
@@ -38,7 +39,10 @@ end.
    - predicate symbols are function symbols of codomain Bool
    - variables are function symbols without arguments
  *)
-Definition const_sym := nat.
+Record const_sym := MkConstSym {
+  symName : string;
+  symSort : sort
+}.
 
 Variant BVUnaryOp : Set :=
   | BVNot
@@ -59,7 +63,7 @@ Variant BVBinOp : Set :=
 
 Inductive term : sort -> Type :=
 (* Every constant reference is annotated. This corresponds to (as <var> <sort>) in SMTLIB. *)
-| Term_Const (s : sort) : const_sym -> term s
+| Term_Const (n : const_sym) : term (symSort n)
 | Term_Eq {s} : term s -> term s -> term Sort_Bool
 | Term_And : term Sort_Bool -> term Sort_Bool -> term Sort_Bool
 | Term_Or : term Sort_Bool -> term Sort_Bool -> term Sort_Bool
@@ -78,7 +82,7 @@ Inductive term : sort -> Type :=
 Definition dec_sort (s1 s2 : sort) : { s1 = s2 } + { s1 <> s2 }.
 Proof. repeat decide equality. Defined.
 
-Definition valuation :=  forall (s : sort) (n : nat), interp_sort s.
+Definition valuation :=  forall (n : const_sym), interp_sort (symSort n).
 
 (* Interpretation *)
 Section Interpretation.
@@ -150,7 +154,7 @@ Section Interpretation.
   Fixpoint interp_term {s} (t:term s) : (interp_sort s) :=
     match t with
     (* TODO: uninterpreted functions *)
-    | Term_Const s n => ρ s n
+    | Term_Const n => ρ n
     | Term_Eq t1 t2 =>
 	value_eqb (interp_term t1) (interp_term t2)
     | Term_And t1 t2 => ((interp_term t1) && (interp_term t2))%bool

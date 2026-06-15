@@ -4,7 +4,6 @@ From vera Require Import Tactics.
 From vera Require Import VerilogToSMT.
 From vera Require Import VerilogSMT.
 From vera Require SMTQueries.
-Import (coercions) VerilogSMTBijection.
 From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
 Import CombinationalOnly.
@@ -38,28 +37,14 @@ Import EqNotations.
 
 Local Open Scope list.
 
-Lemma var_to_smt_value var (m : VerilogSMTBijection.t) tag regs ρ t :
-    var_to_smt tag m var = inr t ->
-    verilog_smt_match_states_partial (fun v => v = var) tag m regs ρ ->
-    regs var = XBV.from_bv (SMTLib.interp_term ρ t).
-Proof.
-  intros Hsmt Hmatch.
-  funelim (var_to_smt tag m var); try rewrite <- Heqcall in *; clear Heqcall; monad_inv.
-  simpl.
-  unfold verilog_smt_match_states_partial in *.
-  unfold verilog_smt_match_on_name in *.
-  insterU Hmatch.
-  crush.
-Qed.
+Lemma var_to_smt_value var tag regs ρ :
+    verilog_smt_match_states_partial (fun v => v = var) tag regs ρ ->
+    regs var = XBV.from_bv (SMTLib.interp_term ρ (var_to_smt tag var)).
+Proof. crush. Qed.
 
-Lemma var_to_smt_valid tag m var t (ρ : SMTLib.valuation) :
-  var_to_smt tag m var = inr t ->
-  exists smtName, (m (tag, var) = Some smtName /\ ρ (SMTLib.Sort_BitVec (Verilog.varType var)) smtName = SMTLib.interp_term ρ t).
-Proof.
-  intros Htransf.
-  funelim (var_to_smt tag m var); rewrite <- Heqcall in *; monad_inv.
-  crush.
-Qed.
+Lemma var_to_smt_valid tag var (ρ : SMTLib.valuation) :
+  ρ (verilog_to_smt_var tag var) = SMTLib.interp_term ρ (var_to_smt tag var).
+Proof. crush. Qed.
 
 Lemma arithmeticop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
     eval_arithmeticop op (XBV.from_bv (SMTLib.interp_term ρ smt_lhs)) (XBV.from_bv (SMTLib.interp_term ρ smt_rhs))
@@ -332,11 +317,11 @@ Proof.
   - apply convert_exes. lia.
 Qed.
 
-Lemma expr_to_smt_value w expr : forall (m : VerilogSMTBijection.t) tag regs ρ t,
-    expr_to_smt tag m expr = inr t ->
+Lemma expr_to_smt_value w expr : forall tag regs ρ t,
+    expr_to_smt tag expr = inr t ->
     verilog_smt_match_states_partial
       (fun v => List.In v (Verilog.expr_reads expr))
-      tag m regs ρ ->
+      tag regs ρ ->
     eval_expr (w:=w) regs expr = XBV.from_bv (SMTLib.interp_term ρ t).
 Proof.
   induction expr.
@@ -403,28 +388,16 @@ Proof.
   - (* literal *)
     reflexivity.
   - (* variable *)
-    unfold verilog_smt_match_states_partial in Hmatch.
-    unfold verilog_smt_match_on_name in Hmatch.
-    edestruct Hmatch as [smtName [Heq2 Hmatchvals]]. { repeat econstructor. }
-    rewrite Hmatchvals.
-    inv Hexpr_to_smt.
-    funelim (var_to_smt tag m var);
-        rewrite <- Heqcall in *; clear Heqcall; [|discriminate].
-    unfold verilog_smt_match_states_partial in *.
-    edestruct Hmatch as [? [? []]]; [now repeat econstructor|].
-    inv Hmatchvals.
-    inv H0. simpl.
-    replace n_smt with smtName in * by congruence.
-    assumption.
+    apply Hmatch. left. reflexivity.
   - (* resize *)
     rewrite cast_from_to_value by lia.
     apply convert_no_exes.
 Qed.
 
 (* DELETEME: Duplicate *)
-Lemma expr_to_smt_valid w tag m expr t regs ρ :
-  expr_to_smt (w := w) tag m expr = inr t ->
-  verilog_smt_match_states_partial (fun v => List.In v (Verilog.expr_reads expr)) tag m regs ρ ->
+Lemma expr_to_smt_valid w tag expr t regs ρ :
+  expr_to_smt (w := w) tag expr = inr t ->
+  verilog_smt_match_states_partial (fun v => List.In v (Verilog.expr_reads expr)) tag regs ρ ->
   eval_expr regs expr = XBV.from_bv (SMTLib.interp_term ρ t).
 Proof.
   eapply expr_to_smt_value.

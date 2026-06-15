@@ -37,8 +37,7 @@ let internals_dropped_of_file f =
 let smt_of_file filename =
   (* Need to tag it as left or right, doesn't matter here because we only
       translate one module *)
-  Vera.verilog_to_smt VerilogLeft (Vera.int_to_nat Z.zero)
-  =<< internals_dropped_of_file filename
+  Vera.verilog_to_smt VerilogLeft =<< internals_dropped_of_file filename
 
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =

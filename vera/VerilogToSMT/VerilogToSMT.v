@@ -30,7 +30,6 @@ From vera Require Import Common.
 From vera Require Import Bitvector.
 From vera Require Import VerilogSMT.
 From vera Require Import SMTQueries.
-Import (coercions) VerilogSMTBijection.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require VerilogSemantics.
@@ -73,18 +72,14 @@ Definition statically_in_bounds {w} (max_val : N) (expr : Verilog.expression w) 
 Definition smt_var_info : Type := (smtname * width).
 
 Section expr_to_smt.
-  Variable tag : TaggedVariable.Tag.
-  Variable name_bijection : VerilogSMTBijection.t.
+  Variable tag : VarTag.
 
   (* Used for checking expected invariants (assignments only read module outputs and write to module inputs) *)
   Variable inputs : list Verilog.variable.
   Variable outputs : list Verilog.variable.
 
-  Equations var_to_smt (var : Verilog.variable): transf (SMTLib.term (Sort_BitVec (Verilog.varType var))) :=
-    var_to_smt var with name_bijection (tag, var) := {
-      | None => raise ("Name not declared: " ++ (Verilog.varName var))%string
-      | Some n_smt => ret (SMTLib.Term_Const _ n_smt)
-      }.
+  Definition var_to_smt (var : Verilog.variable): (SMTLib.term (Sort_BitVec (Verilog.varType var))) :=
+    SMTLib.Term_Const (verilog_to_smt_var tag var).
 
   Definition smt_select_bit vec_width vec_smt idx_width idx_smt :=
     SMTLib.Term_BVExtract 0 0 ltac:(lia)
@@ -198,14 +193,14 @@ Section expr_to_smt.
     expr_to_smt (Verilog.IntegerLiteral w val) :=
       ret (SMTLib.Term_BVLit w val);
     expr_to_smt (Verilog.NamedExpression var) :=
-      var_to_smt var
+      ret (var_to_smt var)
   .
 
   Equations transfer_module_item : Verilog.module_item -> transf (SMTLib.term Sort_Bool) :=
     transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign var rhs)) :=
       assert_dec (In var outputs) "Assignment target must be module outputs"%string ;;
       assert_dec (List.Forall (fun n => In n inputs) (Verilog.expr_reads rhs)) "Only reads from module inputs allowed"%string ;;
-      let* lhs_smt := var_to_smt var in
+      let lhs_smt := var_to_smt var in
       let* rhs_smt := expr_to_smt rhs in
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
   .
@@ -227,25 +222,6 @@ Section expr_to_smt.
   .
 End expr_to_smt.
 
-Equations assign_vars (start : smtname) (vars : list Verilog.variable) : list (Verilog.variable * smtname) :=
-  assign_vars start (var :: rest) :=
-    (var, start) :: (assign_vars (1 + start) rest);
-  assign_vars start nil :=
-    nil.
-
-Definition mk_var_map (vars : list (Verilog.variable * smtname)) : StrFunMap.t smtname :=
-  List.fold_right
-    (fun '(var, smt_name) acc => StrFunMap.insert (Verilog.varName var) smt_name acc)
-    StrFunMap.empty vars.
-
-Equations mk_bijection (tag : TaggedVariable.Tag) (vars : list (Verilog.variable * smtname)) : transf VerilogSMTBijection.t :=
-  mk_bijection tag ((var, name_smt) :: xs) :=
-    let* tail_bijection := mk_bijection tag xs in
-    let* prf1 := assert_dec (tail_bijection (tag, var) = None) "Duplicate variable name"%string in
-    let* prf2 := assert_dec (VerilogSMTBijection.bij_inverse tail_bijection name_smt = None) "Duplicate smt name"%string in
-    ret (VerilogSMTBijection.insert (tag, var) name_smt tail_bijection prf1 prf2);
-  mk_bijection tag [] := ret VerilogSMTBijection.empty.
-
 Definition mk_declarations : list (Verilog.variable * smtname) -> list SMTQueries.declaration :=
   map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Verilog.varType var))).
 
@@ -262,7 +238,7 @@ Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
   | _, _ => None
   end.
 
-Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf smt_with_namemap :=
+Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : transf SMTQueries.query :=
   assert_dec
     (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
     "Overlapping inputs and outputs"%string ;;
@@ -286,15 +262,9 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
   assert_dec
     (module_items_sorted (Verilog.module_inputs vmodule) (Verilog.modBody vmodule))
     "Module items unsorted"%string ;;
-  let var_assignment := assign_vars var_start (Verilog.modVariables vmodule) in
-  let* nameMap := mk_bijection name_tag var_assignment in
-  let* assertions :=
-    transfer_module_body
+  transfer_module_body
       name_tag
-      nameMap
       (Verilog.module_inputs vmodule)
       (Verilog.module_outputs vmodule)
       (Verilog.modBody vmodule)
-  in
-  inr {| assertions := assertions; nameMap := nameMap |}
 .

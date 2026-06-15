@@ -14,7 +14,7 @@ Import ListNotations.
 
 Fixpoint term_domain {s} (t : term s) : list const_sym :=
   match t with
-  | SMTLib.Term_Const _ sym => [sym]
+  | SMTLib.Term_Const sym => [sym]
   | SMTLib.Term_Eq l r => term_domain l ++ term_domain r
   | SMTLib.Term_And l r => term_domain l ++ term_domain r
   | SMTLib.Term_Or l r => term_domain l ++ term_domain r
@@ -40,8 +40,8 @@ Definition query := list (term (Sort_Bool)).
 
 Definition domain (q : query) : list const_sym := lst_domain q.
 
-Definition default_valuation : valuation := fun s _ =>
-  match s with
+Definition default_valuation : valuation := fun n =>
+  match symSort n as s return interp_sort s with
   | Sort_Bool => false
   | Sort_BitVec w => BV.zeros w
   end
