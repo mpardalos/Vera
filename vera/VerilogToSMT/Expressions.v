@@ -10,7 +10,6 @@ From vera Require Import Verilog.
 Import CombinationalOnly.
 From vera Require Import Bitvector.
 Import RawXBV(bit(..)).
-From vera Require Import VerilogToSMT.Match.
 
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.MonadState.

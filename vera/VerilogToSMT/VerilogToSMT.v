@@ -262,7 +262,7 @@ Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
   | _, _ => None
   end.
 
-Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf SMT.smt_with_namemap :=
+Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmodule : Verilog.vmodule) : transf smt_with_namemap :=
   assert_dec
     (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
     "Overlapping inputs and outputs"%string ;;
@@ -296,8 +296,5 @@ Definition verilog_to_smt (name_tag : TaggedVariable.Tag) (var_start : nat) (vmo
       (Verilog.module_outputs vmodule)
       (Verilog.modBody vmodule)
   in
-  inr {|
-      SMT.nameMap := nameMap;
-      SMT.query := assertions
-    |}
+  inr {| assertions := assertions; nameMap := nameMap |}
 .

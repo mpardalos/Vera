@@ -2,7 +2,6 @@ From vera Require Import Verilog.
 From vera Require VerilogSemantics.
 Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
-Import (coercions) SMT.
 From vera Require Import Common.
 Import (coercions) VerilogSMTBijection.
 Import VerilogSMTBijection (bij_inverse, bij_apply, bij_wf).
@@ -105,7 +104,7 @@ Qed.
 
 Lemma verilog_to_smt_only_tag tag start v s :
   VerilogToSMT.verilog_to_smt tag start v = inr s ->
-  VerilogSMTBijection.only_tag tag (SMT.nameMap s).
+  VerilogSMTBijection.only_tag tag (nameMap s).
 Proof.
   intros.
   unfold VerilogToSMT.verilog_to_smt in *. simpl in *.
@@ -133,7 +132,7 @@ Qed.
 
 Lemma verilog_to_smt_min_name tag start v s var name :
   VerilogToSMT.verilog_to_smt tag start v = inr s ->
-  SMT.nameMap s (tag, var) = Some name ->
+  nameMap s (tag, var) = Some name ->
   name >= start.
 Proof.
   intros.
@@ -163,7 +162,7 @@ Qed.
 
 Lemma verilog_to_smt_max_name tag start s v var name :
   VerilogToSMT.verilog_to_smt tag start v = inr s ->
-  SMT.nameMap s (tag, var) = Some name ->
+  nameMap s (tag, var) = Some name ->
   name <= start + length (Verilog.modVariables v).
 Proof.
   intros Hfunc Hm.
@@ -172,7 +171,7 @@ Proof.
   eapply mk_bijection_max_name; eassumption.
 Qed.
 
-Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string (SMT.smt_with_namemap) :=
+Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string smt_with_namemap :=
   let* inputs_ok1 :=
     assert_dec
       (Verilog.module_inputs verilog1 = Verilog.module_inputs verilog2)
@@ -191,14 +190,14 @@ Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum
   let* ( smt1 ; prf1 ) := sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogLeft 0 verilog1) in
   let* ( smt2 ; prf2 ) := sum_with_eqn (VerilogToSMT.verilog_to_smt TaggedVariable.VerilogRight (S (length (Verilog.modVariables verilog1))) verilog2) in
 
-  let nameMap := VerilogSMTBijection.combine (SMT.nameMap smt1) (SMT.nameMap smt2) _ _ in
+  let nameMap := VerilogSMTBijection.combine (nameMap smt1) (nameMap smt2) _ _ in
 
   let* inputs_same := mk_inputs_same (Verilog.module_inputs verilog1) nameMap in
   let* outputs_distinct := mk_outputs_distinct (Verilog.module_outputs verilog1) nameMap in
 
   ret {|
-      SMT.nameMap := nameMap ;
-      SMT.query := inputs_same :: outputs_distinct :: (SMT.query smt1 ++ SMT.query smt2)
+      nameMap := nameMap ;
+      assertions := inputs_same :: outputs_distinct :: (assertions smt1 ++ assertions smt2)
     |}
 .
 Next Obligation.

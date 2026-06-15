@@ -2,7 +2,6 @@ From vera Require Import Verilog.
 From vera Require VerilogSemantics.
 Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
-Import (coercions) SMT.
 From vera Require AssignmentForwarding.
 From vera Require DropInternal.
 From vera Require VerilogEquivalence.
@@ -29,7 +28,7 @@ Definition sort_module (v : Verilog.vmodule) : string + Verilog.vmodule :=
     Verilog.modBody := sorted_body
   |}.
 
-Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string (SMT.smt_with_namemap) :=
+Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string smt_with_namemap :=
   let* sorted1 := sort_module verilog1 in
   let* inlined1 := AssignmentForwarding.forward_assignments sorted1 in
   let* internal_dropped1 := DropInternal.drop_internal inlined1 in
@@ -99,7 +98,7 @@ Qed.
 
 Theorem equivalence_query_general_unsat_correct v1 v2 smt :
   equivalence_query_general v1 v2 = inr smt ->
-  (forall ρ, ~ satisfied_by ρ (SMT.query smt)) ->
+  (forall ρ, ~ satisfied_by ρ (assertions smt)) ->
   equivalent_behaviour v1 v2.
 Proof.
   unfold equivalence_query_general.
@@ -144,7 +143,7 @@ Qed.
 
 Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
   equivalence_query_general v1 v2 = inr smt ->
-  satisfied_by ρ (SMT.query smt) ->
+  satisfied_by ρ (assertions smt) ->
   exists e1 e2, counterexample_execution v1 e1 v2 e2.
 Proof.
   intros. unfold equivalence_query_general in *. monad_inv.

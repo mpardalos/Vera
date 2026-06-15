@@ -11,7 +11,6 @@ From vera Require Import Verilog.
 From vera Require Import Bitvector.
 Import RawXBV(bit(..)).
 From vera Require Import VerilogToSMT.Expressions.
-From vera Require Import VerilogToSMT.Match.
 
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.MonadState.
@@ -83,10 +82,10 @@ Qed.
 
 Lemma mk_bijection_smt_map_match tag start m vars :
   mk_bijection tag (assign_vars start vars) = inr m ->
-  SMT.match_map_vars tag m vars.
+  match_map_vars tag m vars.
 Proof.
   Opaque VerilogSMTBijection.lookup_left.
-  unfold SMT.match_map_vars.
+  unfold match_map_vars.
   remember (assign_vars start vars) as assignment.
   epose proof (assign_vars_smtname_nodup _ _) as Hnodup;
     rewrite <- Heqassignment in Hnodup.
@@ -116,7 +115,7 @@ Qed.
 
 Lemma verilog_to_smt_map_match tag start v smt :
   verilog_to_smt tag start v = inr smt ->
-  SMT.match_map_vars tag (SMT.nameMap smt) (Verilog.modVariables v).
+  match_map_vars tag (nameMap smt) (Verilog.modVariables v).
 Proof.
   intros.
   unfold verilog_to_smt in *. simpl in *.
@@ -353,8 +352,8 @@ Lemma transfer_module_body_satisfiable v tag (m : VerilogSMTBijection.t) ρ q :
     disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
     module_items_sorted (Verilog.module_inputs v) (Verilog.modBody v) ->
     transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
-    SMT.match_map_vars tag m (Verilog.modVariables v) ->
-    v ⇓ (SMT.execution_of_valuation tag m ρ) ->
+    match_map_vars tag m (Verilog.modVariables v) ->
+    v ⇓ (execution_of_valuation tag m ρ) ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q.
 Proof.
   intros * Hwrites_ndup Hreads_subset Hwrites_permute Hdisjoint Hsorted Htransfer Hmatch_vars Hvalid .
@@ -372,7 +371,7 @@ Proof.
     + setoid_rewrite Hreads_subset.
       rewrite Hmatch_inputs.
       eapply RegisterState.defined_value_for_impl;
-        [|now apply SMT.execution_of_valuation_defined_value].
+        [|now apply execution_of_valuation_defined_value].
       simpl. intros.
       apply Hmatch_vars.
       apply Verilog.module_input_in_vars.
@@ -380,7 +379,7 @@ Proof.
     + setoid_rewrite Hwrites_permute.
       setoid_rewrite Hmatch_outputs.
       eapply RegisterState.defined_value_for_impl;
-        [|now apply SMT.execution_of_valuation_defined_value].
+        [|now apply execution_of_valuation_defined_value].
       simpl. intros.
       apply Hmatch_vars.
       apply Verilog.module_outputs_in_vars.
@@ -461,8 +460,8 @@ Lemma transfer_module_body_valid tag m v ρ q :
   disjoint (Verilog.module_inputs v) (Verilog.module_outputs v) ->
   transfer_module_body tag m (Verilog.module_inputs v) (Verilog.module_outputs v) (Verilog.modBody v) = inr q ->
   List.Forall (SMTQueries.term_satisfied_by ρ) q ->
-  SMT.match_map_vars tag m (Verilog.modVariables v) ->
-  valid_execution v (SMT.execution_of_valuation tag m ρ).
+  match_map_vars tag m (Verilog.modVariables v) ->
+  valid_execution v (execution_of_valuation tag m ρ).
 Proof.
   intros * Hsorted Hinputs_subset Houtputs_permute Hnodup_writes Hdisjoint Htransfer Hsat Hmatch_vars.
   unfold valid_execution.
@@ -475,7 +474,7 @@ Proof.
   - rewrite Houtputs_permute. reflexivity.
   - eassumption.
   - eassumption.
-  - assert (H : SMT.execution_of_valuation tag m ρ // Verilog.module_inputs v =( Verilog.module_inputs v )= SMT.execution_of_valuation tag m ρ). {
+  - assert (H : execution_of_valuation tag m ρ // Verilog.module_inputs v =( Verilog.module_inputs v )= execution_of_valuation tag m ρ). {
       apply RegisterState.match_on_limit_to_regs_iff.
       apply RegisterState.limit_to_regs_twice.
     } rewrite H. clear H.
@@ -518,8 +517,8 @@ Import EqNotations.
 Theorem verilog_to_smt_correct tag start v smt :
   verilog_to_smt tag start v = inr smt ->
   SMTQueries.smt_reflect
-    (SMT.query smt)
-    (fun ρ => valid_execution v (SMT.execution_of_valuation tag (SMT.nameMap smt) ρ)).
+    (assertions smt)
+    (fun ρ => valid_execution v (execution_of_valuation tag (nameMap smt) ρ)).
 Proof.
   intros H ρ.
   split.
