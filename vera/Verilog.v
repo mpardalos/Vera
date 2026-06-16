@@ -323,19 +323,19 @@ Module Verilog.
   Definition module_outputs (v : Verilog.vmodule) : list variable :=
     outputs_of_decls (modVariableDecls v).
 
-  Lemma module_input_in_vars v : forall var,
-      List.In var (Verilog.module_inputs v) ->
-      List.In var (Verilog.modVariables v).
+  Lemma module_input_in_vars v :
+    list_subset (Verilog.module_inputs v) (Verilog.modVariables v).
   Proof.
+    apply Forall_forall.
     unfold Verilog.module_inputs, Verilog.modVariables.
     generalize (modVariableDecls v). intros decls var Hvar_in. 
     funelim (inputs_of_decls decls); rewrite <- Heqcall in *; crush.
   Qed.
 
-  Lemma module_outputs_in_vars v : forall var,
-      List.In var (Verilog.module_outputs v) ->
-      List.In var (Verilog.modVariables v).
+  Lemma module_outputs_in_vars v :
+    list_subset (Verilog.module_outputs v) (Verilog.modVariables v).
   Proof.
+    apply Forall_forall.
     unfold Verilog.module_outputs, Verilog.modVariables.
     generalize (modVariableDecls v). intros decls var Hvar_in. 
     funelim (outputs_of_decls decls); rewrite <- Heqcall in *; crush.
@@ -350,6 +350,11 @@ Module Verilog.
     modVariableDecls v1 = modVariableDecls v2 ->
     module_outputs v1 = module_outputs v2.
   Proof. unfold module_outputs. crush. Qed.
+
+  Lemma module_variables_same v1 v2 :
+    modVariableDecls v1 = modVariableDecls v2 ->
+    modVariables v1 = modVariables v2.
+  Proof. unfold modVariables. crush. Qed.
 
   Definition var_names : list variable -> list name :=
     map varName.
@@ -412,7 +417,6 @@ Module Verilog.
     module_body_writes [] := [];
     module_body_writes (hd :: tl) := module_item_writes hd ++ module_body_writes tl
   .
-
 End Verilog.
 
 Module RawVerilog.
@@ -460,19 +464,19 @@ Module RawVerilog.
   Definition module_outputs (v : vmodule) : list variable :=
     outputs_of_decls (modVariableDecls v).
 
-  Lemma module_input_in_vars v : forall var,
-      List.In var (module_inputs v) ->
-      List.In var (modVariables v).
+  Lemma module_input_in_vars v :
+    list_subset (module_inputs v) (modVariables v).
   Proof.
+    apply List.Forall_forall.
     unfold module_inputs, modVariables.
     generalize (modVariableDecls v). intros decls var Hvar_in. 
     funelim (inputs_of_decls decls); rewrite <- Heqcall in *; crush.
   Qed.
 
-  Lemma module_outputs_in_vars v : forall var,
-      List.In var (module_outputs v) ->
-      List.In var (modVariables v).
+  Lemma module_outputs_in_vars v :
+    list_subset (module_outputs v) (modVariables v).
   Proof.
+    apply List.Forall_forall.
     unfold module_outputs, modVariables.
     generalize (modVariableDecls v). intros decls var Hvar_in. 
     funelim (outputs_of_decls decls); rewrite <- Heqcall in *; crush.

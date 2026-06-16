@@ -3,12 +3,10 @@ From vera Require VerilogSemantics.
 Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
 From vera Require Import Common.
-From vera Require AssignmentForwarding.
 From vera Require VerilogToSMT.
 From vera Require SMTQueries.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
-From vera Require DropInternal.
 
 From ExtLib Require Import Data.List.
 From ExtLib Require Import Data.Monads.EitherMonad.

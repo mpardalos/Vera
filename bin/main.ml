@@ -26,18 +26,10 @@ let sorted_module_of_file f =
   let* m = typed_module_of_file f in
   sort_module_items m
 
-let inlined_module_of_file f =
-  let* m = typed_module_of_file f in
-  Vera.forward_assignments m
-
-let internals_dropped_of_file f =
-  let* m = inlined_module_of_file f in
-  Vera.drop_internal m
-
 let smt_of_file filename =
   (* Need to tag it as left or right, doesn't matter here because we only
       translate one module *)
-  Vera.verilog_to_smt VerilogLeft =<< internals_dropped_of_file filename
+  Vera.verilog_to_smt VerilogLeft =<< sorted_module_of_file filename
 
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =
@@ -83,13 +75,8 @@ let rec lower level filename =
         (Vera.Inr (module_of_file filename))
   | `Typed ->
       display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename)
-  | `Inlined ->
-      display_or_error VerilogPP.Typed.vmodule (inlined_module_of_file filename)
   | `Sorted ->
       display_or_error VerilogPP.Typed.vmodule (sorted_module_of_file filename)
-  | `InternalsDropped ->
-      display_or_error VerilogPP.Typed.vmodule
-        (internals_dropped_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
   | `All ->
       printf "\n-- parsed -- \n";
@@ -143,8 +130,6 @@ let lower_cmd =
       [
         ("parsed", `Parsed);
         ("typed", `Typed);
-        ("inlined", `Inlined);
-        ("internals-dropped", `InternalsDropped);
         ("sorted", `Sorted);
         ("smt", `SMT);
         ("all", `All);

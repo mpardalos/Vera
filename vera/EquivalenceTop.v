@@ -2,8 +2,6 @@ From vera Require Import Verilog.
 From vera Require VerilogSemantics.
 Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
-From vera Require AssignmentForwarding.
-From vera Require DropInternal.
 From vera Require VerilogEquivalence.
 
 From ExtLib Require Import Structures.Monads.
@@ -30,24 +28,19 @@ Definition sort_module (v : Verilog.vmodule) : string + Verilog.vmodule :=
 
 Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string SMTQueries.query :=
   let* sorted1 := sort_module verilog1 in
-  let* inlined1 := AssignmentForwarding.forward_assignments sorted1 in
-  let* internal_dropped1 := DropInternal.drop_internal inlined1 in
 
   let* sorted2 := sort_module verilog2 in
-  let* inlined2 := AssignmentForwarding.forward_assignments sorted2 in
-  let* internal_dropped2 := DropInternal.drop_internal inlined2 in
 
-  VerilogEquivalence.equivalence_query internal_dropped1 internal_dropped2.
+  VerilogEquivalence.equivalence_query sorted1 sorted2.
 
 From vera Require Import VerilogSMT.
 From vera Require Import SMTQueries.
 From vera Require Import VerilogSemantics.
 Import CombinationalOnly.
-Import Equivalence.
+Import DefinedEquivalence.
 Import ExactEquivalence.
 From vera Require Import Common.
 From vera Require Import Tactics.
-From vera Require Import AssignmentForwardingCorrect.
 From vera Require Import VerilogEquivalenceCorrectness.
 
 From Stdlib Require Import Relations.
@@ -99,13 +92,11 @@ Qed.
 Theorem equivalence_query_general_unsat_correct v1 v2 smt :
   equivalence_query_general v1 v2 = inr smt ->
   (forall ρ, ~ satisfied_by ρ smt) ->
-  equivalent_behaviour v1 v2.
+  v1 ~~ v2.
 Proof.
   unfold equivalence_query_general.
   intros. monad_inv.
-  do 2 apply_somewhere AssignmentForwardingCorrect.assignment_forwarding_exact_equivalence.
   do 2 apply_somewhere sort_module_equivalent.
-  do 2 apply_somewhere DropInternal.drop_internal_correct.
   apply_somewhere VerilogEquivalenceCorrectness.equivalence_query_unsat_correct; [|eassumption].
   repeat match goal with
          | [ H : ?l ~~~ ?l' |- ?l ~~ ?r ] => rewrite H; clear H
@@ -114,6 +105,11 @@ Proof.
   assumption.
 Qed.
 
+(* This only works because ~~~ (exact equivalence) says that internal
+   vars are the same. If it only matched external variables, then we
+   would need to have an existential here: valid executions of v1, v2
+   would have matching executions in v1', v2', but those would not be
+   definitionally equal. *)
 Lemma counterexample_transfer v1 v2 v1' v2' e1 e2 :
   v1 ~~~ v1' ->
   v2 ~~~ v2' ->
@@ -122,24 +118,25 @@ Lemma counterexample_transfer v1 v2 v1' v2' e1 e2 :
 Proof.
   unfold counterexample_execution.
   intros Heq1 Heq2 [Hadmit1 [Hadmit2 [Hmatch_inputs Hmatch_outputs]]].
+  (* eexists. eexists. *)
   unpack_goal.
   - rewrite <- Heq1. apply Hadmit1.
   - rewrite <- Heq2. apply Hadmit2.
-  - erewrite <- ExactEquivalence.inputs_same by eassumption.
-    assumption.
-  - erewrite <- ExactEquivalence.outputs_same by eassumption.
-    assumption.
+  - erewrite <- exact_equivalence_same_inputs by eassumption.
+    eassumption.
+  - erewrite <- exact_equivalence_same_outputs by eassumption.
+    eassumption.
 Qed.
 
-Global Instance Proper_counterexample_execution_exact_equivalence :
-  Proper
-    (exact_equivalence ==> eq ==> exact_equivalence ==> eq ==> iff)
-    counterexample_execution.
-Proof.
-  repeat intro; subst; split; intro.
-  - eapply counterexample_transfer; eauto.
-  - eapply counterexample_transfer; (symmetry + idtac); eauto.
-Qed.
+(* Global Instance Proper_counterexample_execution_exact_equivalence :
+ *   Proper
+ *     (exact_equivalence ==> eq ==> exact_equivalence ==> eq ==> iff)
+ *     counterexample_execution.
+ * Proof.
+ *   repeat intro; subst; split; intro.
+ *   - eapply counterexample_transfer; eauto.
+ *   - eapply counterexample_transfer; (symmetry + idtac); eauto.
+ * Qed. *)
 
 Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
   equivalence_query_general v1 v2 = inr smt ->
@@ -147,14 +144,12 @@ Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
   exists e1 e2, counterexample_execution v1 e1 v2 e2.
 Proof.
   intros. unfold equivalence_query_general in *. monad_inv.
-  do 2 apply_somewhere AssignmentForwardingCorrect.assignment_forwarding_exact_equivalence.
   do 2 apply_somewhere sort_module_equivalent.
-  do 2 apply_somewhere DropInternal.drop_internal_correct.
-  repeat match goal with
-         | [ H : ?l ~~~ ?l' |- context[?l] ] => setoid_rewrite H; clear H
-	 end.
   eexists. eexists.
-  eapply equivalence_query_sat_correct; eassumption.
+  eapply counterexample_transfer.
+  - symmetry. eassumption.
+  - symmetry. eassumption.
+  - eapply equivalence_query_sat_correct; eassumption.
 Qed.
 
 Print Assumptions equivalence_query_general_unsat_correct.

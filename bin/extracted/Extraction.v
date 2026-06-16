@@ -5,7 +5,6 @@ From vera Require EquivalenceTop.
 From vera Require VerilogToSMT.
 From vera Require Common.
 From vera Require Bitvector.
-From vera Require AssignmentForwarding.
 From vera Require VerilogSemantics.
 
 From vera Require Import BVList.
@@ -66,8 +65,6 @@ Extraction "Vera.ml"
   EquivalenceTop.equivalence_query_general
   Verilog.Typecheck.tc_vmodule
   VerilogToSMT.expr_to_smt
-  AssignmentForwarding.forward_assignments
-  DropInternal.drop_internal
   VerilogSemantics.Sort.sort_module_items
   (* Common.NameMap *)
   .

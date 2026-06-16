@@ -74,10 +74,6 @@ Definition smt_var_info : Type := (smtname * width).
 Section expr_to_smt.
   Variable tag : VarTag.
 
-  (* Used for checking expected invariants (assignments only read module outputs and write to module inputs) *)
-  Variable inputs : list Verilog.variable.
-  Variable outputs : list Verilog.variable.
-
   Definition var_to_smt (var : Verilog.variable): (SMTLib.term (Sort_BitVec (Verilog.varType var))) :=
     SMTLib.Term_Const (verilog_to_smt_var tag var).
 
@@ -198,8 +194,6 @@ Section expr_to_smt.
 
   Equations transfer_module_item : Verilog.module_item -> transf (SMTLib.term Sort_Bool) :=
     transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign var rhs)) :=
-      assert_dec (In var outputs) "Assignment target must be module outputs"%string ;;
-      assert_dec (List.Forall (fun n => In n inputs) (Verilog.expr_reads rhs)) "Only reads from module inputs allowed"%string ;;
       let lhs_smt := var_to_smt var in
       let* rhs_smt := expr_to_smt rhs in
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
@@ -208,14 +202,6 @@ Section expr_to_smt.
   Equations transfer_module_body : list Verilog.module_item -> transf (list (SMTLib.term Sort_Bool)) :=
     transfer_module_body [] := ret [];
     transfer_module_body (hd :: tl) :=
-      assert_dec
-        (disjoint
-           (Verilog.module_item_writes hd)
-           (Verilog.module_body_writes tl))
-        "Multiply-driven net"%string ;;
-      assert_dec
-        (list_subset (Verilog.module_item_reads hd) inputs)
-        "Read from non-module-input"%string ;;
       let* a := transfer_module_item hd in
       let* b := transfer_module_body tl in
       ret (a :: b)
@@ -224,12 +210,6 @@ End expr_to_smt.
 
 Definition mk_declarations : list (Verilog.variable * smtname) -> list SMTQueries.declaration :=
   map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Verilog.varType var))).
-
-Definition all_vars_driven v :=
-  Forall
-    (fun var => List.In var (Verilog.module_inputs v) \/
-               List.In var (Verilog.module_body_writes (Verilog.modBody v)))
-    (Verilog.modVariables v).
 
 Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
   (l1 l2 : list A) (nodup1 : NoDup l1) : option (Permutation l1 l2) :=
@@ -243,28 +223,17 @@ Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : tran
     (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
     "Overlapping inputs and outputs"%string ;;
   assert_dec
-    (list_subset (Verilog.module_body_reads (Verilog.modBody vmodule)) (Verilog.module_inputs vmodule))
-    "Read from non-module-input"%string ;;
-  assert_dec (all_vars_driven vmodule) "Undriven variables"%string ;;
-  let* writes_nodup := assert_dec
     (NoDup (Verilog.module_body_writes (Verilog.modBody vmodule)))
-    "Duplicate writes"%string in
-  assert_dec
-    (NoDup (Verilog.module_outputs vmodule))
-    "Duplicate outputs"%string ;;
-  opt_to_sum "Non-output variables written to"%string
-    (assert_permutation
-      (Verilog.module_body_writes (Verilog.modBody vmodule))
-      (Verilog.module_outputs vmodule)
-      writes_nodup ) ;;
-  (* This is implied by the above, so it could be removed, added to
-     avoid writing a proof. *)
+    "Duplicate writes"%string ;;
+  let* nodup := assert_dec
+    (NoDup (Verilog.modVariables vmodule))
+    "Duplicate variables"%string in
+  opt_to_sum "Undriven variables"%string
+             (assert_permutation (Verilog.modVariables vmodule)
+	                         (Verilog.module_body_writes (Verilog.modBody vmodule) ++ Verilog.module_inputs vmodule)
+				 nodup) ;;
   assert_dec
     (module_items_sorted (Verilog.module_inputs vmodule) (Verilog.modBody vmodule))
     "Module items unsorted"%string ;;
-  transfer_module_body
-      name_tag
-      (Verilog.module_inputs vmodule)
-      (Verilog.module_outputs vmodule)
-      (Verilog.modBody vmodule)
+  transfer_module_body name_tag (Verilog.modBody vmodule)
 .

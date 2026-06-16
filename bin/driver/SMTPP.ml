@@ -16,7 +16,7 @@ module SMTLib = struct
     fprintf fmt "#b%s"
       (String.of_seq
          (List.to_seq
-            (map (function true -> '1' | false -> '0') (List.rev bits))))
+            (List.map (function true -> '1' | false -> '0') (List.rev bits))))
 
   let unaryOp fmt = function
     | BVNot -> fprintf fmt "bvnot"
