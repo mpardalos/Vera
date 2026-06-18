@@ -335,7 +335,7 @@ Proof.
   apply Hvar. clear Hvar. crush.
 Qed.
 
-Lemma not_execution_defined_match_on_smt_some_distinct_values vars ρ :
+Lemma not_defined_match_on_smt_some_distinct_values vars ρ :
   execution_some_distinct_value
     (fun var : Verilog.variable => In var vars)
     (execution_of_valuation VerilogLeft ρ)
@@ -352,15 +352,15 @@ Proof.
 Qed.
 
 Lemma defined_match_on_defined_value_left C e1 e2 :
-  RegisterState.execution_defined_match_on C e1 e2 ->
+  RegisterState.defined_match_on C e1 e2 ->
   RegisterState.defined_value_for C e1.
-Proof. unfold RegisterState.execution_defined_match_on. crush. Qed.
+Proof. unfold RegisterState.defined_match_on. crush. Qed.
 
 Lemma defined_match_on_defined_value_right C e1 e2 :
-  RegisterState.execution_defined_match_on C e1 e2 ->
+  RegisterState.defined_match_on C e1 e2 ->
   RegisterState.defined_value_for C e2.
 Proof.
-  unfold RegisterState.execution_defined_match_on.
+  unfold RegisterState.defined_match_on.
   intros [Hmatch Hdefined].
   rewrite <- Hmatch.
   apply Hdefined.
@@ -544,7 +544,7 @@ Proof.
     + apply smt_distinct_values_not_defined_match. assumption.
   - unpack_goal.
     + apply execution_defined_match_smt_all_same_values. assumption.
-    + apply not_execution_defined_match_on_smt_some_distinct_values; expect 1.
+    + apply not_defined_match_on_smt_some_distinct_values; expect 1.
       apply not_defined_match_some_distinct.
       * apply execution_of_valuation_defined_value.
       * apply execution_of_valuation_defined_value.
@@ -593,17 +593,17 @@ Qed.
 Global Instance Proper_defined_match_on_impl :
   Proper
     ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> eq ==> Basics.impl)
-    RegisterState.execution_defined_match_on.
+    RegisterState.defined_match_on.
 Proof. repeat intro. subst. crush. Qed.
 
 Global Instance Proper_defined_match_on_match_on C:
   Proper
     (RegisterState.match_on C ==> RegisterState.match_on C ==> iff)
-    (RegisterState.execution_defined_match_on C).
+    (RegisterState.defined_match_on C).
 Proof.
   repeat intro.
   subst.
-  unfold RegisterState.execution_defined_match_on.
+  unfold RegisterState.defined_match_on.
   rewrite H.
   rewrite H0.
   reflexivity.

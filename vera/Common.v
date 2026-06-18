@@ -8,6 +8,7 @@ From Stdlib Require Import List.
 From Stdlib Require Import Sorting.Permutation.
 From Stdlib Require Import Structures.Equalities.
 From Stdlib Require Import ZArith.
+From Stdlib Require Import Classical.
 
 From ExtLib Require Import Programming.Show.
 From ExtLib Require Import Structures.Maps.
@@ -454,6 +455,68 @@ Hint Rewrite
   : kill_bools.
 
 Ltac kill_bools := autorewrite with kill_bools in *.
+
+Lemma NoDup_app_iff A (l1 l2 : list A) :
+  NoDup (l1 ++ l2) <-> (NoDup l1 /\ NoDup l2 /\ disjoint l1 l2).
+Proof.
+  revert l2.
+  induction l1; split; intros; repeat split.
+  - constructor.
+  - assumption.
+  - constructor.
+  - crush.
+  - eapply NoDup_app_remove_r. eassumption.
+  - eapply NoDup_app_remove_l. eassumption.
+  - simpl in H. inv H.
+    eapply IHl1 in H3. decompose record H3. clear H3.
+    setoid_rewrite in_app_iff in H2.
+    constructor; crush.
+  - decompose record H. clear H.
+    inv H0. inv H3. simpl. constructor.
+    + rewrite in_app_iff. crush.
+    + rewrite Forall_forall in H6.
+      apply NoDup_app; eassumption.
+Qed.
+
+Lemma disjoint_app_iff {A} (l1 l2 l3 : list A):
+  disjoint (l1 ++ l2) l3 <->
+  disjoint l1 l3 /\ disjoint l2 l3.
+Proof.
+  unfold disjoint.
+  rewrite ! Forall_app, ! Forall_forall.
+  crush.
+Qed.
+
+Ltac disjoint_saturate :=
+  repeat match goal with
+         | [ H : disjoint (_ :: ?l1) ?l2 |- _ ] =>
+	   inv H; fold (disjoint l1 l2) in *
+         | [ H : disjoint ?l2 (_ :: ?l1) |- _ ] =>
+	   symmetry in H;
+	   inv H; fold (disjoint l1 l2) in *
+         | [ H : disjoint (_ ++ _) _ |- _ ] =>
+           rewrite ! disjoint_app_iff in H;
+           decompose record H;
+           clear H
+         | [ H : disjoint _ (_ ++ _) |- _ ] =>
+           symmetry in H;
+           rewrite ! disjoint_app_iff in H;
+           decompose record H;
+           clear H
+         | [ H : NoDup (_ ++ _) |- _ ] =>
+           apply NoDup_app_iff in H;
+           decompose record H;
+           clear H
+         | [ H : NoDup (_ :: _) |- _ ] =>
+           inv H
+         | [ H : NoDup [] |- _ ] =>
+           clear H
+         | [ H : Forall _ [] |- _ ] => clear H
+         | [ H : ~ (In _ []) |- _ ] => clear H
+         | [ H : ~ (In _ (_ ++ _)) |- _ ] => rewrite in_app_iff in H
+         | [ H : ~ (In _ (_ :: _)) |- _ ] => apply not_in_cons in H; destruct H
+         | [ H : ~ (_ \/ _) |- _ ] => apply not_or_and in H; destruct H
+         end.
 
 Definition opt_to_sum {E A} (e: E) (o : option A) : E + A :=
   match o with

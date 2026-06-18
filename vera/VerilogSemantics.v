@@ -9,7 +9,6 @@ From Stdlib Require Import Structures.Equalities.
 From Stdlib Require Import Psatz.
 From Stdlib Require Import Logic.ProofIrrelevance.
 From Stdlib Require Import Morphisms.
-From Stdlib Require Import Classical.
 From Stdlib Require Import Morphisms.
 From Stdlib Require Import Setoid.
 
@@ -40,69 +39,6 @@ Set Bullet Behavior "Strict Subproofs".
 
 Declare Scope verilog.
 Local Open Scope verilog.
-
-Lemma NoDup_app_iff A (l1 l2 : list A) :
-  NoDup (l1 ++ l2) <-> (NoDup l1 /\ NoDup l2 /\ disjoint l1 l2).
-Proof.
-  revert l2.
-  induction l1; split; intros; repeat split.
-  - constructor.
-  - assumption.
-  - constructor.
-  - crush.
-  - eapply NoDup_app_remove_r. eassumption.
-  - eapply NoDup_app_remove_l. eassumption.
-  - simpl in H. inv H.
-    eapply IHl1 in H3. decompose record H3. clear H3.
-    setoid_rewrite in_app_iff in H2.
-    constructor; crush.
-  - decompose record H. clear H.
-    inv H0. inv H3. simpl. constructor.
-    + rewrite in_app_iff. crush.
-    + rewrite Forall_forall in H6.
-      apply NoDup_app; eassumption.
-Qed.
-
-Lemma disjoint_app_iff {A} (l1 l2 l3 : list A):
-  disjoint (l1 ++ l2) l3 <->
-  disjoint l1 l3 /\ disjoint l2 l3.
-Proof.
-  unfold disjoint.
-  rewrite ! Forall_app, ! Forall_forall.
-  crush.
-Qed.
-
-Ltac disjoint_saturate :=
-  repeat match goal with
-         | [ H : disjoint (_ :: ?l1) ?l2 |- _ ] =>
-	   inv H; fold (disjoint l1 l2) in *
-         | [ H : disjoint ?l2 (_ :: ?l1) |- _ ] =>
-	   symmetry in H;
-	   inv H; fold (disjoint l1 l2) in *
-         | [ H : disjoint (_ ++ _) _ |- _ ] =>
-           rewrite ! disjoint_app_iff in H;
-           decompose record H;
-           clear H
-         | [ H : disjoint _ (_ ++ _) |- _ ] =>
-           symmetry in H;
-           rewrite ! disjoint_app_iff in H;
-           decompose record H;
-           clear H
-         | [ H : NoDup (_ ++ _) |- _ ] =>
-           apply NoDup_app_iff in H;
-           decompose record H;
-           clear H
-         | [ H : NoDup (_ :: _) |- _ ] =>
-           inv H
-         | [ H : NoDup [] |- _ ] =>
-           clear H
-         | [ H : Forall _ [] |- _ ] => clear H
-         | [ H : ~ (In _ []) |- _ ] => clear H
-         | [ H : ~ (In _ (_ ++ _)) |- _ ] => rewrite in_app_iff in H
-         | [ H : ~ (In _ (_ :: _)) |- _ ] => apply not_in_cons in H; destruct H
-         | [ H : ~ (_ \/ _) |- _ ] => apply not_or_and in H; destruct H
-         end.
-
 
 Module RegisterState.
   Module VariableAsMDT <: MiniDecidableType.
@@ -302,11 +238,11 @@ Module RegisterState.
     transitivity proved by (match_on_trans C)
     as match_on_rel.
 
-  Definition execution_defined_match_on C e1 e2 :=
+  Definition defined_match_on C e1 e2 :=
     e1 ={ C }= e2 /\ RegisterState.defined_value_for C e1.
 
   Notation "rs1 =!!{ P }!!= rs2" :=
-    (execution_defined_match_on P rs1 rs2)
+    (defined_match_on P rs1 rs2)
     (at level 80) : type_scope.
 
   Notation "rs1 =!!( vars )!!= rs2" :=
@@ -317,7 +253,7 @@ Module RegisterState.
     e1 =!!{ C }!!= e2 <->
     forall var, C var -> exists bv, e1 var = XBV.from_bv bv /\ e2 var = XBV.from_bv bv.
   Proof.
-    unfold execution_defined_match_on, "_ ={ _ }= _", RegisterState.defined_value_for.
+    unfold defined_match_on, "_ ={ _ }= _", RegisterState.defined_value_for.
     split.
     - intros [Hmatch Hdefined] var HC. insterU Hmatch. insterU Hdefined.
       rewrite <- Hmatch. crush.
@@ -326,7 +262,7 @@ Module RegisterState.
       + intros var HC. insterU H. destruct H as [? [? ?]]. crush.
   Qed.
 
-  Lemma execution_defined_match_on_trans C e1 e2 e3:
+  Lemma defined_match_on_trans C e1 e2 e3:
     e1 =!!{ C }!!= e2 ->
     e2 =!!{ C }!!= e3 ->
     e1 =!!{ C }!!= e3.
@@ -338,7 +274,7 @@ Module RegisterState.
     - eassumption.
   Qed.
 
-  Lemma execution_defined_match_on_sym C e1 e2:
+  Lemma defined_match_on_sym C e1 e2:
     e1 =!!{ C }!!= e2 ->
     e2 =!!{ C }!!= e1.
   Proof.
@@ -350,97 +286,10 @@ Module RegisterState.
   Qed.
 
   Add Parametric Relation (C : Verilog.variable -> Prop) :
-    RegisterState.t (execution_defined_match_on C)
-    symmetry proved by (execution_defined_match_on_sym C)
-    transitivity proved by (execution_defined_match_on_trans C)
-    as execution_defiened_match_on_rel.
-
-  Inductive opt_rel {A} (r : A -> A -> Prop) : option A -> option A -> Prop :=
-    | opt_rel_None : opt_rel r None None
-    | opt_rel_Some x y : r x y -> opt_rel r (Some x) (Some y)
-    .
-  
-  Definition match_on_opt C := opt_rel (RegisterState.match_on C).
-  
-  Notation "rs1 =?{ P }?= rs2" :=
-    (match_on_opt P rs1 rs2)
-    (at level 80) : type_scope.
-  
-  Notation "rs1 =?( vars )?= rs2" :=
-    (rs1 =?{fun var => In var vars}?= rs2)
-    (at level 80) : type_scope.
-  
-  Lemma match_on_opt_refl C r : r =?{ C }?= r.
-  Proof.
-    unfold "_ =?{ _ }?= _".
-    destruct r; constructor; expect 1.
-    reflexivity.
-  Qed.
-  
-  Lemma match_on_opt_trans C r1 r2 r3 :
-    r1 =?{ C }?= r2 ->
-    r2 =?{ C }?= r3 ->
-    r1 =?{ C }?= r3.
-  Proof.
-    unfold "_ =?{ _ }?= _".
-    intros H12 H23.
-    inv H12; inv H23; constructor; expect 1.
-    etransitivity; eassumption.
-  Qed.
-  
-  Lemma match_on_opt_sym C r1 r2 :
-    r1 =?{ C }?= r2 ->
-    r2 =?{ C }?= r1.
-  Proof.
-    unfold "_ =?{ _ }?= _".
-    intros H12.
-    inv H12; constructor; expect 1.
-    symmetry. assumption.
-  Qed.
-    
-  Add Parametric Relation (C : Verilog.variable -> Prop) :
-    (option RegisterState.t) (match_on_opt C)
-    reflexivity proved by (match_on_opt_refl C)
-    symmetry proved by (match_on_opt_sym C)
-    transitivity proved by (match_on_opt_trans C)
-    as match_on_opt_rel.
-
-  Global Instance Proper_match_on_opt_iff :
-    Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) match_on_opt.
-  Proof.
-    repeat intro.
-    subst; split; intros Hmatch; inv Hmatch; constructor.
-    - now rewrite <- H.
-    - now rewrite H.
-  Qed.
-
-  Global Instance Proper_match_on_opt_impl :
-    Proper
-      ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> eq ==> Basics.impl)
-      match_on_opt.
-  Proof.
-    intros C1 C2 Himpl regs1 regs2 [] regs1' regs2' [] Hmatch.
-    inv Hmatch; constructor; expect 1.
-    now rewrite <- Himpl.
-  Qed.
-
-  Lemma match_on_opt_split_iff C1 C2 regs1 regs2 :
-    regs1 =?{ fun var => C1 var \/ C2 var }?= regs2 <->
-      (regs1 =?{ C1 }?= regs2 /\ regs1 =?{ C2 }?= regs2).
-  Proof.
-    unfold "_ =?{ _ }?= _".
-    split; inversion 1; intuition try (constructor; try crush); expect 1.
-    inv H0; try constructor; expect 1.
-    inv H1; try constructor; expect 1.
-    apply match_on_split_iff. crush.
-  Qed.
-
-  Lemma match_on_opt_app_iff l1 l2 regs1 regs2 :
-    (regs1 =?( l1 ++ l2 )?= regs2) <-> (regs1 =?( l1 )?= regs2 /\ regs1 =?( l2 )?= regs2).
-  Proof.
-    setoid_rewrite List.in_app_iff.
-    apply match_on_opt_split_iff.
-  Qed.
+    RegisterState.t (defined_match_on C)
+    symmetry proved by (defined_match_on_sym C)
+    transitivity proved by (defined_match_on_trans C)
+    as execution_defined_match_on_rel.
 
   Definition limit_to_regs (vars : list Verilog.variable) (regs : RegisterState.t) : RegisterState.t :=
     fun var =>
@@ -638,15 +487,6 @@ Module RegisterState.
           setoid_rewrite List.in_app_iff
       | [ |- match_on (fun _ => _ \/ _) _ _ ] =>
           apply match_on_split_iff; split
-      | [ H: match_on_opt (fun _ => _ \/ _) _ _ |- _ ] =>
-          apply match_on_opt_split_iff in H;
-          destruct H
-      | [ H: match_on_opt (fun _ => List.In _ (_ ++ _)) _ _ |- _ ] =>
-          setoid_rewrite List.in_app_iff in H
-      | [ |- match_on_opt (fun _ => List.In _ (_ ++ _)) _ _ ] =>
-          setoid_rewrite List.in_app_iff
-      | [ |- match_on_opt (fun _ => _ \/ _) _ _ ] =>
-          apply match_on_opt_split_iff; split
       end.
 End RegisterState.
 
@@ -1141,18 +981,6 @@ Module CombinationalOnly.
 
   Notation execution := RegisterState.t.
 
-  (* TODO: This could possible use module_body_writes instead of
-  module_outputs. That would give us an internal view of the
-  module. Instead, here we have a version that views a module as a
-  black box.
-
-  Notes:
-  - This is the version that we *need* for equivalence.
-  - The two versions are identical for modules after assignment-forwarding.
-  - The alternative might be useful for defining transformations on
-    modules (not sure, things like assignment forwarding don't keep
-    the internal state, maybe this is the version we want.)
-    *)
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
     run_vmodule v e =( Verilog.modVariables v )= e.
 
