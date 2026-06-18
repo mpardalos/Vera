@@ -144,177 +144,23 @@ Proof.
     symmetry. apply BV.wf.
 Qed.
 
-Lemma to_N_convert_bv_extn from to (bv : BV.bitvector from) :
-  (to >= from)%N ->
-  BV.to_N (convert_bv to bv) = BV.to_N bv.
-Proof.
-  intros H.
-  funelim (convert_bv to bv); try lia.
-  - destruct_rew. apply BV.bv_zextn_to_N.
-  - destruct_rew. reflexivity.
-Qed.
+Lemma smtlib_interp_rewrite w1 w2 ρ (E : w1 = w2) t : 
+  SMTLib.interp_term ρ (rew [fun n : N => SMTLib.term (SMTLib.Sort_BitVec n)] E in t)
+   = rew [fun n => BV.bitvector n] E in SMTLib.interp_term ρ t.
+Proof. subst. reflexivity. Qed.
 
-Lemma bitOf_concat_low idx w1 w2 (extn : BV.bitvector w2) (bv : BV.bitvector w1) :
-  (N.of_nat idx < w1)%N ->
-  BV.bitOf idx (BV.bv_concat extn bv) = BV.bitOf idx bv.
-Proof.
-  destruct bv as [bv bv_wf].
-  destruct extn as [extn extn_wf].
-  unfold BV.bitOf, BV.bv_concat, RawBV.bitOf, RawBV.bv_concat, RawBV.size in *.
-  simpl.
-  intros.
-  rewrite List.app_nth1 by lia.
-  reflexivity.
-Qed.
-
-Lemma nth_rawbv_extract bv : forall idx w,
-  idx < w ->
-  List.nth idx (BVList.RAWBITVECTOR_LIST.extract bv 0 w) false =
-    List.nth idx bv false.
-Proof.
-  induction bv.
-  - crush.
-  - intros.
-    cbn [List.nth].
-    destruct idx.
-    + crush.
-    + simpl.
-      destruct w; [lia|].
-      simpl.
-      apply IHbv.
-      lia.
-Qed.
-
-Lemma bitOf_extr_inbounds idx sz w (bv : BV.bitvector w) :
-  (sz <= w)%N ->
-  (N.of_nat idx < sz)%N ->
-  BV.bitOf idx (BV.bv_extr 0 sz bv) = BV.bitOf idx bv.
-Proof.
-  intros.
-  destruct bv as [bv bv_wf].
-  unfold BV.bitOf, BV.bv_extr, RawBV.bitOf, RawBV.bv_extr, RawBV.size in *.
-  simpl in *.
-  autodestruct_eqn E; try crush.
-  apply nth_rawbv_extract.
-  lia.
-Qed.
-
-Lemma bitOf_convert_bv_extn idx from to (bv : BV.bitvector from) :
-  (idx < from)%N ->
-  (idx < to)%N ->
-  BV.bitOf (N.to_nat idx) (convert_bv to bv) = BV.bitOf (N.to_nat idx) bv.
-Proof.
-  intros.
-  funelim (convert_bv to bv).
-  - destruct_rew. simpl.
-    now rewrite bitOf_concat_low by lia.
-  - apply bitOf_extr_inbounds; try crush.
-  - destruct_rew. simpl. reflexivity.
-Qed.
-
-Lemma smt_select_bit_value ρ w_vec w_idx
-        (smt_vec : SMTLib.term (SMTLib.Sort_BitVec w_vec))
-	(smt_idx : SMTLib.term (SMTLib.Sort_BitVec w_idx)) :
-    (BV.to_N (SMTLib.interp_term ρ smt_idx) < w_vec)%N ->
-    select_bit (XBV.from_bv (SMTLib.interp_term ρ smt_vec)) (XBV.from_bv (SMTLib.interp_term ρ smt_idx))
-      = XBV.from_bv (SMTLib.interp_term ρ (smt_select_bit w_vec smt_vec w_idx smt_idx)).
+Lemma smt_select_bit_value ρ w (smt_vec : SMTLib.term (SMTLib.Sort_BitVec w)) (idx : N) :
+    (idx < w)%N ->
+    XBV.of_bits [XBV.bitOf (N.to_nat idx) (XBV.from_bv (SMTLib.interp_term ρ smt_vec))]
+      = XBV.from_bv (SMTLib.interp_term ρ (smt_select_bit smt_vec idx)).
 Proof.
   intros Hbound.
-  unfold select_bit, smt_select_bit in *.
-  rewrite XBV.to_N_from_bv in *.
-  simpl.
-  erewrite ! cast_from_to_value; cycle 1;
-    try eassumption; try lia; [idtac].
-  destruct (N.eq_dec (N.max w_vec w_idx) (N.max w_vec w_idx)); [|crush].
-  rewrite BV.bv_shr_as_select by lia.
-  apply XBV.of_bits_equal. simpl.
-  f_equal.
+  unfold smt_select_bit in *. simpl.
+  rewrite smtlib_interp_rewrite.
+  simpl. rewrite N.add_sub. simpl.
+  rewrite BV.bv_extr_one_bit by lia.
   rewrite XBV.bit_of_as_bv by lia.
-  f_equal.
-  rewrite to_N_convert_bv_extn by lia.
-  rewrite bitOf_convert_bv_extn by lia.
-  reflexivity.
-Qed.
-
-Lemma convert_extend_to_N from to (xbv : XBV.xbv from) val :
-  (to >= from)%N ->
-  XBV.to_N xbv = Some val ->
-  XBV.to_N (convert to xbv) = Some val.
-Proof.
-  intros.
-  funelim (convert to xbv); [idtac|lia|idtac].
-  - destruct_rew. simpl. apply XBV.extend_to_N. assumption.
-  - destruct_rew. simpl. assumption.
-Qed.
-
-Lemma convert_extend_to_N_none from to (xbv : XBV.xbv from) :
-  (to >= from)%N ->
-  XBV.to_N xbv = None ->
-  XBV.to_N (convert to xbv) = None.
-Proof.
-  intros.
-  funelim (convert to xbv).
-  - destruct_rew. simpl. apply XBV.extend_to_N_none2. assumption.
-  - lia.
-  - destruct_rew. simpl. assumption.
-Qed.
-
-Lemma convert_shr_convert n1 n2 (xbv : XBV.xbv n1) shamt :
-  (n2 >= n1)%N ->
-  convert n1 (XBV.shr (convert n2 xbv) shamt) = XBV.shr xbv shamt.
-Proof.
-  intros.
-  funelim (convert n2 xbv); [idtac|lia|idtac].
-  all: destruct_rew; simpl.
-  - funelim (convert from (XBV.shr (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
-    apply XBV.extr_shr_extend.
-  - funelim (convert from (XBV.shr value shamt)); [lia|lia|idtac].
-    rewrite <- eq_rect_eq. reflexivity.
-Qed.
-
-Lemma convert_shl_convert n1 n2 (xbv : XBV.xbv n1) shamt :
-  (n2 >= n1)%N ->
-  convert n1 (XBV.shl (convert n2 xbv) shamt) = XBV.shl xbv shamt.
-Proof.
-  intros.
-  funelim (convert n2 xbv); [idtac|lia|idtac].
-  all: destruct_rew; simpl.
-  - funelim (convert from (XBV.shl (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
-    apply XBV.extr_shl_extend.
-  - funelim (convert from (XBV.shl value shamt)); [lia|lia|idtac].
-    rewrite <- eq_rect_eq. reflexivity.
-Qed.
-
-Lemma convert_exes n1 n2 :
-  (n2 <= n1)%N ->
-  convert n2 (XBV.exes n1) = XBV.exes n2.
-Proof.
-  intros. 
-  funelim (convert n2 (XBV.exes n1)).
-  - lia.
-  - apply XBV.extr_exes.
-  - destruct_rew. reflexivity.
-Qed.
-
-Lemma eval_shiftop_remove_converts w1 w2 op (lhs : XBV.xbv w1) (rhs : XBV.xbv w2) :
-  (N.max w1 w2 > 0)%N ->
-  convert w1 (eval_shiftop op (convert (N.max w1 w2) lhs) (convert (N.max w1 w2) rhs)) =
-  eval_shiftop op lhs rhs.
-Proof.
-  intros.
-  funelim (eval_shiftop op lhs rhs).
-  all: simp eval_shiftop.
-  all: match type of Heq with
-       | (_ = Some _) => apply convert_extend_to_N with (to := N.max n1 n2) in Heq
-       | (_ = None) => apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq
-       end; [|lia].
-  all: rewrite Heq; simpl.
-  - apply convert_shr_convert. lia.
-  - apply convert_exes. lia.
-  - apply convert_shl_convert. lia.
-  - apply convert_exes. lia.
-  - apply convert_shl_convert. lia.
-  - apply convert_exes. lia.
+  XBV.bitvector_erase. reflexivity.
 Qed.
 
 Lemma expr_to_smt_value w expr : forall tag regs ρ t,
@@ -329,8 +175,8 @@ Proof.
   all: simp expr_reads expr_to_smt eval_expr in *.
   all: unpack_verilog_smt_match_states_partial.
   all: try solve [some_inv]. (* Handle expressions that we abort on *)
-  all: simpl in Hexpr_to_smt.
-  all: unfold Verilog.expr_type in *.
+  all: simpl in *.
+  (* all: unfold Verilog.expr_type in *. *)
   all: repeat match type of Hexpr_to_smt with
        | (match ?e with _ => _ end) = inr _ =>
          let E := fresh "E" in destruct e eqn:E
@@ -362,13 +208,7 @@ Proof.
   - (* bitwiseop *)
     apply bitwiseop_to_smt_value.
   - (* shiftop *)
-    erewrite cast_from_to_value by assumption.
-    rewrite <- convert_no_exes.
-    rewrite <- shiftop_to_smt_value.
-    rewrite ! cast_from_to_value by lia.
-    rewrite <- ! convert_no_exes.
-    rewrite eval_shiftop_remove_converts by lia.
-    reflexivity.
+    apply shiftop_to_smt_value.
   - (* unop *)
     apply unaryop_to_smt_value.
   - (* conditional *)
@@ -377,11 +217,9 @@ Proof.
     apply XBV.extr_no_exes.
     lia.
   - (* Bitselect (literal) *)
-    rewrite <- smt_select_bit_value by (simpl; lia).
-    reflexivity.
-  - (* Bitselect (width) *)
+    unfold select_bit.
+    rewrite XBV.to_N_from_bv.
     apply smt_select_bit_value.
-    pose proof (BV.to_N_max_bound _ (SMTLib.interp_term ρ t1)).
     lia.
   - (* concat *)
     apply XBV.concat_no_exes.

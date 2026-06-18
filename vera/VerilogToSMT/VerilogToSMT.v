@@ -77,11 +77,12 @@ Section expr_to_smt.
   Definition var_to_smt (var : Verilog.variable): (SMTLib.term (Sort_BitVec (Verilog.varType var))) :=
     SMTLib.Term_Const (verilog_to_smt_var tag var).
 
-  Definition smt_select_bit vec_width vec_smt idx_width idx_smt :=
-    SMTLib.Term_BVExtract 0 0 ltac:(lia)
-      (SMTLib.Term_BVBinOp SMTLib.BVShr
-         (cast_from_to vec_width (N.max vec_width idx_width) vec_smt)
-         (cast_from_to idx_width (N.max vec_width idx_width) idx_smt)).
+  Definition smt_select_bit {w}
+    (vec_smt : SMTLib.term (Sort_BitVec w))
+    (idx : N)
+    : SMTLib.term (Sort_BitVec 1):=
+    rew [fun n => SMTLib.term (SMTLib.Sort_BitVec n)] (N.add_sub 1 idx) in
+      SMTLib.Term_BVExtract idx idx (N.le_refl idx) vec_smt.
 
   Equations arithmeticop_to_smt {w} :
       Verilog.arithmeticop ->
@@ -144,18 +145,10 @@ Section expr_to_smt.
       let* rhs_smt := expr_to_smt rhs in
       ret (bitwiseop_to_smt op lhs_smt rhs_smt);
     expr_to_smt (Verilog.ShiftOp op lhs rhs _ _) :=
-      let* lhs_smt_short := expr_to_smt lhs in
-      let* rhs_smt_short := expr_to_smt rhs in
-      let lhs_width := Verilog.expr_type lhs in
-      let rhs_width := Verilog.expr_type rhs in
-      (* Added to syntax *)
-      (* assert_dec (lhs_width > 0)%N "0 width"%string ;;
-       * assert_dec (rhs_width > 0)%N "0 width"%string ;; *)
-      let op_width := N.max lhs_width rhs_width in
-      let lhs_smt := cast_from_to lhs_width op_width lhs_smt_short in
-      let rhs_smt := cast_from_to rhs_width op_width rhs_smt_short in
-      let long_result := shiftop_to_smt op lhs_smt rhs_smt in
-      ret (cast_from_to op_width lhs_width long_result);
+      let* lhs_smt := expr_to_smt lhs in
+      let* rhs_smt := expr_to_smt rhs in
+      let* e := assert_dec _ "Incompatible widths in shift"%string in
+      ret (shiftop_to_smt op lhs_smt (rew [fun n => SMTLib.term (SMTLib.Sort_BitVec n)] e in rhs_smt));
     expr_to_smt (Verilog.Concatenation e1 e2) :=
       let* e1_smt := expr_to_smt e1 in
       let* e2_smt := expr_to_smt e2 in
@@ -172,16 +165,10 @@ Section expr_to_smt.
       let* vec_smt := expr_to_smt vec in
       ret (SMTLib.Term_BVExtract hi lo wf vec_smt);
     expr_to_smt (Verilog.BitSelect_width vec idx _) :=
-      let t_vec := Verilog.expr_type vec in
-      let t_idx := Verilog.expr_type idx in
-      let* vec_smt := expr_to_smt vec in
-      let* idx_smt := expr_to_smt idx in
-      ret (smt_select_bit t_vec vec_smt t_idx idx_smt);
+      raise "Unexpected variable bit select"%string;
     expr_to_smt (@Verilog.BitSelect_const _ t_idx vec idx _) :=
-      let t_vec := Verilog.expr_type vec in
       let* vec_smt := expr_to_smt vec in
-      let idx_smt := SMTLib.Term_BVLit t_idx idx in
-      ret (smt_select_bit t_vec vec_smt t_idx idx_smt);
+      ret (smt_select_bit vec_smt (BV.to_N idx));
     expr_to_smt (Verilog.Resize to expr _) :=
       let from := Verilog.expr_type expr in
       let* expr_smt := expr_to_smt expr in
