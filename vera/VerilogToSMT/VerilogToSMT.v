@@ -164,11 +164,11 @@ Section expr_to_smt.
     expr_to_smt (Verilog.RangeSelect vec hi lo _ wf) :=
       let* vec_smt := expr_to_smt vec in
       ret (SMTLib.Term_BVExtract hi lo wf vec_smt);
-    expr_to_smt (Verilog.BitSelect_width vec idx _) :=
+    expr_to_smt (Verilog.BitSelect_width vec idx _ _) :=
       raise "Unexpected variable bit select"%string;
-    expr_to_smt (@Verilog.BitSelect_const _ t_idx vec idx _) :=
+    expr_to_smt (Verilog.BitSelect_const vec idx _) :=
       let* vec_smt := expr_to_smt vec in
-      ret (smt_select_bit vec_smt (BV.to_N idx));
+      ret (smt_select_bit vec_smt idx);
     expr_to_smt (Verilog.Resize to expr _) :=
       let from := Verilog.expr_type expr in
       let* expr_smt := expr_to_smt expr in

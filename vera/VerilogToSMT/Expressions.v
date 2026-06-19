@@ -218,7 +218,7 @@ Proof.
     lia.
   - (* Bitselect (literal) *)
     unfold select_bit.
-    rewrite XBV.to_N_from_bv.
+    autorewrite with xbv.
     apply smt_select_bit_value.
     lia.
   - (* concat *)

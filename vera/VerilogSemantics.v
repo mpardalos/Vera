@@ -622,11 +622,16 @@ Module Sort.
     | vars_ready, hd :: tl with
       dec (disjoint (module_item_writes hd) vars_ready),
       dec (list_subset (module_item_reads hd) vars_ready) => {
-      | right _, _ => None (* conflicting write *)
-      | left _, right _ => (* No conflicting write, but not ready *)
-        let* (MkSelection _ selected selected_tl _) := sort_module_items_select vars_ready tl in
-        Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ )
-      | left prf1, left prf2 => (* Ready *)
+      (* conflicting write *)
+      | right _, _ => None 
+      (* No conflicting write, but not ready *)
+      | left _, right _ with sort_module_items_select vars_ready tl => {
+        | Some (MkSelection _ selected selected_tl _) =>
+	    Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ )
+        | None => None
+      }
+      (* Ready *)
+      | left prf1, left prf2 => 
         Some (MkSelection (hd :: tl) hd tl _)
     }
   }.
@@ -659,6 +664,7 @@ Module Sort.
     - f_equal. f_equal. apply proof_irrelevance.
     - inv Hsorted. contradiction.
     - inv Hsorted. contradiction.
+    - inv Hsorted. contradiction.
   Qed.
 
   Lemma module_items_select_ready vars mis mi rest wf :
@@ -668,10 +674,8 @@ Module Sort.
     intros H.
     funelim (sort_module_items_select vars mis);
       rewrite <- Heqcall in *; clear Heqcall.
-    - discriminate.
-    - inv H. assumption.
-    - monad_inv. eauto.
-    - discriminate.
+    all: inv H.
+    all: eauto.
   Qed.
 
   Lemma module_items_select_no_overwrite vars mis mi rest wf :
@@ -681,10 +685,8 @@ Module Sort.
     intros H.
     funelim (sort_module_items_select vars mis);
       rewrite <- Heqcall in *; clear Heqcall.
-    - discriminate.
-    - inv H. assumption.
-    - monad_inv. eauto.
-    - discriminate.
+    all: inv H.
+    all: eauto.
   Qed.
 
   Theorem sort_module_items_permutation body body' vars_ready :
@@ -693,10 +695,13 @@ Module Sort.
   Proof.
     intros.
     funelim (sort_module_items vars_ready body);
-      rewrite <- Heqcall in *; clear Heqcall; try discriminate.
-    - inv H. reflexivity.
-    - inv H. etransitivity. { symmetry. eassumption. }
-      apply perm_skip. eapply Hind. eapply Heq.
+      rewrite <- Heqcall in *; clear Heqcall.
+    all: inv H.
+    - reflexivity.
+    - rewrite <- wf0.
+      apply perm_skip.
+      eapply Hind.
+      eapply Heq.
   Qed.
 
   Theorem sort_module_items_sorted inputs body body':
@@ -732,7 +737,151 @@ Module Sort.
       inv Hsorted. inv Heq0.
       rewrite Hind in Heq; crush.
   Qed.
-  
+
+  Definition selection_map {l} f (s : selection l) : selection (map f l) :=
+    let '(MkSelection _ mi rest wf) := s in
+    {| mi := f mi; rest := map f rest; wf := Permutation_map f wf |}.
+
+  (* This should be a Proper instance, but the result type depends on
+     the second argument, so we can't do it. *)
+  Lemma module_items_select_permutation vars1 vars2 l :
+    Permutation vars1 vars2 ->
+    sort_module_items_select vars1 l = sort_module_items_select vars2 l.
+  Proof.
+    intros Hpermute.
+    induction l.
+    all: simp sort_module_items_select.
+    1: reflexivity.
+    repeat match goal with
+           | [ |- context[dec ?P] ] => destruct (dec P)
+	   end.
+    all: try reflexivity.
+    all: simpl.
+    all: match goal with
+         | [ H1: ?P ?l ?v1, H2: ~ ?P ?l ?v2 |- _] =>
+	   exfalso;
+	   (rewrite Hpermute in H2 || rewrite <- Hpermute in H2);
+	   contradiction
+	 | _ => idtac
+	 end.
+    all: expect 1.
+    rewrite <- IHl.
+    destruct (sort_module_items_select vars1 l).
+    all: reflexivity.
+  Qed.
+
+  Lemma module_items_sort_permutation vars1 vars2 l :
+    Permutation vars1 vars2 ->
+    sort_module_items vars1 l = sort_module_items vars2 l.
+  Proof.
+    intros Hpermute.
+    funelim (sort_module_items vars1 l).
+    - reflexivity.
+    - simp sort_module_items.
+      rewrite <- (module_items_select_permutation _ _ _ Hpermute).
+      rewrite Heq.
+      reflexivity.
+    - simp sort_module_items.
+      rewrite <- (module_items_select_permutation _ _ _ Hpermute).
+      rewrite Heq0.
+      simpl.
+      rewrite <- Hind; cycle 1. {
+        apply Permutation_app_head.
+	apply Hpermute.
+      }
+      rewrite Heq.
+      reflexivity.
+    - simp sort_module_items.
+      rewrite <- (module_items_select_permutation _ _ _ Hpermute).
+      rewrite Heq0.
+      simpl.
+      rewrite <- Hind; cycle 1. {
+        apply Permutation_app_head.
+	apply Hpermute.
+      }
+      rewrite Heq.
+      reflexivity.
+  Qed.
+
+  Global Instance Proper_module_items_sort_Permutation :
+    Proper
+      (@Permutation Verilog.variable ==> eq ==> eq)
+      sort_module_items.
+  Proof.
+    intros vars1 vars2 Hpermute l l' <-.
+    apply module_items_sort_permutation.
+    apply Hpermute.
+  Qed.
+
+  Section map.
+    Context
+      (f : module_item -> module_item)
+      (f_preserve_reads : forall mi, Permutation (module_item_reads (f mi)) (module_item_reads mi))
+      (f_preserve_writes : forall mi, Permutation (module_item_writes (f mi)) (module_item_writes mi)).
+
+    Lemma sort_module_items_select_map inputs mis :
+      sort_module_items_select inputs (map f mis)
+        = option_map (selection_map f) (sort_module_items_select inputs mis).
+    Proof.
+      funelim (sort_module_items_select inputs mis).
+      - reflexivity.
+      - simpl. simp sort_module_items_select.
+        destruct (dec (disjoint (module_item_writes (f hd)) vars_ready)) as [prf1'|prf1'];
+          [|exfalso; rewrite f_preserve_writes in prf1'; contradiction].
+        destruct (dec (list_subset (module_item_reads (f hd)) vars_ready)) as [prf2'|prf2'];
+          [|exfalso; rewrite f_preserve_reads in prf2'; contradiction].
+        simpl. f_equal. f_equal. apply proof_irrelevance.
+      - simpl. simp sort_module_items_select.
+        destruct (dec (disjoint (module_item_writes (f hd)) vars_ready)) as [prf1'|prf1'];
+          [exfalso; rewrite f_preserve_writes in prf1'; contradiction|].
+        reflexivity.
+      - simpl. simp sort_module_items_select.
+        destruct (dec (disjoint (module_item_writes (f hd)) vars_ready)) as [prf1'|prf1'];
+          [|exfalso; rewrite f_preserve_writes in prf1'; contradiction].
+        destruct (dec (list_subset (module_item_reads (f hd)) vars_ready)) as [prf2'|prf2'];
+          [exfalso; rewrite f_preserve_reads in prf2'; contradiction|].
+        simpl.
+        rewrite Hind.
+        rewrite Heq.
+        simpl.
+        f_equal. f_equal. apply proof_irrelevance.
+      - simpl. simp sort_module_items_select.
+        destruct (dec (disjoint (module_item_writes (f hd)) vars_ready)) as [prf1'|prf1'];
+          [|exfalso; rewrite f_preserve_writes in prf1'; contradiction].
+        destruct (dec (list_subset (module_item_reads (f hd)) vars_ready)) as [prf2'|prf2'];
+          [exfalso; rewrite f_preserve_reads in prf2'; contradiction|].
+        simpl.
+        rewrite Hind.
+        rewrite Heq.
+        simpl.
+        reflexivity.
+    Qed.
+
+    Lemma sort_module_items_map inputs mis :
+      sort_module_items inputs (map f mis)
+        = option_map (map f) (sort_module_items inputs mis).
+    Proof.
+      funelim (sort_module_items inputs mis); simp sort_module_items.
+      1: reflexivity.
+      all: simpl; simp sort_module_items.
+      all: replace
+             (sort_module_items_select vars_ready (f m :: map f l))
+  	   with
+             (option_map (selection_map f) (sort_module_items_select vars_ready (m :: l)))
+           by (symmetry; exact (sort_module_items_select_map vars_ready (m :: l))).
+      - rewrite Heq.
+        reflexivity.
+      - rewrite Heq0. simpl.
+        rewrite <- f_preserve_writes in Hind. rewrite Hind.
+        rewrite <- f_preserve_writes in Heq. rewrite Heq.
+        reflexivity.
+      - rewrite Heq0. simpl.
+        rewrite <- f_preserve_writes in Hind. rewrite Hind.
+        rewrite <- f_preserve_writes in Heq. rewrite Heq.
+        reflexivity.
+    Qed.
+  End map.
+
   Definition vmodule_sortable (v : vmodule) : Prop :=
     exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted.
   
@@ -851,11 +1000,8 @@ Module CombinationalOnly.
   Next Obligation. crush. Qed.
   Next Obligation. crush. Qed.
 
-  Definition select_bit {w1 w2} (vec : XBV.xbv w1) (idx : XBV.xbv w2) : XBV.xbv 1 :=
-    match XBV.to_N idx with
-    | None => XBV.of_bits [X]
-    | Some n => XBV.of_bits [XBV.bitOf (N.to_nat n) vec]
-    end.
+  Definition select_bit {w1} (vec : XBV.xbv w1) (idx : N) : XBV.xbv 1 :=
+    XBV.of_bits [XBV.bitOf (N.to_nat idx) vec].
 
   (* TODO: Check that ?: semantics match with standard *)
   Definition eval_conditional {w_cond w} (cond : XBV.xbv w_cond) (ifT : XBV.xbv w) (ifF : XBV.xbv w) : XBV.xbv w :=
@@ -892,13 +1038,16 @@ Module CombinationalOnly.
     eval_expr regs (Verilog.RangeSelect vec hi lo _ _) :=
       let vec_val := eval_expr regs vec in
       (XBV.extr vec_val lo (1 + hi - lo));
-    eval_expr regs (Verilog.BitSelect_width vec idx _) :=
+    eval_expr regs (Verilog.BitSelect_width vec idx _ _) :=
       let vec_val := eval_expr regs vec in
       let idx_val := eval_expr regs idx in
-      (select_bit vec_val idx_val);
-    eval_expr regs (Verilog.BitSelect_const vec idx_val _) :=
+      match XBV.to_N idx_val with
+      | Some idx => select_bit vec_val idx
+      | None => XBV.exes 1
+      end;
+    eval_expr regs (Verilog.BitSelect_const vec idx _) :=
       let vec_val := eval_expr regs vec in
-      (select_bit vec_val (XBV.from_bv idx_val));
+      (select_bit vec_val idx);
     eval_expr regs (Verilog.Resize t expr _) :=
       let val := eval_expr regs expr in
       (convert t val);
@@ -1070,19 +1219,18 @@ Section ExpressionFacts.
     bitwise_xor_no_exes
     : xbv.
 
-  Definition select_bit_bv {w1 w2} (vec : BV.bitvector w1) (idx : BV.bitvector w2) : BV.bitvector 1 :=
-    BV.of_bits [BV.bitOf (N.to_nat (BV.to_N idx)) vec].
+  Definition select_bit_bv {w1} (vec : BV.bitvector w1) (idx : N) : BV.bitvector 1 :=
+    BV.of_bits [BV.bitOf (N.to_nat idx) vec].
   
-  Lemma select_bit_to_bv w_vec w_idx (vec : BV.bitvector w_vec) (idx : BV.bitvector w_idx) :
-    (BV.to_N idx < w_vec)%N ->
-    XBV.to_bv (select_bit (XBV.from_bv vec) (XBV.from_bv idx)) =
+  Lemma select_bit_to_bv w_vec (vec : BV.bitvector w_vec) idx :
+    (idx < w_vec)%N ->
+    XBV.to_bv (select_bit (XBV.from_bv vec) idx) =
       Some (select_bit_bv vec idx).
   Proof.
     intros H.
     unfold select_bit, select_bit_bv.
-    rewrite XBV.to_N_from_bv.
     rewrite XBV.bit_of_as_bv by lia.
-    generalize (BV.bitOf (n:=w_vec) (N.to_nat (BV.to_N idx)) vec). intro b.
+    generalize (BV.bitOf (n:=w_vec) (N.to_nat idx) vec). intro b.
     apply XBV.to_bv_some_raw_iff.
     simpl.
     unfold RawXBV.to_bv. simpl.
@@ -1166,10 +1314,9 @@ Section ExpressionFacts.
     crush.
   Qed.
 
-  Lemma select_bit_no_exes:
-    forall (w_val w_sel : N) (vec : BV.bitvector w_val) (idx : BV.bitvector w_sel),
-      (BV.to_N idx < w_val)%N ->
-      select_bit (XBV.from_bv vec) (XBV.from_bv idx) = XBV.from_bv (select_bit_bv vec idx).
+  Lemma select_bit_no_exes (w_val : N) (vec : BV.bitvector w_val) (idx : N) :
+      (idx < w_val)%N ->
+      select_bit (XBV.from_bv vec) idx = XBV.from_bv (select_bit_bv vec idx).
   Proof.
     intros.
     eapply XBV.to_bv_injective.
@@ -1240,7 +1387,7 @@ Section ExpressionFacts.
                 end.
     all: repeat match goal with
                 | [ e : eval_expr _ _ = XBV.from_bv _ |- _ ] =>
-                    rewrite e; clear e
+                    rewrite e in *; clear e
                 end.
     - (* arithmeticop *) eapply eval_arithmeticop_no_exes.
     - (* bitwiseop *) eapply eval_bitwiseop_no_exes.
@@ -1254,9 +1401,12 @@ Section ExpressionFacts.
     - autorewrite with xbv. eauto.
     - (* bit select (in bounds by literal) *)
       autorewrite with xbv. eauto.
-    - (* bit select (in bounds by literal) *)
-      pose proof (BV.to_N_max_bound w_sel0 x).
+    - (* bit select (in bounds by width) *)
+      autorewrite with xbv in E. inv E.
+      pose proof (BV.to_N_max_bound _ x).
       autorewrite with xbv. eauto.
+    - (* bit select (in bounds by width) *)
+      autorewrite with xbv in E. inv E.
     - (* concat *)
       autorewrite with xbv. eauto.
     - (* replicate *)
@@ -1296,7 +1446,6 @@ Hint Rewrite
   convert_no_exes
   using lia
   : xbv.
-
 
 Module Facts.
   Import CombinationalOnly.

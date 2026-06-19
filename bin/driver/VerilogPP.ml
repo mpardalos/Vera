@@ -158,9 +158,8 @@ module Typed = struct
         fprintf fmt "%a[%a:%a]" expression target Z.pp_print hi Z.pp_print lo
     | Verilog.BitSelect_width (_, _, target, index) ->
         fprintf fmt "%a[%a]" expression target expression index
-    | Verilog.BitSelect_const (_, w_index, target, index) ->
-        fprintf fmt "%a[%a]" expression target expression
-          (Verilog.IntegerLiteral (w_index, index))
+    | Verilog.BitSelect_const (w_index, target, index) ->
+        fprintf fmt "%a[%a'd%a]" expression target Z.pp_print w_index Z.pp_print index
     | Verilog.Concatenation (_, _, lhs, rhs) ->
         fprintf fmt "{%a %a}" expression lhs expression rhs
     | Verilog.Replication (_, count, expr) ->

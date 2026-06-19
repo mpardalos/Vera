@@ -2,6 +2,7 @@ From vera Require Import Verilog.
 From vera Require VerilogSemantics.
 Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
+From vera Require Import VerilogSimpl.
 From vera Require VerilogEquivalence.
 
 From ExtLib Require Import Structures.Monads.
@@ -14,7 +15,7 @@ Import MonadLetNotation.
 Local Open Scope monad_scope.
 Local Open Scope string.
 
-Definition sort_module (v : Verilog.vmodule) : string + Verilog.vmodule :=
+Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
   let* sorted_body :=
     match sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) with
     | None => inl "Module not sortable"
@@ -27,11 +28,13 @@ Definition sort_module (v : Verilog.vmodule) : string + Verilog.vmodule :=
   |}.
 
 Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string SMTQueries.query :=
-  let* sorted1 := sort_module verilog1 in
+  let* sorted1 := sort_vmodule verilog1 in
+  let simplified1 := simpl_vmodule sorted1 in
 
-  let* sorted2 := sort_module verilog2 in
+  let* sorted2 := sort_vmodule verilog2 in
+  let simplified2 := simpl_vmodule sorted2 in
 
-  VerilogEquivalence.equivalence_query sorted1 sorted2.
+  VerilogEquivalence.equivalence_query simplified1 simplified2.
 
 From vera Require Import VerilogSMT.
 From vera Require Import SMTQueries.
@@ -50,11 +53,11 @@ From Stdlib Require Import Setoid.
 
 Local Open Scope verilog.
 
-Theorem sort_module_equivalent v1 v2 :
-  sort_module v1 = inr v2 ->
-  v1 ~~~ v2.
+Theorem sort_vmodule_exact_equivalence v1 v2 :
+  sort_vmodule v1 = inr v2 ->
+  v2 ~~~ v1.
 Proof.
-  unfold sort_module. intros H.
+  unfold sort_vmodule. intros H.
   monad_inv.
   rename_match (sort_module_items _ _ = Some _) into Hsort.
   apply equal_exact_equivalence; try reflexivity; expect 1.
@@ -96,13 +99,12 @@ Theorem equivalence_query_general_unsat_correct v1 v2 smt :
 Proof.
   unfold equivalence_query_general.
   intros. monad_inv.
-  do 2 apply_somewhere sort_module_equivalent.
-  apply_somewhere VerilogEquivalenceCorrectness.equivalence_query_unsat_correct; [|eassumption].
-  repeat match goal with
-         | [ H : ?l ~~~ ?l' |- ?l ~~ ?r ] => rewrite H; clear H
-         | [ H : ?r ~~~ ?r' |- ?l ~~ ?r ] => rewrite H; clear H
-	 end.
-  assumption.
+  rewrite <- sort_vmodule_exact_equivalence with (v1:=v1) by eassumption.
+  rewrite <- sort_vmodule_exact_equivalence with (v1:=v2) by eassumption.
+  rewrite <- simpl_vmodule_exact_equivalence with (v:=v).
+  rewrite <- simpl_vmodule_exact_equivalence with (v:=v0).
+  eapply VerilogEquivalenceCorrectness.equivalence_query_unsat_correct.
+  all: eassumption.
 Qed.
 
 (* This only works because ~~~ (exact equivalence) says that internal
@@ -128,15 +130,23 @@ Proof.
     eassumption.
 Qed.
 
-(* Global Instance Proper_counterexample_execution_exact_equivalence :
- *   Proper
- *     (exact_equivalence ==> eq ==> exact_equivalence ==> eq ==> iff)
- *     counterexample_execution.
- * Proof.
- *   repeat intro; subst; split; intro.
- *   - eapply counterexample_transfer; eauto.
- *   - eapply counterexample_transfer; (symmetry + idtac); eauto.
- * Qed. *)
+(* Proof using this rewrite only works because all of our
+   verilog-to-verilog passes (sort, simplify) preserve internal variables
+   exactly. If any of them added/removed vars, then we would need a
+   more relaxed equivalence, and that would not transfer counter-examples
+   exactly. The transferring would involve existentials (if there is a
+   counter-example for one module then there is one for the other, and the
+   two match on external ports)*)
+
+Global Instance Proper_counterexample_execution_exact_equivalence :
+  Proper
+    (exact_equivalence ==> eq ==> exact_equivalence ==> eq ==> iff)
+    counterexample_execution.
+Proof.
+  repeat intro; subst; split; intro.
+  - eapply counterexample_transfer; eauto.
+  - eapply counterexample_transfer; (symmetry + idtac); eauto.
+Qed.
 
 Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
   equivalence_query_general v1 v2 = inr smt ->
@@ -144,12 +154,16 @@ Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
   exists e1 e2, counterexample_execution v1 e1 v2 e2.
 Proof.
   intros. unfold equivalence_query_general in *. monad_inv.
-  do 2 apply_somewhere sort_module_equivalent.
   eexists. eexists.
-  eapply counterexample_transfer.
-  - symmetry. eassumption.
-  - symmetry. eassumption.
-  - eapply equivalence_query_sat_correct; eassumption.
+  eapply counterexample_transfer with (v1:=simpl_vmodule v) (v2:=simpl_vmodule v0).
+  - rewrite simpl_vmodule_exact_equivalence.
+    apply sort_vmodule_exact_equivalence.
+    assumption.
+  - rewrite simpl_vmodule_exact_equivalence.
+    apply sort_vmodule_exact_equivalence.
+    assumption.
+  - eapply equivalence_query_sat_correct.
+    all: eassumption.
 Qed.
 
 Print Assumptions equivalence_query_general_unsat_correct.

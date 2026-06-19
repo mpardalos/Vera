@@ -271,15 +271,16 @@ Module Verilog.
     (wf_hi : (hi < w_val)%N)
     (wf_lo : (lo <= hi)%N)
     : expression (1 + hi - lo)%N
-  | BitSelect_const {w_val w_sel}
+  | BitSelect_const {w_val}
     (val : expression w_val)
-    (sel : BV.bitvector w_sel)
-    (wf : (BV.to_N sel < w_val)%N)
+    (sel : N)
+    (wf : (sel < w_val)%N)
     : expression 1
   | BitSelect_width {w_val w_sel}
     (val : expression w_val)
     (sel : expression w_sel)
-    (wf : (2 ^ w_sel <= w_val)%N)
+    (wf_val : (2 ^ w_sel <= w_val)%N)
+    (wf_nonzero : (w_sel > 0)%N)
     : expression 1
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
@@ -373,7 +374,7 @@ Module Verilog.
       expr_reads cond ++ expr_reads tBranch ++ expr_reads fBranch ;
     expr_reads (Verilog.RangeSelect vec hi lo _ _) :=
       expr_reads vec;
-    expr_reads (Verilog.BitSelect_width vec idx _) :=
+    expr_reads (Verilog.BitSelect_width vec idx _ _) :=
       expr_reads vec ++ expr_reads idx;
     expr_reads (Verilog.BitSelect_const vec idx _) :=
       expr_reads vec;
@@ -537,13 +538,14 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   match idx with
   | RawVerilog.IntegerLiteral lit =>
     let* wf := assert_dec
-      (RawBV.to_N lit < w_vec)%N
+      (BV.to_N (BV.of_bits lit) < w_vec)%N
       ("bit-select index out of bounds (literal)")%string in
-    inr (1%N; Verilog.BitSelect_const t_vec (BV.of_bits lit) wf)
+    inr (1%N; Verilog.BitSelect_const t_vec (BV.to_N (BV.of_bits lit)) wf)
   | _ =>
     let* (w_idx; t_idx) := tc_expr idx in
-    let* wf := assert_dec _ "bit-select index out of bounds (width)"%string in
-    inr (1%N; Verilog.BitSelect_width t_vec t_idx wf)
+    let* wf_value := assert_dec _ "bit-select index out of bounds (width)"%string in
+    let* wf_nonzero := assert_dec _ "bit-select index is zero-width"%string in
+    inr (1%N; Verilog.BitSelect_width t_vec t_idx wf_value wf_nonzero)
   end
 | RawVerilog.Concatenation lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
