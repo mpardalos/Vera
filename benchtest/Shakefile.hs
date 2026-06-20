@@ -86,6 +86,21 @@ data BenchmarkResult = BenchmarkResult
 gibiBytes :: Int -> Int
 gibiBytes = (1024 * 1024 * 1024 * )
 
+-- | How much memory we estimate slang to maximally use, in gigabytes.
+-- Not enforced, just an estimate
+slangMemory :: Int
+slangMemory = 1
+
+-- | How much memory we estimate yosys to maximally use, in gigabytes.
+-- Not enforced, just an estimate
+yosysMemory :: Int
+yosysMemory = 1
+
+-- | How much memory we estimate eqy to maximally use, in gigabytes.
+-- Not enforced, just an estimate
+eqyMemory :: Int
+eqyMemory = 4
+
 main :: IO ()
 main = shakeArgs shakeOptions{shakeThreads = 0} $ do
   --- SETTINGS ---------------------------------------------
@@ -139,7 +154,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
       let log = dropExtensions out <> ".synth.log"
       need ["templates/synth.tcl", src]
       yosysTimeout <- askOracle ConfigYosysTimeout
-      withResource memResource 1 $ cmd_
+      withResource memResource yosysMemory $ cmd_
         (Traced "yosys")
         (AddEnv "SV_INPUT" src)
         (AddEnv "SV_OUTPUT" out)
@@ -171,17 +186,17 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         left = dir </> mod1 <.> "sv"
         right = dir </> mod2 <.> "sv"
     timeout <- askOracle ConfigVeraTimeout
-    memoryLimit <- askOracle ConfigVeraMemoryLimit
+    veraMemoryLimit <- askOracle ConfigVeraMemoryLimit
     veraSolver <- askOracle ConfigSolver
     need [vera, left, right]
     (Exit veraExitCode, CmdTime veraTime) <-
-      withResource memResource memoryLimit $ cmd
+      withResource memResource veraMemoryLimit $ cmd
         (Traced "vera")
         (Timeout timeout)
         (FileStdout out)
         (FileStderr out)
         (AddEnv "OCAMLRUNPARAM" "b")
-        (AddEnv "VERA_MAX_MEMORY" (show (gibiBytes memoryLimit)))
+        (AddEnv "VERA_MAX_MEMORY" (show (gibiBytes veraMemoryLimit)))
         (AddEnv "VERA_TRACE" "1")
         vera
         "compare"
@@ -198,7 +213,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
       ExitSuccess -> do
         liftIO $ appendFile out "__result_vera: OK\n"
         (Exit smtExitCode, CmdTime smtTime, Stdouterr output) <-
-          withResource memResource 32 $ cmd
+          withResource memResource veraMemoryLimit $ cmd
             (Traced (veraSolver ++ " for vera"))
             (Timeout timeout)
             veraSolver
@@ -253,7 +268,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     timeout <- askOracle ConfigVeraTimeout
     need [eqyFile, left, right]
     (Exit exitCode, Stdout output, CmdTime eqyTime) <-
-      withResource memResource 8 $ cmd
+      withResource memResource eqyMemory $ cmd
         (Traced "eqy")
         (Timeout timeout)
         (FileStdout out)
@@ -396,9 +411,9 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     renamePorts :: FilePath -> FilePath -> Action ()
     renamePorts base target = do
       let portFilter = ".design.members[1].body.members[] | select(.kind == \"Port\") | .name"
-      Stdout (basePortsLines :: ByteString) <- withResource memResource 32 $
+      Stdout (basePortsLines :: ByteString) <- withResource memResource slangMemory $
           cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" base portFilter :: String)
-      Stdout (targetPortsLines :: ByteString) <- withResource memResource 32 $
+      Stdout (targetPortsLines :: ByteString) <- withResource memResource slangMemory $
           cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" target portFilter :: String)
       let basePorts :: [ByteString] = BS8.lines basePortsLines
       let targetPorts :: [ByteString] = BS8.lines targetPortsLines
