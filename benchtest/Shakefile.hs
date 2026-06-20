@@ -211,9 +211,12 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
           ExitFailure err -> do
             liftIO $ appendFile out (printf "__result_smt: failed (%d)\n" err)
           ExitSuccess ->
-            if "unsat" `isInfixOf` output
-              then liftIO $ appendFile out "__result_smt: OK\n"
-              else liftIO $ appendFile out "__result_smt: Incorrect result\n"
+            let result =
+                  case output & T.pack & T.lines & last & T.strip & T.unpack of
+                    "unsat" -> "OK"
+                    "sat" -> "False negative"
+                    _ -> "Error"
+            in liftIO $ appendFile out ("__result_smt: " ++ result ++ "\n")
 
   phony "vera" $ need [vera]
   vera %> \out -> do
