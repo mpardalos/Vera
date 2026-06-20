@@ -215,12 +215,15 @@ Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : tran
   let* nodup := assert_dec
     (NoDup (Verilog.modVariables vmodule))
     "Duplicate variables"%string in
-  opt_to_sum "Undriven variables"%string
-             (assert_permutation (Verilog.modVariables vmodule)
-	                         (Verilog.module_body_writes (Verilog.modBody vmodule) ++ Verilog.module_inputs vmodule)
-				 nodup) ;;
-  assert_dec
-    (module_items_sorted (Verilog.module_inputs vmodule) (Verilog.modBody vmodule))
-    "Module items unsorted"%string ;;
-  transfer_module_body name_tag (Verilog.modBody vmodule)
+  trace "Check for undriven"
+    opt_to_sum "Undriven variables"%string
+      (assert_permutation
+        (Verilog.modVariables vmodule)
+        (Verilog.module_body_writes (Verilog.modBody vmodule) ++ Verilog.module_inputs vmodule)
+	nodup) ;;
+  trace "Check sort" 
+    (assert_dec
+      (module_items_sorted (Verilog.module_inputs vmodule) (Verilog.modBody vmodule))
+      "Module items unsorted"%string);;
+  trace "Convert to SMT" (transfer_module_body name_tag (Verilog.modBody vmodule))
 .

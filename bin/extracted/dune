@@ -10,6 +10,6 @@
  (name extracted)
  (synopsis "Extracted Rocq code")
  (wrapped false)
- (modules Vera)
+ (modules Vera ExtractionUtils)
  (libraries zarith)
  (flags (:standard -w -20-32-39)))

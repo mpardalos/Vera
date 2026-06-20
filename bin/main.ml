@@ -154,21 +154,27 @@ let vera_cmd =
   Cmd.group (Cmd.info "vera" ~envs) [ lower_cmd; compare_cmd ]
 
 let () =
+  (match Sys.getenv_opt "VERA_TRACE" with
+  | Some ("1" | "true" | "yes") -> ExtractionUtils.trace_enabled := true
+  | _ -> ());
   (match Sys.getenv_opt "VERA_MAX_MEMORY" with
   | Some s ->
-    Printf.eprintf "Found VERA_MAX_MEMORY=%s\n%!" s ;
-    let max_heap_bytes =
-      match int_of_string_opt s with
-      | Some n -> n
-      | None ->
-        Printf.eprintf "VERA_MAX_MEMORY: expected integer (bytes), got %S\n" s;
-        exit 1
-    in
-    let _ = Gc.create_alarm (fun () ->
-      let stat = Gc.quick_stat () in
-      let bytes = stat.heap_words * (Sys.word_size / 8) in
-      (* Printf.eprintf "GC!! (%d/%d)\n%!" bytes max_heap_bytes; *)
-      if bytes > max_heap_bytes then raise Out_of_memory
-    ) in ()
+      Printf.eprintf "Found VERA_MAX_MEMORY=%s\n%!" s;
+      let max_heap_bytes =
+        match int_of_string_opt s with
+        | Some n -> n
+        | None ->
+            Printf.eprintf "VERA_MAX_MEMORY: expected integer (bytes), got %S\n"
+              s;
+            exit 1
+      in
+      let _ =
+        Gc.create_alarm (fun () ->
+            let stat = Gc.quick_stat () in
+            let bytes = stat.heap_words * (Sys.word_size / 8) in
+            (* Printf.eprintf "GC!! (%d/%d)\n%!" bytes max_heap_bytes; *)
+            if bytes > max_heap_bytes then raise Out_of_memory)
+      in
+      ()
   | None -> ());
   Cmd.eval vera_cmd |> exit

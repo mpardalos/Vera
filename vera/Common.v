@@ -527,9 +527,7 @@ Definition opt_to_sum {E A} (e: E) (o : option A) : E + A :=
 Definition newline : string := String "010" EmptyString.
 
 (* Debug tracing — computes to identity in proofs, extracts to Printf *)
-Definition trace {A : Type} (_msg : string) (x : A) : A := x.
-Arguments trace / _ _.
+Definition traceThunk {A : Type} (_msg : string) (x : unit -> A) : A := x tt.
+Arguments traceThunk / _ _.
 
-Definition traceShowId {A : Type} `{Show A} (prefix : string) (x : A) : A :=
-  trace (prefix ++ to_string x) x.
-Arguments traceShowId / _ _.
+Notation trace msg x := (traceThunk msg (fun tt => x)).

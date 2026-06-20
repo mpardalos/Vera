@@ -4,6 +4,7 @@ Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
 From vera Require Import VerilogSimpl.
 From vera Require VerilogEquivalence.
+From vera Require Import Common.
 
 From ExtLib Require Import Structures.Monads.
 
@@ -28,13 +29,14 @@ Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
   |}.
 
 Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string SMTQueries.query :=
-  let* sorted1 := sort_vmodule verilog1 in
-  let simplified1 := simpl_vmodule sorted1 in
+  let* sorted1 := trace "Sort left" (sort_vmodule verilog1) in
+  let simplified1 := trace "Simpl left" (simpl_vmodule sorted1) in
 
-  let* sorted2 := sort_vmodule verilog2 in
-  let simplified2 := simpl_vmodule sorted2 in
+  let* sorted2 := trace "Sort right" (sort_vmodule verilog2) in
+  let simplified2 := trace "Simpl right" (simpl_vmodule sorted2) in
 
-  VerilogEquivalence.equivalence_query simplified1 simplified2.
+  trace "Construct equivalence query"
+    (VerilogEquivalence.equivalence_query simplified1 simplified2).
 
 From vera Require Import VerilogSMT.
 From vera Require Import SMTQueries.
@@ -42,7 +44,6 @@ From vera Require Import VerilogSemantics.
 Import CombinationalOnly.
 Import DefinedEquivalence.
 Import ExactEquivalence.
-From vera Require Import Common.
 From vera Require Import Tactics.
 From vera Require Import VerilogEquivalenceCorrectness.
 

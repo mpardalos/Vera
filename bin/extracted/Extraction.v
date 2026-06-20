@@ -38,8 +38,7 @@ Extract Inlined Constant Pos.to_nat => "(fun x -> x)".
 Extract Inlined Constant List.flat_map => "List.concat_map".
 
 (* Debug tracing — override extraction to print *)
-Extract Inlined Constant Common.trace =>
-  "(fun msg x -> Printf.printf ""%s\n%!"" msg; x)".
+Extract Inlined Constant Common.traceThunk => "ExtractionUtils.my_rocq_trace".
 
 Definition int_from_nat :=
   N.of_nat.

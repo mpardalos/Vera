@@ -72,8 +72,8 @@ Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum
       ++ to_string (Verilog.module_outputs verilog2) )
     in
 
-  let* smt1 := VerilogToSMT.verilog_to_smt VerilogLeft verilog1 in
-  let* smt2 := VerilogToSMT.verilog_to_smt VerilogRight verilog2 in
+  let* smt1 := trace "To SMT left" (VerilogToSMT.verilog_to_smt VerilogLeft verilog1) in
+  let* smt2 := trace "To SMT right" (VerilogToSMT.verilog_to_smt VerilogRight verilog2) in
 
   let inputs_same := mk_inputs_same (Verilog.module_inputs verilog1) in
   let outputs_distinct := mk_outputs_distinct (Verilog.module_outputs verilog1) in

@@ -32,7 +32,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
-import Data.Text.IO qualified as T
+import Data.Text.IO.Utf8 qualified as T
 import Data.Time.Clock (diffUTCTime, getCurrentTime)
 import Data.Tuple (swap)
 import Debug.Trace
@@ -182,6 +182,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         (FileStderr out)
         (AddEnv "OCAMLRUNPARAM" "b")
         (AddEnv "VERA_MAX_MEMORY" (show (gibiBytes memoryLimit)))
+        (AddEnv "VERA_TRACE" "1")
         vera
         "compare"
         ("--solver=none")
