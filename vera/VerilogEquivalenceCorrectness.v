@@ -218,7 +218,7 @@ Theorem equivalence_query_spec verilog1 verilog2 smt :
     (counterexample_valuation verilog1 verilog2).
 Proof.
   unfold equivalence_query.
-  intros H.
+  intros H. simpl in H.
   monad_inv.
   simpl in *.
   unfold counterexample_valuation.
@@ -502,7 +502,7 @@ Lemma verilog_to_smt_checks tag v smt :
   verilog_to_smt_checked v.
 Proof.
   intros H.
-  unfold VerilogToSMT.verilog_to_smt in H. monad_inv.
+  unfold VerilogToSMT.verilog_to_smt in H. simpl in H. monad_inv.
   constructor; try assumption.
 Qed.
 
@@ -520,7 +520,7 @@ Lemma equivalence_query_checks v1 v2 smt :
   equivalence_query_checked v1 v2.
 Proof.
   intros H.
-  unfold equivalence_query in H. monad_inv.
+  unfold equivalence_query in H. simpl in H. monad_inv.
   constructor; eauto using verilog_to_smt_checks.
 Qed.
 

@@ -56,27 +56,29 @@ Equations mk_outputs_distinct (inputs : list Verilog.variable) : SMTLib.term SMT
   | (var :: vars) => SMTLib.Term_Or (mk_var_distinct var) (mk_outputs_distinct vars)
 }.
 
-Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : sum string SMTQueries.query :=
-  let* inputs_ok1 :=
-    assert_dec
-      (Verilog.module_inputs verilog1 = Verilog.module_inputs verilog2)
-      ("Inputs don't match:" ++ newline
-      ++ to_string (Verilog.module_inputs verilog1) ++ newline
-      ++ to_string (Verilog.module_inputs verilog2) )
-    in
-  let* outputs_ok1 :=
-    assert_dec
-      (Verilog.module_outputs verilog1 = Verilog.module_outputs verilog2)
-      ("Outputs don't match:" ++ newline
-      ++ to_string (Verilog.module_outputs verilog1) ++ newline
-      ++ to_string (Verilog.module_outputs verilog2) )
-    in
+Program Definition equivalence_query (verilog1 verilog2 : Verilog.vmodule) : string + SMTQueries.query :=
+  trace "Construct equivalence query" (
+    let* inputs_ok1 :=
+      assert_dec
+        (Verilog.module_inputs verilog1 = Verilog.module_inputs verilog2)
+        ("Inputs don't match:" ++ newline
+        ++ to_string (Verilog.module_inputs verilog1) ++ newline
+        ++ to_string (Verilog.module_inputs verilog2) )
+      in
+    let* outputs_ok1 :=
+      assert_dec
+        (Verilog.module_outputs verilog1 = Verilog.module_outputs verilog2)
+        ("Outputs don't match:" ++ newline
+        ++ to_string (Verilog.module_outputs verilog1) ++ newline
+        ++ to_string (Verilog.module_outputs verilog2) )
+      in
 
-  let* smt1 := trace "To SMT left" (VerilogToSMT.verilog_to_smt VerilogLeft verilog1) in
-  let* smt2 := trace "To SMT right" (VerilogToSMT.verilog_to_smt VerilogRight verilog2) in
+    let* smt1 := VerilogToSMT.verilog_to_smt VerilogLeft verilog1 in
+    let* smt2 := VerilogToSMT.verilog_to_smt VerilogRight verilog2 in
 
-  let inputs_same := mk_inputs_same (Verilog.module_inputs verilog1) in
-  let outputs_distinct := mk_outputs_distinct (Verilog.module_outputs verilog1) in
+    let inputs_same := mk_inputs_same (Verilog.module_inputs verilog1) in
+    let outputs_distinct := mk_outputs_distinct (Verilog.module_outputs verilog1) in
 
-  inr (inputs_same :: outputs_distinct :: (smt1 ++ smt2))
+    inr (inputs_same :: outputs_distinct :: (smt1 ++ smt2))
+  )
 .

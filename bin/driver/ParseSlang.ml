@@ -382,16 +382,21 @@ let parse_instance_body (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
   }
 
 let parse_slang (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
-  expect_kind "Root" (member "design" json);
-  parse_instance_body
-    ((member "design" json) |> member "members" |> to_list
-    |> List.filter (fun m -> to_string (member "kind" m) = "Instance")
-    |> List.hd |> member "body")
+  ExtractionUtils.my_rocq_trace "JSON to vmodule" (fun () ->
+    expect_kind "Root" (member "design" json);
+    parse_instance_body
+      ((member "design" json) |> member "members" |> to_list
+      |> List.filter (fun m -> to_string (member "kind" m) = "Instance")
+      |> List.hd |> member "body")
+  )
 
 let parse_verilog_file (path : string) : Vera.RawVerilog.vmodule =
   let slang_out =
     Unix.open_process_in (Format.sprintf "slang --quiet --ast-json - %s" path)
   in
-  let slang_json = Yojson.Safe.from_channel slang_out in
+  let slang_json =
+    ExtractionUtils.my_rocq_trace "JSON parsing" (fun () ->
+        Yojson.Safe.from_channel slang_out)
+  in
   let _ = Unix.close_process_in slang_out in
   parse_slang slang_json

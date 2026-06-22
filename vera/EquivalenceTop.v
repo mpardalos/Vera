@@ -17,26 +17,27 @@ Local Open Scope monad_scope.
 Local Open Scope string.
 
 Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
-  let* sorted_body :=
-    match sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) with
-    | None => inl "Module not sortable"
-    | Some sorted => inr sorted
-    end in
-  ret {|
-    Verilog.modName := Verilog.modName v;
-    Verilog.modVariableDecls := Verilog.modVariableDecls v;
-    Verilog.modBody := sorted_body
-  |}.
+  trace ("Sort " ++ Verilog.modName v) (
+    let* sorted_body :=
+      match sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) with
+      | None => inl "Module not sortable"
+      | Some sorted => inr sorted
+      end in
+    ret {|
+      Verilog.modName := Verilog.modName v;
+      Verilog.modVariableDecls := Verilog.modVariableDecls v;
+      Verilog.modBody := sorted_body
+    |}
+  ).
 
 Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string SMTQueries.query :=
-  let* sorted1 := trace "Sort left" (sort_vmodule verilog1) in
-  let simplified1 := trace "Simpl left" (simpl_vmodule sorted1) in
+  let* sorted1 := sort_vmodule verilog1 in
+  let simplified1 := simpl_vmodule sorted1 in
 
-  let* sorted2 := trace "Sort right" (sort_vmodule verilog2) in
-  let simplified2 := trace "Simpl right" (simpl_vmodule sorted2) in
+  let* sorted2 := sort_vmodule verilog2 in
+  let simplified2 := simpl_vmodule sorted2 in
 
-  trace "Construct equivalence query"
-    (VerilogEquivalence.equivalence_query simplified1 simplified2).
+  VerilogEquivalence.equivalence_query simplified1 simplified2.
 
 From vera Require Import VerilogSMT.
 From vera Require Import SMTQueries.
@@ -59,7 +60,7 @@ Theorem sort_vmodule_exact_equivalence v1 v2 :
   v2 ~~~ v1.
 Proof.
   unfold sort_vmodule. intros H.
-  monad_inv.
+  simpl in H. monad_inv.
   rename_match (sort_module_items _ _ = Some _) into Hsort.
   apply equal_exact_equivalence; try reflexivity; expect 1.
   unfold run_vmodule. simpl.
@@ -77,6 +78,7 @@ Lemma equivalence_query_clean_left v1 v2 smt :
 Proof.
   intros H.
   unfold VerilogEquivalence.equivalence_query in H.
+  simpl in H.
   monad_inv.
   eapply VerilogEquivalenceCorrectness.verilog_to_smt_clean.
   eassumption.
@@ -88,6 +90,7 @@ Lemma equivalence_query_clean_right v1 v2 smt :
 Proof.
   intros H.
   unfold VerilogEquivalence.equivalence_query in H.
+  simpl in H.
   monad_inv.
   eapply VerilogEquivalenceCorrectness.verilog_to_smt_clean.
   eassumption.

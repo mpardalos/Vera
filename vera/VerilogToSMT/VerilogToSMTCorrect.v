@@ -319,12 +319,12 @@ Theorem verilog_to_smt_correct tag v smt :
     (fun ρ => v ⇓ execution_of_valuation tag ρ).
 Proof.
   unfold verilog_to_smt.
-  intros Htransf ρ.
+  intros Htransf ρ. simpl in Htransf.
   monad_inv. simpl in *.
   split.
   all: intros H.
   - eapply transfer_module_body_valid.
-    all: eassumption.
+    all: try eassumption.
   - eapply transfer_module_body_satisfiable.
     all: eassumption.
 Qed.

@@ -588,13 +588,14 @@ Equations tc_module_item_lst : list RawVerilog.module_item -> transf (list Veril
   inr (t_mi :: t_mis)
 }.
 
-Equations tc_vmodule : RawVerilog.vmodule -> transf Verilog.vmodule := {
-| m =>
-  let* t_modBody := tc_module_item_lst (RawVerilog.modBody m) in
-  inr {|
-      Verilog.modName := RawVerilog.modName m;
-      Verilog.modVariableDecls := RawVerilog.modVariableDecls m;
-      Verilog.modBody := t_modBody
-  |}
-}.
+Definition tc_vmodule (m : RawVerilog.vmodule) : transf Verilog.vmodule :=
+  trace ("Typecheck " ++ RawVerilog.modName m) (
+    let* t_modBody := tc_module_item_lst (RawVerilog.modBody m) in
+    inr {|
+        Verilog.modName := RawVerilog.modName m;
+        Verilog.modVariableDecls := RawVerilog.modVariableDecls m;
+        Verilog.modBody := t_modBody
+    |}
+  )
+.
 End Typecheck.
