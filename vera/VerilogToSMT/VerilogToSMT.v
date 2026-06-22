@@ -41,6 +41,7 @@ Import CommonNotations.
 Import MonadLetNotation.
 Import FunctorNotation.
 Import EqNotations.
+Import Verilog.VariableSet.Notations.
 Local Open Scope monad_scope.
 
 Local Definition smtname := nat.
@@ -210,21 +211,19 @@ Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : tran
     assert_dec
       (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
       "Overlapping inputs and outputs"%string ;;
-    assert_dec
-      (NoDup (Verilog.module_body_writes (Verilog.modBody vmodule)))
-      "Duplicate writes"%string ;;
     let* nodup := assert_dec
       (NoDup (Verilog.modVariables vmodule))
       "Duplicate variables"%string in
-    trace "Check for undriven"
-      opt_to_sum "Undriven variables"%string
-        (assert_permutation
-          (Verilog.modVariables vmodule)
-          (Verilog.module_body_writes (Verilog.modBody vmodule) ++ Verilog.module_inputs vmodule)
-    	nodup) ;;
+    trace "Check for undriven" (
+      assert_dec
+        (Verilog.VariableSet.Equal
+          (Verilog.VariableSet.of_list (Verilog.modVariables vmodule))
+          (Verilog.module_body_writes (Verilog.modBody vmodule)
+	    ∪ Verilog.VariableSet.of_list (Verilog.module_inputs vmodule))%verilog)
+        "Undriven variables"%string) ;;
     trace "Check sort" 
       (assert_dec
-        (module_items_sorted (Verilog.module_inputs vmodule) (Verilog.modBody vmodule))
+        (module_items_sorted (Verilog.VariableSet.of_list (Verilog.module_inputs vmodule)) (Verilog.modBody vmodule))
         "Module items unsorted"%string);;
     trace "Convert to SMT" (transfer_module_body name_tag (Verilog.modBody vmodule))
   )

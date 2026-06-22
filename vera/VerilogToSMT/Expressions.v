@@ -34,17 +34,10 @@ Import MonadLetNotation.
 Import FunctorNotation.
 Import SigTNotations.
 Import EqNotations. 
+Import Verilog.VariableSet.Notations.
 
 Local Open Scope list.
-
-Lemma var_to_smt_value var tag regs ρ :
-    verilog_smt_match_states_partial (fun v => v = var) tag regs ρ ->
-    regs var = XBV.from_bv (SMTLib.interp_term ρ (var_to_smt tag var)).
-Proof. crush. Qed.
-
-Lemma var_to_smt_valid tag var (ρ : SMTLib.valuation) :
-  ρ (verilog_to_smt_var tag var) = SMTLib.interp_term ρ (var_to_smt tag var).
-Proof. crush. Qed.
+Local Open Scope verilog_scope.
 
 Lemma arithmeticop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
     eval_arithmeticop op (XBV.from_bv (SMTLib.interp_term ρ smt_lhs)) (XBV.from_bv (SMTLib.interp_term ρ smt_rhs))
@@ -165,16 +158,16 @@ Qed.
 
 Lemma expr_to_smt_value w expr : forall tag regs ρ t,
     expr_to_smt tag expr = inr t ->
-    verilog_smt_match_states_partial
-      (fun v => List.In v (Verilog.expr_reads expr))
-      tag regs ρ ->
+    verilog_smt_match_states_partial (Verilog.expr_reads expr) tag regs ρ ->
     eval_expr (w:=w) regs expr = XBV.from_bv (SMTLib.interp_term ρ t).
 Proof.
   induction expr.
   all: intros * Hexpr_to_smt Hmatch.
-  all: simp expr_reads expr_to_smt eval_expr in *.
+  all: simpl in *; simp expr_to_smt eval_expr in *.
   all: unpack_verilog_smt_match_states_partial.
+  all: expect 13.
   all: try solve [some_inv]. (* Handle expressions that we abort on *)
+  all: expect 11.
   all: simpl in *.
   (* all: unfold Verilog.expr_type in *. *)
   all: repeat match type of Hexpr_to_smt with
@@ -183,9 +176,6 @@ Proof.
        | inl _ = inr _ => inv Hexpr_to_smt
        | inr _ = inr _ => inv Hexpr_to_smt
        end.
-  all: repeat match goal with
-  | [ H : context[_ -> SMTLib.interp_term _ _ = _] |- _] => insterU H
-  end.
   all: repeat match goal with
        | [ |- context[eval_expr ?r ?e'] ] =>
          edestruct eval_expr_defined with (e := e');
@@ -226,7 +216,7 @@ Proof.
   - (* literal *)
     reflexivity.
   - (* variable *)
-    apply Hmatch. left. reflexivity.
+    apply Hmatch. Verilog.VariableSet.setdec.
   - (* resize *)
     rewrite cast_from_to_value by lia.
     apply convert_no_exes.
@@ -235,7 +225,7 @@ Qed.
 (* DELETEME: Duplicate *)
 Lemma expr_to_smt_valid w tag expr t regs ρ :
   expr_to_smt (w := w) tag expr = inr t ->
-  verilog_smt_match_states_partial (fun v => List.In v (Verilog.expr_reads expr)) tag regs ρ ->
+  verilog_smt_match_states_partial (Verilog.expr_reads expr) tag regs ρ ->
   eval_expr regs expr = XBV.from_bv (SMTLib.interp_term ρ t).
 Proof.
   eapply expr_to_smt_value.

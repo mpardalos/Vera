@@ -3,6 +3,10 @@ From Stdlib Require Import ZArith.
 From Stdlib Require Import BinNums.
 From Stdlib Require Import Program.Equality.
 From Stdlib Require Import ProofIrrelevance.
+From Stdlib Require Import Structures.Orders.
+From Stdlib Require Import Structures.OrdersEx.
+From Stdlib Require Import RelationPairs.
+From Stdlib Require MSets.
 
 From ExtLib Require Import Programming.Show.
 From ExtLib Require Import Structures.Monads.
@@ -26,6 +30,14 @@ Import ListNotations.
 Import MonadLetNotation.
 Import SigTNotations.
 Local Open Scope monad_scope.
+
+#[global]
+Declare Scope verilog_scope.
+
+#[global]
+Delimit Scope verilog_scope with verilog.
+
+Local Open Scope verilog_scope.
 
 Module VerilogCommon.
   Variant arithmeticop :=
@@ -129,6 +141,219 @@ Variant bitwiseop :=
       ; varTypeWf : (varType > 0)%N
       }.
 
+  Definition combine_compare (c1 c2 : comparison) : comparison :=
+    match c1 with
+    | Eq => c2
+    | _ => c1
+    end.
+
+  Module Variable_as_MDT <: MiniDecidableType.
+    Definition t := variable.
+
+    Definition eq_dec (x y : variable) : {x=y} + {x<>y}.
+    Proof.
+      refine (match dec (varName x = varName y), dec (varType x = varType y) with
+              | left _, left _ => left _
+              | _, _ => right _
+    	    end).
+      all: destruct x, y.
+      all: simpl in *.
+      - subst. f_equal. apply proof_irrelevance.
+      - crush.
+      - crush.
+    Qed.
+  End Variable_as_MDT.
+
+  Module Variable_as_DT := Make_UDT(Variable_as_MDT).
+
+  #[global]
+  Instance dec_eq_variable (x y : variable) : DecProp (x = y) :=
+    Variable_as_DT.eq_dec x y.
+
+  Module Variable_as_OT <: UsualOrderedType.
+    Include Variable_as_DT.
+
+    Definition lt :=
+      (relation_disjunction (String_as_OT.lt @@ varName)
+        (relation_conjunction (Logic.eq @@ varName) (N.lt @@ varType)))%signature.
+
+    Global Instance lt_strorder : StrictOrder lt.
+    Proof.
+      split.
+      - intros [n t] [nameLt|[nameEq typeLt]].
+        + apply (@StrictOrder_Irreflexive _ String_as_OT.lt _ n). exact nameLt.
+        + apply (@StrictOrder_Irreflexive _ N_as_OT.lt _ t).
+	  exact typeLt.
+      - intros [n1 t1] [n2 t2] [n3 t3] [nameLt12|[nameEq12 typeLt12]] [nameLt23|[nameEq23 typeLt23]].
+        all: repeat match goal with [ e : (Logic.eq @@ _)%signature _ _ |- _] =>
+	  cbv in e; subst
+	end.
+        + left.
+	  eapply (@StrictOrder_Transitive _ String_as_OT.lt _ n1 n2 n3 nameLt12 nameLt23).
+        + left. exact nameLt12.
+        + left. exact nameLt23.
+	+ right. split.
+	  * reflexivity.
+	  * exact (@StrictOrder_Transitive _ N_as_OT.lt _ t1 t2 t3 typeLt12 typeLt23).
+    Qed.
+
+    Global Instance lt_compat : Proper (eq==>eq==>iff) lt.
+    Proof. intros x x' <- y y' <-. reflexivity. Qed.
+
+    Definition compare v1 v2 :=
+      combine_compare
+        (String_as_OT.compare (varName v1) (varName v2))
+        (varType v1 ?= varType v2)%N.
+
+     Lemma compare_spec : forall x y, CompSpec eq lt x y (compare x y).
+     Proof.
+       intros [n1 t1] [n2 t2]. unfold compare, combine_compare. simpl.
+       unfold CompSpec.
+       destruct (String_as_OT.compare_spec n1 n2) as [cmp_n|cmp_n|cmp_n];
+         [|crush|crush].
+       unfold String_as_OT.eq in cmp_n. subst.
+       destruct (N_as_OT.compare_spec t1 t2); [|crush|crush].
+       subst.
+       constructor. cbv. f_equal.
+       apply proof_irrelevance.
+     Qed.
+  End Variable_as_OT.
+
+  Module VariableSet.
+    Include MSetAVL.Make(Variable_as_OT).
+    Include MSetDecide.Decide.
+
+    Definition disjoint (a b : t) := is_empty (inter a b).
+    Definition Disjoint (a b : t) : Prop := Empty (inter a b).
+
+    Lemma disjoint_spec (a b : t) : disjoint a b = true <-> Disjoint a b.
+    Proof.
+      unfold disjoint, Disjoint.
+      rewrite is_empty_spec.
+      reflexivity.
+    Qed.
+
+    Global Instance Disjoint_m : Proper (Equal ==> Equal ==> iff) Disjoint.
+    Proof.
+      unfold Disjoint.
+      intros x y Hxy a b Hab.
+      setoid_rewrite <- Hxy.
+      setoid_rewrite <- Hab.
+      reflexivity.
+    Qed.
+
+    Global Instance disjoint_m : Proper (Equal ==> Equal ==> Logic.eq) disjoint.
+    Proof.
+      unfold disjoint.
+      intros x y Hxy a b Hab.
+      setoid_rewrite <- Hxy.
+      setoid_rewrite <- Hab.
+      reflexivity.
+    Qed.
+
+    Lemma Disjoint_sym a b : Disjoint a b -> Disjoint b a.
+    Proof. unfold Disjoint. fsetdec. Qed.
+    
+    Add Parametric Relation : t Disjoint
+      symmetry proved by Disjoint_sym
+      as Disjoint_rel.
+
+    Global Instance dec_vs_In (v : variable) (a : t) : DecProp (In v a).
+    Proof.
+      destruct (VariableSet.mem v a) eqn:E.
+      - left. now apply VariableSet.mem_spec.
+      - right. intros contra. apply VariableSet.mem_spec in contra.
+        congruence.
+    Qed.
+
+    Global Instance dec_vs_disjoint (a b : VariableSet.t) : DecProp (VariableSet.Disjoint a b).
+    Proof.
+      destruct (VariableSet.disjoint a b) eqn:E.
+      - left. now apply VariableSet.disjoint_spec.
+      - right. intros contra. apply VariableSet.disjoint_spec in contra.
+        congruence.
+    Qed.
+
+    Global Instance dec_vs_subset (a b : VariableSet.t) : DecProp (VariableSet.Subset a b).
+    Proof.
+      destruct (VariableSet.subset a b) eqn:E.
+      - left. now apply VariableSet.subset_spec.
+      - right. intros contra. apply VariableSet.subset_spec in contra.
+        congruence.
+    Qed.
+
+    Global Instance dec_vs_Equal (a b : VariableSet.t) : DecProp (VariableSet.Equal a b).
+    Proof.
+      destruct (VariableSet.equal a b) eqn:E.
+      - left. now apply VariableSet.equal_spec.
+      - right. intros contra. apply VariableSet.equal_spec in contra.
+        congruence.
+    Qed.
+
+    (* This is the version with nice recursion, which we want for inductive proofs, but is not tail-recursive *)
+    Equations of_list : list variable -> t := {
+      | [] => empty
+      | (x :: xs) => add x (of_list xs)
+    }.
+
+    (* This is the tail-recursive version, which we want for performance, but is annoying in proofs.
+       TODO: Profile and swap to this if we need it
+     *)
+    (* Definition of_list l := fold_right add empty l. *)
+
+    Lemma In_of_list {a l} :
+      List.In a l ->
+      In a (VariableSet.of_list l).
+    Proof.
+      induction l; intros H; inv H.
+      all: simp of_list.
+      - fsetdec.
+      - insterU IHl. fsetdec.
+    Qed.
+
+    Lemma subset_of_list {l1 l2} :
+      list_subset l1 l2 ->
+      VariableSet.Subset (VariableSet.of_list l1) (VariableSet.of_list l2).
+    Proof.
+      revert l2. induction l1; intros l2 Hsub.
+      - inv Hsub. fsetdec.
+      - inv Hsub. fold (list_subset l1 l2) in *.
+        simp of_list.
+	insterU IHl1.
+	apply In_of_list in H1.
+	fsetdec.
+    Qed.
+
+    Global Instance of_list_subset :
+      Proper
+        (@list_subset variable ==> VariableSet.Subset)
+        VariableSet.of_list.
+    Proof. intros l1 l2 Hsub. now apply subset_of_list. Qed.
+
+    Module Notations.
+      Infix "∪" := union (at level 20, right associativity) : verilog_scope.
+      Infix "∩" := inter (at level 20, right associativity) : verilog_scope.
+      Infix "⊆" := Subset (at level 20, right associativity) : verilog_scope.
+      Infix "∈" := In (at level 20, right associativity) : verilog_scope.
+      Notation "{ }" := empty : verilog_scope.
+      Notation "{ v }" := (singleton v) : verilog_scope.
+    End Notations.
+
+    Lemma subset_singleton_iff x s : Subset (singleton x) s <-> In x s.
+    Proof. split; fsetdec. Qed.
+
+    Ltac setdec :=
+      unfold Disjoint in *;
+      (* setdec can't handle Subset under binders, so we simplify some special cases.
+         (Mostly used for the (~ Subset _ _) case)
+      *)
+      repeat match goal with
+             | H : context[Subset (singleton _) _] |- _ => setoid_rewrite subset_singleton_iff in H
+             | |- context[Subset (singleton _) _] => setoid_rewrite subset_singleton_iff
+	     end;
+      fsetdec.
+  End VariableSet.
+
   Definition variable_of_decl (decl : variable_declaration) : variable :=
     {| varName := varDeclName decl
     ; varType := varDeclWidth decl
@@ -203,16 +428,6 @@ End VerilogCommon.
 
 Module Verilog.
   Include VerilogCommon.
-
-  #[global]
-  Instance dec_eq_variable (x y : variable) : DecProp (x = y).
-  Proof.
-    destruct x as [x0 x1], y as [y0 y1].
-    destruct (dec (x0 = y0)). 2: right; crush.
-    destruct (dec (x1 = y1)). 2: right; crush.
-    subst. left.
-    f_equal. apply proof_irrelevance.
-  Qed.
 
   (* Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=
    *   match expr with
@@ -360,64 +575,57 @@ Module Verilog.
   Definition var_names : list variable -> list name :=
     map varName.
 
-  Equations
-    expr_reads {w} : Verilog.expression w -> list Verilog.variable :=
-    expr_reads (Verilog.UnaryOp op operand) :=
-      expr_reads operand ;
-    expr_reads (Verilog.ArithmeticOp op lhs rhs) :=
-      expr_reads lhs ++ expr_reads rhs ;
-    expr_reads (Verilog.BitwiseOp op lhs rhs) :=
-      expr_reads lhs ++ expr_reads rhs ;
-    expr_reads (Verilog.ShiftOp op _ _ lhs rhs) :=
-      expr_reads lhs ++ expr_reads rhs ;
-    expr_reads (Verilog.Conditional cond tBranch fBranch) :=
-      expr_reads cond ++ expr_reads tBranch ++ expr_reads fBranch ;
-    expr_reads (Verilog.RangeSelect vec hi lo _ _) :=
-      expr_reads vec;
-    expr_reads (Verilog.BitSelect_width vec idx _ _) :=
-      expr_reads vec ++ expr_reads idx;
-    expr_reads (Verilog.BitSelect_const vec idx _) :=
-      expr_reads vec;
-    expr_reads (Verilog.Resize t expr _) :=
-      expr_reads expr;
-    expr_reads (Verilog.Concatenation e1 e2) :=
-      expr_reads e1 ++ expr_reads e2 ;
-    expr_reads (Verilog.Replication _ e) :=
-      expr_reads e ;
-    expr_reads (Verilog.IntegerLiteral _ val) :=
-      [] ;
-    expr_reads (Verilog.NamedExpression var) :=
-      [var].
+  Import Verilog.VariableSet.Notations.
+  Local Open Scope verilog.
 
-  Equations
-    statement_reads : Verilog.statement -> list Verilog.variable :=
-    statement_reads (Verilog.BlockingAssign lhs rhs) :=
-      expr_reads rhs  (* ONLY looking at rhs here *)
-  .
+  Fixpoint expr_reads {w} (e : Verilog.expression w) : VariableSet.t :=
+    match e with
+    | (Verilog.UnaryOp op operand) => expr_reads operand
+    | (Verilog.ArithmeticOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
+    | (Verilog.BitwiseOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
+    | (Verilog.ShiftOp op lhs rhs _ _) => expr_reads lhs ∪ expr_reads rhs
+    | (Verilog.Conditional cond tBranch fBranch) => expr_reads cond ∪ expr_reads tBranch ∪ expr_reads fBranch
+    | (Verilog.RangeSelect vec hi lo _ _) => expr_reads vec
+    | (Verilog.BitSelect_width vec idx _ _) => expr_reads vec ∪ expr_reads idx
+    | (Verilog.BitSelect_const vec idx _) => expr_reads vec
+    | (Verilog.Resize t expr _) => expr_reads expr
+    | (Verilog.Concatenation e1 e2) => expr_reads e1 ∪ expr_reads e2
+    | (Verilog.Replication _ e) => expr_reads e
+    | (Verilog.IntegerLiteral _ val) => VariableSet.empty
+    | (Verilog.NamedExpression var) => { var }
+    end.
 
-  Equations
-    statement_writes : Verilog.statement -> list Verilog.variable :=
-    statement_writes (Verilog.BlockingAssign lhs rhs) :=
-      [lhs] ; (* ONLY looking at lhs here *)
-  .
+  Definition statement_reads (s : Verilog.statement) : VariableSet.t :=
+    match s with
+    | (Verilog.BlockingAssign lhs rhs) => expr_reads rhs  (* ONLY looking at rhs here *)
+    end.
 
-  Equations module_item_reads : Verilog.module_item -> list Verilog.variable :=
-    module_item_reads (Verilog.AlwaysComb stmt) => statement_reads stmt ;
-  .
+  Definition statement_writes (s : Verilog.statement) : VariableSet.t :=
+    match s with
+    | (Verilog.BlockingAssign lhs rhs) => { lhs } (* ONLY looking at lhs here *)
+    end.
 
-  Equations module_item_writes : Verilog.module_item -> list Verilog.variable :=
-    module_item_writes (Verilog.AlwaysComb stmt) => statement_writes stmt ;
-  .
+  Definition module_item_reads (mi : Verilog.module_item) : VariableSet.t :=
+    match mi with
+    | (Verilog.AlwaysComb stmt) => statement_reads stmt
+    end.
 
-  Equations module_body_reads : list Verilog.module_item -> list Verilog.variable :=
-    module_body_reads [] := [];
-    module_body_reads (hd :: tl) := module_item_reads hd ++ module_body_reads tl
-  .
+  Definition module_item_writes (mi : Verilog.module_item) : VariableSet.t :=
+    match mi with
+    | (Verilog.AlwaysComb stmt) => statement_writes stmt
+    end.
 
-  Equations module_body_writes : list Verilog.module_item -> list Verilog.variable :=
-    module_body_writes [] := [];
-    module_body_writes (hd :: tl) := module_item_writes hd ++ module_body_writes tl
-  .
+  Fixpoint module_body_reads (mis : list Verilog.module_item) : VariableSet.t :=
+    match mis with
+    | [] => {}
+    | (hd :: tl) => module_item_reads hd ∪ module_body_reads tl
+    end.
+
+  Fixpoint module_body_writes (mis : list Verilog.module_item) : VariableSet.t :=
+    match mis with
+    | [] => {}
+    | (hd :: tl) => module_item_writes hd ∪ module_body_writes tl
+    end.
 End Verilog.
 
 Module RawVerilog.

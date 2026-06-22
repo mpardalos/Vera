@@ -12,6 +12,7 @@ From vera Require SMTLib.
 
 From Stdlib Require Extraction.
 From Stdlib Require Import BinNat.
+From Stdlib Require Import Structures.OrdersEx.
 From Stdlib Require Import extraction.ExtrOcamlBasic.
 From Stdlib Require Import extraction.ExtrOcamlNativeString.
 From Stdlib Require Import extraction.ExtrOcamlZBigInt.
@@ -28,6 +29,10 @@ Extraction Language OCaml.
 (* Map conversion functions to identity to avoid recursive of_succ_nat *)
 Extract Inlined Constant N.of_nat => "(fun x -> x)".
 Extract Inlined Constant N.to_nat => "(fun x -> x)".
+(* N_as_OT is just N, so I'm not sure why these are required. But the
+   .ml does not match the .mli if these are not included *)
+Extract Inlined Constant N_as_OT.of_nat => "(fun x -> x)".
+Extract Inlined Constant N_as_OT.to_nat => "(fun x -> x)".
 Extract Inlined Constant Z.of_nat => "(fun x -> x)".
 Extract Inlined Constant Z.to_nat => "(fun x -> x)".
 

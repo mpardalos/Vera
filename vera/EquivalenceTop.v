@@ -19,7 +19,7 @@ Local Open Scope string.
 Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
   trace ("Sort " ++ Verilog.modName v) (
     let* sorted_body :=
-      match sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) with
+      match sort_module_items (Verilog.VariableSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v) with
       | None => inl "Module not sortable"
       | Some sorted => inr sorted
       end in
@@ -53,7 +53,7 @@ From Stdlib Require Import Structures.Equalities.
 From Stdlib Require Import Morphisms.
 From Stdlib Require Import Setoid.
 
-Local Open Scope verilog.
+Local Open Scope verilog_scope.
 
 Theorem sort_vmodule_exact_equivalence v1 v2 :
   sort_vmodule v1 = inr v2 ->

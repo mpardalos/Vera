@@ -1,9 +1,10 @@
 open Format
+module Zarith_Z = Z
 open Vera
 
 module SMTLib = struct
   let sort fmt = function
-    | Sort_BitVec n -> fprintf fmt "(_ BitVec %a)" Z.pp_print n
+    | Vera.Sort_BitVec n -> fprintf fmt "(_ BitVec %a)" Zarith_Z.pp_print n
     | _ -> failwith "Unexpected sort"
 
   let varName fmt smtname =
@@ -49,8 +50,8 @@ module SMTLib = struct
     | Term_BVConcat (_, _, l, r) ->
         fprintf fmt "(concat %a %a)" term l term r
     | Term_BVExtract (_, lo, hi, t) ->
-        fprintf fmt "((_ extract %a %a) %a)" Z.pp_print (int_from_nat lo)
-          Z.pp_print (int_from_nat hi) term t
+        fprintf fmt "((_ extract %a %a) %a)" Zarith_Z.pp_print (int_from_nat lo)
+          Zarith_Z.pp_print (int_from_nat hi) term t
     | Term_BVUnaryOp (_, op, t) ->
         fprintf fmt "(%a %a)" unaryOp op term t
     | Term_BVBinOp (_, op, t1, t2) ->

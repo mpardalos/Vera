@@ -30,9 +30,11 @@ From vera Require SMTLib.
 Import ListNotations.
 Import SigTNotations.
 Import MonadLetNotation.
+Import Verilog.VariableSet.Notations.
 
 Local Open Scope list.
 Local Open Scope monad_scope.
+Local Open Scope verilog_scope.
 
 Inductive VarTag := VerilogLeft | VerilogRight.
 
@@ -182,7 +184,7 @@ Definition valuation_of_executions (e1 e2 : execution) : SMTLib.valuation :=
   end.
 
 Lemma execution_of_valuation_left_match_on e1 e2 l :
-  RegisterState.defined_value_for (fun var => In var l) e1 ->
+  RegisterState.defined_value_for l e1 ->
   execution_of_valuation VerilogLeft
     (valuation_of_executions e1 e2) =( l )= e1.
 Proof.
@@ -202,7 +204,7 @@ Proof.
 Qed.
 
 Lemma execution_of_valuation_right_match_on e1 e2 l :
-  RegisterState.defined_value_for (fun var => In var l) e2 ->
+  RegisterState.defined_value_for l e2 ->
   execution_of_valuation VerilogRight
     (valuation_of_executions e1 e2) =( l )= e2.
 Proof.
@@ -222,30 +224,33 @@ Proof.
 Qed.
 
 Definition verilog_smt_match_states_partial
-  (cond : Verilog.variable -> Prop)
+  (vars : Verilog.VariableSet.t)
   (tag : VarTag)
   (regs : RegisterState.t)
   (ρ : SMTLib.valuation) : Prop :=
-  forall var, cond var -> regs var = XBV.from_bv (ρ (verilog_to_smt_var tag var)).
+  forall var, var ∈ vars -> regs var = XBV.from_bv (ρ (verilog_to_smt_var tag var)).
 
 (* Might not be needed *)
 Global Instance verilog_smt_match_states_partial_proper :
   Proper
-    (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> eq ==> iff)
+    (Verilog.VariableSet.Equal ==> eq ==> eq ==> eq ==> iff)
     verilog_smt_match_states_partial.
 Proof.
   repeat intro. subst.
   crush.
 Qed.
 
-Global Instance verilog_smt_match_states_partial_impl_proper :
+Global Instance Proper_verilog_smt_match_states_partial_subset :
   Proper
-    (pointwise_relation Verilog.variable Basics.impl ==> eq ==> eq ==> eq ==> Basics.flip Basics.impl)
+    (Verilog.VariableSet.Subset --> eq ==> eq ==> eq ==> Basics.impl)
     verilog_smt_match_states_partial.
-Proof.
-  repeat intro. subst.
-  crush.
-Qed.
+Proof. repeat intro. subst. crush. Qed.
+
+Global Instance Proper_verilog_smt_match_states_partial_subset_flip :
+  Proper
+    (Verilog.VariableSet.Subset ==> eq ==> eq ==> eq ==> Basics.flip Basics.impl)
+    verilog_smt_match_states_partial.
+Proof. repeat intro. subst. crush. Qed.
 
 Lemma verilog_smt_match_states_execution_of_valuation_same C tag ρ :
   verilog_smt_match_states_partial C tag (execution_of_valuation tag ρ) ρ.
@@ -255,16 +260,16 @@ Proof.
   crush.
 Qed.
 
-Lemma verilog_smt_match_states_partial_impl P1 P2 tag regs ρ :
-  (forall x, P2 x -> P1 x) ->
-  verilog_smt_match_states_partial P1 tag regs ρ ->
-  verilog_smt_match_states_partial P2 tag regs ρ.
+Lemma verilog_smt_match_states_partial_impl vars1 vars2 tag regs ρ :
+  Verilog.VariableSet.Subset vars1 vars2 ->
+  verilog_smt_match_states_partial vars2 tag regs ρ ->
+  verilog_smt_match_states_partial vars1 tag regs ρ.
 Proof. crush. Qed.
 
-Lemma verilog_smt_match_states_partial_set_reg_out C tag r ρ var val :
-  ~ C var ->
-  verilog_smt_match_states_partial C tag (RegisterState.set_reg var val r) ρ <->
-  verilog_smt_match_states_partial C tag r ρ.
+Lemma verilog_smt_match_states_partial_set_reg_out vars tag r ρ var val :
+  ~ var ∈ vars ->
+  verilog_smt_match_states_partial vars tag (RegisterState.set_reg var val r) ρ <->
+  verilog_smt_match_states_partial vars tag r ρ.
 Proof.
   intro Hcond1.
   unfold verilog_smt_match_states_partial.
@@ -276,23 +281,11 @@ Proof.
   all: reflexivity.
 Qed.
 
-Lemma verilog_smt_match_states_partial_split C1 C2 C3 tag reg ρ :
-  (forall var, C3 var -> C1 var \/ C2 var) ->
-  verilog_smt_match_states_partial C1 tag reg ρ ->
-  verilog_smt_match_states_partial C2 tag reg ρ ->
-  verilog_smt_match_states_partial C3 tag reg ρ.
-Proof.
-  unfold verilog_smt_match_states_partial.
-  intros Himpl H1 H2 * HC3.
-  apply Himpl in HC3.
-  destruct HC3; eauto.
-Qed.
-
 Lemma verilog_smt_match_states_partial_split_iff C1 C2 tag reg ρ :
-  verilog_smt_match_states_partial (fun var => C1 var \/ C2 var) tag reg ρ <->
+  verilog_smt_match_states_partial (C1 ∪ C2) tag reg ρ <->
     (verilog_smt_match_states_partial C1 tag reg ρ
      /\ verilog_smt_match_states_partial C2 tag reg ρ).
-Proof. unfold verilog_smt_match_states_partial. crush. Qed.
+Proof. unfold verilog_smt_match_states_partial. setoid_rewrite Verilog.VariableSet.union_spec. crush. Qed.
 
 Lemma verilog_smt_match_states_partial_set_reg_elim C tag regs ρ var bv :
   (ρ (verilog_to_smt_var tag var) = bv) ->
@@ -308,27 +301,12 @@ Proof.
     apply Hrest. apply Hcond.
 Qed.
 
-Lemma verilog_smt_match_states_partial_change_regs C tag r1 r2 ρ :
-  (forall var, C var -> r1 var = r2 var) ->
-  verilog_smt_match_states_partial C tag r1 ρ ->
-  verilog_smt_match_states_partial C tag r2 ρ.
-Proof.
-  unfold verilog_smt_match_states_partial.
-  intros Hsame Hmatch1 * Hcond.
-  insterU Hsame. insterU Hcond. insterU Hmatch1.
-  congruence.
-Qed.
-
 Ltac unpack_verilog_smt_match_states_partial :=
   repeat match goal with
-    | [ H: verilog_smt_match_states_partial (fun _ => _ \/ _) _ _ _ |- _ ] =>
+    | [ H: verilog_smt_match_states_partial (_ ∪ _) _ _ _ |- _ ] =>
         apply verilog_smt_match_states_partial_split_iff in H;
         destruct H
-    | [ H: verilog_smt_match_states_partial (fun _ => List.In _ (_ ++ _)) _ _ _ |- _ ] =>
-        setoid_rewrite List.in_app_iff in H
-    | [ |- verilog_smt_match_states_partial (fun _ => List.In _ (_ ++ _)) _ _ _ ] =>
-        setoid_rewrite List.in_app_iff
-    | [ |- verilog_smt_match_states_partial (fun _ => _ \/ _) _ _ _ ] =>
+    | [ |- verilog_smt_match_states_partial (_ ∪ _) _ _ _ ] =>
         apply verilog_smt_match_states_partial_split_iff; split
     end.
 
@@ -343,9 +321,9 @@ Qed.
 
 Lemma verilog_smt_match_states_partial_execution_match_on C tag ρ e :
     verilog_smt_match_states_partial C tag e ρ ->
-    e ={ C }= execution_of_valuation tag ρ.
+    e =( C )= execution_of_valuation tag ρ.
 Proof.
-  unfold verilog_smt_match_states_partial, "_ ={ _ }= _".
+  unfold verilog_smt_match_states_partial, "_ =( _ )= _".
   intros H var Hvar.
   apply H.
   apply Hvar.
@@ -370,7 +348,7 @@ Proof.
 Qed.
 
 Lemma execution_match_on_verilog_smt_match_states_partial C tag ρ e :
-    e ={ C }= (execution_of_valuation tag ρ) ->
+    e =( C )= (execution_of_valuation tag ρ) ->
     verilog_smt_match_states_partial C tag e ρ.
 Proof.
   unfold execution_of_valuation, verilog_smt_match_states_partial, "_ =( _ )= _".

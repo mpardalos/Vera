@@ -2,6 +2,7 @@ From Stdlib Require Import BinNat.
 From Stdlib Require Import String.
 From Stdlib Require Import Nat.
 From Stdlib Require Import Structures.OrderedTypeEx.
+From Stdlib Require Import Structures.OrdersAlt.
 From Stdlib Require Import List.
 From Stdlib Require Import Sorting.Permutation.
 From Stdlib Require Import Relations.
@@ -13,6 +14,7 @@ From Stdlib Require Import Morphisms.
 From Stdlib Require Import Setoid.
 
 From vera Require Import Verilog.
+Import Verilog.
 From vera Require Import Common.
 From vera Require Import Bitvector.
 Import (notations) XBV.
@@ -32,22 +34,14 @@ From ExtLib Require Import Data.List.
 Import ListNotations.
 Import MonadLetNotation.
 Import SigTNotations.
+Import Verilog.VariableSet.Notations.
 Local Open Scope monad_scope.
 Local Open Scope bv_scope.
+Local Open Scope verilog.
 
 Set Bullet Behavior "Strict Subproofs".
 
-Declare Scope verilog.
-Local Open Scope verilog.
-
 Module RegisterState.
-  Module VariableAsMDT <: MiniDecidableType.
-    Definition t := Verilog.variable.
-    Definition eq_dec (x y : t) := dec (x = y).
-  End VariableAsMDT.
-
-  Module VariableAsUDT := Make_UDT(VariableAsMDT).
-
   Definition register_state := forall var, XBV.xbv (Verilog.varType var).
 
   #[global]
@@ -94,92 +88,87 @@ Module RegisterState.
   #[global]
   Hint Rewrite RegisterState.set_reg_get_out using congruence : register_state.
                           
-  Definition defined_value_for (C : Verilog.variable -> Prop) (regs : RegisterState.t) :=
-    forall var, C var -> exists bv, regs var = XBV.from_bv bv.
+  Definition defined_value_for (vars : VariableSet.t) (regs : RegisterState.t) :=
+    forall var, var ∈ vars -> exists bv, regs var = XBV.from_bv bv.
   
-  Lemma defined_value_for_split_iff (C1 C2 : Verilog.variable -> Prop) regs :
-    (defined_value_for C1 regs /\ defined_value_for C2 regs) <->
-      (defined_value_for (fun var => C1 var \/ C2 var) regs).
-  Proof. unfold defined_value_for. crush. Qed.
+  Lemma defined_value_for_split_iff vars1 vars2 regs :
+    (defined_value_for vars1 regs /\ defined_value_for vars2 regs) <->
+      (defined_value_for (vars1 ∪ vars2) regs).
+  Proof. unfold defined_value_for. setoid_rewrite VariableSet.union_spec. crush. Qed.
 
-  Lemma defined_value_for_impl C1 C2 e :
-    (forall v, C2 v -> C1 v) ->
-    defined_value_for C1 e ->
-    defined_value_for C2 e.
-  Proof. unfold defined_value_for. crush. Qed.
+  Lemma defined_value_for_subset vars1 vars2 e :
+    VariableSet.Subset vars2 vars1 ->
+    defined_value_for vars1 e ->
+    defined_value_for vars2 e.
+  Proof. unfold VariableSet.Subset, defined_value_for. crush. Qed.
 
   Lemma defined_value_for_empty e :
-    defined_value_for (fun var => In var []) e.
-  Proof. unfold defined_value_for. crush. Qed.
+    defined_value_for VariableSet.empty e.
+  Proof. unfold defined_value_for. setoid_rewrite VariableSet.F.empty_iff. crush. Qed.
 
   Ltac unpack_defined_value_for :=
     repeat match goal with
-      | [ H: defined_value_for (fun _ => _ \/ _) _ |- _ ] =>
+      | [ H: defined_value_for (_ ∪ _) _ |- _ ] =>
           rewrite <- defined_value_for_split_iff in H;
           destruct H
-      | [ H: defined_value_for (fun _ => List.In _ (_ ++ _)) _ |- _ ] =>
-          setoid_rewrite List.in_app_iff in H
-      | [ |- defined_value_for (fun _ => List.In _ (_ ++ _)) _ ] =>
-          setoid_rewrite List.in_app_iff
-      | [ |- defined_value_for (fun _ => _ \/ _) _ ] =>
+      | [ |- defined_value_for (_ ∪ _) _ ] =>
           apply defined_value_for_split_iff; split
-      | [ |- defined_value_for (fun var => In var [] ) _ ] =>
-          apply defined_value_for_empty
       end.
 
-  Definition match_on (C : Verilog.variable -> Prop) (e1 e2 : RegisterState.t) : Prop :=
-    forall var, C var -> e1 var = e2 var.
-
-  Notation "rs1 ={ P }= rs2" :=
-    (match_on P rs1 rs2)
-    (at level 80) : type_scope.
+  Definition match_on (vars : VariableSet.t) (e1 e2 : RegisterState.t) : Prop :=
+    forall var, var ∈ vars -> e1 var = e2 var.
 
   Notation "rs1 =( vars )= rs2" :=
-    (rs1 ={fun var => In var vars}= rs2)
+    (match_on vars rs1 rs2)
     (at level 80) : type_scope.
 
-  Lemma match_on_impl C1 C2 e1 e2:
-    (forall var, C2 var -> C1 var) ->
-    e1 ={ C1 }= e2 ->
-    e1 ={ C2 }= e2.
+  Lemma match_on_subset vars1 vars2 e1 e2:
+    vars1 ⊆ vars2 ->
+    e1 =( vars2 )= e2 ->
+    e1 =( vars1 )= e2.
   Proof. unfold match_on. crush. Qed.
 
   Global Instance Proper_match_on_iff :
-    Proper (pointwise_relation Verilog.variable iff ==> eq ==> eq ==> iff) match_on.
-  Proof. repeat intro. subst. crush. Qed.
+    Proper (VariableSet.Equal ==> eq ==> eq ==> iff) match_on.
+  Proof.
+    unfold match_on.
+    intros vars1 vars2 Heq e1 e1' <- e2 e2' <-.
+    setoid_rewrite <- Heq.
+    reflexivity.
+  Qed.
 
-  Global Instance Proper_match_on_impl_contra :
-    Proper
-      ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> eq ==> Basics.impl)
-      match_on.
-  Proof. repeat intro. subst. crush. Qed.
+  Global Instance Proper_match_on_subset :
+    Proper (VariableSet.Subset --> eq ==> eq ==> Basics.impl) match_on.
+  Proof.
+    unfold match_on, Basics.impl.
+    intros vars1 vars2 Hsub e1 e1' <- e2 e2' <-.
+    setoid_rewrite <- Hsub.
+    trivial.
+  Qed.
 
-  Global Instance Proper_match_on_impl_contra_nested :
-    Proper
-      ((pointwise_relation Verilog.variable (Basics.flip Basics.impl)) ==> eq ==> eq ==> Basics.impl)
-      match_on.
-  Proof. repeat intro. subst. crush. Qed.
+  Global Instance Proper_match_on_subset_flip :
+    Proper (VariableSet.Subset ==> eq ==> eq ==> Basics.flip Basics.impl) match_on.
+  Proof.
+    unfold match_on, Basics.flip, Basics.impl.
+    intros vars1 vars2 Hsub e1 e1' <- e2 e2' <-.
+    setoid_rewrite <- Hsub.
+    trivial.
+  Qed.
 
-  Global Instance Proper_match_on_impl_flip :
-    Proper
-      ((pointwise_relation Verilog.variable Basics.impl) ==> eq ==> eq ==> Basics.flip Basics.impl)
-      match_on.
-  Proof. repeat intro. subst. crush. Qed.
-
-  Global Instance DefaultRelation_variable_prop :
-    DefaultRelation (A:=Verilog.variable -> Prop) (pointwise_relation Verilog.variable Basics.impl).
-  Defined.
+  (* Global Instance DefaultRelation_variable_prop :
+   *   DefaultRelation (A:=Verilog.variable -> Prop) (pointwise_relation Verilog.variable Basics.impl).
+   * Defined. *)
   
-  Global Instance Proper_defined_value_for_impl :
-    Proper
-      ((pointwise_relation Verilog.variable Basics.impl) --> eq ==> Basics.impl)
-      RegisterState.defined_value_for.
+  Global Instance Proper_defined_value_for_subset :
+    Proper (VariableSet.Subset --> eq ==> Basics.impl) RegisterState.defined_value_for.
+  Proof. repeat intro. subst. crush. Qed.
+
+  Global Instance Proper_defined_value_for_subset_flip :
+    Proper (VariableSet.Subset ==> eq ==> Basics.flip Basics.impl) RegisterState.defined_value_for.
   Proof. repeat intro. subst. crush. Qed.
   
   Global Instance Proper_defined_value_for_iff :
-    Proper
-      (pointwise_relation Verilog.variable iff ==> eq ==> iff)
-      RegisterState.defined_value_for.
+    Proper (VariableSet.Equal ==> eq ==> iff) RegisterState.defined_value_for.
   Proof. repeat intro. subst. crush. Qed.
   
   Global Instance Proper_defined_value_for_match C :
@@ -187,7 +176,7 @@ Module RegisterState.
       (RegisterState.match_on C ==> iff)
       (RegisterState.defined_value_for C).
   Proof.
-    unfold "_ ={ _ }= _", defined_value_for.
+    unfold "_ =( _ )= _", defined_value_for.
     repeat intro. split; repeat intro.
     - insterU H. insterU H0.
       rewrite <- H. apply H0.
@@ -195,65 +184,54 @@ Module RegisterState.
       rewrite H. apply H0.
   Qed.
 
-  Lemma match_on_split_iff C1 C2 regs1 regs2 :
-    regs1 ={ fun var => C1 var \/ C2 var }= regs2 <->
-      (regs1 ={ C1 }= regs2 /\ regs1 ={ C2 }= regs2).
-  Proof. unfold "_ ={ _ }= _". crush. Qed.
+  Lemma match_on_split_union vars1 vars2 regs1 regs2 :
+    regs1 =( vars1 ∪ vars2 )= regs2 <->
+      (regs1 =( vars1 )= regs2 /\ regs1 =( vars2 )= regs2).
+  Proof. unfold "_ =( _ )= _". setoid_rewrite VariableSet.union_spec. crush. Qed.
 
-  Lemma match_on_app_iff l1 l2 regs1 regs2 :
-    (regs1 =( l1 ++ l2 )= regs2) <-> (regs1 =( l1 )= regs2 /\ regs1 =( l2 )= regs2).
+  Lemma match_on_trans vars regs1 regs2 regs3 :
+    regs1 =( vars )= regs2 ->
+    regs2 =( vars )= regs3 ->
+    regs1 =( vars )= regs3.
   Proof.
-    setoid_rewrite List.in_app_iff.
-    apply match_on_split_iff.
-  Qed.
-
-  Lemma match_on_trans C regs1 regs2 regs3 :
-    regs1 ={ C }= regs2 ->
-    regs2 ={ C }= regs3 ->
-    regs1 ={ C }= regs3.
-  Proof.
-    unfold "_ ={ _ }= _".
+    unfold "_ =( _ )= _".
     intros H12 H23 var HC.
     insterU H12. insterU H23.
     crush.
   Qed.
 
-  Lemma match_on_sym C regs1 regs2 :
-    regs1 ={ C }= regs2 ->
-    regs2 ={ C }= regs1.
+  Lemma match_on_sym vars regs1 regs2 :
+    regs1 =( vars )= regs2 ->
+    regs2 =( vars )= regs1.
   Proof.
-    unfold "_ ={ _ }= _".
+    unfold "_ =( _ )= _".
     intros H var HC.
     insterU H. crush.
   Qed.
 
   Lemma match_on_refl C regs :
-    regs ={ C }= regs.
-  Proof. unfold "_ ={ _ }= _". crush. Qed.
+    regs =( C )= regs.
+  Proof. unfold "_ =( _ )= _". crush. Qed.
 
-  Add Parametric Relation (C : Verilog.variable -> Prop) :
-    RegisterState.t (match_on C)
-    reflexivity proved by (match_on_refl C)
-    symmetry proved by (match_on_sym C)
-    transitivity proved by (match_on_trans C)
+  Add Parametric Relation (vars : VariableSet.t) :
+    RegisterState.t (match_on vars)
+    reflexivity proved by (match_on_refl vars)
+    symmetry proved by (match_on_sym vars)
+    transitivity proved by (match_on_trans vars)
     as match_on_rel.
 
-  Definition defined_match_on C e1 e2 :=
-    e1 ={ C }= e2 /\ RegisterState.defined_value_for C e1.
-
-  Notation "rs1 =!!{ P }!!= rs2" :=
-    (defined_match_on P rs1 rs2)
-    (at level 80) : type_scope.
+  Definition defined_match_on vars e1 e2 :=
+    e1 =( vars )= e2 /\ RegisterState.defined_value_for vars e1.
 
   Notation "rs1 =!!( vars )!!= rs2" :=
-    (rs1 =!!{fun var => In var vars}!!= rs2)
+    (defined_match_on vars rs1 rs2)
     (at level 80) : type_scope.
 
-  Lemma defined_match_on_iff C e1 e2 :
-    e1 =!!{ C }!!= e2 <->
-    forall var, C var -> exists bv, e1 var = XBV.from_bv bv /\ e2 var = XBV.from_bv bv.
+  Lemma defined_match_on_iff vars e1 e2 :
+    e1 =!!( vars )!!= e2 <->
+    forall var, var ∈ vars -> exists bv, e1 var = XBV.from_bv bv /\ e2 var = XBV.from_bv bv.
   Proof.
-    unfold defined_match_on, "_ ={ _ }= _", RegisterState.defined_value_for.
+    unfold defined_match_on, "_ =( _ )= _", RegisterState.defined_value_for.
     split.
     - intros [Hmatch Hdefined] var HC. insterU Hmatch. insterU Hdefined.
       rewrite <- Hmatch. crush.
@@ -262,48 +240,73 @@ Module RegisterState.
       + intros var HC. insterU H. destruct H as [? [? ?]]. crush.
   Qed.
 
-  Lemma defined_match_on_trans C e1 e2 e3:
-    e1 =!!{ C }!!= e2 ->
-    e2 =!!{ C }!!= e3 ->
-    e1 =!!{ C }!!= e3.
+  Lemma defined_match_on_trans vars e1 e2 e3:
+    e1 =!!( vars )!!= e2 ->
+    e2 =!!( vars )!!= e3 ->
+    e1 =!!( vars )!!= e3.
   Proof.
-    unfold "_ =!!{ _ }!!= _".
+    unfold "_ =!!( _ )!!= _".
     intros [] [].
     split.
     - now transitivity e2.
     - eassumption.
   Qed.
 
-  Lemma defined_match_on_sym C e1 e2:
-    e1 =!!{ C }!!= e2 ->
-    e2 =!!{ C }!!= e1.
+  Lemma defined_match_on_sym vars e1 e2:
+    e1 =!!( vars )!!= e2 ->
+    e2 =!!( vars )!!= e1.
   Proof.
-    unfold "_ =!!{ _ }!!= _".
+    unfold "_ =!!( _ )!!= _".
     intros [].
     split.
     - now symmetry.
     - now rewrite <- H.
   Qed.
 
-  Add Parametric Relation (C : Verilog.variable -> Prop) :
-    RegisterState.t (defined_match_on C)
-    symmetry proved by (defined_match_on_sym C)
-    transitivity proved by (defined_match_on_trans C)
+  Add Parametric Relation (vars : VariableSet.t) :
+    RegisterState.t (defined_match_on vars)
+    symmetry proved by (defined_match_on_sym vars)
+    transitivity proved by (defined_match_on_trans vars)
     as execution_defined_match_on_rel.
 
-  Definition limit_to_regs (vars : list Verilog.variable) (regs : RegisterState.t) : RegisterState.t :=
+  Global Instance Proper_defined_match_on_Subset :
+    Proper
+      (VariableSet.Subset --> eq ==> eq ==> Basics.impl)
+      defined_match_on.
+  Proof. repeat intro. subst. crush. Qed.
+
+  Global Instance Proper_defined_match_on_Subset_flip :
+    Proper
+      (VariableSet.Subset ==> eq ==> eq ==> Basics.flip Basics.impl)
+      defined_match_on.
+  Proof. repeat intro. subst. crush. Qed.
+
+  Global Instance Proper_defined_match_on_match_on C:
+    Proper
+      (RegisterState.match_on C ==> RegisterState.match_on C ==> iff)
+      (RegisterState.defined_match_on C).
+  Proof.
+    repeat intro.
+    subst.
+    unfold RegisterState.defined_match_on.
+    rewrite H.
+    rewrite H0.
+    reflexivity.
+  Qed.
+
+  Definition limit_to_regs (vars : VariableSet.t) (regs : RegisterState.t) : RegisterState.t :=
     fun var =>
-      match dec (In var vars) with
+      match dec (var ∈ vars) with
       | left prf => regs var
       | right prf => XBV.exes (Verilog.varType var)
       end.
 
-  Notation "st // regs" := (limit_to_regs regs st) (at level 20) : verilog.
+  Notation "st // regs" := (limit_to_regs regs st) (at level 20) : verilog_scope.
 
-  Global Instance Proper_limit_to_regs regs :
+  Global Instance Proper_limit_to_regs vars :
     Proper
-      (RegisterState.match_on (fun var => In var regs) ==> eq)
-      (RegisterState.limit_to_regs regs).
+      (RegisterState.match_on vars ==> eq)
+      (RegisterState.limit_to_regs vars).
   Proof.
     repeat intro.
     unfold "//", "_ =( _ )= _" in *.
@@ -319,36 +322,58 @@ Module RegisterState.
     autodestruct; reflexivity.
   Qed.
 
-  Lemma limit_to_regs_empty st : st // [] = empty.
+  Lemma dec_yes {P} `{DecProp P} (prf : P) : dec P = left prf.
+  Proof.
+    destruct (dec P).
+    - f_equal. apply proof_irrelevance.
+    - contradiction.
+  Qed.
+
+  Lemma dec_no {P} `{DecProp P} (prf : ~ P) : dec P = right prf.
+  Proof.
+    destruct (dec P).
+    - contradiction.
+    - f_equal. apply proof_irrelevance.
+  Qed.
+
+  Lemma limit_to_regs_empty st : st // {} = empty.
   Proof.
     apply functional_extensionality_dep.
     unfold "//", empty.
-    intros. autodestruct; crush.
+    setoid_rewrite dec_no; [|VariableSet.setdec].
+    reflexivity.
   Qed.
 
   Lemma limit_to_regs_get_skip var var' st vars :
     var <> var' ->
-    (st // (var :: vars)) var' = (st // vars) var'.
-  Proof. unfold "//". intros Hin. autodestruct; crush. Qed.
+    (st // (VariableSet.add var vars)) var' = (st // vars) var'.
+  Proof.
+    unfold "//". intros Hin.
+    destruct (dec (var' ∈ vars)).
+    - rewrite dec_yes at 1 by VariableSet.setdec.
+      reflexivity.
+    - rewrite dec_no at 1 by VariableSet.setdec.
+      reflexivity.
+  Qed.
 
   Lemma limit_to_regs_get_in var st vars :
-    In var vars ->
+    var ∈ vars ->
     (st // vars) var = st var.
   Proof. unfold "//". intros Hin. autodestruct; crush. Qed.
 
   Lemma limit_to_regs_get_out var st vars :
-    ~ In var vars ->
+    ~ var ∈ vars ->
     (st // vars) var = XBV.exes (Verilog.varType var).
   Proof. unfold "//". intros Hin. autodestruct; crush. Qed.
 
   Lemma limit_to_regs_set_reg_in var x st vars :
-    In var vars ->
+    var ∈ vars ->
     (RegisterState.set_reg var x st) // vars
       = RegisterState.set_reg var x (st // vars).
   Proof.
    intros.
    apply functional_extensionality_dep. intros var'.
-   destruct (dec (In var' vars)).
+   destruct (dec (var' ∈ vars)).
    - rewrite limit_to_regs_get_in by assumption.
      destruct (dec (var' = var)).
      + subst.
@@ -364,21 +389,22 @@ Module RegisterState.
   Qed.
 
   Lemma limit_to_regs_set_reg_out var x st vars :
-    ~ In var vars ->
+    ~ var ∈ vars ->
     (RegisterState.set_reg var x st) // vars
       = st // vars.
   Proof.
     intros.
     apply functional_extensionality_dep. intros var'.
-    destruct (dec (In var' vars)).
+    destruct (dec (var' ∈ vars)).
     - rewrite ! limit_to_regs_get_in by assumption.
       rewrite RegisterState.set_reg_get_out by crush.
       reflexivity.
     - rewrite ! limit_to_regs_get_out by assumption.
       reflexivity.
   Qed.
+
   Lemma set_reg_limit_remove var vars v regs :
-    RegisterState.set_reg var v (regs // (var :: vars)) =
+    RegisterState.set_reg var v (regs // (VariableSet.add var vars)) =
     RegisterState.set_reg var v (regs // vars).
   Proof.
      apply functional_extensionality_dep. intro var'.
@@ -417,21 +443,21 @@ Module RegisterState.
   Qed.
 
   Lemma defined_value_for_limit_to_regs vars st :
-    RegisterState.defined_value_for (fun var => In var vars) st ->
-    RegisterState.defined_value_for (fun var => In var vars) (st // vars).
+    RegisterState.defined_value_for vars st ->
+    RegisterState.defined_value_for vars (st // vars).
   Proof.
     unfold RegisterState.defined_value_for, "//".
     intros. autodestruct; crush.
   Qed.
 
-  Lemma match_on_empty C regs1 regs2 :
-    (forall var, ~ (C var)) ->
-    regs1 ={ C }= regs2.
-  Proof. unfold "_ ={ _ }= _". crush. Qed.
+  Lemma match_on_empty vars regs1 regs2 :
+    VariableSet.Empty vars ->
+    regs1 =( vars )= regs2.
+  Proof. unfold "_ =( _ )= _". crush. Qed.
 
   Lemma match_on_set_reg_elim2_in C var x regs1 regs2 :
-    regs1 ={ C }= regs2 ->
-    set_reg var x regs1 ={ C }= set_reg var x regs2.
+    regs1 =( C )= regs2 ->
+    set_reg var x regs1 =( C )= set_reg var x regs2.
   Proof.
     unfold "_ =( _ )= _". intros Hmatch var' Hvar'.
     destruct (dec (var' = var)).
@@ -440,9 +466,9 @@ Module RegisterState.
   Qed.
 
   Lemma match_on_set_reg_elim2_out C var x y regs1 regs2 :
-    ~ C var ->
-    regs1 ={ C }= regs2 ->
-    set_reg var x regs1 ={ C }= set_reg var y regs2.
+    ~ var ∈ C ->
+    regs1 =( C )= regs2 ->
+    set_reg var x regs1 =( C )= set_reg var y regs2.
   Proof.
     unfold "_ =( _ )= _". intros Hvar Hmatch var' Hvar'.
     destruct (dec (var' = var)).
@@ -451,42 +477,39 @@ Module RegisterState.
   Qed.
 
   Lemma match_on_set_reg_elim2 var x regs1 regs2 :
-    set_reg var x regs1 =( [var] )= set_reg var x regs2.
+    set_reg var x regs1 =( { var }%verilog )= set_reg var x regs2.
   Proof.
-    unfold "_ =( _ )= _". intros var' Hvarin. inv Hvarin; [|crush].
+    unfold "_ =( _ )= _". intros var' Hvarin.
+    replace var' with var by VariableSet.setdec.
     rewrite ! set_reg_get_in. crush.
   Qed.
 
   Lemma match_on_set_reg_elim_trans C var x regs1 regs2 :
-    ~ C var ->
-    regs1 ={ C }= regs2 ->
-    set_reg var x regs1 ={ C }= regs2.
+    ~ var ∈ C ->
+    regs1 =( C )= regs2 ->
+    set_reg var x regs1 =( C )= regs2.
   Proof.
-    unfold "_ ={ _ }= _". intros HnC Hmatch var' HC.
+    unfold "_ =( _ )= _". intros HnC Hmatch var' HC.
     erewrite set_reg_get_out by crush.
     crush.
   Qed.
 
   Lemma match_on_set_reg_elim C var x regs :
-    ~ C var ->
-    set_reg var x regs ={ C }= regs.
+    ~ var ∈ C ->
+    set_reg var x regs =( C )= regs.
   Proof.
-    unfold "_ ={ _ }= _". intros HnC var' HC.
+    unfold "_ =( _ )= _". intros HnC var' HC.
     erewrite set_reg_get_out by crush.
     crush.
   Qed.
 
   Ltac unpack_match_on :=
     repeat match goal with
-      | [ H: match_on (fun _ => _ \/ _) _ _ |- _ ] =>
-          apply match_on_split_iff in H;
+      | [ H: _ =( _ ∪ _ )= _ |- _ ] =>
+          apply match_on_split_union in H;
           destruct H
-      | [ H: match_on (fun _ => List.In _ (_ ++ _)) _ _ |- _ ] =>
-          setoid_rewrite List.in_app_iff in H
-      | [ |- match_on (fun _ => List.In _ (_ ++ _)) _ _ ] =>
-          setoid_rewrite List.in_app_iff
-      | [ |- match_on (fun _ => _ \/ _) _ _ ] =>
-          apply match_on_split_iff; split
+      | [ |- _ =( _ ∪ _ )= _ ] =>
+          apply match_on_split_union; split
       end.
 End RegisterState.
 
@@ -495,13 +518,12 @@ Export (notations) RegisterState.
 Module Sort.
   Import Verilog.
 
-  Inductive module_items_sorted : list Verilog.variable -> list Verilog.module_item -> Prop :=
+  Inductive module_items_sorted : VariableSet.t -> list Verilog.module_item -> Prop :=
     | module_items_sorted_nil vars : module_items_sorted vars []
     | module_items_sorted_cons vars mi mis :
-      list_subset (module_item_reads mi) vars ->
-      disjoint (module_item_writes mi) vars ->
-      (* disjoint (Verilog.module_body_writes (mi :: mis)) (Verilog.module_item_reads mi) -> *)
-      module_items_sorted (Verilog.module_item_writes mi ++ vars) mis ->
+      VariableSet.Subset (module_item_reads mi) vars ->
+      VariableSet.Disjoint (module_item_writes mi) vars ->
+      module_items_sorted (VariableSet.union (Verilog.module_item_writes mi) vars) mis ->
       module_items_sorted vars (mi :: mis)
   .
 
@@ -510,11 +532,11 @@ Module Sort.
     revert vars.
     induction ms; intros vars.
     - left. constructor.
-    - destruct (dec (list_subset (Verilog.module_item_reads a) vars));
+    - destruct (dec (VariableSet.Subset (Verilog.module_item_reads a) vars));
         [|right; inversion 1; crush].
-      destruct (dec (disjoint (Verilog.module_item_writes a) vars));
+      destruct (dec (VariableSet.Disjoint (Verilog.module_item_writes a) vars));
         [|right; inversion 1; crush].
-      destruct (IHms (Verilog.module_item_writes a ++ vars));
+      destruct (IHms (Verilog.module_item_writes a ∪ vars));
         [|right; inversion 1; crush].
       left. constructor; auto.
   Defined.
@@ -528,20 +550,11 @@ Module Sort.
 
   Lemma module_items_sorted_no_overwrite inputs body :
     module_items_sorted inputs body ->
-    disjoint (module_body_writes body) inputs.
-  Proof.
-    induction 1.
-    - constructor.
-    - simp module_body_writes.
-      unfold disjoint in *.
-      rewrite -> Forall_forall in *.
-      setoid_rewrite in_app_iff.
-      setoid_rewrite in_app_iff in IHmodule_items_sorted.
-      crush.
-  Qed.
+    VariableSet.Disjoint (module_body_writes body) inputs.
+  Proof. induction 1; simpl; VariableSet.setdec. Qed.
   
   Lemma module_items_sorted_permute_vars l l' body :
-    Permutation l l' ->
+    VariableSet.Equal l l' ->
     module_items_sorted l body ->
     module_items_sorted l' body.
   Proof.
@@ -550,59 +563,50 @@ Module Sort.
     induction Hsorted; intros; constructor.
     - now rewrite <- Hpermute.
     - now rewrite <- Hpermute.
-    - apply IHHsorted.
-      apply Permutation_app_head.
-      assumption.
+    - apply IHHsorted. VariableSet.setdec.
   Qed.
   
-  Global Instance Proper_module_items_sorted_permute_vars :
-    Proper (@Permutation _ ==> eq ==> iff) module_items_sorted.
+  Global Instance Proper_module_items_sorted_Equal :
+    Proper (VariableSet.Equal ==> eq ==> iff) module_items_sorted.
   Proof.
-    repeat intro. subst.
-    split; intros.
+    intros vars vars' Hvars_eq body body' <-.
+    split; intros H.
     - eapply module_items_sorted_permute_vars.
       + eassumption.
       + eassumption.
     - eapply module_items_sorted_permute_vars.
       + symmetry. eassumption.
-      + assumption.
+      + eassumption.
   Qed.
   
   Lemma module_items_sorted_skip vars_skip vars_rest body :
-    disjoint vars_skip (module_body_reads body) ->
-    module_items_sorted (vars_skip ++ vars_rest) body ->
+    VariableSet.Disjoint vars_skip (module_body_reads body) ->
+    module_items_sorted (vars_skip ∪ vars_rest) body ->
     module_items_sorted vars_rest body.
   Proof.
     revert vars_skip vars_rest.
     induction body; intros * Hnot_var_in Hsorted; [constructor|].
     inv Hsorted.
-    simp module_body_reads in *. unpack_in.
-    disjoint_saturate.
+    simpl in *.
     constructor.
-    - unfold list_subset, disjoint in *.
-      rewrite -> Forall_forall in *.
-      repeat match goal with [ H : context[In _ (_ ++ _)] |- _ ] =>
-        setoid_rewrite in_app_iff in H
-      end.
-      crush.
-    - now symmetry.
+    - VariableSet.setdec.
+    - VariableSet.setdec.
     - eapply IHbody with (vars_skip:=vars_skip).
-      + now symmetry.
-      + rewrite app_assoc.
-        setoid_rewrite Permutation_app_comm with (l:=vars_skip).
-        rewrite <- app_assoc.
-        assumption.
+      + VariableSet.setdec.
+      + eapply Proper_module_items_sorted_Equal;
+          [idtac|reflexivity|eassumption].
+	VariableSet.setdec.
   Qed.
   
   Lemma module_items_sorted_skip1 var_skip vars_rest body :
-    ~ In var_skip (module_body_reads body) ->
-    module_items_sorted (var_skip :: vars_rest) body ->
+    ~ VariableSet.In var_skip (module_body_reads body) ->
+    module_items_sorted ({ var_skip }%verilog ∪ vars_rest) body ->
     module_items_sorted vars_rest body.
   Proof.
     intros * Hnot_in Hsorted.
-    apply module_items_sorted_skip with (vars_skip:=[var_skip]).
-    - constructor; crush.
-    - simpl. assumption.
+    apply module_items_sorted_skip with (vars_skip:={var_skip}).
+    - VariableSet.setdec.
+    - apply Hsorted.
   Qed.
 
   Section mi_show.
@@ -617,39 +621,41 @@ Module Sort.
       }.
   End mi_show.
   
-  Equations sort_module_items_select (vars_ready : list variable) (mis : list module_item) : option (selection mis) := {
+  Equations sort_module_items_select (vars_ready : VariableSet.t) (mis : list module_item) : option (selection mis) := {
     | vars_ready, [] => @None _
-    | vars_ready, hd :: tl with
-      dec (disjoint (module_item_writes hd) vars_ready),
-      dec (list_subset (module_item_reads hd) vars_ready) => {
+    | vars_ready, mi :: tl with
+      dec (VariableSet.Disjoint (module_item_writes mi) vars_ready),
+      dec (VariableSet.Subset (module_item_reads mi) vars_ready) => {
       (* conflicting write *)
       | right _, _ => None 
       (* No conflicting write, but not ready *)
       | left _, right _ with sort_module_items_select vars_ready tl => {
         | Some (MkSelection _ selected selected_tl _) =>
-	    Some (MkSelection (hd :: tl) selected (hd :: selected_tl) _ )
+	    Some (MkSelection (mi :: tl) selected (mi :: selected_tl) _ )
         | None => None
       }
       (* Ready *)
-      | left prf1, left prf2 => 
-        Some (MkSelection (hd :: tl) hd tl _)
+      | left _, left _ => 
+        Some (MkSelection (mi :: tl) mi tl _)
     }
   }.
   Next Obligation.
     etransitivity. { apply perm_swap. }
     apply perm_skip. assumption.
   Qed.
-  
+
   Equations sort_module_items
-    (vars_ready : list variable)
+    (vars_ready : VariableSet.t)
     (mis : list module_item)
-    : option (list module_item) by wf (length mis) lt :=
-    sort_module_items vars_ready [] := Some [];
-    sort_module_items vars_ready mis with (sort_module_items_select vars_ready mis) := {
-      | None => None
-      | Some (MkSelection _ ready rest _) with (sort_module_items (module_item_writes ready ++ vars_ready) rest) => {
+    : option (list module_item) by wf (length mis) lt := {
+      | vars_ready, [] := Some [];
+      | vars_ready, mis with (sort_module_items_select vars_ready mis) := {
         | None => None
-        | Some sorted_rest => Some (ready :: sorted_rest)
+        | Some (MkSelection _ mi rest _)
+            with (sort_module_items (module_item_writes mi ∪ vars_ready) rest) => {
+          | None => None
+          | Some sorted_rest => Some (mi :: sorted_rest)
+        }
       }
     }
   .
@@ -661,15 +667,18 @@ Module Sort.
   Proof.
     intros Hsorted.
     funelim (sort_module_items_select inputs (mi :: mis)); cbn in *.
+    all: repeat match goal with H : dec _ = _ |- _ => clear H end.
+    all: destruct mi0 as [[lhs rhs]].
+    all: inv Hsorted; cbn in *.
     - f_equal. f_equal. apply proof_irrelevance.
-    - inv Hsorted. contradiction.
-    - inv Hsorted. contradiction.
-    - inv Hsorted. contradiction.
+    - exfalso. contradiction.
+    - exfalso. contradiction.
+    - exfalso. contradiction.
   Qed.
 
   Lemma module_items_select_ready vars mis mi rest wf :
     sort_module_items_select vars mis = Some (MkSelection mis mi rest wf) ->
-    list_subset (module_item_reads mi) vars.
+    VariableSet.Subset (module_item_reads mi) vars.
   Proof.
     intros H.
     funelim (sort_module_items_select vars mis);
@@ -678,21 +687,29 @@ Module Sort.
     all: eauto.
   Qed.
 
+  Lemma Disjoint_singleton_iff x a:
+    (VariableSet.Disjoint { x }%verilog a) <-> ~ VariableSet.In x a.
+  Proof. unfold VariableSet.Disjoint. split; VariableSet.fsetdec. Qed.
+
+  Ltac clear_decs := repeat match goal with H : dec _ = _ |- _ => clear H end.
+
   Lemma module_items_select_no_overwrite vars mis mi rest wf :
     sort_module_items_select vars mis = Some (MkSelection mis mi rest wf) ->
-    disjoint (module_item_writes mi) vars.
+    VariableSet.Disjoint (module_item_writes mi) vars.
   Proof.
     intros H.
     funelim (sort_module_items_select vars mis);
-      rewrite <- Heqcall in *; clear Heqcall.
+      clear_decs; rewrite <- Heqcall in *; clear Heqcall.
     all: inv H.
-    all: eauto.
+    - destruct mi1 as [[? ?]]. simpl in *.
+      VariableSet.setdec.
+    - eapply Hind; eassumption.
   Qed.
 
   Theorem sort_module_items_permutation body body' vars_ready :
     sort_module_items vars_ready body = Some body' ->
     Permutation body body'.
-  Proof.
+  Proof. 
     intros.
     funelim (sort_module_items vars_ready body);
       rewrite <- Heqcall in *; clear Heqcall.
@@ -744,101 +761,106 @@ Module Sort.
 
   (* This should be a Proper instance, but the result type depends on
      the second argument, so we can't do it. *)
-  Lemma module_items_select_permutation vars1 vars2 l :
-    Permutation vars1 vars2 ->
+  Lemma module_items_select_Equal vars1 vars2 l :
+    VariableSet.Equal vars1 vars2 ->
     sort_module_items_select vars1 l = sort_module_items_select vars2 l.
   Proof.
-    intros Hpermute.
-    induction l.
-    all: simp sort_module_items_select.
-    1: reflexivity.
-    repeat match goal with
-           | [ |- context[dec ?P] ] => destruct (dec P)
-	   end.
-    all: try reflexivity.
-    all: simpl.
-    all: match goal with
-         | [ H1: ?P ?l ?v1, H2: ~ ?P ?l ?v2 |- _] =>
-	   exfalso;
-	   (rewrite Hpermute in H2 || rewrite <- Hpermute in H2);
-	   contradiction
-	 | _ => idtac
-	 end.
-    all: expect 1.
-    rewrite <- IHl.
-    destruct (sort_module_items_select vars1 l).
-    all: reflexivity.
+    intros Hseteq.
+    funelim (sort_module_items_select vars1 l); expect 5.
+    - reflexivity.
+    - simp sort_module_items_select.
+      destruct (dec (VariableSet.Disjoint (module_item_writes mi0) vars2)) as [prf|prf];
+        [|exfalso; now rewrite <- Hseteq in prf].
+      destruct (dec (VariableSet.Subset (module_item_reads mi0) vars2)) as [prf'|prf'];
+        [|exfalso; now rewrite <- Hseteq in prf'].
+      reflexivity.
+    - simp sort_module_items_select.
+      destruct (dec (VariableSet.Disjoint (module_item_writes mi0) vars2)) as [prf|prf];
+        [exfalso; now rewrite <- Hseteq in prf|].
+      reflexivity.
+    - simp sort_module_items_select.
+      destruct (dec (VariableSet.Disjoint (module_item_writes mi0) vars2)) as [prf|prf];
+        [|exfalso; now rewrite <- Hseteq in prf].
+      destruct (dec (VariableSet.Subset (module_item_reads mi0) vars2)) as [prf'|prf'];
+        [exfalso; now rewrite <- Hseteq in prf'|].
+      simpl.
+      rewrite <- Hind by assumption.
+      rewrite Heq.
+      reflexivity.
+    - simp sort_module_items_select.
+      destruct (dec (VariableSet.Disjoint (module_item_writes mi0) vars2)) as [prf|prf];
+        [|exfalso; now rewrite <- Hseteq in prf].
+      destruct (dec (VariableSet.Subset (module_item_reads mi0) vars2)) as [prf'|prf'];
+        [exfalso; now rewrite <- Hseteq in prf'|].
+      simpl.
+      rewrite <- Hind by assumption.
+      rewrite Heq.
+      reflexivity.
   Qed.
 
-  Lemma module_items_sort_permutation vars1 vars2 l :
-    Permutation vars1 vars2 ->
+  Lemma module_items_sort_Equal vars1 vars2 l :
+    VariableSet.Equal vars1 vars2 ->
     sort_module_items vars1 l = sort_module_items vars2 l.
   Proof.
-    intros Hpermute.
+    intros Hseteq.
     funelim (sort_module_items vars1 l).
     - reflexivity.
     - simp sort_module_items.
-      rewrite <- (module_items_select_permutation _ _ _ Hpermute).
+      rewrite <- (module_items_select_Equal _ _ _ Hseteq).
       rewrite Heq.
       reflexivity.
     - simp sort_module_items.
-      rewrite <- (module_items_select_permutation _ _ _ Hpermute).
+      rewrite <- (module_items_select_Equal _ _ _ Hseteq).
       rewrite Heq0.
       simpl.
-      rewrite <- Hind; cycle 1. {
-        apply Permutation_app_head.
-	apply Hpermute.
-      }
+      rewrite <- Hind by VariableSet.setdec.
       rewrite Heq.
       reflexivity.
     - simp sort_module_items.
-      rewrite <- (module_items_select_permutation _ _ _ Hpermute).
+      rewrite <- (module_items_select_Equal _ _ _ Hseteq).
       rewrite Heq0.
       simpl.
-      rewrite <- Hind; cycle 1. {
-        apply Permutation_app_head.
-	apply Hpermute.
-      }
+      rewrite <- Hind by VariableSet.setdec.
       rewrite Heq.
       reflexivity.
   Qed.
 
   Global Instance Proper_module_items_sort_Permutation :
     Proper
-      (@Permutation Verilog.variable ==> eq ==> eq)
+      (@VariableSet.Equal ==> eq ==> eq)
       sort_module_items.
   Proof.
-    intros vars1 vars2 Hpermute l l' <-.
-    apply module_items_sort_permutation.
-    apply Hpermute.
+    intros vars1 vars2 Heq l l' <-.
+    apply module_items_sort_Equal.
+    apply Heq.
   Qed.
 
   Section map.
     Context
       (f : module_item -> module_item)
-      (f_preserve_reads : forall mi, Permutation (module_item_reads (f mi)) (module_item_reads mi))
-      (f_preserve_writes : forall mi, Permutation (module_item_writes (f mi)) (module_item_writes mi)).
+      (f_preserve_reads : forall mi, VariableSet.Equal (module_item_reads (f mi)) (module_item_reads mi))
+      (f_preserve_writes : forall mi, VariableSet.Equal (module_item_writes (f mi)) (module_item_writes mi)).
 
     Lemma sort_module_items_select_map inputs mis :
       sort_module_items_select inputs (map f mis)
         = option_map (selection_map f) (sort_module_items_select inputs mis).
-    Proof.
+    Proof. 
       funelim (sort_module_items_select inputs mis).
       - reflexivity.
       - simpl. simp sort_module_items_select.
-        destruct (dec (disjoint (module_item_writes (f hd)) vars_ready)) as [prf1'|prf1'];
+        destruct (dec (VariableSet.Disjoint (module_item_writes (f mi0)) vars_ready)) as [prf1'|prf1'];
           [|exfalso; rewrite f_preserve_writes in prf1'; contradiction].
-        destruct (dec (list_subset (module_item_reads (f hd)) vars_ready)) as [prf2'|prf2'];
+        destruct (dec (VariableSet.Subset (module_item_reads (f mi0)) vars_ready)) as [prf2'|prf2'];
           [|exfalso; rewrite f_preserve_reads in prf2'; contradiction].
         simpl. f_equal. f_equal. apply proof_irrelevance.
       - simpl. simp sort_module_items_select.
-        destruct (dec (disjoint (module_item_writes (f hd)) vars_ready)) as [prf1'|prf1'];
+        destruct (dec (VariableSet.Disjoint (module_item_writes (f mi0)) vars_ready)) as [prf1'|prf1'];
           [exfalso; rewrite f_preserve_writes in prf1'; contradiction|].
         reflexivity.
       - simpl. simp sort_module_items_select.
-        destruct (dec (disjoint (module_item_writes (f hd)) vars_ready)) as [prf1'|prf1'];
+        destruct (dec (VariableSet.Disjoint (module_item_writes (f mi0)) vars_ready)) as [prf1'|prf1'];
           [|exfalso; rewrite f_preserve_writes in prf1'; contradiction].
-        destruct (dec (list_subset (module_item_reads (f hd)) vars_ready)) as [prf2'|prf2'];
+        destruct (dec (VariableSet.Subset (module_item_reads (f mi0)) vars_ready)) as [prf2'|prf2'];
           [exfalso; rewrite f_preserve_reads in prf2'; contradiction|].
         simpl.
         rewrite Hind.
@@ -846,9 +868,9 @@ Module Sort.
         simpl.
         f_equal. f_equal. apply proof_irrelevance.
       - simpl. simp sort_module_items_select.
-        destruct (dec (disjoint (module_item_writes (f hd)) vars_ready)) as [prf1'|prf1'];
+        destruct (dec (VariableSet.Disjoint (module_item_writes (f mi0)) vars_ready)) as [prf1'|prf1'];
           [|exfalso; rewrite f_preserve_writes in prf1'; contradiction].
-        destruct (dec (list_subset (module_item_reads (f hd)) vars_ready)) as [prf2'|prf2'];
+        destruct (dec (VariableSet.Subset (module_item_reads (f mi0)) vars_ready)) as [prf2'|prf2'];
           [exfalso; rewrite f_preserve_reads in prf2'; contradiction|].
         simpl.
         rewrite Hind.
@@ -866,7 +888,7 @@ Module Sort.
       all: simpl; simp sort_module_items.
       all: replace
              (sort_module_items_select vars_ready (f m :: map f l))
-  	   with
+    	   with
              (option_map (selection_map f) (sort_module_items_select vars_ready (m :: l)))
            by (symmetry; exact (sort_module_items_select_map vars_ready (m :: l))).
       - rewrite Heq.
@@ -880,10 +902,11 @@ Module Sort.
         rewrite <- f_preserve_writes in Heq. rewrite Heq.
         reflexivity.
     Qed.
+
   End map.
 
   Definition vmodule_sortable (v : vmodule) : Prop :=
-    exists sorted, sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) = Some sorted.
+    exists sorted, sort_module_items (VariableSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v) = Some sorted.
   
   (* Checking that typeclasses eauto can indeed find this instance *)
   Goal (forall v, DecProp (vmodule_sortable v)). typeclasses eauto. Qed.
@@ -1083,8 +1106,8 @@ Module CombinationalOnly.
       exec_module_body regs' mis;
   .
 
-  Definition mk_initial_state (v : Verilog.vmodule) (regs : RegisterState.t) : RegisterState.t :=
-    regs // Verilog.module_inputs v.
+  Definition mk_initial_state (v : vmodule) (regs : RegisterState.t) : RegisterState.t :=
+    regs // VariableSet.of_list (module_inputs v).
 
   Lemma initial_state_same v1 v2 regs :
     Verilog.modVariableDecls v1 = Verilog.modVariableDecls v2 ->
@@ -1110,14 +1133,14 @@ Module CombinationalOnly.
   *)
 
   Definition run_vmodule (v : Verilog.vmodule) (inputs : RegisterState.t) : RegisterState.t :=
-    match sort_module_items (Verilog.module_inputs v) (Verilog.modBody v) with
+    match sort_module_items (VariableSet.of_list (module_inputs v)) (Verilog.modBody v) with
     | None => RegisterState.empty
     | Some sorted => exec_module_body (mk_initial_state v inputs) sorted
     end.
 
   Global Instance Proper_run_vmodule_match_on v :
     Proper
-      (RegisterState.match_on (fun var => In var (Verilog.module_inputs v)) ==> eq)
+      (RegisterState.match_on (VariableSet.of_list (Verilog.module_inputs v)) ==> eq)
       (run_vmodule v).
   Proof.
     intros r1 r2 Heq.
@@ -1131,9 +1154,9 @@ Module CombinationalOnly.
   Notation execution := RegisterState.t.
 
   Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
-    run_vmodule v e =( Verilog.modVariables v )= e.
+    run_vmodule v e =( VariableSet.of_list (Verilog.modVariables v) )= e.
 
-  Infix "⇓" := valid_execution (at level 20) : verilog.
+  Infix "⇓" := valid_execution (at level 20) : verilog_scope.
 
   Definition execution_not_x (e : execution) name :=
     ~ XBV.has_x (e name).
@@ -1372,7 +1395,7 @@ Section ExpressionFacts.
   Qed.
   
   Lemma eval_expr_defined w regs e :
-      RegisterState.defined_value_for (fun v => List.In v (Verilog.expr_reads e)) regs ->
+      RegisterState.defined_value_for (expr_reads e) regs ->
       exists bv, eval_expr (w:=w) regs e = XBV.from_bv bv.
   Proof.
     funelim (eval_expr regs e).
@@ -1414,13 +1437,14 @@ Section ExpressionFacts.
     - (* literal *)
       eauto.
     - (* Variable *)
-      rename_match (RegisterState.defined_value_for (eq var) regs) into Hvar_defined.
-      edestruct Hvar_defined as [bv Hregs_var]; eauto.
+      rename_match (RegisterState.defined_value_for {var} regs) into Hvar_defined.
+      edestruct Hvar_defined as [bv Hregs_var]; [|eauto].
+      VariableSet.setdec.
     - autorewrite with xbv. eauto.
   Qed.
   
   Lemma eval_expr_no_exes w regs e :
-    RegisterState.defined_value_for (fun v => List.In v (Verilog.expr_reads e)) regs ->
+    RegisterState.defined_value_for (expr_reads e) regs ->
     exists bv, XBV.to_bv (eval_expr (w:=w) regs e) = Some bv.
   Proof.
     intros * Hdefined.
@@ -1450,25 +1474,25 @@ Hint Rewrite
 Module Facts.
   Import CombinationalOnly.
 
-  Add Parametric Morphism : Verilog.module_body_reads
-    with signature (@Permutation Verilog.module_item) ==> (@Permutation Verilog.variable)
+  Add Parametric Morphism : module_body_reads
+    with signature (@Permutation Verilog.module_item) ==> VariableSet.Equal
     as module_body_reads_permute.
   Proof.
-    intros x y Hpermutation; induction Hpermutation; simp module_body_reads in *.
-    - constructor.
+    intros x y Hpermutation; induction Hpermutation; simpl in *.
+    - VariableSet.setdec.
     - erewrite IHHpermutation. reflexivity.
-    - eapply Permutation_app_swap_app.
+    - VariableSet.setdec.
     - etransitivity; eassumption.
   Qed.
 
-  Add Parametric Morphism : Verilog.module_body_writes
-    with signature (@Permutation Verilog.module_item) ==> (@Permutation Verilog.variable)
+  Add Parametric Morphism : module_body_writes
+    with signature (@Permutation Verilog.module_item) ==> VariableSet.Equal
     as module_body_writes_permute.
   Proof.
-    intros x y Hpermutation; induction Hpermutation; simp module_body_writes in *.
-    - constructor.
+    intros x y Hpermutation; induction Hpermutation; simpl in *.
+    - VariableSet.setdec.
     - erewrite IHHpermutation. reflexivity.
-    - eapply Permutation_app_swap_app.
+    - VariableSet.setdec.
     - etransitivity; eassumption.
   Qed.
 
@@ -1486,7 +1510,7 @@ Module Facts.
     all: simpl; try reflexivity.
     all: expect 1.
     apply H.
-    reflexivity.
+    VariableSet.setdec.
   Qed.
 
   (***** Statements ***********)
@@ -1528,15 +1552,15 @@ Module Facts.
   Proof. auto using exec_statement_change_preserve. Qed.
 
   Lemma exec_statement_preserve stmt regs  l :
-    disjoint l (Verilog.statement_writes stmt) ->
+    VariableSet.Disjoint l (Verilog.statement_writes stmt) ->
     regs =( l )= exec_statement regs stmt.
   Proof.
     intros Hdisjoint.
-    funelim (exec_statement regs stmt).
-    try rewrite <- Heqcall in *; clear Heqcall.
-    simp statement_writes expr_reads in *.
+    funelim (exec_statement regs stmt);
+      try rewrite <- Heqcall in *; clear Heqcall.
+    simpl in *.
     symmetry. apply RegisterState.match_on_set_reg_elim.
-    now disjoint_saturate.
+    VariableSet.setdec.
   Qed.
 
   (***** / statements ***********)
@@ -1565,7 +1589,7 @@ Module Facts.
   Proof.
     intros Hmatch_other Hmatch_reads.
     destruct mi; expect 1.
-    simpl; simp exec_module_item module_item_writes module_item_reads expr_reads in *.
+    simpl in *; simp exec_module_item in *.
     apply exec_statement_change_preserve; assumption.
   Qed.
 
@@ -1575,7 +1599,7 @@ Module Facts.
   Proof. auto using exec_module_item_change_preserve. Qed.
 
   Lemma exec_module_item_preserve mi regs l :
-    disjoint l (Verilog.module_item_writes mi) ->
+    VariableSet.Disjoint l (Verilog.module_item_writes mi) ->
     regs =( l )= exec_module_item regs mi.
   Proof.
     intros Hdisjoint Hexec.
@@ -1598,7 +1622,7 @@ Module Facts.
     revert regs1 regs2.
     induction body; intros * Hmatch_reads l Hmatch_other.
     - simp exec_module_body.
-    - simp exec_module_body module_body_reads in *. simpl in *.
+    - simp exec_module_body in *. simpl in *.
       RegisterState.unpack_match_on.
       eapply IHbody.
       + eapply exec_module_item_change_preserve; assumption.
@@ -1614,8 +1638,7 @@ Module Facts.
     intros Hmatch.
     funelim (exec_module_body regs1 body); [crush|].
     try rewrite <- Heqcall in *; clear Heqcall.
-    simp exec_module_body in *; simpl.
-    simp module_body_reads module_body_writes in *.
+    simp exec_module_body in *; simpl in *.
     RegisterState.unpack_match_on.
     - apply exec_module_body_change_preserve.
       + apply exec_module_item_change_preserve; assumption.
@@ -1630,20 +1653,18 @@ Module Facts.
   Proof. auto using exec_module_body_change_preserve. Qed.
 
   Lemma exec_module_body_preserve body regs l :
-    disjoint l (Verilog.module_body_writes body) ->
+    VariableSet.Disjoint l (module_body_writes body) ->
     regs =( l )= exec_module_body regs body.
   Proof.
     intros Hdisjoint.
     funelim (exec_module_body regs body); [reflexivity|].
     try rewrite <- Heqcall in *; clear Heqcall.
-    simp module_body_writes expr_reads in *.
+    simpl in *.
     try discriminate; try (some_inv; reflexivity); expect 1.
     monad_inv.
-    etransitivity.
-    - eapply exec_module_item_preserve.
-      disjoint_saturate. symmetry. eassumption.
-    - apply H.
-      disjoint_saturate. symmetry. eassumption.
+    rewrite <- H by VariableSet.setdec.
+    eapply exec_module_item_preserve.
+    VariableSet.setdec.
   Qed.
 
   (************* /module bodies ***********)
@@ -1652,7 +1673,7 @@ Module Facts.
 
   Lemma run_vmodule_preserve_inputs v e :
     vmodule_sortable v ->
-    run_vmodule v e =( Verilog.module_inputs v )= e.
+    run_vmodule v e =( VariableSet.of_list (Verilog.module_inputs v) )= e.
   Proof.
     unfold vmodule_sortable, run_vmodule.
     intros [sorted Hsort]. rewrite Hsort.
@@ -1680,75 +1701,63 @@ Module Facts.
       autorewrite with register_state; trivial.
   Qed.
 
-  Lemma exec_module_body_permute : forall body1 body2 rs0,
-    Permutation body1 body2 ->
-    NoDup (Verilog.module_body_writes body1) ->
-    NoDup (Verilog.module_body_writes body2) ->
-    disjoint (Verilog.module_body_writes body1) (Verilog.module_body_reads body1) ->
-    disjoint (Verilog.module_body_writes body2) (Verilog.module_body_reads body2) ->
-    exec_module_body rs0 body1 = exec_module_body rs0 body2.
-  Proof.
-   intros * Hpermute. revert rs0.
-   induction Hpermute; intros * Hnodup1 Hnodup2 Hdisjoint1 Hdisjoint2.
-   - simp exec_module_body. reflexivity.
-   - simp exec_module_body module_body_writes module_body_reads in *.
-     simpl.
-     eapply IHHpermute.
-     + disjoint_saturate. assumption.
-     + disjoint_saturate. assumption.
-     + disjoint_saturate. symmetry. assumption.
-     + disjoint_saturate. symmetry. assumption.
-   - simp module_body_writes module_body_reads in *.
-     simp exec_module_body.
-     simpl.
-     destruct x as [[x_var x_expr]].
-     destruct y as [[y_var y_expr]].
-     simp module_item_writes module_item_reads statement_writes statement_reads expr_reads in *.
-     simp exec_module_item exec_statement in *; simpl in *.
-     f_equal.
-     replace (eval_expr (RegisterState.set_reg _ _ rs0) x_expr) with (eval_expr rs0 x_expr); cycle 1. {
-       eapply eval_expr_change_regs. symmetry.
-       eapply RegisterState.match_on_set_reg_elim.
-       now disjoint_saturate.
-     }
-     replace (eval_expr (RegisterState.set_reg _ _ rs0) y_expr) with (eval_expr rs0 y_expr); cycle 1. {
-       eapply eval_expr_change_regs. symmetry.
-       eapply RegisterState.match_on_set_reg_elim.
-       now disjoint_saturate.
-     }
-     eapply set_reg_swap. now disjoint_saturate.
-   - transitivity (exec_module_body rs0 l').
-     + eapply IHHpermute1.
-       * assumption.
-       * rewrite <- Hpermute1. assumption.
-       * assumption.
-       * setoid_rewrite <- Hpermute1.
-         assumption.
-     + eapply IHHpermute2.
-       * erewrite <- Hpermute1. assumption.
-       * assumption.
-       * rewrite <- Hpermute1. assumption.
-       * assumption.
-  Qed.
+  (* DELETEME: Broken from switch to VariableSet. Doesn't seem to be used. *)
+  (* Lemma exec_module_body_permute : forall body1 body2 rs0,
+   *   Permutation body1 body2 ->
+   *   (\* NoDup (Verilog.module_body_writes body1) ->
+   *    * NoDup (Verilog.module_body_writes body2) -> *\)
+   *   VariableSet.Disjoint (module_body_writes body1) (module_body_reads body1) ->
+   *   VariableSet.Disjoint (module_body_writes body2) (module_body_reads body2) ->
+   *   exec_module_body rs0 body1 = exec_module_body rs0 body2.
+   * Proof.
+   *  intros * Hpermute. revert rs0.
+   *  induction Hpermute; intros * (\* Hnodup1 Hnodup2 *\) Hdisjoint1 Hdisjoint2.
+   *  - simp exec_module_body. reflexivity.
+   *  - simp exec_module_body in *. simpl in *.
+   *    eapply IHHpermute.
+   *    + VariableSet.setdec.
+   *    + VariableSet.setdec.
+   *  - simp module_body_writes module_body_reads in *.
+   *    simp exec_module_body.
+   *    simpl.
+   *    destruct x as [[x_var x_expr]].
+   *    destruct y as [[y_var y_expr]].
+   *    simp module_item_writes module_item_reads statement_writes statement_reads expr_reads in *.
+   *    simp exec_module_item exec_statement in *; simpl in *.
+   *    f_equal.
+   *    replace (eval_expr (RegisterState.set_reg _ _ rs0) x_expr) with (eval_expr rs0 x_expr); cycle 1. {
+   *      eapply eval_expr_change_regs. symmetry.
+   *      eapply RegisterState.match_on_set_reg_elim.
+   *      VariableSet.setdec.
+   *    }
+   *    replace (eval_expr (RegisterState.set_reg _ _ rs0) y_expr) with (eval_expr rs0 y_expr); cycle 1. {
+   *      eapply eval_expr_change_regs. symmetry.
+   *      eapply RegisterState.match_on_set_reg_elim.
+   *      VariableSet.setdec.
+   *    }
+   *    eapply set_reg_swap. admit. (\* duplicate write *\)
+   *  - transitivity (exec_module_body rs0 l').
+   *    + eapply IHHpermute1.
+   *      * assumption.
+   *      * rewrite <- Hpermute1. assumption.
+   *    + eapply IHHpermute2.
+   *      * erewrite <- Hpermute1. assumption.
+   *      * assumption.
+   * Admitted. *)
 End Facts.
 
 Module Clean.
-  Import Verilog.
   Import CombinationalOnly.
 
   Lemma exec_statement_defined l_before l_after r stmt:
-    list_subset (Verilog.statement_reads stmt) l_before ->
-    list_subset l_after (Verilog.statement_writes stmt ++ l_before) ->
-    RegisterState.defined_value_for
-      (fun var : variable => In var l_before)
-      r ->
-    RegisterState.defined_value_for
-      (fun var : variable => In var l_after)
-      (exec_statement r stmt).
+    statement_reads stmt ⊆ l_before ->
+    l_after ⊆ statement_writes stmt ∪ l_before ->
+    RegisterState.defined_value_for l_before r ->
+    RegisterState.defined_value_for l_after (exec_statement r stmt).
   Proof.
     intros Hreads_in Hafter_in Hinputs_defined.
     destruct stmt; expect 1.
-    simp statement_writes statement_reads exec_statement in *. simpl in *.
+    simp exec_statement in *. simpl in *.
     unfold RegisterState.defined_value_for.
     intros var Hvar_in. 
     destruct (dec (var = lhs)).
@@ -1759,19 +1768,14 @@ Module Clean.
       rewrite Hbv. eauto.
     - rewrite RegisterState.set_reg_get_out by crush.
       apply Hinputs_defined.
-      propertize_lists1 Hafter_in.
-      edestruct Hafter_in; crush.
+      VariableSet.setdec.
   Qed.
 
   Lemma exec_module_item_defined l_before l_after r mi:
-    list_subset (Verilog.module_item_reads mi) l_before ->
-    list_subset l_after (Verilog.module_item_writes mi ++ l_before) ->
-    RegisterState.defined_value_for
-      (fun var : variable => In var l_before)
-      r ->
-    RegisterState.defined_value_for
-      (fun var : variable => In var l_after)
-      (exec_module_item r mi).
+    Verilog.module_item_reads mi ⊆ l_before ->
+    l_after ⊆ Verilog.module_item_writes mi ∪ l_before ->
+    RegisterState.defined_value_for l_before r ->
+    RegisterState.defined_value_for l_after (exec_module_item r mi).
   Proof.
     destruct mi; expect 1.
     simp module_item_reads module_item_writes exec_module_item in *.
@@ -1780,66 +1784,53 @@ Module Clean.
 
   Lemma exec_module_body_defined l_before l_after r body:
     module_items_sorted l_before body ->
-    list_subset l_after (Verilog.module_body_writes body ++ l_before) ->
-    RegisterState.defined_value_for
-      (fun var : variable => In var l_before)
-      r ->
-    RegisterState.defined_value_for
-      (fun var : variable => In var l_after)
-      (exec_module_body r body).
+    l_after ⊆ Verilog.module_body_writes body ∪ l_before ->
+    RegisterState.defined_value_for l_before r ->
+    RegisterState.defined_value_for l_after (exec_module_body r body).
   Proof.
     revert r l_before l_after. induction body; intros * Hsorted Hafter_in Hinputs_defined.
-    - simp exec_module_body module_body_reads module_body_writes in *.
-      simpl in *.
+    - simp exec_module_body in *. simpl in *.
       setoid_rewrite Hafter_in.
       assumption.
-    - simp exec_module_body module_body_reads module_body_writes in *.
-      simpl.
-      unpack_list_subset.
-      apply IHbody with (l_before := (module_item_writes a ++ l_before)).
+    - simp exec_module_body in *. simpl in *.
+      apply IHbody with (l_before := (module_item_writes a ∪ l_before)).
       + inv Hsorted. assumption.
-      + unfold list_subset in *. rewrite Forall_forall in *.
-        repeat setoid_rewrite List.in_app_iff.
-        repeat setoid_rewrite List.in_app_iff in Hafter_in.
-	intros. insterU Hafter_in. intuition eauto.
+      + VariableSet.setdec.
       + inv Hsorted.
         eapply exec_module_item_defined; eauto; reflexivity.
   Qed.
 
   Lemma run_vmodule_defined r v:
     vmodule_sortable v ->
-    RegisterState.defined_value_for
-      (fun var : variable => In var (Verilog.module_inputs v))
-      r ->
-    RegisterState.defined_value_for
-      (fun var : variable => In var (Verilog.module_body_writes (Verilog.modBody v)))
-      (run_vmodule v r).
+    RegisterState.defined_value_for (VariableSet.of_list (Verilog.module_inputs v)) r ->
+    RegisterState.defined_value_for (Verilog.module_body_writes (Verilog.modBody v)) (run_vmodule v r).
   Proof.
     intros [sorted Hsort] Hdefined.
     unfold run_vmodule. rewrite Hsort.
     eapply exec_module_body_defined.
     - eapply sort_module_items_sorted. eapply Hsort.
     - rewrite <- sort_module_items_permutation with (body':=sorted) by eassumption.
-      apply list_subset_app_r.
+      VariableSet.setdec.
     - unfold mk_initial_state.
       rewrite RegisterState.limit_to_regs_match_on.
       apply Hdefined.
   Qed.
 
   Record clean_module v := MkCleanModule { 
-    preserve_inputs : forall e, run_vmodule v e =( Verilog.module_inputs v )= e;
+    preserve_inputs : forall e, run_vmodule v e =( VariableSet.of_list (Verilog.module_inputs v) )= e;
     defined_outputs : forall e,
-      RegisterState.defined_value_for (fun var => In var (Verilog.module_inputs v)) e ->
-      RegisterState.defined_value_for (fun var => In var (Verilog.modVariables v)) (run_vmodule v e)
+      RegisterState.defined_value_for (VariableSet.of_list (Verilog.module_inputs v)) e ->
+      RegisterState.defined_value_for (VariableSet.of_list (Verilog.modVariables v)) (run_vmodule v e)
   }.
 
   Lemma clean_module_statically v :
-    NoDup (Verilog.module_body_writes (Verilog.modBody v)) ->
-    Permutation (Verilog.modVariables v) (Verilog.module_body_writes (Verilog.modBody v) ++ Verilog.module_inputs v) ->
+    VariableSet.Equal
+      (VariableSet.of_list (Verilog.modVariables v))
+      (Verilog.module_body_writes (Verilog.modBody v) ∪ VariableSet.of_list (Verilog.module_inputs v)) ->
     vmodule_sortable v ->
     clean_module v.
   Proof.
-    intros ? Hwrites_outputs [sorted Hsort].
+    intros Hwrites_outputs [sorted Hsort].
     constructor.
     all: unfold run_vmodule.
     all: rewrite Hsort.
@@ -1857,7 +1848,7 @@ Module Clean.
       + setoid_rewrite (sort_module_items_permutation _ _ _ Hsort).
         eapply exec_module_body_defined.
         * eapply sort_module_items_sorted. eapply Hsort.
-        * apply list_subset_app_r.
+        * VariableSet.setdec.
         * apply RegisterState.defined_value_for_limit_to_regs.
           assumption.
       + rewrite <- Facts.exec_module_body_preserve.
@@ -1895,11 +1886,11 @@ Module DefinedEquivalence.
       clean_right : clean_module v2;
       execution_match : forall init,
         RegisterState.defined_value_for
-          (fun var => In var (Verilog.module_inputs v1)) init ->
-          (run_vmodule v1 init =( Verilog.module_outputs v1 )= run_vmodule v2 init)
+          (VariableSet.of_list (Verilog.module_inputs v1)) init ->
+          (run_vmodule v1 init =( VariableSet.of_list (Verilog.module_outputs v1) )= run_vmodule v2 init)
     }.
 
-  Infix "~~" := defined_equivalence (at level 20) : verilog.
+  Infix "~~" := defined_equivalence (at level 20) : verilog_scope.
 
   Lemma defined_equivalence_sym v1 v2:
     v1 ~~ v2 ->
@@ -1976,10 +1967,10 @@ Module ExactEquivalence.
   Record exact_equivalence (v1 v2 : Verilog.vmodule) : Prop :=
     MkExactEquivalence {
       same_vars : Verilog.modVariableDecls v1 = Verilog.modVariableDecls v2;
-      execution_match : forall init, run_vmodule v1 init =( Verilog.modVariables v1 )= run_vmodule v2 init
+      execution_match : forall init, run_vmodule v1 init =( VariableSet.of_list (Verilog.modVariables v1))= run_vmodule v2 init
     }.
 
-  Infix "~~~" := exact_equivalence (at level 20) : verilog.
+  Infix "~~~" := exact_equivalence (at level 20) : verilog_scope.
 
   Lemma exact_equivalence_sym v1 v2:
     v1 ~~~ v2 ->
@@ -2085,13 +2076,13 @@ Module ExactEquivalence.
     - apply Hclean2.
     - intros.
       destruct Hequiv.
-      setoid_rewrite Verilog.module_outputs_in_vars.
+      rewrite Verilog.module_outputs_in_vars.
       apply execution_match0.
   Qed.
 
   Lemma exact_by_output_equality v1 v2:
     Verilog.modVariableDecls v1 = Verilog.modVariableDecls v2 ->
-    (forall initial, run_vmodule v1 initial =( Verilog.modVariables v1 )= run_vmodule v2 initial) ->
+    (forall initial, run_vmodule v1 initial =( VariableSet.of_list (Verilog.modVariables v1) )= run_vmodule v2 initial) ->
     v1 ~~~ v2.
   Proof.
     intros Heqvars Hmatch.
@@ -2114,12 +2105,8 @@ Module ExactEquivalence.
       + apply preserve_inputs. apply Hclean1.
     - intros e Hinputs_defined.
       specialize (Hequiv e).
-      (* rewrite <- Houtput_names. *)
-      (* RegisterState.unpack_match_on. *)
       rewrite <- (Verilog.module_variables_same _ _ Hsame_vars).
-      rename_match (run_vmodule v1 e =( Verilog.modVariables v1 )= run_vmodule v2 e)
-        into Hmatch_outputs.
-      rewrite <- Hmatch_outputs.
+      rewrite <- Hequiv.
       apply Hclean1.
       rewrite (Verilog.module_inputs_same _ _ Hsame_vars).
       apply Hinputs_defined.
@@ -2200,4 +2187,3 @@ Module ExactEquivalence.
 	apply execution_match1.
   Qed.
 End ExactEquivalence.
-

@@ -17,9 +17,11 @@ From Equations Require Import Equations.
 
 Import MonadLetNotation.
 Import ListNotations.
+Import VariableSet.Notations.
 Local Open Scope monad_scope.
 Local Open Scope string.
 Local Open Scope list.
+Local Open Scope verilog_scope.
 
 Program Definition equalized_shiftop {w1 w2}
     (wf : (w1 > 0)%N) op (lhs : expression w1) (rhs : expression w2)
@@ -231,17 +233,17 @@ Proof.
 Qed.
 
 Lemma equalized_shiftop_reads_reads_permutation w1 w2 wf op (lhs : expression w1) (rhs : expression w2) :
-  Permutation (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ++ expr_reads rhs).
+  VariableSet.Equal (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
 Proof. unfold equalized_shiftop. simp expr_reads. reflexivity. Qed.
 
 Lemma simpl_expr_reads_permutation w (e : expression w) :
-  Permutation (expr_reads (simpl_expr e)) (expr_reads e).
+  VariableSet.Equal (expr_reads (simpl_expr e)) (expr_reads e).
 Proof.
   funelim (simpl_expr e); clear Heqcall.
-  all: simp expr_reads.
+  all: simpl.
   all: try rewrite equalized_shiftop_reads_reads_permutation.
   all: repeat match goal with
-       | [ H : Permutation (expr_reads (simpl_expr _)) (expr_reads _) |- _ ] =>
+       | [ H : VariableSet.Equal (expr_reads (simpl_expr _)) (expr_reads _) |- _ ] =>
          rewrite H
        end.
   all: reflexivity.
@@ -278,9 +280,9 @@ Proof.
     reflexivity.
   }
 
-  destruct (sort_module_items (module_inputs v) (modBody v));
+  destruct (sort_module_items (VariableSet.of_list (module_inputs v)) (modBody v));
     simpl; [|reflexivity].
-  generalize (init // module_inputs v). clear init v.
+  generalize (init // VariableSet.of_list (module_inputs v)). clear init v.
   induction l; intros r; [reflexivity|].
   destruct a; expect 1. destruct s; expect 1.
   simpl. simp exec_module_body exec_module_item exec_statement. simpl.
