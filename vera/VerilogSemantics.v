@@ -523,7 +523,7 @@ Module Sort.
     | module_items_sorted_cons vars mi mis :
       VariableSet.Subset (module_item_reads mi) vars ->
       VariableSet.Disjoint (module_item_writes mi) vars ->
-      module_items_sorted (VariableSet.union (Verilog.module_item_writes mi) vars) mis ->
+      module_items_sorted (Verilog.module_item_writes mi ∪ vars) mis ->
       module_items_sorted vars (mi :: mis)
   .
 
@@ -540,19 +540,12 @@ Module Sort.
         [|right; inversion 1; crush].
       left. constructor; auto.
   Defined.
-  
-  Record selection (l : list module_item) :=
-    MkSelection {
-      mi : module_item;
-      rest : list module_item;
-      wf : Permutation (mi :: rest) l
-    }.
 
   Lemma module_items_sorted_no_overwrite inputs body :
     module_items_sorted inputs body ->
     VariableSet.Disjoint (module_body_writes body) inputs.
   Proof. induction 1; simpl; VariableSet.setdec. Qed.
-  
+
   Lemma module_items_sorted_permute_vars l l' body :
     VariableSet.Equal l l' ->
     module_items_sorted l body ->
@@ -565,7 +558,7 @@ Module Sort.
     - now rewrite <- Hpermute.
     - apply IHHsorted. VariableSet.setdec.
   Qed.
-  
+
   Global Instance Proper_module_items_sorted_Equal :
     Proper (VariableSet.Equal ==> eq ==> iff) module_items_sorted.
   Proof.
@@ -578,7 +571,47 @@ Module Sort.
       + symmetry. eassumption.
       + eassumption.
   Qed.
-  
+
+  Global Instance Proper_module_body_writes_Permutation_Equal :
+    Proper (@Permutation module_item ==> VariableSet.Equal) module_body_writes.
+  Proof.
+    intros mis1 mis2 Hmis.
+    induction Hmis.
+    all: simpl.
+    all: VariableSet.setdec.
+  Qed.
+
+  Global Instance Proper_module_body_reads_Permutation_Equal :
+    Proper (@Permutation module_item ==> VariableSet.Equal) module_body_reads.
+  Proof.
+    intros mis1 mis2 Hmis.
+    induction Hmis.
+    all: simpl.
+    all: VariableSet.setdec.
+  Qed.
+
+  Lemma module_body_writes_app l1 l2 :
+    VariableSet.Equal
+      (module_body_writes (l1 ++ l2))
+      (module_body_writes l1 ∪ module_body_writes l2).
+  Proof.
+    revert l2.
+    induction l1; intros l2; simpl.
+    - VariableSet.setdec.
+    - rewrite IHl1. VariableSet.setdec.
+  Qed.
+
+  Lemma module_body_reads_app l1 l2 :
+    VariableSet.Equal
+      (module_body_reads (l1 ++ l2))
+      (module_body_reads l1 ∪ module_body_reads l2).
+  Proof.
+    revert l2.
+    induction l1; intros l2; simpl.
+    - VariableSet.setdec.
+    - rewrite IHl1. VariableSet.setdec.
+  Qed.
+
   Lemma module_items_sorted_skip vars_skip vars_rest body :
     VariableSet.Disjoint vars_skip (module_body_reads body) ->
     module_items_sorted (vars_skip ∪ vars_rest) body ->
@@ -595,9 +628,29 @@ Module Sort.
       + VariableSet.setdec.
       + eapply Proper_module_items_sorted_Equal;
           [idtac|reflexivity|eassumption].
-	VariableSet.setdec.
+        VariableSet.setdec.
   Qed.
-  
+
+  Lemma module_items_sorted_add extra inputs body :
+    VariableSet.Disjoint extra (module_body_writes body) ->
+    module_items_sorted inputs body ->
+    module_items_sorted (extra ∪ inputs) body.
+  Proof.
+    intros Hnot_read Hsorted.
+    revert extra Hnot_read.
+    induction Hsorted; intros; constructor; simpl in Hnot_read.
+    - VariableSet.setdec.
+    - VariableSet.setdec.
+    - setoid_replace
+        (module_item_writes mi ∪ extra ∪ vars)
+        with
+        (extra ∪ module_item_writes mi ∪ vars)
+        using relation VariableSet.Equal
+        by VariableSet.setdec.
+      apply IHHsorted.
+      VariableSet.setdec.
+  Qed.
+
   Lemma module_items_sorted_skip1 var_skip vars_rest body :
     ~ VariableSet.In var_skip (module_body_reads body) ->
     module_items_sorted ({ var_skip }%verilog ∪ vars_rest) body ->
@@ -609,230 +662,387 @@ Module Sort.
     - apply Hsorted.
   Qed.
 
+  Lemma module_items_sorted_app inputs body1 body2 :
+    module_items_sorted inputs body1 ->
+    module_items_sorted (inputs ∪ module_body_writes body1) body2 ->
+    module_items_sorted inputs (body1 ++ body2).
+  Proof.
+    intro Hsorted1.
+    revert body2.
+    induction Hsorted1; simpl; intros * Hsorted2.
+    - setoid_replace (vars ∪ VariableSet.empty) with vars
+        using relation VariableSet.Equal
+        in Hsorted2
+        by VariableSet.setdec.
+      exact Hsorted2.
+    - simpl. constructor.
+      + assumption.
+      + assumption.
+      + apply IHHsorted1.
+        setoid_replace
+          ((module_item_writes mi ∪ vars) ∪ module_body_writes mis)
+          with
+          (vars ∪ module_item_writes mi ∪ module_body_writes mis)
+          using relation VariableSet.Equal
+          by VariableSet.setdec.
+        exact Hsorted2.
+  Qed.
+
+  Lemma module_items_sorted_app_inv_head inputs body1 body2 :
+    module_items_sorted inputs (body1 ++ body2) ->
+    module_items_sorted inputs body1.
+  Proof.
+    intros H.
+    remember (body1 ++ body2) as body.
+    revert body1 body2 Heqbody.
+    induction H; intros.
+    - symmetry in Heqbody. apply app_eq_nil in Heqbody.
+      destruct Heqbody as [-> ->].
+      constructor.
+    - symmetry in Heqbody. apply app_eq_cons in Heqbody.
+      destruct Heqbody as [[-> ->]|[body_middle [-> ->]]].
+      + constructor.
+      + constructor.
+        * assumption.
+        * assumption.
+        * eapply IHmodule_items_sorted.
+          reflexivity.
+  Qed.
+
+  Lemma module_items_sorted_app_inv_tail inputs body1 body2 :
+    module_items_sorted inputs (body1 ++ body2) ->
+    module_items_sorted (inputs ∪ module_body_writes body1) body2.
+  Proof.
+    intros H.
+    remember (body1 ++ body2) as body.
+    revert body1 body2 Heqbody.
+    induction H; intros.
+    - symmetry in Heqbody. apply app_eq_nil in Heqbody.
+      destruct Heqbody as [-> ->].
+      constructor.
+    - symmetry in Heqbody. apply app_eq_cons in Heqbody.
+      destruct Heqbody as [[-> ->]|[body_middle [-> ->]]].
+      + simpl.
+        setoid_replace (vars ∪ { }) with vars
+          using relation VariableSet.Equal by VariableSet.setdec.
+        constructor.
+        all: assumption.
+      + simpl.
+        setoid_replace
+          (vars ∪ module_item_writes mi ∪ module_body_writes body_middle)
+          with
+          ((module_item_writes mi ∪ vars) ∪ module_body_writes body_middle)
+          using relation VariableSet.Equal
+          by VariableSet.setdec.
+        apply IHmodule_items_sorted.
+        reflexivity.
+  Qed.
+
   Section mi_show.
     Local Open Scope string.
     Import ShowNotation.
     Global Instance moduleitem_Show : Show module_item :=
       { show u :=
           match u with
-    	| Verilog.AlwaysComb (Verilog.BlockingAssign var _) =>
-    	  ("always_comb " ++ Verilog.varName var ++ " = ...")%string
+        | Verilog.AlwaysComb (Verilog.BlockingAssign var _) =>
+          ("always_comb " ++ Verilog.varName var ++ " = ...")%string
           end
       }.
   End mi_show.
-  
-  Equations sort_module_items_select (vars_ready : VariableSet.t) (mis : list module_item) : option (selection mis) := {
-    | vars_ready, [] => @None _
-    | vars_ready, mi :: tl with
-      dec (VariableSet.Disjoint (module_item_writes mi) vars_ready),
-      dec (VariableSet.Subset (module_item_reads mi) vars_ready) => {
-      (* conflicting write *)
-      | right _, _ => None 
-      (* No conflicting write, but not ready *)
-      | left _, right _ with sort_module_items_select vars_ready tl => {
-        | Some (MkSelection _ selected selected_tl _) =>
-	    Some (MkSelection (mi :: tl) selected (mi :: selected_tl) _ )
-        | None => None
-      }
-      (* Ready *)
-      | left _, left _ => 
-        Some (MkSelection (mi :: tl) mi tl _)
+
+  Equations sort_module_items_split_ready
+    (ready : VariableSet.t)
+    (chosen : list module_item)
+    (skipped : list module_item)
+    (mis : list module_item)
+    : option (VariableSet.t * list module_item * list module_item) := {
+    | ready, chosen, skipped, [] => Some (ready, chosen, skipped)
+    | ready, chosen, skipped, (mi :: mis')
+      with VariableSet.disjoint (module_item_writes mi) ready,
+           VariableSet.subset (module_item_reads mi) ready => {
+      | false, _    => None (* Conflict *)
+      | true, false => (* Not ready *)
+        sort_module_items_split_ready ready chosen (mi :: skipped) mis'
+      | true, true => (* Ready *)
+        sort_module_items_split_ready (module_item_writes mi ∪ ready) (mi :: chosen) skipped mis'
     }
   }.
-  Next Obligation.
-    etransitivity. { apply perm_swap. }
-    apply perm_skip. assumption.
-  Qed.
 
-  Equations sort_module_items
+  (* Having fuel for this is disgusting, yes, but we are
+     non-structurally recursing on ms.  We know that
+     sort_module_items_select_tailrec returns a smaller list than it
+     is given, but proving that at the point of the recursive call
+     means either adding a railroad pattern to see the equality and
+     use sort_module_items_select_tailrec_perm, OR making
+     sort_module_items_select_tailrec return a proof that the list it
+     returns is smaller than its argument, which is too much of a
+     change to that function.
+   *)
+  Equations sort_module_items_tailrec
+    (fuel : nat)
     (vars_ready : VariableSet.t)
-    (mis : list module_item)
-    : option (list module_item) by wf (length mis) lt := {
-      | vars_ready, [] := Some [];
-      | vars_ready, mis with (sort_module_items_select vars_ready mis) := {
+    (ms : list module_item)
+    (sorted : list module_item)
+    : option (list module_item) by struct fuel := {
+      | _, vars_ready, [], sorted => Some (rev sorted)
+      | 0, vars_ready, _, sorted => None
+      | (S fuel'), vars_ready, ms, sorted with sort_module_items_split_ready vars_ready [] [] ms => {
         | None => None
-        | Some (MkSelection _ mi rest _)
-            with (sort_module_items (module_item_writes mi ∪ vars_ready) rest) => {
-          | None => None
-          | Some sorted_rest => Some (mi :: sorted_rest)
-        }
+        | Some (vars_ready', chosen, rest) =>
+          sort_module_items_tailrec fuel' vars_ready' rest (chosen ++ sorted)
       }
-    }
-  .
-  Next Obligation. apply_somewhere Permutation_length. simpl in *. lia. Qed.
-  
-  Lemma module_items_sorted_select inputs mi mis :
-    module_items_sorted inputs (mi :: mis) ->
-    sort_module_items_select inputs (mi :: mis) = Some (MkSelection _ mi mis (perm_skip mi (reflexivity mis))).
+    }.
+
+  Definition sort_module_items ready body : option (list module_item) :=
+     sort_module_items_tailrec (length body) ready body [].
+
+  Lemma sort_module_items_split_ready_perm ready chosen skipped mis ready' chosen' skipped' :
+    sort_module_items_split_ready ready chosen skipped mis = Some (ready', chosen', skipped') ->
+    Permutation (chosen ++ skipped ++ mis) (chosen' ++ skipped').
   Proof.
-    intros Hsorted.
-    funelim (sort_module_items_select inputs (mi :: mis)); cbn in *.
-    all: repeat match goal with H : dec _ = _ |- _ => clear H end.
-    all: destruct mi0 as [[lhs rhs]].
-    all: inv Hsorted; cbn in *.
-    - f_equal. f_equal. apply proof_irrelevance.
-    - exfalso. contradiction.
-    - exfalso. contradiction.
-    - exfalso. contradiction.
+    funelim (sort_module_items_split_ready ready chosen skipped mis); intros Hsplit.
+    - (* Done *)
+      inv Hsplit.
+      rewrite app_nil_r.
+      (* rewrite <- ! Permutation_rev. *)
+      reflexivity.
+    - (* Skip *)
+      apply H in Hsplit. cbn in Hsplit.
+      rewrite <- Hsplit.
+      rewrite Permutation_middle.
+      rewrite Permutation_middle.
+      reflexivity.
+    - (* Ready *)
+      apply H in Hsplit. cbn in Hsplit.
+      rewrite <- Hsplit.
+      rewrite Permutation_middle.
+      reflexivity.
+    - inv Hsplit.
   Qed.
 
-  Lemma module_items_select_ready vars mis mi rest wf :
-    sort_module_items_select vars mis = Some (MkSelection mis mi rest wf) ->
-    VariableSet.Subset (module_item_reads mi) vars.
+  Lemma sort_module_items_split_ready_sorted initial_inputs ready chosen skipped mis ready' chosen' rest' :
+    module_items_sorted initial_inputs (rev chosen) ->
+    VariableSet.Equal (initial_inputs ∪ module_body_writes chosen) ready ->
+    sort_module_items_split_ready ready chosen skipped mis = Some (ready', chosen', rest') ->
+    module_items_sorted initial_inputs (rev chosen').
   Proof.
-    intros H.
-    funelim (sort_module_items_select vars mis);
-      rewrite <- Heqcall in *; clear Heqcall.
-    all: inv H.
-    all: eauto.
+    funelim (sort_module_items_split_ready ready chosen skipped mis);
+      intros Hsorted Hready Hsplit.
+    - inv Hsplit. exact Hsorted.
+    - rewrite VariableSet.subset_spec in Heq.
+      rewrite VariableSet.disjoint_spec in Heq0.
+      eapply H.
+      + simpl. apply module_items_sorted_app.
+        * assumption.
+        * rewrite <- Permutation_rev.
+          constructor.
+          -- VariableSet.setdec.
+          -- VariableSet.setdec.
+          -- constructor.
+      + simpl. VariableSet.setdec.
+      + exact Hsplit.
+    - eapply H; eassumption.
+    - inv Hsplit.
   Qed.
 
-  Lemma Disjoint_singleton_iff x a:
-    (VariableSet.Disjoint { x }%verilog a) <-> ~ VariableSet.In x a.
-  Proof. unfold VariableSet.Disjoint. split; VariableSet.fsetdec. Qed.
-
-  Ltac clear_decs := repeat match goal with H : dec _ = _ |- _ => clear H end.
-
-  Lemma module_items_select_no_overwrite vars mis mi rest wf :
-    sort_module_items_select vars mis = Some (MkSelection mis mi rest wf) ->
-    VariableSet.Disjoint (module_item_writes mi) vars.
+  Lemma sort_module_items_split_ready_stable initial_inputs ready chosen skipped mis :
+    module_items_sorted initial_inputs (rev chosen ++ mis) ->
+    VariableSet.Equal ready (initial_inputs ∪ Verilog.module_body_writes chosen) ->
+    exists ready',
+      VariableSet.Equal ready' (ready ∪ Verilog.module_body_writes mis) /\
+      sort_module_items_split_ready ready chosen skipped mis = Some (ready', rev mis ++ chosen, skipped).
   Proof.
-    intros H.
-    funelim (sort_module_items_select vars mis);
-      clear_decs; rewrite <- Heqcall in *; clear Heqcall.
-    all: inv H.
-    - destruct mi1 as [[? ?]]. simpl in *.
-      VariableSet.setdec.
-    - eapply Hind; eassumption.
+    funelim (sort_module_items_split_ready ready chosen skipped mis);
+      intros Hsorted Hready_correct.
+    - exists ready. split.
+      + simpl. VariableSet.setdec.
+      + reflexivity.
+    - rewrite VariableSet.subset_spec in Heq.
+      rewrite VariableSet.disjoint_spec in Heq0.
+      simpl in H. rewrite <- app_assoc in H. simpl in H.
+      apply H in Hsorted; [|VariableSet.setdec].
+      destruct Hsorted as [ready' [Hready' Htail]].
+      (* rewrite Hready' in *. clear ready'. *)
+      rewrite Htail.
+      simpl.
+      rewrite <- app_assoc. exists ready'. split.
+      + VariableSet.setdec.
+      + reflexivity.
+    - (* Skip. Impossible *)
+      exfalso.
+      apply module_items_sorted_app_inv_tail in Hsorted. inv Hsorted.
+      rewrite <- Permutation_rev in *.
+      rewrite <- Hready_correct in H2.
+      apply VariableSet.subset_spec in H2.
+      congruence.
+    - (* Write conflict. Impossible *)
+      exfalso.
+      apply module_items_sorted_app_inv_tail in Hsorted. inv Hsorted.
+      rewrite <- Permutation_rev in *.
+      rewrite <- Hready_correct in H3.
+      apply VariableSet.disjoint_spec in H3.
+      congruence.
   Qed.
+
+  Lemma sort_module_items_split_ready_writes initial_inputs ready chosen skipped mis ready' chosen' skipped' :
+    VariableSet.Equal ready (initial_inputs ∪ module_body_writes chosen) ->
+    sort_module_items_split_ready ready chosen skipped mis = Some (ready', chosen', skipped') ->
+    VariableSet.Equal ready' (initial_inputs ∪ module_body_writes chosen').
+  Proof.
+    funelim (sort_module_items_split_ready ready chosen skipped mis); intros Hwrites_ready Hsplit.
+    - inv Hsplit. VariableSet.setdec.
+    - rewrite VariableSet.subset_spec in Heq.
+      rewrite VariableSet.disjoint_spec in Heq0.
+      eapply H in Hsplit.
+      + exact Hsplit.
+      + simpl. VariableSet.setdec.
+    - eapply H; eassumption.
+    - inv Hsplit.
+  Qed.
+
+  Theorem sort_module_items_tailrec_permutation fuel body sorted body' vars_ready :
+    sort_module_items_tailrec fuel vars_ready body sorted = Some body' ->
+    Permutation (sorted ++ body) body'.
+  Proof.
+    funelim (sort_module_items_tailrec fuel vars_ready body sorted); simpl.
+    - (* Done *)
+      intros H. inv H.
+      rewrite List.app_nil_r.
+      apply Permutation_rev.
+    - (* Out of fuel *)
+      inversion 1.
+    - intros Hrest.
+      apply H in Hrest.
+      apply sort_module_items_split_ready_perm in Heq. simpl in Heq.
+      rewrite <- Hrest.
+      rewrite Heq.
+      rewrite app_assoc.
+      apply Permutation_app_tail.
+      apply Permutation_app_comm.
+    - (* Select failed *)
+      inversion 1.
+  Qed.
+
+  Theorem sort_module_items_tailrec_sorted fuel initial_inputs ready body sorted_acc sorted:
+    module_items_sorted initial_inputs (rev sorted_acc) ->
+    VariableSet.Equal (initial_inputs ∪ module_body_writes sorted_acc) ready ->
+    sort_module_items_tailrec fuel ready body sorted_acc = Some sorted ->
+    module_items_sorted initial_inputs sorted.
+  Proof.
+    funelim (sort_module_items_tailrec fuel ready body sorted_acc).
+    all: simpl.
+    all: intros Hsorted Hsub Hsort.
+    - inv Hsort. exact Hsorted.
+    - inv Hsort.
+    - apply H.
+      + rewrite rev_app_distr.
+        apply module_items_sorted_app.
+        * exact Hsorted.
+        * eapply sort_module_items_split_ready_sorted in Heq.
+          -- exact Heq.
+          -- constructor.
+          -- rewrite <- Permutation_rev. VariableSet.setdec.
+      + rewrite module_body_writes_app.
+        apply sort_module_items_split_ready_writes
+          with (initial_inputs:= initial_inputs ∪ module_body_writes sorted)
+          in Heq.
+        * VariableSet.setdec.
+        * simpl. VariableSet.setdec.
+      + exact Hsort.
+    - inv Hsort.
+  Qed.
+
+  Lemma sort_module_items_tailrec_stable fuel initial_inputs ready sorted mis :
+    module_items_sorted initial_inputs (rev sorted ++ mis) ->
+    VariableSet.Equal ready (initial_inputs ∪ Verilog.module_body_writes sorted) ->
+    fuel >= length mis ->
+    sort_module_items_tailrec fuel ready mis sorted = Some (rev sorted ++ mis).
+  Proof.
+    funelim (sort_module_items_tailrec fuel ready mis sorted).
+    all: intros Hsorted Hready Hfuel.
+    - rewrite app_nil_r. reflexivity.
+    - simpl in Hfuel. lia.
+    - destruct sort_module_items_split_ready_stable
+        with
+          (initial_inputs:=vars_ready)
+          (ready:=vars_ready)
+          (chosen:=@nil module_item)
+          (skipped:=@nil module_item)
+          (mis:=m::l)
+        as [sorted' [Hready' Hsorted']].
+      + simpl. apply module_items_sorted_app_inv_tail in Hsorted.
+        rewrite <- Permutation_rev in Hsorted.
+        rewrite Hready.
+        exact Hsorted.
+      + simpl. VariableSet.setdec.
+      + rewrite Hsorted' in Heq; inv Heq.
+        erewrite H; clear H.
+        all: try rewrite ! app_nil_r.
+        all: try rewrite ! rev_app_distr.
+        all: try rewrite rev_involutive.
+        all: simpl.
+        * reflexivity.
+        * exact Hsorted.
+        * simpl in Hready'.
+          rewrite ! module_body_writes_app.
+          rewrite <- Permutation_rev.
+          simpl.
+          VariableSet.setdec.
+        * lia.
+    - destruct sort_module_items_split_ready_stable
+        with
+          (initial_inputs:=vars_ready)
+          (ready:=vars_ready)
+          (chosen:=@nil module_item)
+          (skipped:=@nil module_item)
+          (mis:=m::l)
+        as [sorted' [Hready' Hsorted']].
+      + simpl. apply module_items_sorted_app_inv_tail in Hsorted.
+        rewrite <- Permutation_rev in Hsorted.
+        rewrite Hready.
+        exact Hsorted.
+      + simpl. VariableSet.setdec.
+      + rewrite Hsorted' in Heq; inv Heq.
+  Qed.
+
+  (******************************************
+   *
+   * Topological sort specification
+   *
+   ******************************************)
 
   Theorem sort_module_items_permutation body body' vars_ready :
     sort_module_items vars_ready body = Some body' ->
     Permutation body body'.
-  Proof. 
-    intros.
-    funelim (sort_module_items vars_ready body);
-      rewrite <- Heqcall in *; clear Heqcall.
-    all: inv H.
-    - reflexivity.
-    - rewrite <- wf0.
-      apply perm_skip.
-      eapply Hind.
-      eapply Heq.
+  Proof.
+    unfold sort_module_items. intros H.
+    apply sort_module_items_tailrec_permutation in H.
+    apply H.
   Qed.
 
   Theorem sort_module_items_sorted inputs body body':
     sort_module_items inputs body = Some body' ->
     module_items_sorted inputs body'.
   Proof.
+    unfold sort_module_items.
     intros Hsort.
-    funelim (sort_module_items inputs body);
-      rewrite <- Heqcall in *; clear Heqcall.
-    - inv Hsort. constructor.
-    - discriminate.
-    - inv Hsort.
-      constructor.
-      + eapply module_items_select_ready. eassumption.
-      + eapply module_items_select_no_overwrite. eassumption.
-      + apply Hind. assumption.
-    - discriminate.
+    eapply sort_module_items_tailrec_sorted in Hsort.
+    - exact Hsort.
+    - apply module_items_sorted_nil.
+    - VariableSet.setdec.
   Qed.
 
   Theorem sort_module_items_stable inputs body :
     module_items_sorted inputs body ->
     sort_module_items inputs body = Some body.
   Proof.
+    unfold sort_module_items.
     intros Hsorted.
-    funelim (sort_module_items inputs body);
-      try rewrite <- Heqcall in *; clear Heqcall.
+    erewrite sort_module_items_tailrec_stable.
     - reflexivity.
-    - rewrite module_items_sorted_select in Heq; crush.
-    - rewrite module_items_sorted_select in Heq0 by crush.
-      inv Hsorted. inv Heq0.
-      rewrite Hind in Heq; crush.
-    - rewrite module_items_sorted_select in Heq0 by crush.
-      inv Hsorted. inv Heq0.
-      rewrite Hind in Heq; crush.
-  Qed.
-
-  Definition selection_map {l} f (s : selection l) : selection (map f l) :=
-    let '(MkSelection _ mi rest wf) := s in
-    {| mi := f mi; rest := map f rest; wf := Permutation_map f wf |}.
-
-  (* This should be a Proper instance, but the result type depends on
-     the second argument, so we can't do it. *)
-  Lemma module_items_select_Equal vars1 vars2 l :
-    VariableSet.Equal vars1 vars2 ->
-    sort_module_items_select vars1 l = sort_module_items_select vars2 l.
-  Proof.
-    intros Hseteq.
-    funelim (sort_module_items_select vars1 l); expect 5.
-    - reflexivity.
-    - simp sort_module_items_select.
-      destruct (dec (VariableSet.Disjoint (module_item_writes mi0) vars2)) as [prf|prf];
-        [|exfalso; now rewrite <- Hseteq in prf].
-      destruct (dec (VariableSet.Subset (module_item_reads mi0) vars2)) as [prf'|prf'];
-        [|exfalso; now rewrite <- Hseteq in prf'].
-      reflexivity.
-    - simp sort_module_items_select.
-      destruct (dec (VariableSet.Disjoint (module_item_writes mi0) vars2)) as [prf|prf];
-        [exfalso; now rewrite <- Hseteq in prf|].
-      reflexivity.
-    - simp sort_module_items_select.
-      destruct (dec (VariableSet.Disjoint (module_item_writes mi0) vars2)) as [prf|prf];
-        [|exfalso; now rewrite <- Hseteq in prf].
-      destruct (dec (VariableSet.Subset (module_item_reads mi0) vars2)) as [prf'|prf'];
-        [exfalso; now rewrite <- Hseteq in prf'|].
-      simpl.
-      rewrite <- Hind by assumption.
-      rewrite Heq.
-      reflexivity.
-    - simp sort_module_items_select.
-      destruct (dec (VariableSet.Disjoint (module_item_writes mi0) vars2)) as [prf|prf];
-        [|exfalso; now rewrite <- Hseteq in prf].
-      destruct (dec (VariableSet.Subset (module_item_reads mi0) vars2)) as [prf'|prf'];
-        [exfalso; now rewrite <- Hseteq in prf'|].
-      simpl.
-      rewrite <- Hind by assumption.
-      rewrite Heq.
-      reflexivity.
-  Qed.
-
-  Lemma module_items_sort_Equal vars1 vars2 l :
-    VariableSet.Equal vars1 vars2 ->
-    sort_module_items vars1 l = sort_module_items vars2 l.
-  Proof.
-    intros Hseteq.
-    funelim (sort_module_items vars1 l).
-    - reflexivity.
-    - simp sort_module_items.
-      rewrite <- (module_items_select_Equal _ _ _ Hseteq).
-      rewrite Heq.
-      reflexivity.
-    - simp sort_module_items.
-      rewrite <- (module_items_select_Equal _ _ _ Hseteq).
-      rewrite Heq0.
-      simpl.
-      rewrite <- Hind by VariableSet.setdec.
-      rewrite Heq.
-      reflexivity.
-    - simp sort_module_items.
-      rewrite <- (module_items_select_Equal _ _ _ Hseteq).
-      rewrite Heq0.
-      simpl.
-      rewrite <- Hind by VariableSet.setdec.
-      rewrite Heq.
-      reflexivity.
-  Qed.
-
-  Global Instance Proper_module_items_sort_Permutation :
-    Proper
-      (@VariableSet.Equal ==> eq ==> eq)
-      sort_module_items.
-  Proof.
-    intros vars1 vars2 Heq l l' <-.
-    apply module_items_sort_Equal.
-    apply Heq.
+    - exact Hsorted.
+    - simpl. VariableSet.setdec.
+    - lia.
   Qed.
 
   Section map.
@@ -841,41 +1051,87 @@ Module Sort.
       (f_preserve_reads : forall mi, VariableSet.Equal (module_item_reads (f mi)) (module_item_reads mi))
       (f_preserve_writes : forall mi, VariableSet.Equal (module_item_writes (f mi)) (module_item_writes mi)).
 
-    Lemma sort_module_items_select_map inputs mis :
-      sort_module_items_select inputs (map f mis)
-        = option_map (selection_map f) (sort_module_items_select inputs mis).
-    Proof. 
-      funelim (sort_module_items_select inputs mis).
-      - reflexivity.
-      - simpl. simp sort_module_items_select.
-        destruct (dec (VariableSet.Disjoint (module_item_writes (f mi0)) vars_ready)) as [prf1'|prf1'];
-          [|exfalso; rewrite f_preserve_writes in prf1'; contradiction].
-        destruct (dec (VariableSet.Subset (module_item_reads (f mi0)) vars_ready)) as [prf2'|prf2'];
-          [|exfalso; rewrite f_preserve_reads in prf2'; contradiction].
-        simpl. f_equal. f_equal. apply proof_irrelevance.
-      - simpl. simp sort_module_items_select.
-        destruct (dec (VariableSet.Disjoint (module_item_writes (f mi0)) vars_ready)) as [prf1'|prf1'];
-          [exfalso; rewrite f_preserve_writes in prf1'; contradiction|].
-        reflexivity.
-      - simpl. simp sort_module_items_select.
-        destruct (dec (VariableSet.Disjoint (module_item_writes (f mi0)) vars_ready)) as [prf1'|prf1'];
-          [|exfalso; rewrite f_preserve_writes in prf1'; contradiction].
-        destruct (dec (VariableSet.Subset (module_item_reads (f mi0)) vars_ready)) as [prf2'|prf2'];
-          [exfalso; rewrite f_preserve_reads in prf2'; contradiction|].
-        simpl.
-        rewrite Hind.
-        rewrite Heq.
-        simpl.
-        f_equal. f_equal. apply proof_irrelevance.
-      - simpl. simp sort_module_items_select.
-        destruct (dec (VariableSet.Disjoint (module_item_writes (f mi0)) vars_ready)) as [prf1'|prf1'];
-          [|exfalso; rewrite f_preserve_writes in prf1'; contradiction].
-        destruct (dec (VariableSet.Subset (module_item_reads (f mi0)) vars_ready)) as [prf2'|prf2'];
-          [exfalso; rewrite f_preserve_reads in prf2'; contradiction|].
-        simpl.
-        rewrite Hind.
-        rewrite Heq.
-        simpl.
+    Lemma sort_module_items_split_ready_map_some ready1 ready1' ready2 chosen skipped mis chosen' skipped' :
+      VariableSet.Equal ready1 ready2 ->
+      sort_module_items_split_ready ready1 chosen skipped mis
+        = Some (ready1', chosen', skipped') ->
+      exists ready2',
+        VariableSet.Equal ready1' ready2' /\
+        sort_module_items_split_ready ready2 (map f chosen) (map f skipped) (map f mis)
+          = Some (ready2', map f chosen', map f skipped').
+     Proof.
+       funelim (sort_module_items_split_ready ready1 chosen skipped mis).
+       all: intros Hready Hsort.
+       all: simpl; simp sort_module_items_split_ready in *.
+       - inv Hsort. exists ready2. split.
+         + assumption.
+         + reflexivity.
+       - setoid_rewrite f_preserve_reads. rewrite Hready in Heq. rewrite Heq.
+         setoid_rewrite f_preserve_writes. rewrite Hready in Heq0. rewrite Heq0.
+         eapply H.
+         + rewrite f_preserve_writes, Hready. reflexivity.
+         + exact Hsort.
+       - setoid_rewrite f_preserve_reads. rewrite Hready in Heq. rewrite Heq.
+         setoid_rewrite f_preserve_writes. rewrite Hready in Heq0. rewrite Heq0.
+         apply H. all: assumption.
+       - inv Hsort.
+     Qed.
+
+    Lemma sort_module_items_split_ready_map_none ready1 ready2 chosen skipped mis :
+      VariableSet.Equal ready1 ready2 ->
+      sort_module_items_split_ready ready1 chosen skipped mis = None ->
+      sort_module_items_split_ready ready2 (map f chosen) (map f skipped) (map f mis) = None.
+     Proof.
+       funelim (sort_module_items_split_ready ready1 chosen skipped mis).
+       all: intros Hready Hsort.
+       all: simpl; simp sort_module_items_split_ready in *.
+       - inv Hsort.
+       - setoid_rewrite f_preserve_reads. rewrite Hready in Heq. rewrite Heq.
+         setoid_rewrite f_preserve_writes. rewrite Hready in Heq0. rewrite Heq0.
+         eapply H.
+         + rewrite f_preserve_writes, Hready. reflexivity.
+         + exact Hsort.
+       - setoid_rewrite f_preserve_reads. rewrite Hready in Heq. rewrite Heq.
+         setoid_rewrite f_preserve_writes. rewrite Hready in Heq0. rewrite Heq0.
+         apply H. all: assumption.
+       - setoid_rewrite f_preserve_writes. rewrite Hready in Heq. rewrite Heq.
+         reflexivity.
+     Qed.
+
+    Lemma sort_module_items_tailrec_map_some fuel inputs1 inputs2 mis sorted sorted' :
+      VariableSet.Equal inputs1 inputs2 ->
+      sort_module_items_tailrec fuel inputs1 mis sorted = Some sorted' ->
+      sort_module_items_tailrec fuel inputs2 (map f mis) (map f sorted) = Some (map f sorted').
+    Proof.
+      funelim (sort_module_items_tailrec fuel inputs1 mis sorted).
+      all: intros Hinputs_eq Hsort.
+      all: simpl; simp sort_module_items_tailrec; simpl.
+      - inv Hsort. rewrite map_rev. reflexivity.
+      - inv Hsort.
+      - eapply sort_module_items_split_ready_map_some in Heq; [|exact Hinputs_eq].
+        destruct Heq as [ready2' [Hready2' Hsplit]].
+        simpl in Hsplit. rewrite Hsplit.
+        simpl. rewrite <- map_app.
+        apply H; assumption.
+      - inv Hsort.
+    Qed.
+
+    Lemma sort_module_items_tailrec_map_none fuel inputs1 inputs2 mis sorted :
+      VariableSet.Equal inputs1 inputs2 ->
+      sort_module_items_tailrec fuel inputs1 mis sorted = None ->
+      sort_module_items_tailrec fuel inputs2 (map f mis) (map f sorted) = None.
+    Proof.
+      funelim (sort_module_items_tailrec fuel inputs1 mis sorted).
+      all: intros Hinputs_eq Hsort.
+      all: simpl; simp sort_module_items_tailrec; simpl.
+      - inv Hsort.
+      - eapply sort_module_items_split_ready_map_some in Heq; [|exact Hinputs_eq].
+        destruct Heq as [ready2' [Hready2' Hsplit]].
+        simpl in Hsplit. rewrite Hsplit.
+        simpl. rewrite <- map_app.
+        apply H; assumption.
+      - eapply sort_module_items_split_ready_map_none in Heq; [|exact Hinputs_eq].
+        simpl in Heq. rewrite Heq.
         reflexivity.
     Qed.
 
@@ -883,31 +1139,24 @@ Module Sort.
       sort_module_items inputs (map f mis)
         = option_map (map f) (sort_module_items inputs mis).
     Proof.
-      funelim (sort_module_items inputs mis); simp sort_module_items.
-      1: reflexivity.
-      all: simpl; simp sort_module_items.
-      all: replace
-             (sort_module_items_select vars_ready (f m :: map f l))
-    	   with
-             (option_map (selection_map f) (sort_module_items_select vars_ready (m :: l)))
-           by (symmetry; exact (sort_module_items_select_map vars_ready (m :: l))).
-      - rewrite Heq.
-        reflexivity.
-      - rewrite Heq0. simpl.
-        rewrite <- f_preserve_writes in Hind. rewrite Hind.
-        rewrite <- f_preserve_writes in Heq. rewrite Heq.
-        reflexivity.
-      - rewrite Heq0. simpl.
-        rewrite <- f_preserve_writes in Hind. rewrite Hind.
-        rewrite <- f_preserve_writes in Heq. rewrite Heq.
-        reflexivity.
+      unfold sort_module_items.
+      rewrite length_map.
+      destruct (sort_module_items_tailrec (Datatypes.length mis) inputs mis []) eqn:Hsort; simpl.
+      - eapply sort_module_items_tailrec_map_some in Hsort; [|reflexivity]. simpl in Hsort.
+        exact Hsort.
+      - eapply sort_module_items_tailrec_map_none in Hsort; [|reflexivity]. simpl in Hsort.
+        exact Hsort.
     Qed.
-
   End map.
+
+  (* Print Assumptions sort_module_items_stable.
+   * Print Assumptions sort_module_items_sorted.
+   * Print Assumptions sort_module_items_permutation.
+   * Print Assumptions sort_module_items_map. *)
 
   Definition vmodule_sortable (v : vmodule) : Prop :=
     exists sorted, sort_module_items (VariableSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v) = Some sorted.
-  
+
   (* Checking that typeclasses eauto can indeed find this instance *)
   Goal (forall v, DecProp (vmodule_sortable v)). typeclasses eauto. Qed.
 End Sort.
@@ -1203,7 +1452,7 @@ Section ExpressionFacts.
     - XBV.bitvector_erase. 
       f_equal.
       unfold RawBV.bv_and.
-      rewrite wf0, wf1, N.eqb_refl.
+      rewrite wf0, wf, N.eqb_refl.
       reflexivity.
     - intros [] []; reflexivity.
   Qed.
@@ -1216,7 +1465,7 @@ Section ExpressionFacts.
     - XBV.bitvector_erase. 
       f_equal.
       unfold RawBV.bv_or.
-      rewrite wf0, wf1, N.eqb_refl.
+      rewrite wf0, wf, N.eqb_refl.
       reflexivity.
     - intros [] []; reflexivity.
   Qed.
@@ -1229,7 +1478,7 @@ Section ExpressionFacts.
     - XBV.bitvector_erase. 
       f_equal.
       unfold RawBV.bv_xor.
-      rewrite wf0, wf1, N.eqb_refl.
+      rewrite wf0, wf, N.eqb_refl.
       reflexivity.
     - intros [] []; reflexivity.
   Qed.
@@ -1288,7 +1537,6 @@ Section ExpressionFacts.
     all: autorewrite with eval_shiftop xbv.
     all: eauto.
   Qed.
-  
   Lemma eval_arithmeticop_no_exes op w (lhs rhs : BV.bitvector w) :
     exists bv, eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs) = XBV.from_bv bv.
   Proof.

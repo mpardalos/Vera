@@ -290,25 +290,66 @@ Variant bitwiseop :=
         congruence.
     Qed.
 
-    (* This is the version with nice recursion, which we want for inductive proofs, but is not tail-recursive *)
-    Equations of_list : list variable -> t := {
-      | [] => empty
-      | (x :: xs) => add x (of_list xs)
-    }.
+    Definition of_list (l : list variable) := fold_left (Basics.flip add) l empty.
 
-    (* This is the tail-recursive version, which we want for performance, but is annoying in proofs.
-       TODO: Profile and swap to this if we need it
-     *)
-    (* Definition of_list l := fold_right add empty l. *)
+    Lemma In_of_list_helper {a s l} :
+      (List.In a l \/ In a s) ->
+      In a (fold_left (Basics.flip add) l s).
+    Proof.
+      unfold Basics.flip.
+      revert a s.
+      induction l; intros *.
+      - intros [[]|H]. assumption.
+      - intros [[H|H]|H]; simpl.
+        + subst. apply IHl. right. fsetdec.
+	+ apply IHl. left. assumption.
+	+ apply IHl. fsetdec.
+    Qed.
+
+    Lemma In_of_list_helper2 {a s l} :
+      In a (fold_left (Basics.flip add) l s) ->
+      (List.In a l \/ In a s).
+    Proof.
+      unfold Basics.flip.
+      revert a s.
+      induction l; intros * H; [solve [auto]|].
+      simpl in H.
+      apply IHl in H. clear IHl. destruct H.
+      - left. right. exact H.
+      - destruct (dec (a0 = a)).
+        + subst. left. left. reflexivity.
+	+ right. fsetdec.
+    Qed.
 
     Lemma In_of_list {a l} :
-      List.In a l ->
-      In a (VariableSet.of_list l).
+      In a (of_list l) <-> List.In a l.
     Proof.
-      induction l; intros H; inv H.
-      all: simp of_list.
-      - fsetdec.
-      - insterU IHl. fsetdec.
+      unfold of_list.
+      split; intros.
+      - apply In_of_list_helper2 in H.
+        destruct H.
+	+ assumption.
+	+ fsetdec.
+      - apply In_of_list_helper.
+        left. assumption.
+    Qed.
+
+    Lemma of_list_cons {x l} :
+      Equal (of_list (x :: l)) (add x (of_list l)).
+    Proof.
+      unfold Equal.
+      split; intros H.
+      - rewrite In_of_list in H.
+        destruct H.
+	+ subst. fsetdec.
+	+ rewrite <- In_of_list in H.
+	  fsetdec.
+      - rewrite In_of_list.
+        destruct (dec (a = x)).
+        + subst. auto with datatypes.
+	+ right.
+	  rewrite <- In_of_list.
+	  fsetdec.
     Qed.
 
     Lemma subset_of_list {l1 l2} :
@@ -318,7 +359,7 @@ Variant bitwiseop :=
       revert l2. induction l1; intros l2 Hsub.
       - inv Hsub. fsetdec.
       - inv Hsub. fold (list_subset l1 l2) in *.
-        simp of_list.
+        rewrite of_list_cons.
 	insterU IHl1.
 	apply In_of_list in H1.
 	fsetdec.

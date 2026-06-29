@@ -168,24 +168,34 @@ Proof.
   apply term_reflect_eq.
 Qed.
 
-Global Instance term_reflect_proper :
+Global Instance Proper_term_reflect :
   Proper
     (eq ==> pointwise_relation SMTLib.valuation iff ==> iff)
     term_reflect.
-Proof.
-  unfold term_reflect.
-  typeclasses eauto.
-Qed.
+Proof. unfold term_reflect. solve_proper. Qed.
+
+Global Instance Proper_smt_all_same_values :
+  Proper
+    (Verilog.VariableSet.Equal ==> pointwise_relation _ iff)
+    smt_all_same_values.
+Proof. unfold smt_all_same_values. solve_proper. Qed.
+
+Global Instance Proper_smt_some_distinct_values :
+  Proper
+    (Verilog.VariableSet.Equal ==> pointwise_relation _ iff)
+    smt_some_distinct_values.
+Proof. unfold smt_some_distinct_values. solve_proper. Qed.
 
 Lemma mk_inputs_same_spec : forall inputs,
   term_reflect (mk_inputs_same inputs) (smt_all_same_values (Verilog.VariableSet.of_list inputs)).
 Proof.
   intros ?. induction inputs.
-  all: simp mk_inputs_same of_list.
+  all: simp mk_inputs_same.
   - apply term_reflect_true.
     setoid_rewrite smt_all_same_values_empty_iff.
     trivial.
   - intros. simp mk_inputs_same in *.
+    setoid_rewrite Verilog.VariableSet.of_list_cons.
     setoid_rewrite smt_all_same_values_add.
     apply term_reflect_and.
     + apply mk_var_same_spec.
@@ -210,7 +220,8 @@ Proof.
     intros ρ [].
     Verilog.VariableSet.setdec.
   - intros.
-    simp mk_outputs_distinct of_list.
+    simp mk_outputs_distinct.
+    setoid_rewrite Verilog.VariableSet.of_list_cons.
     setoid_rewrite smt_some_distinct_values_add.
     apply term_reflect_or.
     + apply mk_var_distinct_spec.
