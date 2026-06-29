@@ -5,7 +5,7 @@ let trace_started = ref false
 
 let make_prefix n marker =
   let buf = Buffer.create (n * 3 + 4) in
-  for _ = 1 to n do Buffer.add_string buf "│ " done;
+  for _ = 1 to n do Buffer.add_string buf "| " done;
   Buffer.add_string buf marker;
   Buffer.contents buf
 
@@ -18,12 +18,12 @@ let my_rocq_trace msg f =
     end;
     let elapsed () = Unix.gettimeofday () -. !trace_start in
     let n = !trace_indent in
-    Printf.eprintf "[%8.3f] %s %s\n%!" (elapsed ()) (make_prefix n "┌") msg;
+    Printf.eprintf "[%8.3f] %s %s\n%!" (elapsed ()) (make_prefix n "+") msg;
     incr trace_indent;
     let t0 = Unix.gettimeofday () in
     let result = f () in
     let took = Unix.gettimeofday () -. t0 in
     decr trace_indent;
-    Printf.eprintf "[%8.3f] %s %s (%.3fs)\n%!" (elapsed ()) (make_prefix n "└") msg took;
+    Printf.eprintf "[%8.3f] %s %s (%.3fs)\n%!" (elapsed ()) (make_prefix n "+") msg took;
     result
   end
