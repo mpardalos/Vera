@@ -453,6 +453,25 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
   "out/EPFL-benchmarks/*/*/orig_blif.sv" !%> \out [category, name] -> do
     let base = "EPFL-benchmarks" </> category </> name -<.> "v"
     let src = "EPFL-benchmarks" </> category </> name -<.> "blif"
+
+    -- This is a dirty hack.
+    --
+    -- When we convert from blif to verilog using yosys, we don't have
+    -- control over the order of ports in the resulting Verilog. It
+    -- just so happens that in every benchmark except this specific
+    -- one, we get an order which matches the original Verilog.  For
+    -- this specific benchmark, we get the wrong order: The "F"
+    -- output, which is last in the original Verilog, gets put last in
+    -- the converted blif. I tried fixing this by changing the order
+    -- that ports are declared in the blif, but that had no effect.
+    --
+    -- To counteract this, we rename the ports in the blif to match
+    -- the names that they have in the best_size and best_depth
+    -- versions, which we know give the correct order. Note: These
+    -- names are renamed AGAIN in the renamePorts pass below.
+    when ((category, name) == ("random_control", "priority")) $ do
+      cmd_ "sed" "-i" "-E" "-e" "s/P\\[([0-9]+)\\]/po\\1/g" "-e" "s/\\bF\\b/po7/g" src
+
     blifToVerilog src out
     renamePorts base out
 
