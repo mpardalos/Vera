@@ -114,7 +114,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
   -- Timeout for vera/eqy runs (in seconds)
   addOracle $ \ConfigVeraTimeout -> pure 3600
   -- Vera memory limit (in GB)
-  addOracle $ \ConfigVeraMemoryLimit -> pure 64
+  addOracle $ \ConfigVeraMemoryLimit -> pure 32
   ----------------------------------------------------------
 
   -- The following are only relevant for the templated tests, which
