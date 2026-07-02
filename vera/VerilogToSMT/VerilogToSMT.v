@@ -49,18 +49,6 @@ Local Definition width := N.
 
 Definition transf := sum string.
 
-Local Obligation Tactic := intros.
-Equations cast_from_to (from to: N) (t : SMTLib.term (Sort_BitVec from)) : SMTLib.term (Sort_BitVec to) :=
-  cast_from_to from 0 t => SMTLib.Term_BVLit _ (BV.of_bits []);
-  cast_from_to from to t with dec (from < to)%N => {
-    | left lt => rew [fun n => SMTLib.term (Sort_BitVec n)] _ in SMTLib.Term_BVConcat (SMTLib.Term_BVLit _ (BV.zeros (to - from))) t
-    | right ge => rew [fun n => SMTLib.term (Sort_BitVec n)] _ in SMTLib.Term_BVExtract (to - 1) 0 _ t
-    }
-.
-Next Obligation. lia. Qed.
-Next Obligation. lia. Qed.
-Next Obligation. lia. Qed.
-
 Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=
   match expr with
   | Verilog.IntegerLiteral _ val => Some val
@@ -171,9 +159,7 @@ Section expr_to_smt.
       let* vec_smt := expr_to_smt vec in
       ret (smt_select_bit vec_smt idx);
     expr_to_smt (Verilog.Resize to expr _) :=
-      let from := Verilog.expr_type expr in
-      let* expr_smt := expr_to_smt expr in
-      ret (cast_from_to from to expr_smt);
+      raise "Unexpected resize in VerilogToSMT stage"%string;
     expr_to_smt (Verilog.IntegerLiteral w val) :=
       ret (SMTLib.Term_BVLit w val);
     expr_to_smt (Verilog.NamedExpression var) :=

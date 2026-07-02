@@ -104,39 +104,6 @@ Qed.
 
 Opaque N.sub N.add.
 
-Lemma bv_extr_full n bv :
-  n = RawBV.size bv ->
-  RawBV.bv_extr 0 n n bv = bv.
-Proof.
-  intros ->.
-  unfold RawBV.bv_extr, RawBV.size.
-  rewrite N.add_0_r.
-  rewrite N.ltb_irrefl.
-  rewrite Nat2N.id.
-  induction bv; simpl in *.
-  - reflexivity.
-  - f_equal. apply IHbv.
-Qed.
-
-Lemma cast_from_to_value ρ w_from w_to smt_from :
-    (w_to > 0)%N ->
-    SMTLib.interp_term ρ (cast_from_to w_from w_to smt_from) = convert_bv w_to (SMTLib.interp_term ρ smt_from).
-Proof.
-  intros Hnot_zero.
-  remember (SMTLib.interp_term ρ smt_from) as val_from eqn:Hinterp_from.
-  funelim (convert_bv w_to val_from); expect 3.
-  all: funelim (cast_from_to from to smt_from); expect 9.
-  all: autorewrite with bool_to_prop in *; try lia; expect 3.
-  all: clear Heqcall Heqcall0 Heq Heq0.
-  all: apply BV.of_bits_equal.
-  all: repeat destruct_rew.
-  - f_equal. f_equal. lia.
-  - reflexivity.
-  - replace (1 + (from - 1) - 0)%N with from by lia.
-    apply bv_extr_full.
-    symmetry. apply BV.wf.
-Qed.
-
 Lemma smtlib_interp_rewrite w1 w2 ρ (E : w1 = w2) t : 
   SMTLib.interp_term ρ (rew [fun n : N => SMTLib.term (SMTLib.Sort_BitVec n)] E in t)
    = rew [fun n => BV.bitvector n] E in SMTLib.interp_term ρ t.
@@ -167,7 +134,7 @@ Proof.
   all: unpack_verilog_smt_match_states_partial.
   all: expect 13.
   all: try solve [some_inv]. (* Handle expressions that we abort on *)
-  all: expect 11.
+  all: expect 10.
   all: simpl in *.
   (* all: unfold Verilog.expr_type in *. *)
   all: repeat match type of Hexpr_to_smt with
@@ -217,9 +184,6 @@ Proof.
     reflexivity.
   - (* variable *)
     apply Hmatch. Verilog.VariableSet.setdec.
-  - (* resize *)
-    rewrite cast_from_to_value by lia.
-    apply convert_no_exes.
 Qed.
 
 (* DELETEME: Duplicate *)

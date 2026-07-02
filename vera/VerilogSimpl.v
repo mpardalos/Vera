@@ -23,13 +23,26 @@ Local Open Scope string.
 Local Open Scope list.
 Local Open Scope verilog_scope.
 
+Import EqNotations.
+Opaque N.add N.sub.
+
+Program Definition simpl_resize {from : N} (to : N) (expr : expression from) (wf : (to > 0)%N) : expression to :=
+  match dec (from < to)%N with
+  | left _ => rew [expression] _ in Concatenation (IntegerLiteral _ (BV.zeros (to - from))) expr
+  | right _ => rew [expression] _ in RangeSelect expr (to - 1) 0 _ _
+  end.
+Next Obligation. lia. Qed.
+Next Obligation. lia. Qed.
+Next Obligation. apply N.compare_gt_iff in H. lia. Qed.
+Next Obligation. lia. Qed.
+
 Program Definition equalized_shiftop {w1 w2}
     (wf : (w1 > 0)%N) op (lhs : expression w1) (rhs : expression w2)
     : expression w1 :=
-  Resize w1
+  simpl_resize w1
     (ShiftOp op
-      (Resize (N.max w1 w2) lhs _)
-      (Resize (N.max w1 w2) rhs _)
+      (simpl_resize (N.max w1 w2) lhs _)
+      (simpl_resize (N.max w1 w2) rhs _)
       _ _)
     _.
 Next Obligation. lia. Qed.
@@ -59,7 +72,7 @@ Equations simpl_expr {w} : expression w -> expression w := {
       (equalized_shiftop _ BinaryShiftRight (simpl_expr vec) idx)
       0 ltac:(lia)
   | BitSelect_const vec idx _ => BitSelect_const (simpl_expr vec) idx _
-  | Resize to expr _ => Resize to (simpl_expr expr) _
+  | @Resize from to expr wf => simpl_resize to (simpl_expr expr) wf
   | IntegerLiteral w val => IntegerLiteral w val
   | NamedExpression var => NamedExpression var
 }.
@@ -80,6 +93,7 @@ From vera Require Import Tactics.
 
 From Stdlib Require Import Logic.ProofIrrelevance.
 From Stdlib Require Import Sorting.Permutation.
+From Stdlib Require Import NArith.
 
 Import CombinationalOnly.
 Import EqNotations.
@@ -145,29 +159,6 @@ Proof.
   - destruct_rew. reflexivity.
 Qed.
 
-Lemma eval_equalized_shiftop {w1 w2} regs op wf (lhs : expression w1) (rhs : expression w2) :
-  eval_expr regs (equalized_shiftop wf op lhs rhs)
-    = eval_shiftop op (eval_expr regs lhs) (eval_expr regs rhs).
-Proof.
-  unfold equalized_shiftop.
-  simp eval_expr. simpl.
-  generalize (eval_expr regs lhs). clear lhs. intro lhs.
-  generalize (eval_expr regs rhs). clear rhs. intro rhs.
-  funelim (eval_shiftop op lhs rhs).
-  all: simp eval_shiftop.
-  all: match type of Heq with
-       | (_ = Some _) => apply convert_extend_to_N with (to := N.max n1 n2) in Heq
-       | (_ = None) => apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq
-       end; [|lia].
-  all: rewrite Heq; simpl.
-  - apply convert_shr_convert. lia.
-  - apply convert_exes. lia.
-  - apply convert_shl_convert. lia.
-  - apply convert_exes. lia.
-  - apply convert_shl_convert. lia.
-  - apply convert_exes. lia.
-Qed.
-
 (* TODO: Move me to bitvectors *)
 Lemma bitOf_exes i n : XBV.bitOf i (XBV.exes n) = RawXBV.X.
 Proof. apply nth_repeat. Qed.
@@ -202,6 +193,65 @@ Qed.
 
 Hint Rewrite bitOf_shr using lia : xbv.
 
+Lemma extr_all w (xbv : XBV.xbv w) : XBV.extr xbv 0 w = xbv.
+Proof.
+  XBV.bitvector_erase. subst.
+  unfold RawXBV.extr, RawXBV.size.
+  autodestruct_eqn E; [|apply N.leb_gt in E; lia].
+  clear E.
+  induction bv.
+  - reflexivity.
+  - rewrite Nat2N.id in *. simpl in *. simp extract.
+    f_equal. exact IHbv.
+Qed.
+
+Lemma eval_simpl_resize {from} to regs (e : expression from) wf :
+  eval_expr regs (simpl_resize to e wf) = convert to (eval_expr regs e).
+Proof.
+  unfold simpl_resize.
+  destruct (dec (from < to)%N).
+  - (* extend *)
+    destruct_rew. simp eval_expr. simpl.
+    simp convert.
+    repeat match goal with |- context[dec ?P] => destruct (dec P); simpl end.
+    all: try lia; expect 1.
+    simpl. autorewrite with xbv.
+    XBV.bitvector_erase.
+    repeat f_equal; lia.
+  - (* extract *)
+    destruct_rew. simp eval_expr. simpl.
+    replace (1 + (to - 1) - 0)%N with to by lia.
+    simp convert.
+    repeat match goal with |- context[dec ?P] => destruct (dec P); simpl end.
+    all: try (reflexivity || lia); expect 1.
+    destruct_rew. apply extr_all.
+Qed.
+
+Lemma eval_equalized_shiftop {w1 w2} regs op wf (lhs : expression w1) (rhs : expression w2) :
+  eval_expr regs (equalized_shiftop wf op lhs rhs)
+    = eval_shiftop op (eval_expr regs lhs) (eval_expr regs rhs).
+Proof.
+  unfold equalized_shiftop.
+  rewrite eval_simpl_resize.
+  simp eval_expr. simpl.
+  rewrite !eval_simpl_resize.
+  generalize (eval_expr regs lhs). clear lhs. intro lhs.
+  generalize (eval_expr regs rhs). clear rhs. intro rhs.
+  funelim (eval_shiftop op lhs rhs).
+  all: simp eval_shiftop.
+  all: match type of Heq with
+       | (_ = Some _) => apply convert_extend_to_N with (to := N.max n1 n2) in Heq
+       | (_ = None) => apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq
+       end; [|lia].
+  all: rewrite Heq; simpl.
+  - apply convert_shr_convert. lia.
+  - apply convert_exes. lia.
+  - apply convert_shl_convert. lia.
+  - apply convert_exes. lia.
+  - apply convert_shl_convert. lia.
+  - apply convert_exes. lia.
+Qed.
+
 Lemma simpl_expr_correct {w} regs (e : expression w) :
   eval_expr regs (simpl_expr e) = eval_expr regs e.
 Proof.
@@ -226,15 +276,31 @@ Proof.
       rewrite bitOf_exes.
       XBV.bitvector_erase.
       reflexivity.
+  - (* Resize *)
+    rewrite eval_simpl_resize. rewrite H. reflexivity.
   - (* shifts *)
     rewrite eval_equalized_shiftop.
     rewrite H. rewrite H0.
     reflexivity.
 Qed.
 
+Lemma simpl_resize_reads {from} to (e : expression from) wf :
+  VariableSet.Equal (expr_reads (simpl_resize to e wf)) (expr_reads e).
+Proof.
+  unfold simpl_resize.
+  destruct (dec (from < to)%N).
+  all: destruct_rew; simpl.
+  - VariableSet.setdec.
+  - reflexivity.
+Qed.
+
 Lemma equalized_shiftop_reads_reads_permutation w1 w2 wf op (lhs : expression w1) (rhs : expression w2) :
   VariableSet.Equal (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
-Proof. unfold equalized_shiftop. simp expr_reads. reflexivity. Qed.
+Proof.
+  unfold equalized_shiftop.
+  rewrite !simpl_resize_reads. simpl. rewrite !simpl_resize_reads.
+  reflexivity.
+Qed.
 
 Lemma simpl_expr_reads_permutation w (e : expression w) :
   VariableSet.Equal (expr_reads (simpl_expr e)) (expr_reads e).
@@ -242,11 +308,13 @@ Proof.
   funelim (simpl_expr e); clear Heqcall.
   all: simpl.
   all: try rewrite equalized_shiftop_reads_reads_permutation.
+  all: try rewrite !simpl_resize_reads.
+  all: try destruct_rew.
   all: repeat match goal with
        | [ H : VariableSet.Equal (expr_reads (simpl_expr _)) (expr_reads _) |- _ ] =>
          rewrite H
        end.
-  all: reflexivity.
+  all: (reflexivity || VariableSet.setdec).
 Qed.
 
 Lemma simpl_vmodule_same_inputs v :
