@@ -19,6 +19,7 @@
           coq-lsp = coqPackages.coq-lsp;
           dune_3 = coq.ocamlPackages.dune_3;
         };
+        yosys-slang = pkgs.callPackage nix/yosys-slang.nix {};
 
         deps = [
           coq
@@ -47,7 +48,7 @@
           pkgs.bitwuzla
           pkgs.cvc4
           pkgs.cvc5
-          pkgs.yosys
+          (pkgs.yosys.withPlugins [yosys-slang])
           pkgs.sby
           eqy
           pkgs.iverilog
