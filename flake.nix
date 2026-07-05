@@ -59,12 +59,6 @@
       in {
         devShells.default = pkgs.mkShell {
           packages = deps ++ dev-deps;
-          shellHook = ''
-            # Set ROCQPATH for Rocq 9.0+ (keep COQPATH for backwards compatibility with dune)
-            if [ -n "$COQPATH" ]; then
-              export ROCQPATH="$COQPATH"
-            fi
-          '';
         };
 
         packages.default = pkgs.stdenv.mkDerivation {
@@ -76,10 +70,6 @@
           buildInputs = deps ++ [ pkgs.makeWrapper ];
 
           buildPhase = ''
-            # Set ROCQPATH for Rocq 9.0+ (keep COQPATH for backwards compatibility with dune)
-            if [ -n "$COQPATH" ]; then
-              export ROCQPATH="$COQPATH"
-            fi
             dune build
           '';
 

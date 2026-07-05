@@ -1,6 +1,6 @@
 (include_subdirs qualified)
 
-(coq.theory
+(rocq.theory
  (name vera)
  (flags (-w -deprecated-coq-env-var))
  (theories Stdlib Equations ExtLib Ltac2))

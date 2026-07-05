@@ -1,4 +1,4 @@
-(coq.extraction
+(rocq.extraction
  (prelude Extraction)
  (extracted_modules Vera)
  (theories vera Stdlib Equations ExtLib Ltac2)

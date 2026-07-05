@@ -1,4 +1,4 @@
-(lang dune 3.13)
+(lang dune 3.21)
 
 (name vera)
 
@@ -15,7 +15,7 @@
 
 (documentation https://url/to/documentation)
 
-(using coq 0.8)
+(using rocq 0.11)
 (using menhir 3.0)
 
 (package
