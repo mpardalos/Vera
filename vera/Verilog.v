@@ -814,6 +814,12 @@ Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
   let* (w_rhs; t_rhs) := tc_expr rhs in
   let* t_rhs' := cast_width "Different widths in blocking assign" (Verilog.varType var) t_rhs in
   inr (Verilog.BlockingAssign var t_rhs')
+| RawVerilog.BlockingAssign (RawVerilog.Concatenation _ _) rhs =>
+  inl "TODO: Assign to concatenation"%string
+| RawVerilog.BlockingAssign (RawVerilog.BitSelect _ _) rhs =>
+  inl "TODO: Assign to bitselect"%string
+| RawVerilog.BlockingAssign (RawVerilog.RangeSelect _ _ _) rhs =>
+  inl "TODO: Assign to range-select"%string
 | RawVerilog.BlockingAssign lhs rhs =>
   inl "Unsupported assignment target"%string
 }

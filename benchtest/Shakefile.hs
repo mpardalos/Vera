@@ -526,6 +526,59 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             )
         )
 
+  -- PULP ELAU -------------------------------------------------------------
+  phony "pulp-elau" $ do
+    sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
+    need [ "out" </> "pulp-elau" </> design </> variant <.> target
+         | sourceFile <- sourceFiles
+         , let design = dropExtension sourceFile
+         , design /= "arith_utils"
+         , variant <- ["slow", "medium", "fast"]
+         , target <- ["sv", "simplified.vera"]
+         ]
+
+  "out/pulp-elau/*/*.sv" !%> \out [design, variant] -> do
+    let top :: String = case variant of
+          "behavioural" -> "behavioural_" ++ design
+          _ -> design
+        speed = case variant of
+          "behavioural" -> ""
+          "slow" -> "-G speed=lau_pkg::SLOW"
+          "medium" -> "-G speed=lau_pkg::MEDIUM"
+          "fast" -> "-G speed=lau_pkg::FAST"
+          _ -> error ("Invalid variant: " ++ variant)
+        log = out <.> "log"
+    cmd_
+      (FileStdout log)
+      (FileStderr log)
+      "yosys"
+      "--commands"
+      [ printf "read_slang pulp-elau/src/*.sv --top %s %s; flatten; write_verilog %s"
+        top speed out :: String
+      ]
+
+  "out/pulp-elau/*/*.*.vera" !%> \out [design, variant, level] -> do
+    let
+      src = "out/pulp-elau" </> design </> variant <.> "sv"
+      log = out <.> "log"
+    timeout <- askOracle ConfigVeraTimeout
+    veraMemoryLimit <- askOracle ConfigVeraMemoryLimit
+    need [vera, src]
+    (Exit _) <- cmd
+      (Traced "vera")
+      (Timeout timeout)
+      (FileStdout out)
+      (FileStderr log)
+      (AddEnv "OCAMLRUNPARAM" "b")
+      (AddEnv "VERA_MAX_MEMORY" (show (gibiBytes veraMemoryLimit)))
+      (AddEnv "VERA_TRACE" "1")
+      vera
+      "lower"
+      level
+      src
+    return ()
+  --------------------------------------------------------------------------
+
 -- Helpers
 
 -- | Like (%>), but you also get the list of matched components

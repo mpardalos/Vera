@@ -129,6 +129,7 @@ let lower_cmd =
         ("parsed", `Parsed);
         ("typed", `Typed);
         ("sorted", `Sorted);
+        ("simplified", `Simplified);
         ("smt", `SMT);
         ("all", `All);
       ]
