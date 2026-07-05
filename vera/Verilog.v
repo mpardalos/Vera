@@ -179,22 +179,18 @@ Variant bitwiseop :=
 
     Global Instance lt_strorder : StrictOrder lt.
     Proof.
-      split.
-      - intros [n t] [nameLt|[nameEq typeLt]].
-        + apply (@StrictOrder_Irreflexive _ String_as_OT.lt _ n). exact nameLt.
-        + apply (@StrictOrder_Irreflexive _ N_as_OT.lt _ t).
-	  exact typeLt.
-      - intros [n1 t1] [n2 t2] [n3 t3] [nameLt12|[nameEq12 typeLt12]] [nameLt23|[nameEq23 typeLt23]].
-        all: repeat match goal with [ e : (Logic.eq @@ _)%signature _ _ |- _] =>
-	  cbv in e; subst
-	end.
-        + left.
-	  eapply (@StrictOrder_Transitive _ String_as_OT.lt _ n1 n2 n3 nameLt12 nameLt23).
-        + left. exact nameLt12.
-        + left. exact nameLt23.
-	+ right. split.
-	  * reflexivity.
-	  * exact (@StrictOrder_Transitive _ N_as_OT.lt _ t1 t2 t3 typeLt12 typeLt23).
+      constructor.
+      - intros x H. red in H. destruct H as [H | [Hn H]].
+        + unfold RelCompFun in H; now apply StrictOrder_Irreflexive in H.
+        + unfold RelCompFun in H; now apply StrictOrder_Irreflexive in H.
+      - intros x y z Hxy Hyz. red in Hxy, Hyz. unfold RelCompFun in *.
+        destruct Hxy as [Hxy | [Hnxy Htxy]]; destruct Hyz as [Hyz | [Hnyz Htyz]].
+        + left. red. unfold RelCompFun. etransitivity; eassumption.
+        + left. red. unfold RelCompFun. rewrite <- Hnyz. exact Hxy.
+        + left. red. unfold RelCompFun. rewrite Hnxy. exact Hyz.
+        + right. red. unfold RelCompFun. split.
+          * rewrite Hnxy. exact Hnyz.
+          * etransitivity; eassumption.
     Qed.
 
     Global Instance lt_compat : Proper (eq==>eq==>iff) lt.
