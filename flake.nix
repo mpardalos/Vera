@@ -15,6 +15,10 @@
         coq = pkgs.coq;
         coqPackages = pkgs.coqPackages;
         eqy = pkgs.callPackage nix/eqy.nix {};
+        rocq-mcp = pkgs.callPackage nix/rocq-mcp.nix {
+          coq-lsp = coqPackages.coq-lsp;
+          dune_3 = coq.ocamlPackages.dune_3;
+        };
 
         deps = [
           coq
@@ -55,6 +59,7 @@
           pkgs.gnuplot
           pkgs.jq
           coqPackages.coq-lsp
+          rocq-mcp
         ];
       in {
         devShells.default = pkgs.mkShell {

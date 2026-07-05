@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "rocq-mcp": {
+      "command": "rocq-mcp"
+    }
+  }
+}
