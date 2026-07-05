@@ -6,6 +6,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
@@ -41,11 +42,18 @@ import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Util
 import GHC.Generics (Generic)
+import Language.Haskell.TH.Syntax (Exp (LitE), Lit (StringL), loc_filename, location)
 import System.Directory qualified as SD
 import System.Exit (ExitCode (..))
 import System.Posix.Resource (Resource (ResourceOpenFiles), ResourceLimit (..), ResourceLimits (..), getResourceLimit, setResourceLimit)
 import Text.Printf (printf)
 import Safe (fromJustNote, readMay)
+
+-- | Directory containing this Shakefile, captured at compile time. All the
+-- paths in this file are relative to it, so we @cd@ here at startup and the
+-- build can then be run from any working directory.
+shakefileDir :: FilePath
+shakefileDir = takeDirectory $(location >>= \l -> pure (LitE (StringL (loc_filename l))))
 
 -- | Path to vera binary
 vera :: FilePath
@@ -130,6 +138,12 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     -- Set open file soft limit to the hard limit
     ResourceLimits{hardLimit} <- getResourceLimit ResourceOpenFiles
     setResourceLimit ResourceOpenFiles (ResourceLimits hardLimit hardLimit)
+
+    -- Make all relative paths below resolve against the Shakefile's directory,
+    -- regardless of where the build is invoked from. makeAbsolute runs before we
+    -- change directory, so a relative shakefileDir resolves against the original
+    -- working directory.
+    SD.setCurrentDirectory =<< SD.makeAbsolute shakefileDir
 
   phony "clean" $ do
     need ["clean-synth", "clean-run"]
