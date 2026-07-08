@@ -26,6 +26,7 @@ From vera Require SMTLib.
 Import SMTLib (Sort_BitVec, Sort_Bool).
 
 From vera Require Import Verilog.
+From vera Require Import Variables.
 From vera Require Import Common.
 From vera Require Import Bitvector.
 From vera Require Import VerilogSMT.
@@ -41,7 +42,7 @@ Import CommonNotations.
 Import MonadLetNotation.
 Import FunctorNotation.
 Import EqNotations.
-Import Verilog.VariableSet.Notations.
+Import Verilog.Notations.
 Local Open Scope monad_scope.
 
 Local Definition smtname := nat.
@@ -63,7 +64,7 @@ Definition smt_var_info : Type := (smtname * width).
 Section expr_to_smt.
   Variable tag : VarTag.
 
-  Definition var_to_smt (var : Verilog.variable): (SMTLib.term (Sort_BitVec (Verilog.varType var))) :=
+  Definition var_to_smt (var : Var.t): (SMTLib.term (Sort_BitVec (Var.varType var))) :=
     SMTLib.Term_Const (verilog_to_smt_var tag var).
 
   Definition smt_select_bit {w}
@@ -114,7 +115,7 @@ Section expr_to_smt.
   .
 
   Definition conditional_to_smt {w_val}
-    (cond_type : Verilog.vtype) (cond : SMTLib.term (Sort_BitVec cond_type)) (ifT ifF : SMTLib.term (Sort_BitVec w_val))
+    (cond_type : N) (cond : SMTLib.term (Sort_BitVec cond_type)) (ifT ifF : SMTLib.term (Sort_BitVec w_val))
     : SMTLib.term (Sort_BitVec w_val) :=
     SMTLib.Term_ITE
       (SMTLib.Term_Not (SMTLib.Term_Eq cond (SMTLib.Term_BVLit _ (BV.zeros cond_type))))
@@ -182,8 +183,8 @@ Section expr_to_smt.
   .
 End expr_to_smt.
 
-Definition mk_declarations : list (Verilog.variable * smtname) -> list SMTQueries.declaration :=
-  map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Verilog.varType var))).
+Definition mk_declarations : list (Var.t * smtname) -> list SMTQueries.declaration :=
+  map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Var.varType var))).
 
 Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
   (l1 l2 : list A) (nodup1 : NoDup l1) : option (Permutation l1 l2) :=
@@ -202,14 +203,14 @@ Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : tran
       "Duplicate variables"%string in
     trace "Check for undriven" (
       assert_dec
-        (Verilog.VariableSet.Equal
-          (Verilog.VariableSet.of_list (Verilog.modVariables vmodule))
+        (VarSet.Equal
+          (VarSet.of_list (Verilog.modVariables vmodule))
           (Verilog.module_body_writes (Verilog.modBody vmodule)
-	    ∪ Verilog.VariableSet.of_list (Verilog.module_inputs vmodule))%verilog)
+	    ∪ VarSet.of_list (Verilog.module_inputs vmodule))%verilog)
         "Undriven variables"%string) ;;
     trace "Check sort" 
       (assert_dec
-        (module_items_sorted (Verilog.VariableSet.of_list (Verilog.module_inputs vmodule)) (Verilog.modBody vmodule))
+        (module_items_sorted (VarSet.of_list (Verilog.module_inputs vmodule)) (Verilog.modBody vmodule))
         "Module items unsorted"%string);;
     trace "Convert to SMT" (transfer_module_body name_tag (Verilog.modBody vmodule))
   )

@@ -18,6 +18,7 @@ From vera Require Import Decidable.
 From vera Require Import Bitvector.
 From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
+From vera Require Import Variables.
 From vera Require Import Tactics.
 From vera Require SMTQueries.
 Import VerilogSemantics.CombinationalOnly.
@@ -30,7 +31,7 @@ From vera Require SMTLib.
 Import ListNotations.
 Import SigTNotations.
 Import MonadLetNotation.
-Import Verilog.VariableSet.Notations.
+Import Verilog.Notations.
 
 Local Open Scope list.
 Local Open Scope monad_scope.
@@ -108,27 +109,28 @@ Proof.
  discriminate.
 Qed.
 
-Definition verilog_to_smt_var (t : VarTag) (var : Verilog.variable) : SMTLib.const_sym :=
+Definition verilog_to_smt_var (t : VarTag) (var : Var.t) : SMTLib.const_sym :=
   {|
-    SMTLib.symName := tag_name t (Verilog.varName var);
-    SMTLib.symSort := SMTLib.Sort_BitVec (Verilog.varType var)
+    SMTLib.symName := tag_name t (Var.varName var);
+    SMTLib.symSort := SMTLib.Sort_BitVec (Var.varType var)
   |}.
 
-Definition smt_to_verilog_var (sym : SMTLib.const_sym) : option (VarTag * Verilog.variable)  :=
+Definition smt_to_verilog_var (sym : SMTLib.const_sym) : option (VarTag * Var.t)  :=
   let* (t, name) := untag_name (SMTLib.symName sym) in
   let* w := match SMTLib.symSort sym with
             | SMTLib.Sort_BitVec w => Some w
 	    | _ => None
 	    end in
   let* prf := opt_dec (w > 0)%N in
-  Some (t, Verilog.MkVariable name w prf).
+  Some (t, Var.MkVariable name w prf).
 
 Lemma verilog_to_smt_to_verilog_var t var : smt_to_verilog_var (verilog_to_smt_var t var) = Some (t, var).
 Proof.
   unfold smt_to_verilog_var, verilog_to_smt_var.
   destruct var.
   simpl. rewrite untag_tag_name. monad_inv.
-  - do 3 f_equal. apply proof_irrelevance.
+  - replace g with varTypeWf by (apply proof_irrelevance).
+    reflexivity.
   - exfalso. destruct varType; crush.
 Qed.
 
@@ -174,7 +176,7 @@ Definition valuation_of_executions (e1 e2 : execution) : SMTLib.valuation :=
   | Some (t, varName), SMTLib.Sort_BitVec w =>
     match dec (w > 0)%N with
     | left prf =>
-      match XBV.to_bv (tag_choose t e1 e2 (Verilog.MkVariable varName w prf)) with
+      match XBV.to_bv (tag_choose t e1 e2 (Var.MkVariable varName w prf)) with
       | Some bv => bv
       | None => default (SMTLib.Sort_BitVec w)
       end
@@ -224,7 +226,7 @@ Proof.
 Qed.
 
 Definition verilog_smt_match_states_partial
-  (vars : Verilog.VariableSet.t)
+  (vars : VarSet.t)
   (tag : VarTag)
   (regs : RegisterState.t)
   (ρ : SMTLib.valuation) : Prop :=
@@ -233,7 +235,7 @@ Definition verilog_smt_match_states_partial
 (* Might not be needed *)
 Global Instance verilog_smt_match_states_partial_proper :
   Proper
-    (Verilog.VariableSet.Equal ==> eq ==> eq ==> eq ==> iff)
+    (VarSet.Equal ==> eq ==> eq ==> eq ==> iff)
     verilog_smt_match_states_partial.
 Proof.
   repeat intro. subst.
@@ -242,13 +244,13 @@ Qed.
 
 Global Instance Proper_verilog_smt_match_states_partial_subset :
   Proper
-    (Verilog.VariableSet.Subset --> eq ==> eq ==> eq ==> Basics.impl)
+    (VarSet.Subset --> eq ==> eq ==> eq ==> Basics.impl)
     verilog_smt_match_states_partial.
 Proof. repeat intro. subst. crush. Qed.
 
 Global Instance Proper_verilog_smt_match_states_partial_subset_flip :
   Proper
-    (Verilog.VariableSet.Subset ==> eq ==> eq ==> eq ==> Basics.flip Basics.impl)
+    (VarSet.Subset ==> eq ==> eq ==> eq ==> Basics.flip Basics.impl)
     verilog_smt_match_states_partial.
 Proof. repeat intro. subst. crush. Qed.
 
@@ -261,7 +263,7 @@ Proof.
 Qed.
 
 Lemma verilog_smt_match_states_partial_impl vars1 vars2 tag regs ρ :
-  Verilog.VariableSet.Subset vars1 vars2 ->
+  VarSet.Subset vars1 vars2 ->
   verilog_smt_match_states_partial vars2 tag regs ρ ->
   verilog_smt_match_states_partial vars1 tag regs ρ.
 Proof. crush. Qed.
@@ -285,7 +287,7 @@ Lemma verilog_smt_match_states_partial_split_iff C1 C2 tag reg ρ :
   verilog_smt_match_states_partial (C1 ∪ C2) tag reg ρ <->
     (verilog_smt_match_states_partial C1 tag reg ρ
      /\ verilog_smt_match_states_partial C2 tag reg ρ).
-Proof. unfold verilog_smt_match_states_partial. setoid_rewrite Verilog.VariableSet.union_spec. crush. Qed.
+Proof. unfold verilog_smt_match_states_partial. setoid_rewrite VarSet.union_spec. crush. Qed.
 
 Lemma verilog_smt_match_states_partial_set_reg_elim C tag regs ρ var bv :
   (ρ (verilog_to_smt_var tag var) = bv) ->

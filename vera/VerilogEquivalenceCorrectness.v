@@ -1,4 +1,5 @@
 From vera Require Import Verilog.
+From vera Require Import Variables.
 From vera Require Import VerilogSMT.
 From vera Require Import SMTQueries.
 From vera Require Import Common.
@@ -36,7 +37,7 @@ Import (notations) RegisterState.
 Import MonadLetNotation.
 Import ListNotations.
 Import EqNotations.
-Import Verilog.VariableSet.Notations.
+Import Verilog.Notations.
 
 Local Open Scope string.
 Local Open Scope Z_scope.
@@ -54,27 +55,27 @@ Definition smt_same_value var (ρ : SMTLib.valuation) :=
   ρ (verilog_to_smt_var VerilogLeft var) =
   ρ (verilog_to_smt_var VerilogRight var).
 
-Definition smt_all_same_values (vars : Verilog.VariableSet.t) (ρ : SMTLib.valuation) :=
+Definition smt_all_same_values (vars : VarSet.t) (ρ : SMTLib.valuation) :=
   forall var, var ∈ vars -> smt_same_value var ρ.
 
 Lemma smt_all_same_values_empty_iff {ρ} : smt_all_same_values {} ρ <-> True.
-Proof. split; [trivial|]. intros var Hvar_in. Verilog.VariableSet.setdec. Qed.
+Proof. split; [trivial|]. intros var Hvar_in. VarSet.setdec. Qed.
 
 Lemma smt_all_same_values_add var vars :
   pointwise_relation SMTLib.valuation iff
-  (smt_all_same_values (Verilog.VariableSet.add var vars))
+  (smt_all_same_values (VarSet.add var vars))
   (fun ρ => smt_same_value var ρ /\ smt_all_same_values vars ρ).
 Proof.
   unfold smt_all_same_values.
   split.
   - intros H.
     split.
-    + apply H. Verilog.VariableSet.setdec.
-    + intros var' Hvar'. apply H. Verilog.VariableSet.setdec.
+    + apply H. VarSet.setdec.
+    + intros var' Hvar'. apply H. VarSet.setdec.
   - intros [Hhd Htl] var' Hvar'.
     destruct (dec (var' = var)).
     + subst. apply Hhd.
-    + apply Htl. Verilog.VariableSet.setdec.
+    + apply Htl. VarSet.setdec.
 Qed.
 
 Lemma smt_all_same_values_union vars1 vars2 ρ :
@@ -82,7 +83,7 @@ Lemma smt_all_same_values_union vars1 vars2 ρ :
     smt_all_same_values vars1 ρ /\ smt_all_same_values vars2 ρ.
 Proof. Admitted.
 
-Definition smt_distinct_value (var : Verilog.variable) (ρ : SMTLib.valuation) :=
+Definition smt_distinct_value (var : Var.t) (ρ : SMTLib.valuation) :=
   ρ (verilog_to_smt_var VerilogLeft var) <>
   ρ (verilog_to_smt_var VerilogRight var).
 
@@ -90,13 +91,13 @@ Definition smt_some_distinct_values vars (ρ : SMTLib.valuation) :=
   exists var, var ∈ vars /\ smt_distinct_value var ρ.
 
 Definition counterexample_valuation v1 v2 ρ :=
-  smt_all_same_values (Verilog.VariableSet.of_list (Verilog.module_inputs v1)) ρ
-  /\ smt_some_distinct_values (Verilog.VariableSet.of_list (Verilog.module_outputs v1)) ρ
+  smt_all_same_values (VarSet.of_list (Verilog.module_inputs v1)) ρ
+  /\ smt_some_distinct_values (VarSet.of_list (Verilog.module_outputs v1)) ρ
   /\ v1 ⇓ execution_of_valuation VerilogLeft ρ
   /\ v2 ⇓ execution_of_valuation VerilogRight ρ
   .
 
-Definition execution_some_distinct_value (C : Verilog.VariableSet.t) (e1 e2 : execution) : Prop :=
+Definition execution_some_distinct_value (C : VarSet.t) (e1 e2 : execution) : Prop :=
   exists var bv1 bv2,
     var ∈ C
     /\ e1 var = XBV.from_bv bv1
@@ -106,12 +107,12 @@ Definition execution_some_distinct_value (C : Verilog.VariableSet.t) (e1 e2 : ex
 Definition counterexample_execution v1 e1 v2 e2 :=
   v1 ⇓ e1
   /\ v2 ⇓ e2
-  /\ e1 =!!(Verilog.VariableSet.of_list (Verilog.module_inputs v1))!!= e2
-  /\ ~ (e1 =(Verilog.VariableSet.of_list (Verilog.module_outputs v1))= e2).
+  /\ e1 =!!(VarSet.of_list (Verilog.module_inputs v1))!!= e2
+  /\ ~ (e1 =(VarSet.of_list (Verilog.module_outputs v1))= e2).
 
 Lemma smt_some_distinct_values_add var vars :
   pointwise_relation SMTLib.valuation iff
-    (smt_some_distinct_values (Verilog.VariableSet.add var vars))
+    (smt_some_distinct_values (VarSet.add var vars))
     (fun ρ => smt_distinct_value var ρ \/ smt_some_distinct_values vars ρ).
 Proof.
   unfold smt_some_distinct_values.
@@ -120,14 +121,14 @@ Proof.
     destruct (dec (var' = var)).
     + subst. left. exact Hdistinct.
     + right. exists var'. split.
-      * Verilog.VariableSet.setdec.
+      * VarSet.setdec.
       * exact Hdistinct.
   - intros [Hdistinct | [var' [Hin Hdistinct]]].
     + exists var. split.
-      * Verilog.VariableSet.setdec.
+      * VarSet.setdec.
       * exact Hdistinct.
     + exists var'. split.
-      * Verilog.VariableSet.setdec.
+      * VarSet.setdec.
       * exact Hdistinct.
 Qed.
 
@@ -176,18 +177,18 @@ Proof. unfold term_reflect. solve_proper. Qed.
 
 Global Instance Proper_smt_all_same_values :
   Proper
-    (Verilog.VariableSet.Equal ==> pointwise_relation _ iff)
+    (VarSet.Equal ==> pointwise_relation _ iff)
     smt_all_same_values.
 Proof. unfold smt_all_same_values. solve_proper. Qed.
 
 Global Instance Proper_smt_some_distinct_values :
   Proper
-    (Verilog.VariableSet.Equal ==> pointwise_relation _ iff)
+    (VarSet.Equal ==> pointwise_relation _ iff)
     smt_some_distinct_values.
 Proof. unfold smt_some_distinct_values. solve_proper. Qed.
 
 Lemma mk_inputs_same_spec : forall inputs,
-  term_reflect (mk_inputs_same inputs) (smt_all_same_values (Verilog.VariableSet.of_list inputs)).
+  term_reflect (mk_inputs_same inputs) (smt_all_same_values (VarSet.of_list inputs)).
 Proof.
   intros ?. induction inputs.
   all: simp mk_inputs_same.
@@ -195,7 +196,7 @@ Proof.
     setoid_rewrite smt_all_same_values_empty_iff.
     trivial.
   - intros. simp mk_inputs_same in *.
-    setoid_rewrite Verilog.VariableSet.of_list_cons.
+    setoid_rewrite VarSet.of_list_cons.
     setoid_rewrite smt_all_same_values_add.
     apply term_reflect_and.
     + apply mk_var_same_spec.
@@ -212,16 +213,16 @@ Proof.
 Qed.
 
 Lemma mk_outputs_distinct_spec outputs :
-  term_reflect (mk_outputs_distinct outputs) (smt_some_distinct_values (Verilog.VariableSet.of_list outputs)).
+  term_reflect (mk_outputs_distinct outputs) (smt_some_distinct_values (VarSet.of_list outputs)).
 Proof.
   induction outputs.
   - simp mk_outputs_distinct.
     apply term_reflect_false.
     intros ρ [].
-    Verilog.VariableSet.setdec.
+    VarSet.setdec.
   - intros.
     simp mk_outputs_distinct.
-    setoid_rewrite Verilog.VariableSet.of_list_cons.
+    setoid_rewrite VarSet.of_list_cons.
     setoid_rewrite smt_some_distinct_values_add.
     apply term_reflect_or.
     + apply mk_var_distinct_spec.
@@ -415,13 +416,13 @@ Proof. intros a b <-. reflexivity. Qed.
 
 Global Instance Proper_valid_execution v :
   Proper
-    (RegisterState.match_on (Verilog.VariableSet.of_list (Verilog.modVariables v)) ==> iff)
+    (RegisterState.match_on (VarSet.of_list (Verilog.modVariables v)) ==> iff)
     (valid_execution v).
 Proof.
   repeat intro.
   unfold valid_execution.
   RegisterState.unpack_match_on.
-  assert (Hmatch_inputs : x =( Verilog.VariableSet.of_list (Verilog.module_inputs v) )= y)
+  assert (Hmatch_inputs : x =( VarSet.of_list (Verilog.module_inputs v) )= y)
     by now setoid_rewrite Verilog.module_input_in_vars.
   split.
   all: intros H1.
@@ -443,16 +444,16 @@ Proof. apply Forall_nil. Qed.
 
 Lemma execution_congruent v e1 e2 :
   v ⇓ e1 -> v ⇓ e2 ->
-  e1 =( Verilog.VariableSet.of_list (Verilog.module_inputs v) )= e2 ->
-  e1 =( Verilog.VariableSet.of_list (Verilog.module_outputs v) )= e2.
+  e1 =( VarSet.of_list (Verilog.module_inputs v) )= e2 ->
+  e1 =( VarSet.of_list (Verilog.module_outputs v) )= e2.
 Proof.
   unfold "⇓".
   intros Hadmit1 Hadmit2 Hinput_match.
   RegisterState.unpack_match_on.
-  assert (Houtputs1 : run_vmodule v e1 =( Verilog.VariableSet.of_list (Verilog.module_outputs v) )= e1)
+  assert (Houtputs1 : run_vmodule v e1 =( VarSet.of_list (Verilog.module_outputs v) )= e1)
     by now setoid_rewrite Verilog.module_outputs_in_vars.
   rewrite <- Houtputs1.
-  assert (Houtputs2 : run_vmodule v e2 =( Verilog.VariableSet.of_list (Verilog.module_outputs v) )= e2)
+  assert (Houtputs2 : run_vmodule v e2 =( VarSet.of_list (Verilog.module_outputs v) )= e2)
     by now setoid_rewrite Verilog.module_outputs_in_vars.
   rewrite <- Houtputs2.
   rewrite Hinput_match.
@@ -475,7 +476,7 @@ Proof.
     (* split; intros He.
      * (\* This is duplicated, ideally we want a "without loss of generality" tactic *\)
      * + RegisterState.unpack_defined_value_for. *)
-    assert (Hmatch_inputs : run_vmodule v1 e =!!( Verilog.VariableSet.of_list (Verilog.module_inputs v1) )!!= run_vmodule v2 e). {
+    assert (Hmatch_inputs : run_vmodule v1 e =!!( VarSet.of_list (Verilog.module_inputs v1) )!!= run_vmodule v2 e). {
       split.
       - rewrite preserve_inputs by assumption.
         rewrite Hinput_match.
@@ -501,9 +502,9 @@ Proof.
   - intros [] e1 e2 [Hadmit1 [Hadmit2 [[Hmatch_inputs Hinputs_defined] Hno_match_outputs]]].
     unfold "⇓" in Hadmit1, Hadmit2.
     contradict Hno_match_outputs.
-    assert (Hmatch_outputs1 : run_vmodule v1 e1 =( Verilog.VariableSet.of_list (Verilog.module_outputs v1) )= e1)
+    assert (Hmatch_outputs1 : run_vmodule v1 e1 =( VarSet.of_list (Verilog.module_outputs v1) )= e1)
       by now setoid_rewrite Verilog.module_outputs_in_vars.
-    assert (Hmatch_outputs2 : run_vmodule v2 e2 =( Verilog.VariableSet.of_list (Verilog.module_outputs v2) )= e2)
+    assert (Hmatch_outputs2 : run_vmodule v2 e2 =( VarSet.of_list (Verilog.module_outputs v2) )= e2)
       by now setoid_rewrite Verilog.module_outputs_in_vars.
     rewrite <- Hmatch_outputs1.
     rewrite <- Houtput_match in Hmatch_outputs2. rewrite <- Hmatch_outputs2.
@@ -535,10 +536,10 @@ Record verilog_to_smt_checked (v : Verilog.vmodule) := MkVerilogToSMTChecked {
     (* no_duplicate_writes : NoDup (Verilog.module_body_writes (Verilog.modBody v)); *)
     (* no_duplicate_outputs : NoDup (Verilog.module_outputs v); *)
     all_vars_driven :
-      Verilog.VariableSet.Equal
-        (Verilog.VariableSet.of_list (Verilog.modVariables v))
-	(Verilog.module_body_writes (Verilog.modBody v) ∪ Verilog.VariableSet.of_list (Verilog.Verilog.module_inputs v));
-    sorted : module_items_sorted (Verilog.VariableSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v);
+      VarSet.Equal
+        (VarSet.of_list (Verilog.modVariables v))
+	(Verilog.module_body_writes (Verilog.modBody v) ∪ VarSet.of_list (Verilog.Verilog.module_inputs v));
+    sorted : module_items_sorted (VarSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v);
 }.
 
 Lemma verilog_to_smt_checks tag v smt :
@@ -635,7 +636,7 @@ Proof.
 Qed.
 
 Lemma counterexample_execution_rewrite_left v e1 e1' v2 e2 :
-  e1 =( Verilog.VariableSet.of_list (Verilog.modVariables v) )= e1' ->
+  e1 =( VarSet.of_list (Verilog.modVariables v) )= e1' ->
   counterexample_execution v e1 v2 e2 <-> counterexample_execution v e1' v2 e2.
 Proof.
   unfold counterexample_execution.
@@ -644,9 +645,9 @@ Proof.
   all: intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]].
   all: unpack_goal.
   all: try eassumption.
-  all: assert (Hinputs : e1 =( Verilog.VariableSet.of_list (Verilog.module_inputs v) )= e1')
+  all: assert (Hinputs : e1 =( VarSet.of_list (Verilog.module_inputs v) )= e1')
          by now setoid_rewrite Verilog.module_input_in_vars.
-  all: assert (Houtputs : e1 =( Verilog.VariableSet.of_list (Verilog.module_outputs v) )= e1')
+  all: assert (Houtputs : e1 =( VarSet.of_list (Verilog.module_outputs v) )= e1')
          by now setoid_rewrite Verilog.module_outputs_in_vars.
   - rewrite H in Hvalid1. assumption.
   - rewrite <- Hinputs. apply Hdefined_in.
@@ -659,7 +660,7 @@ Qed.
 Lemma counterexample_execution_rewrite_right v1 e1 v2 e2 e2' :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
-  e2 =( Verilog.VariableSet.of_list (Verilog.modVariables v2) )= e2' ->
+  e2 =( VarSet.of_list (Verilog.modVariables v2) )= e2' ->
   counterexample_execution v1 e1 v2 e2 <-> counterexample_execution v1 e1 v2 e2'.
 Proof.
   unfold counterexample_execution.
@@ -668,9 +669,9 @@ Proof.
   all: intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]].
   all: unpack_goal.
   all: try eassumption.
-  all: assert (Hinputs : e2 =( Verilog.VariableSet.of_list (Verilog.module_inputs v2) )= e2')
+  all: assert (Hinputs : e2 =( VarSet.of_list (Verilog.module_inputs v2) )= e2')
          by now setoid_rewrite Verilog.module_input_in_vars.
-  all: assert (Houtputs : e2 =( Verilog.VariableSet.of_list (Verilog.module_outputs v2) )= e2')
+  all: assert (Houtputs : e2 =( VarSet.of_list (Verilog.module_outputs v2) )= e2')
          by now setoid_rewrite Verilog.module_outputs_in_vars.
   - rewrite H in Hvalid2. assumption.
   - rewrite <- Hinputs. apply Hdefined_in.
@@ -694,8 +695,8 @@ Qed.
 Lemma valid_execution_all_vars_defined v e :
   clean_module v ->
   v ⇓ e ->
-  RegisterState.defined_value_for (Verilog.VariableSet.of_list (Verilog.module_inputs v)) e ->
-  RegisterState.defined_value_for (Verilog.VariableSet.of_list (Verilog.modVariables v)) e.
+  RegisterState.defined_value_for (VarSet.of_list (Verilog.module_inputs v)) e ->
+  RegisterState.defined_value_for (VarSet.of_list (Verilog.modVariables v)) e.
 Proof.
   unfold "⇓".
   intros [? Hvars_defined] Hadmit Hinputs_defined.

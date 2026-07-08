@@ -1,27 +1,125 @@
 From Stdlib Require Import NArith.
 From Stdlib Require Import BinNat.
-From Stdlib Require Import FMapAVL.
+From Stdlib Require Import MSets.
+From Stdlib Require Import FMapInterface.
 From Stdlib Require Import FMapFacts.
+From Stdlib Require Import FMapAVL.
 From Stdlib Require Import Structures.Equalities.
 From Stdlib Require Import Structures.Orders.
+From Stdlib Require Import Structures.OrdersEx.
+From Stdlib Require Import Structures.OrdersAlt.
 From Stdlib Require Import Structures.OrderedType.
 From Stdlib Require Import MSetInterface.
 From Stdlib Require Import Lia.
+From Stdlib Require String.
+Import String (string).
+From Stdlib Require Import Logic.ProofIrrelevance.
 
-From vera Require Import Verilog.
+From vera Require Import Tactics.
+From vera Require Import Decidable.
+From vera Require Import Common.
 
-Module Location.
-  Record t := Mk {
-    var : Verilog.variable;
+Module Var <: UsualOrderedType.
+  Definition type := N.
+
+  Record variable :=
+    MkVariable
+      { varName : string
+      ; varType : type
+
+      (*
+      Seems weird to use `N` and then add this proof, when we could
+      just use `positive` instead.
+
+      Verilog does not have zero-width vectors. But SMTLIB does, and
+      both it, and out bitvector library use `N`. So it is convenient
+      to use `N` for Verilog too. Most things work without this proof
+      (there is no reason why Verilog couldn't have zero-width
+      BVs). But sometimes it comes up (see
+      `execution_match_on_verilog_smt_match_states_partial`).
+      *)
+
+      ; varTypeWf : (varType > 0)%N
+      }.
+
+  Module as_MDT <: MiniDecidableType.
+    Definition t := variable.
+
+    Definition eq_dec (x y : t) : {x=y} + {x<>y}.
+    Proof.
+      refine (match dec (varName x = varName y), dec (varType x = varType y) with
+              | left _, left _ => left _
+              | _, _ => right _
+    	    end).
+      all: destruct x, y.
+      all: simpl in *.
+      - subst. f_equal. apply proof_irrelevance.
+      - crush.
+      - crush.
+    Qed.
+  End as_MDT.
+
+  Include Make_UDT(as_MDT).
+
+  Global Instance dec_eq_variable (x y : variable) : DecProp (x = y) :=
+    eq_dec x y.
+
+  Definition lt :=
+    (relation_disjunction (String_as_OT.lt @@ varName)
+      (relation_conjunction (Logic.eq @@ varName) (N.lt @@ varType)))%signature.
+
+  Global Instance lt_strorder : StrictOrder lt.
+  Proof.
+    constructor.
+    - intros x H. red in H. destruct H as [H | [Hn H]].
+      + unfold RelCompFun in H; now apply StrictOrder_Irreflexive in H.
+      + unfold RelCompFun in H; now apply StrictOrder_Irreflexive in H.
+    - intros x y z Hxy Hyz. red in Hxy, Hyz. unfold RelCompFun in *.
+      destruct Hxy as [Hxy | [Hnxy Htxy]]; destruct Hyz as [Hyz | [Hnyz Htyz]].
+      + left. red. unfold RelCompFun. etransitivity; eassumption.
+      + left. red. unfold RelCompFun. rewrite <- Hnyz. exact Hxy.
+      + left. red. unfold RelCompFun. rewrite Hnxy. exact Hyz.
+      + right. red. unfold RelCompFun. split.
+        * rewrite Hnxy. exact Hnyz.
+        * etransitivity; eassumption.
+  Qed.
+
+  Global Instance lt_compat : Proper (eq==>eq==>iff) lt.
+  Proof. intros x x' <- y y' <-. reflexivity. Qed.
+
+  Definition compare v1 v2 :=
+    match String_as_OT.compare (varName v1) (varName v2) with
+    | Eq => (varType v1 ?= varType v2)%N
+    | c => c
+    end.
+
+  Lemma compare_spec : forall x y, CompSpec eq lt x y (compare x y).
+  Proof.
+    intros [n1 t1] [n2 t2].
+    unfold compare. simpl.
+    unfold CompSpec.
+    destruct (String_as_OT.compare_spec n1 n2) as [cmp_n|cmp_n|cmp_n];
+      [|crush|crush].
+    unfold String_as_OT.eq in cmp_n. subst.
+    destruct (N_as_OT.compare_spec t1 t2); [|crush|crush].
+    subst.
+    constructor. cbv. f_equal.
+    apply proof_irrelevance.
+  Qed.
+End Var.
+
+Module Location <: UsualOrderedType.
+  Record location := Mk {
+    var : Var.t;
     idx : N;
   }.
 
   Module as_MDT <: MiniDecidableType.
-    Definition t := Location.t.
+    Definition t := location.
     Definition eq_dec (x y : t) : {x=y} + {x<>y}.
     Proof.
       destruct x as [vx ix], y as [vy iy].
-      destruct (Verilog.Variable_as_DT.eq_dec vx vy).
+      destruct (Var.eq_dec vx vy).
       - destruct (N.eq_dec ix iy).
         + left. subst. reflexivity.
         + right. congruence.
@@ -29,46 +127,244 @@ Module Location.
     Qed.
   End as_MDT.
 
-  Module as_DT := Make_UDT(as_MDT).
+  Include Make_UDT(as_MDT).
+
+  Definition lt :=
+    (relation_disjunction (Var.lt @@ var)
+      (relation_conjunction (Logic.eq @@ var) (N.lt @@ idx)))%signature.
+
+  Global Instance lt_strorder : StrictOrder lt.
+  Proof.
+    constructor.
+    - intros x H. red in H. destruct H as [H | [Hn H]].
+      + unfold RelCompFun in H; now apply StrictOrder_Irreflexive in H.
+      + unfold RelCompFun in H; now apply StrictOrder_Irreflexive in H.
+    - intros x y z Hxy Hyz. red in Hxy, Hyz. unfold RelCompFun in *.
+      destruct Hxy as [Hxy | [Hnxy Htxy]]; destruct Hyz as [Hyz | [Hnyz Htyz]].
+      + left. red. unfold RelCompFun. etransitivity; eassumption.
+      + left. red. unfold RelCompFun. rewrite <- Hnyz. exact Hxy.
+      + left. red. unfold RelCompFun. rewrite Hnxy. exact Hyz.
+      + right. red. unfold RelCompFun. split.
+        * rewrite Hnxy. exact Hnyz.
+        * etransitivity; eassumption.
+  Qed.
+
+  Global Instance lt_compat : Proper (eq==>eq==>iff) lt.
+  Proof. intros x x' <- y y' <-. reflexivity. Qed.
+
+  Definition compare v1 v2 :=
+    match Var.compare (var v1) (var v2) with
+    | Eq => (idx v1 ?= idx v2)%N
+    | c => c
+    end.
+
+  Lemma compare_spec : forall x y, CompSpec eq lt x y (compare x y).
+  Proof.
+    intros [n1 t1] [n2 t2]. unfold compare. simpl.
+    unfold CompSpec.
+    destruct (Var.compare_spec n1 n2) as [cmp_n|cmp_n|cmp_n];
+      [|crush|crush].
+    unfold Var.eq in cmp_n. subst.
+    destruct (N.compare_spec t1 t2); [|crush|crush].
+    subst.
+    constructor. reflexivity.
+  Qed.
 End Location.
 
-(* The core map: Variable.t -> N (bitmask) *)
-Module VarMap_OT.
-  Definition t := Verilog.variable.
-  Definition eq := @eq t.
-  Definition eq_refl := @eq_refl t.
-  Definition eq_sym := @eq_sym t.
-  Definition eq_trans := @eq_trans t.
-  Definition eq_dec := Verilog.Variable_as_DT.eq_dec.
-  Definition lt := Verilog.Variable_as_OT.lt.
-  Definition lt_trans x y z := @StrictOrder_Transitive _ _ Verilog.Variable_as_OT.lt_strorder x y z.
-  Definition lt_not_eq : forall x y, lt x y -> ~ eq x y.
-  Proof. intros x y Hlt Heq. rewrite Heq in Hlt. exact (@StrictOrder_Irreflexive _ _ Verilog.Variable_as_OT.lt_strorder y Hlt). Qed.
-  Definition compare (x y : t) : Compare lt eq x y.
+Module Type UsualWSets.
+  Declare Module E : UsualDecidableType.
+  Include WSetsOn E.
+End UsualWSets.
+
+Module MySet(Import S : UsualWSets).
+  Module Facts := MSetFacts.WFactsOn E S.
+  Module Dec := MSetDecide.WDecideOn E S.
+  Module Props := MSetProperties.WPropertiesOn E S.
+  Import Facts.
+  Import Dec.
+  Import Props.
+  Definition disjoint (a b : t) := is_empty (inter a b).
+  Definition Disjoint (a b : t) : Prop := Empty (inter a b).
+
+  Lemma disjoint_spec (a b : t) : disjoint a b = true <-> Disjoint a b.
   Proof.
-    destruct (Verilog.Variable_as_OT.compare x y) eqn:E.
-    - apply EQ. destruct (Verilog.Variable_as_OT.compare_spec x y); [exact H | discriminate E | discriminate E].
-    - apply LT. destruct (Verilog.Variable_as_OT.compare_spec x y); [discriminate E | exact H | discriminate E].
-    - apply GT. destruct (Verilog.Variable_as_OT.compare_spec x y); [discriminate E | discriminate E | exact H].
-  Defined.
-  #[global] Instance eq_equiv : Equivalence eq := eq_equivalence.
-  #[global] Instance lt_strorder : StrictOrder lt := Verilog.Variable_as_OT.lt_strorder.
-  #[global] Instance lt_compat : Proper (eq ==> eq ==> iff) lt := Verilog.Variable_as_OT.lt_compat.
-End VarMap_OT.
+    unfold disjoint, Disjoint.
+    rewrite is_empty_spec.
+    reflexivity.
+  Qed.
 
-Module VarMap := FMapAVL.Make(VarMap_OT).
-Module VarMapFacts := FMapFacts.WFacts(VarMap).
+  Global Instance Disjoint_m : Proper (Equal ==> Equal ==> iff) Disjoint.
+  Proof.
+    unfold Disjoint.
+    intros x y Hxy a b Hab.
+    setoid_rewrite <- Hxy.
+    setoid_rewrite <- Hab.
+    reflexivity.
+  Qed.
 
-Print WSets.
+  Global Instance disjoint_m : Proper (Equal ==> Equal ==> Logic.eq) disjoint.
+  Proof.
+    intros x y Hxy a b Hab.
+    destruct (disjoint x a) eqn:Exa; destruct (disjoint y b) eqn:Eyb; auto.
+    - apply disjoint_spec in Exa. rewrite Hxy, Hab in Exa.
+      apply disjoint_spec in Exa. congruence.
+    - apply disjoint_spec in Eyb. rewrite <- Hxy, <- Hab in Eyb.
+      apply disjoint_spec in Eyb. congruence.
+  Qed.
 
-Module LocSet <: WSets.
+  Lemma Disjoint_sym a b : Disjoint a b -> Disjoint b a.
+  Proof. unfold Disjoint. fsetdec. Qed.
+  
+  Add Parametric Relation : t Disjoint
+    symmetry proved by Disjoint_sym
+    as Disjoint_rel.
+
+  Global Instance dec_vs_In (v : E.t) (a : t) : DecProp (In v a).
+  Proof.
+    destruct (mem v a) eqn:Eq.
+    - left. now apply mem_spec.
+    - right. intros contra. apply mem_spec in contra.
+      congruence.
+  Qed.
+
+  Global Instance dec_vs_disjoint (a b : t) : DecProp (Disjoint a b).
+  Proof.
+    destruct (disjoint a b) eqn:Eq.
+    - left. now apply disjoint_spec.
+    - right. intros contra. apply disjoint_spec in contra.
+      congruence.
+  Qed.
+
+  Global Instance dec_vs_subset (a b : t) : DecProp (Subset a b).
+  Proof.
+    destruct (subset a b) eqn:Eq.
+    - left. now apply subset_spec.
+    - right. intros contra. apply subset_spec in contra.
+      congruence.
+  Qed.
+
+  Global Instance dec_vs_Equal (a b : t) : DecProp (Equal a b).
+  Proof.
+    destruct (equal a b) eqn:Eq.
+    - left. now apply equal_spec.
+    - right. intros contra. apply equal_spec in contra.
+      congruence.
+  Qed.
+
+  Definition of_list (l : list E.t) := fold_left (Basics.flip add) l empty.
+
+  Lemma In_of_list_helper {a s l} :
+    (List.In a l \/ In a s) ->
+    In a (fold_left (Basics.flip add) l s).
+  Proof.
+    unfold Basics.flip.
+    revert a s.
+    induction l; intros *.
+    - intros [[]|H]. assumption.
+    - intros [[H|H]|H]; simpl.
+      + subst. apply IHl. right. fsetdec.
+      + apply IHl. left. assumption.
+      + apply IHl. fsetdec.
+  Qed.
+
+  Lemma In_of_list_helper2 {a s l} :
+    In a (fold_left (Basics.flip add) l s) ->
+    (List.In a l \/ In a s).
+  Proof.
+    unfold Basics.flip.
+    revert a s.
+    induction l; intros * H; [solve [auto]|].
+    simpl in H.
+    apply IHl in H. clear IHl. destruct H.
+    - left. right. exact H.
+    - destruct (E.eq_dec a0 a) as [e|e].
+      + left. left. symmetry. exact e.
+      + right. fsetdec.
+  Qed.
+
+  Lemma In_of_list {a l} :
+    In a (of_list l) <-> List.In a l.
+  Proof.
+    unfold of_list.
+    split; intros.
+    - apply In_of_list_helper2 in H.
+      destruct H.
+      + assumption.
+      + fsetdec.
+    - apply In_of_list_helper.
+      left. assumption.
+  Qed.
+
+  Lemma of_list_cons {x l} :
+    Equal (of_list (x :: l)) (add x (of_list l)).
+  Proof.
+    unfold Equal.
+    split; intros H.
+    - rewrite In_of_list in H.
+      destruct H.
+      + subst. fsetdec.
+      + rewrite <- In_of_list in H.
+        fsetdec.
+    - rewrite In_of_list.
+      destruct (E.eq_dec a x) as [e|e].
+      + left. symmetry. exact e.
+      + right.
+        rewrite <- In_of_list.
+        fsetdec.
+  Qed.
+
+  Lemma subset_of_list {l1 l2} :
+    list_subset l1 l2 ->
+    Subset (of_list l1) (of_list l2).
+  Proof.
+    revert l2. induction l1; intros l2 Hsub.
+    - inv Hsub. fsetdec.
+    - inv Hsub. fold (list_subset l1 l2) in *.
+      rewrite of_list_cons.
+      insterU IHl1.
+      apply In_of_list in H1.
+      fsetdec.
+  Qed.
+
+  Global Instance of_list_subset :
+    Proper
+      (@list_subset E.t ==> Subset)
+      of_list.
+  Proof. intros l1 l2 Hsub. now apply subset_of_list. Qed.
+
+  Lemma subset_singleton_iff x s : Subset (singleton x) s <-> In x s.
+  Proof. split; fsetdec. Qed.
+
+  Ltac setdec :=
+    unfold Disjoint in *;
+    (* setdec can't handle Subset under binders, so we simplify some special cases.
+       (Mostly used for the (~ Subset _ _) case)
+    *)
+    repeat match goal with
+           | H : context[Subset (singleton _) _] |- _ => setoid_rewrite subset_singleton_iff in H
+           | |- context[Subset (singleton _) _] => setoid_rewrite subset_singleton_iff
+     end;
+    fsetdec.
+End MySet.
+
+Module VarSet.
+  Include MSetAVL.Make(Var).
+  Include MySet.
+End VarSet.
+Module VarSetFacts := MSetFacts.Facts(VarSet).
+
+Module Var_LegacyOT := Backport_OT(Var).
+Module VarMap := FMapAVL.Make(Var_LegacyOT).
+Module VarMapFacts := FMapFacts.Facts(VarMap).
+
+Module LocationSet <: WSets.
   (* TODO: This allows bitmasks with out-of-bounds bits set. We need the following well-formedness property:
-     forall var mask, VarMap.MapsTo var mask masks -> (mask <= N.ones (Verilog.varType v))%N.
+     forall var mask, VarMap.MapsTo var mask masks -> (mask <= N.ones (Var.varType v))%N.
   *)
   Definition t := VarMap.t N.
-  Module E := Location.as_DT.
-  Definition elt := E.t.
-  
+  Module E := Location.
+  Definition elt := Location.t.
+
   Definition empty : t := VarMap.empty N.
   
   Definition mem (loc : elt) (s : t) : bool :=
@@ -81,13 +377,13 @@ Module LocSet <: WSets.
   
   Definition add (loc : elt) (s : t) : t :=
     let mask := match VarMap.find loc.(Location.var) s with
-                | Some m => N.lor m (N.shiftl 1 loc.(Location.idx))
+                | Some m => N.lor m (N.shiftl 1 loc.(E.idx))
                 | None => N.shiftl 1 loc.(Location.idx)
                 end in
     VarMap.add loc.(Location.var) mask s.
 
-  Definition add_variable (v : Verilog.variable) (s : t) : t :=
-    VarMap.add v (N.ones (Verilog.varType v)) s.
+  Definition add_variable (v : Var.t) (s : t) : t :=
+    VarMap.add v (N.ones (Var.varType v)) s.
   
   Definition union (s1 s2 : t) : t :=
     VarMap.map2 (fun o1 o2 =>
@@ -365,7 +661,7 @@ Module LocSet <: WSets.
   Lemma add_spec : forall (s : t) (x y : elt), In y (add x s) <-> E.eq y x \/ In y s.
   Proof.
     intros s [vx ix] [vy iy]. unfold In, mem, add, E.eq. simpl.
-    destruct (Verilog.Variable_as_DT.eq_dec vy vx).
+    destruct (Var.eq_dec vy vx).
     - subst vy. rewrite VarMapFacts.add_eq_o; [|reflexivity].
       destruct (VarMap.find vx s) as [m|] eqn:E.
       + rewrite N.lor_spec. split; intros H.
@@ -379,14 +675,14 @@ Module LocSet <: WSets.
   Qed.
 
   Lemma add_variable_spec : forall (s : t) v (loc : elt),
-    (loc.(Location.idx) < Verilog.varType v)%N -> (* TODO : this should be added to the definition of t *)
+    (loc.(Location.idx) < Var.varType v)%N -> (* TODO : this should be added to the definition of t *)
     In loc (add_variable v s) <-> loc.(Location.var) = v \/ In loc s.
   Proof.
     intros s var [var' idx']. unfold In, mem, add, E.eq, add_variable. simpl.
-    destruct (Verilog.Variable_as_DT.eq_dec var' var).
+    destruct (Var.eq_dec var' var).
     - subst var'.
       erewrite VarMap.find_1 by now apply VarMap.add_1.
-      destruct (N.ltb idx' (Verilog.varType var)) eqn:E.
+      destruct (N.ltb idx' (Var.varType var)) eqn:E.
       + apply N.ltb_lt in E.
         rewrite N.ones_spec_low by assumption.
 	intuition.
@@ -401,7 +697,7 @@ Module LocSet <: WSets.
   Proof.
     intros s [vx ix] [vy iy]. unfold In, mem, remove, E.eq. simpl.
     destruct (VarMap.find vx s) as [m|] eqn:E; [|destruct (VarMap.find vy s) as [m2|] eqn:E2; split; intros H; [split; [exact H|intros Heq; inversion Heq; subst; rewrite E in E2; discriminate E2] | destruct H as [H _]; exact H | discriminate H | destruct H as [H _]; discriminate H]].
-    destruct (Verilog.Variable_as_DT.eq_dec vy vx).
+    destruct (Var.eq_dec vy vx).
     - subst vy. destruct (N.eqb (N.clearbit m ix) 0) eqn:Eq0.
       + rewrite VarMapFacts.remove_eq_o; [|reflexivity].
         split; intros H; [discriminate H|].
@@ -422,7 +718,7 @@ Module LocSet <: WSets.
   Lemma singleton_spec : forall x y : elt, In y (singleton x) <-> E.eq y x.
   Proof.
     intros [vx ix] [vy iy]. unfold In, mem, singleton, E.eq. simpl.
-    destruct (Verilog.Variable_as_DT.eq_dec vy vx).
+    destruct (Var.eq_dec vy vx).
     - subst vy. rewrite VarMapFacts.add_eq_o; [|reflexivity].
       split; intros H.
       + apply shiftl_1_testbit_true in H. subst iy. reflexivity.
@@ -794,4 +1090,6 @@ Module LocSet <: WSets.
     }
     rewrite H_fold. simpl. unfold Equal. intros x. reflexivity.
   Qed.
-End LocSet.
+
+  Include MySet.
+End LocationSet.

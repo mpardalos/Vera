@@ -1,4 +1,5 @@
 From vera Require Import Verilog.
+From vera Require Import Variables.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require Import Bitvector.
@@ -17,7 +18,7 @@ From Equations Require Import Equations.
 
 Import MonadLetNotation.
 Import ListNotations.
-Import VariableSet.Notations.
+Import Verilog.Notations.
 Local Open Scope monad_scope.
 Local Open Scope string.
 Local Open Scope list.
@@ -285,17 +286,17 @@ Proof.
 Qed.
 
 Lemma simpl_resize_reads {from} to (e : expression from) wf :
-  VariableSet.Equal (expr_reads (simpl_resize to e wf)) (expr_reads e).
+  VarSet.Equal (expr_reads (simpl_resize to e wf)) (expr_reads e).
 Proof.
   unfold simpl_resize.
   destruct (dec (from < to)%N).
   all: destruct_rew; simpl.
-  - VariableSet.setdec.
+  - VarSet.setdec.
   - reflexivity.
 Qed.
 
 Lemma equalized_shiftop_reads_reads_permutation w1 w2 wf op (lhs : expression w1) (rhs : expression w2) :
-  VariableSet.Equal (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
+  VarSet.Equal (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
 Proof.
   unfold equalized_shiftop.
   rewrite !simpl_resize_reads. simpl. rewrite !simpl_resize_reads.
@@ -303,7 +304,7 @@ Proof.
 Qed.
 
 Lemma simpl_expr_reads_permutation w (e : expression w) :
-  VariableSet.Equal (expr_reads (simpl_expr e)) (expr_reads e).
+  VarSet.Equal (expr_reads (simpl_expr e)) (expr_reads e).
 Proof.
   funelim (simpl_expr e); clear Heqcall.
   all: simpl.
@@ -311,10 +312,10 @@ Proof.
   all: try rewrite !simpl_resize_reads.
   all: try destruct_rew.
   all: repeat match goal with
-       | [ H : VariableSet.Equal (expr_reads (simpl_expr _)) (expr_reads _) |- _ ] =>
+       | [ H : VarSet.Equal (expr_reads (simpl_expr _)) (expr_reads _) |- _ ] =>
          rewrite H
        end.
-  all: (reflexivity || VariableSet.setdec).
+  all: (reflexivity || VarSet.setdec).
 Qed.
 
 Lemma simpl_vmodule_same_inputs v :
@@ -348,9 +349,9 @@ Proof.
     reflexivity.
   }
 
-  destruct (sort_module_items (VariableSet.of_list (module_inputs v)) (modBody v));
+  destruct (sort_module_items (VarSet.of_list (module_inputs v)) (modBody v));
     simpl; [|reflexivity].
-  generalize (init // VariableSet.of_list (module_inputs v)). clear init v.
+  generalize (init // VarSet.of_list (module_inputs v)). clear init v.
   induction l; intros r; [reflexivity|].
   destruct a; expect 1. destruct s; expect 1.
   simpl. simp exec_module_body exec_module_item exec_statement. simpl.

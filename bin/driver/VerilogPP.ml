@@ -136,8 +136,8 @@ module Typed = struct
 
   let variable fmt var =
     fprintf fmt "%s%a"
-      (Util.lst_to_string var.Verilog.varName)
-      vtype var.Verilog.varType
+      (Util.lst_to_string var.Var.varName)
+      vtype var.Var.varType
 
   let rec expression fmt e =
     Format.fprintf fmt "@[";

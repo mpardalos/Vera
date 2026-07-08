@@ -1,4 +1,5 @@
 From vera Require Import Verilog.
+From vera Require Import Variables.
 From vera Require VerilogSemantics.
 Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
@@ -19,7 +20,7 @@ Local Open Scope string.
 Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
   trace ("Sort " ++ Verilog.modName v) (
     let* sorted_body :=
-      match sort_module_items (Verilog.VariableSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v) with
+      match sort_module_items (VarSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v) with
       | None => inl "Module not sortable"
       | Some sorted => inr sorted
       end in

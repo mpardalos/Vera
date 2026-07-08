@@ -6,6 +6,7 @@ From vera Require Import VerilogSMT.
 From vera Require SMTQueries.
 From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
+From vera Require Import Variables.
 Import CombinationalOnly.
 From vera Require Import Bitvector.
 Import RawXBV(bit(..)).
@@ -34,7 +35,7 @@ Import MonadLetNotation.
 Import FunctorNotation.
 Import SigTNotations.
 Import EqNotations. 
-Import Verilog.VariableSet.Notations.
+Import Verilog.Notations.
 
 Local Open Scope list.
 Local Open Scope verilog_scope.
@@ -183,7 +184,7 @@ Proof.
   - (* literal *)
     reflexivity.
   - (* variable *)
-    apply Hmatch. Verilog.VariableSet.setdec.
+    apply Hmatch. VarSet.setdec.
 Qed.
 
 (* DELETEME: Duplicate *)
