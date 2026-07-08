@@ -203,14 +203,14 @@ Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : tran
       "Duplicate variables"%string in
     trace "Check for undriven" (
       assert_dec
-        (VarSet.Equal
-          (VarSet.of_list (Verilog.modVariables vmodule))
+        (LocationSet.Equal
+          (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables vmodule)))
           (Verilog.module_body_writes (Verilog.modBody vmodule)
-	    ∪ VarSet.of_list (Verilog.module_inputs vmodule))%verilog)
+	    ∪ LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs vmodule)))%verilog)
         "Undriven variables"%string) ;;
-    trace "Check sort" 
+    trace "Check sort"
       (assert_dec
-        (module_items_sorted (VarSet.of_list (Verilog.module_inputs vmodule)) (Verilog.modBody vmodule))
+        (module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs vmodule))) (Verilog.modBody vmodule))
         "Module items unsorted"%string);;
     trace "Convert to SMT" (transfer_module_body name_tag (Verilog.modBody vmodule))
   )

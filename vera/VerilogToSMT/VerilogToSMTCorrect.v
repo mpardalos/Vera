@@ -39,22 +39,9 @@ Local Open Scope monad_scope.
 Local Open Scope list.
 Local Open Scope verilog_scope.
 
-Lemma defined_value_for_set_reg_intro_out C regs var xbv :
-  (~ var ∈ C) ->
-  RegisterState.defined_value_for C (RegisterState.set_reg var xbv regs) ->
-  RegisterState.defined_value_for C regs.
-Proof.
-  unfold RegisterState.defined_value_for.
-  intros HnotC Hdefined var1 HC.
-  insterU Hdefined.
-  destruct Hdefined as [? ?].
-  autorewrite with register_state in *.
-  crush.
-Qed.
-
 Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
   forall t regs ρ,
-    VarSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
+    LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
     transfer_module_item tag mi = inr t ->
     verilog_smt_match_states_partial
       (Verilog.module_item_reads mi ∪ Verilog.module_item_writes mi)
@@ -78,14 +65,21 @@ Proof.
     (verilog_smt_match_states_partial (Verilog.expr_reads _) _ _ _)
     into Hbefore.
   rename_match
-    (verilog_smt_match_states_partial {var} _ _ _)
+    (verilog_smt_match_states_partial (LocationSet.of_variable _) _ _ _)
     into Hafter.
   apply verilog_smt_match_states_partial_set_reg_out in Hbefore;
-    [|VarSet.setdec].
+    [|LocationSet.setdec].
+  assert (RegisterState.set_reg var (eval_expr regs rhs) regs var
+          = execution_of_valuation tag ρ var) as Hafter_var. {
+    apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
+    apply (Hafter (Location.Mk var bit_idx)).
+    apply LocationSet.of_variable_spec. auto.
+  }
+  rewrite RegisterState.set_reg_get_in in Hafter_var.
+  unfold execution_of_valuation in Hafter_var.
   apply XBV.from_bv_injective.
   erewrite <- expr_to_smt_value by eassumption.
-  rewrite <- Hafter by VarSet.setdec.
-  apply RegisterState.set_reg_get_in.
+  symmetry. apply Hafter_var.
 Qed.
 
 Lemma smt_eq_sat_iff s ρ (l r : SMTLib.term s) :
@@ -97,7 +91,7 @@ Proof.
 Qed.
 
 Lemma module_item_to_smt_valid tag  (mi : Verilog.module_item) :
-  VarSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
+  LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
   forall ρ t,
     transfer_module_item tag mi = inr t ->
     SMTQueries.term_satisfied_by ρ t ->
@@ -117,8 +111,11 @@ Proof.
   rewrite smt_eq_sat_iff in Hsat.
   pose proof expr_to_smt_valid as Hvalue_match. insterU Hvalue_match.
   simpl.
-  intros var' Hvar'.
-  replace var' with var in * by VarSet.setdec.
+  intros loc Hloc.
+  apply LocationSet.of_variable_spec in Hloc.
+  destruct loc as [v bit_idx]. cbn in Hloc.
+  destruct Hloc as [Hv _]. subst v.
+  unfold RegisterState.get_location, execution_of_valuation. cbn.
   rewrite RegisterState.set_reg_get_in.
   rewrite Hvalue_match.
   rewrite <- Hsat.
@@ -171,30 +168,30 @@ Proof.
   - inv Hsorted.
     rename_match (module_items_sorted _ body) into Hsorted.
     apply module_item_to_smt_satisfiable with (tag:=tag)(mi:=a) (regs:=r1);
-      [VarSet.setdec|eassumption|].
+      [LocationSet.setdec|eassumption|].
     unpack_verilog_smt_match_states_partial.
     + setoid_rewrite H1.
       setoid_rewrite <- Facts.exec_module_body_preserve in H; cycle 1. {
         apply module_items_sorted_no_overwrite in Hsorted.
-	VarSet.setdec.
+	LocationSet.setdec.
       }
       assumption.
     + setoid_rewrite <- Facts.exec_module_body_preserve in H0; cycle 1. {
         apply module_items_sorted_no_overwrite in Hsorted.
-	VarSet.setdec.
+	LocationSet.setdec.
       }
       assumption.
   - inv Hsorted.
     eapply IHbody; eauto; expect 1.
     eapply verilog_smt_match_states_partial_impl; [|eassumption].
-    VarSet.setdec.
+    LocationSet.setdec.
 Qed.
 
 Lemma transfer_module_body_satisfiable v tag ρ q :
-    VarSet.Equal
-      (VarSet.of_list (Verilog.modVariables v))
-      (Verilog.module_body_writes (Verilog.modBody v) ∪ VarSet.of_list (Verilog.module_inputs v)) ->
-    module_items_sorted (VarSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v) ->
+    LocationSet.Equal
+      (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
+      (Verilog.module_body_writes (Verilog.modBody v) ∪ LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) ->
+    module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) ->
     transfer_module_body tag (Verilog.modBody v) = inr q ->
     v ⇓ (execution_of_valuation tag ρ) ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q.
@@ -212,10 +209,10 @@ Proof.
   - setoid_replace
       (Verilog.module_body_writes (Verilog.modBody v))
       with
-      (VarSet.of_list (Verilog.modVariables v))
-      using relation VarSet.Subset.
+      (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
+      using relation LocationSet.Subset.
     + exact Hvalid.
-    + VarSet.setdec.
+    + LocationSet.setdec.
 Qed.
 
 Global Instance verilog_smt_match_states_partial_proper C :
@@ -236,7 +233,7 @@ Qed.
 
 Lemma verilog_smt_match_states_partial_empty {tag r ρ} :
   verilog_smt_match_states_partial {} tag r ρ.
-Proof. intros var Hvar. exfalso. VarSet.setdec. Qed.
+Proof. intros var Hvar. exfalso. LocationSet.setdec. Qed.
 
 Lemma transfer_module_body_exec_valid inputs body : forall tag ρ q,
     module_items_sorted inputs body ->
@@ -263,9 +260,9 @@ Proof.
   simpl.
   unpack_verilog_smt_match_states_partial.
   - apply module_items_sorted_no_overwrite in Hsorted.
-    rewrite <- Facts.exec_module_body_preserve by VarSet.setdec.
+    rewrite <- Facts.exec_module_body_preserve by LocationSet.setdec.
     eapply module_item_to_smt_valid.
-    + VarSet.setdec.
+    + LocationSet.setdec.
     + eassumption.
     + eassumption.
     + rewrite Hitem_reads. assumption.
@@ -273,19 +270,19 @@ Proof.
     all: try eassumption; expect 1.
     unpack_verilog_smt_match_states_partial.
     + eapply module_item_to_smt_valid.
-      * VarSet.setdec.
+      * LocationSet.setdec.
       * eassumption.
       * eassumption.
       * rewrite Hitem_reads. assumption.
-    + rewrite <- Facts.exec_module_item_preserve by VarSet.setdec.
+    + rewrite <- Facts.exec_module_item_preserve by LocationSet.setdec.
       eassumption.
 Qed.
 
 Lemma transfer_module_body_valid tag v ρ q :
-  module_items_sorted (VarSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v) ->
-  VarSet.Equal
-    (VarSet.of_list (Verilog.modVariables v))
-    (Verilog.module_body_writes (Verilog.modBody v) ∪ VarSet.of_list (Verilog.module_inputs v)) ->
+  module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) ->
+  LocationSet.Equal
+    (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
+    (Verilog.module_body_writes (Verilog.modBody v) ∪ LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) ->
   transfer_module_body tag (Verilog.modBody v) = inr q ->
   List.Forall (SMTQueries.term_satisfied_by ρ) q ->
   v ⇓ execution_of_valuation tag ρ.

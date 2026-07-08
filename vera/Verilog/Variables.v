@@ -384,6 +384,11 @@ Module LocationSet <: WSets.
 
   Definition add_variable (v : Var.t) (s : t) : t :=
     VarMap.add v (N.ones (Var.varType v)) s.
+
+  Definition of_variable (v : Var.t) : t := add_variable v empty.
+
+  Definition of_varset (v : VarSet.t) : t :=
+    VarSet.fold add_variable v empty.
   
   Definition union (s1 s2 : t) : t :=
     VarMap.map2 (fun o1 o2 =>
@@ -503,7 +508,7 @@ Module LocationSet <: WSets.
     unfold E.eq in Hxy. subst y. reflexivity.
   Qed.
 
-  Lemma eq_equiv : Equivalence Equal.
+  Global Instance eq_equiv : Equivalence Equal.
   Proof.
     split.
     - unfold Reflexive, Equal. tauto.
@@ -691,6 +696,119 @@ Module LocationSet <: WSets.
 	intuition lia.
     - rewrite VarMapFacts.add_neq_o by auto.
       intuition.
+  Qed.
+
+  Lemma add_variable_spec_full : forall (s : t) v (loc : elt),
+    In loc (add_variable v s) <->
+      (Location.var loc = v /\ (Location.idx loc < Var.varType v)%N)
+      \/ (Location.var loc <> v /\ In loc s).
+  Proof.
+    intros s v [var' idx']. unfold In, mem, add_variable. simpl.
+    destruct (Var.eq_dec var' v).
+    - subst var'. rewrite VarMapFacts.add_eq_o by reflexivity.
+      split.
+      + intros H. left. split; [reflexivity|].
+        destruct (N.lt_ge_cases idx' (Var.varType v)); [assumption|].
+        rewrite N.ones_spec_high in H by assumption. discriminate.
+      + intros [[_ Hlt] | [Hneq _]]; [|congruence].
+        apply N.ones_spec_low. assumption.
+    - rewrite VarMapFacts.add_neq_o by congruence.
+      split.
+      + intros H. right. split; congruence.
+      + intros [[Heq _] | [_ H]]; congruence.
+  Qed.
+
+  Lemma of_variable_spec : forall v (loc : elt),
+    In loc (of_variable v) <->
+      Location.var loc = v /\ (Location.idx loc < Var.varType v)%N.
+  Proof.
+    intros. unfold of_variable. rewrite add_variable_spec_full.
+    unfold In, mem, empty.
+    rewrite VarMapFacts.empty_o.
+    intuition discriminate.
+  Qed.
+
+  Lemma of_varset_fold_helper : forall (l : list Var.t) (acc : t) (loc : elt),
+    In loc (fold_left (fun a v => add_variable v a) l acc) <->
+      (List.In (Location.var loc) l
+       /\ (Location.idx loc < Var.varType (Location.var loc))%N)
+      \/ (~ List.In (Location.var loc) l /\ In loc acc).
+  Proof.
+    induction l as [|v l IH]; intros acc loc; simpl.
+    - tauto.
+    - rewrite IH. rewrite add_variable_spec_full.
+      destruct (Var.eq_dec (Location.var loc) v);
+        destruct (List.in_dec Var.eq_dec (Location.var loc) l);
+        intuition congruence.
+  Qed.
+
+  Lemma of_varset_spec : forall (s : VarSet.t) (loc : elt),
+    In loc (of_varset s) <->
+      VarSet.In (Location.var loc) s
+      /\ (Location.idx loc < Var.varType (Location.var loc))%N.
+  Proof.
+    intros. unfold of_varset. rewrite VarSet.fold_spec.
+    rewrite of_varset_fold_helper.
+    unfold In, mem, empty.
+    rewrite VarMapFacts.empty_o.
+    assert (List.In (Location.var loc) (VarSet.elements s)
+            <-> VarSet.In (Location.var loc) s) as Helts.
+    { rewrite VarSetFacts.elements_iff.
+      rewrite SetoidList.InA_alt.
+      split.
+      - intro. exists (Location.var loc). auto.
+      - intros (y & Heq & Hin). now subst y. }
+    rewrite Helts.
+    intuition discriminate.
+  Qed.
+
+  (* A set is in-bounds when every location's bit index is within its
+     variable's width.  Sets built from variables ([of_variable],
+     [of_varset]) are in-bounds by construction; the raw representation
+     does not enforce this (see the TODO at the top of this module). *)
+  Definition InBounds (s : t) : Prop :=
+    forall loc, In loc s -> (Location.idx loc < Var.varType (Location.var loc))%N.
+
+  Lemma of_varset_in_bounds vs : InBounds (of_varset vs).
+  Proof. intros loc Hin. apply of_varset_spec in Hin. intuition. Qed.
+
+  Lemma of_variable_in_bounds v : InBounds (of_variable v).
+  Proof.
+    intros loc Hin. apply of_variable_spec in Hin.
+    destruct Hin as [Hvar Hidx]. now rewrite Hvar.
+  Qed.
+
+  Lemma union_in_bounds s1 s2 :
+    InBounds s1 -> InBounds s2 -> InBounds (union s1 s2).
+  Proof. intros H1 H2 loc Hin. apply union_spec in Hin. intuition. Qed.
+
+  Lemma subset_in_bounds s1 s2 :
+    Subset s1 s2 -> InBounds s2 -> InBounds s1.
+  Proof. intros Hsub H loc Hin. auto. Qed.
+
+  Global Instance Proper_of_varset_subset :
+    Proper (VarSet.Subset ==> Subset) of_varset.
+  Proof.
+    intros s1 s2 Hsub loc Hin.
+    rewrite of_varset_spec in *.
+    intuition.
+  Qed.
+
+  Global Instance Proper_of_varset_subset_flip :
+    Proper (Basics.flip VarSet.Subset ==> Basics.flip Subset) of_varset.
+  Proof.
+    intros s1 s2 Hsub loc Hin.
+    rewrite of_varset_spec in *.
+    firstorder.
+  Qed.
+
+  Global Instance Proper_of_varset_equal :
+    Proper (VarSet.Equal ==> Equal) of_varset.
+  Proof.
+    intros s1 s2 Heq loc.
+    rewrite ! of_varset_spec.
+    specialize (Heq (Location.var loc)).
+    intuition.
   Qed.
 
   Lemma remove_spec : forall (s : t) (x y : elt), In y (remove x s) <-> In y s /\ ~ E.eq y x.
@@ -1093,3 +1211,4 @@ Module LocationSet <: WSets.
 
   Include MySet.
 End LocationSet.
+Module LocationSetFacts := MSetFacts.Facts(LocationSet).

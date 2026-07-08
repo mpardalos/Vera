@@ -56,9 +56,9 @@ Definition smt_same_value var (ρ : SMTLib.valuation) :=
   ρ (verilog_to_smt_var VerilogRight var).
 
 Definition smt_all_same_values (vars : VarSet.t) (ρ : SMTLib.valuation) :=
-  forall var, var ∈ vars -> smt_same_value var ρ.
+  forall var, VarSet.In var vars -> smt_same_value var ρ.
 
-Lemma smt_all_same_values_empty_iff {ρ} : smt_all_same_values {} ρ <-> True.
+Lemma smt_all_same_values_empty_iff {ρ} : smt_all_same_values VarSet.empty ρ <-> True.
 Proof. split; [trivial|]. intros var Hvar_in. VarSet.setdec. Qed.
 
 Lemma smt_all_same_values_add var vars :
@@ -78,17 +78,12 @@ Proof.
     + apply Htl. VarSet.setdec.
 Qed.
 
-Lemma smt_all_same_values_union vars1 vars2 ρ :
-  smt_all_same_values (vars1 ∪ vars2) ρ <->
-    smt_all_same_values vars1 ρ /\ smt_all_same_values vars2 ρ.
-Proof. Admitted.
-
 Definition smt_distinct_value (var : Var.t) (ρ : SMTLib.valuation) :=
   ρ (verilog_to_smt_var VerilogLeft var) <>
   ρ (verilog_to_smt_var VerilogRight var).
 
-Definition smt_some_distinct_values vars (ρ : SMTLib.valuation) :=
-  exists var, var ∈ vars /\ smt_distinct_value var ρ.
+Definition smt_some_distinct_values (vars : VarSet.t) (ρ : SMTLib.valuation) :=
+  exists var, VarSet.In var vars /\ smt_distinct_value var ρ.
 
 Definition counterexample_valuation v1 v2 ρ :=
   smt_all_same_values (VarSet.of_list (Verilog.module_inputs v1)) ρ
@@ -99,7 +94,7 @@ Definition counterexample_valuation v1 v2 ρ :=
 
 Definition execution_some_distinct_value (C : VarSet.t) (e1 e2 : execution) : Prop :=
   exists var bv1 bv2,
-    var ∈ C
+    VarSet.In var C
     /\ e1 var = XBV.from_bv bv1
     /\ e2 var = XBV.from_bv bv2
     /\ bv1 <> bv2.
@@ -107,8 +102,8 @@ Definition execution_some_distinct_value (C : VarSet.t) (e1 e2 : execution) : Pr
 Definition counterexample_execution v1 e1 v2 e2 :=
   v1 ⇓ e1
   /\ v2 ⇓ e2
-  /\ e1 =!!(VarSet.of_list (Verilog.module_inputs v1))!!= e2
-  /\ ~ (e1 =(VarSet.of_list (Verilog.module_outputs v1))= e2).
+  /\ e1 =!!(LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v1)))!!= e2
+  /\ ~ (e1 =(LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v1)))= e2).
 
 Lemma smt_some_distinct_values_add var vars :
   pointwise_relation SMTLib.valuation iff
@@ -286,52 +281,59 @@ Qed.
 
 Lemma smt_same_values_eq var vars ρ :
   smt_all_same_values vars ρ ->
-  var ∈ vars ->
+  VarSet.In var vars ->
   ρ (verilog_to_smt_var VerilogLeft var) = ρ (verilog_to_smt_var VerilogRight var).
 Proof. unfold smt_all_same_values, smt_same_value. auto. Qed.
 
 Lemma smt_distinct_values_not_defined_match vars ρ :
   smt_some_distinct_values vars ρ ->
-  ~ (execution_of_valuation VerilogLeft ρ =(vars)= execution_of_valuation VerilogRight ρ).
+  ~ (execution_of_valuation VerilogLeft ρ
+       =( LocationSet.of_varset vars )=
+     execution_of_valuation VerilogRight ρ).
 Proof.
   unfold smt_some_distinct_values.
   intros [var [Hin Hsmt_distinct]] contra.
   unfold smt_distinct_value in Hsmt_distinct.
-  unfold "_ =( _ )= _" in contra.
-  specialize (contra var Hin).
-  unfold execution_of_valuation in contra.
-  decompose_all_records. 
-  apply XBV.from_bv_injective in contra.
-  contradiction.
+  apply Hsmt_distinct.
+  apply XBV.from_bv_injective.
+  apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
+  apply (contra (Location.Mk var bit_idx)).
+  apply LocationSet.of_varset_spec. auto.
 Qed.
 
 Lemma smt_all_same_values_execution_match vars ρ :
   smt_all_same_values vars ρ ->
   (execution_of_valuation VerilogLeft ρ) =!!(
-    vars
+    LocationSet.of_varset vars
   )!!= (execution_of_valuation VerilogRight ρ).
 Proof.
   unfold smt_all_same_values, smt_same_value.
   intros Hmatch.
   apply RegisterState.defined_match_on_iff.
-  intros var Hvar. specialize (Hmatch var Hvar).
-  unfold execution_of_valuation.
+  intros loc Hloc.
+  apply LocationSet.of_varset_spec in Hloc.
+  destruct Hloc as [Hvar_in Hidx].
+  specialize (Hmatch _ Hvar_in).
+  unfold execution_of_valuation, RegisterState.get_location.
   rewrite Hmatch.
-  eauto.
+  rewrite XBV.bit_of_as_bv by assumption.
+  destruct (BV.bitOf _ _); cbn; eauto.
 Qed.
 
 Lemma execution_defined_match_smt_all_same_values vars ρ :
-  (execution_of_valuation VerilogLeft ρ) =!!(vars)!!= (execution_of_valuation VerilogRight ρ) ->
+  (execution_of_valuation VerilogLeft ρ)
+    =!!( LocationSet.of_varset vars )!!=
+  (execution_of_valuation VerilogRight ρ) ->
   smt_all_same_values vars ρ.
 Proof.
   rewrite RegisterState.defined_match_on_iff.
   unfold smt_all_same_values, smt_same_value.
   intros H var Hvar_in.
-  insterU H. destruct H as [bv [Hlookup_left Hlookup_right]].
-
-  eapply execution_of_valuation_inv in Hlookup_left.
-  eapply execution_of_valuation_inv in Hlookup_right.
-  congruence.
+  apply XBV.from_bv_injective.
+  apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
+  edestruct (H (Location.Mk var bit_idx)) as [b [Hb1 Hb2]].
+  { apply LocationSet.of_varset_spec. auto. }
+  eapply RawXBV.bit_to_bool_injective; eauto.
 Qed.
 
 Lemma imply_or_iff P Q :
@@ -350,34 +352,39 @@ Proof.
   - apply or_not_and.
 Qed.
 
-Lemma not_defined_match_some_distinct C e1 e2 :
-  RegisterState.defined_value_for C e1 ->
-  RegisterState.defined_value_for C e2 ->
-  ~ (e1 =!!( C )!!= e2) ->
+Lemma not_defined_match_some_distinct (C : VarSet.t) e1 e2 :
+  RegisterState.defined_value_for (LocationSet.of_varset C) e1 ->
+  RegisterState.defined_value_for (LocationSet.of_varset C) e2 ->
+  ~ (e1 =!!( LocationSet.of_varset C )!!= e2) ->
   execution_some_distinct_value C e1 e2.
 Proof.
-  rewrite RegisterState.defined_match_on_iff.
-  unfold
-    execution_some_distinct_value,
-    RegisterState.defined_value_for
-    in *.
-  intros Hvalues_left Hvalues_right H.
-  apply not_all_ex_not in H.
-  destruct H as [var Hvar].
-  exists var.
-  setoid_rewrite <- imply_or_iff at 2 in Hvar.
-  apply not_or_and in Hvar.
-  destruct Hvar as [HC Hvar].
-  apply NNPP in HC.
-  insterU Hvalues_left. insterU Hvalues_right.
-  destruct Hvalues_left as [bv_left Hbv_left].
-  destruct Hvalues_right as [bv_right Hbv_right].
-  rewrite Hbv_left in *. clear Hbv_left.
-  rewrite Hbv_right in *. clear Hbv_right.
-  exists bv_left, bv_right.
-  repeat split; eauto; [].
-  intro contra. subst bv_right.
-  apply Hvar. clear Hvar. crush.
+  intros Hdef1 Hdef2 Hnmatch.
+  assert (~ (e1 =( LocationSet.of_varset C )= e2)) as Hnmatch'
+      by (intro; apply Hnmatch; split; assumption).
+  unfold RegisterState.match_on in Hnmatch'.
+  apply not_all_ex_not in Hnmatch'.
+  destruct Hnmatch' as [loc Hloc].
+  apply imply_to_and in Hloc.
+  destruct Hloc as [Hin Hneq].
+  pose proof Hin as Hin'.
+  apply LocationSet.of_varset_spec in Hin'.
+  destruct Hin' as [Hvar_in Hidx].
+  edestruct (XBV.bitOf_no_exes_to_bv _ (e1 (Location.var loc))) as [bv1 Hbv1]. {
+    intros i Hi. apply (Hdef1 (Location.Mk (Location.var loc) i)).
+    apply LocationSet.of_varset_spec. auto.
+  }
+  edestruct (XBV.bitOf_no_exes_to_bv _ (e2 (Location.var loc))) as [bv2 Hbv2]. {
+    intros i Hi. apply (Hdef2 (Location.Mk (Location.var loc) i)).
+    apply LocationSet.of_varset_spec. auto.
+  }
+  apply XBV.bv_xbv_inverse in Hbv1.
+  apply XBV.bv_xbv_inverse in Hbv2.
+  exists (Location.var loc), bv1, bv2.
+  repeat split; auto; [].
+  intro contra. subst bv2.
+  apply Hneq.
+  unfold RegisterState.get_location.
+  congruence.
 Qed.
 
 Lemma not_defined_match_on_smt_some_distinct_values vars ρ :
@@ -416,13 +423,13 @@ Proof. intros a b <-. reflexivity. Qed.
 
 Global Instance Proper_valid_execution v :
   Proper
-    (RegisterState.match_on (VarSet.of_list (Verilog.modVariables v)) ==> iff)
+    (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v))) ==> iff)
     (valid_execution v).
 Proof.
   repeat intro.
   unfold valid_execution.
   RegisterState.unpack_match_on.
-  assert (Hmatch_inputs : x =( VarSet.of_list (Verilog.module_inputs v) )= y)
+  assert (Hmatch_inputs : x =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)) )= y)
     by now setoid_rewrite Verilog.module_input_in_vars.
   split.
   all: intros H1.
@@ -444,16 +451,16 @@ Proof. apply Forall_nil. Qed.
 
 Lemma execution_congruent v e1 e2 :
   v ⇓ e1 -> v ⇓ e2 ->
-  e1 =( VarSet.of_list (Verilog.module_inputs v) )= e2 ->
-  e1 =( VarSet.of_list (Verilog.module_outputs v) )= e2.
+  e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)) )= e2 ->
+  e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v)) )= e2.
 Proof.
   unfold "⇓".
   intros Hadmit1 Hadmit2 Hinput_match.
   RegisterState.unpack_match_on.
-  assert (Houtputs1 : run_vmodule v e1 =( VarSet.of_list (Verilog.module_outputs v) )= e1)
+  assert (Houtputs1 : run_vmodule v e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v)) )= e1)
     by now setoid_rewrite Verilog.module_outputs_in_vars.
   rewrite <- Houtputs1.
-  assert (Houtputs2 : run_vmodule v e2 =( VarSet.of_list (Verilog.module_outputs v) )= e2)
+  assert (Houtputs2 : run_vmodule v e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v)) )= e2)
     by now setoid_rewrite Verilog.module_outputs_in_vars.
   rewrite <- Houtputs2.
   rewrite Hinput_match.
@@ -476,7 +483,7 @@ Proof.
     (* split; intros He.
      * (\* This is duplicated, ideally we want a "without loss of generality" tactic *\)
      * + RegisterState.unpack_defined_value_for. *)
-    assert (Hmatch_inputs : run_vmodule v1 e =!!( VarSet.of_list (Verilog.module_inputs v1) )!!= run_vmodule v2 e). {
+    assert (Hmatch_inputs : run_vmodule v1 e =!!( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v1)) )!!= run_vmodule v2 e). {
       split.
       - rewrite preserve_inputs by assumption.
         rewrite Hinput_match.
@@ -502,9 +509,9 @@ Proof.
   - intros [] e1 e2 [Hadmit1 [Hadmit2 [[Hmatch_inputs Hinputs_defined] Hno_match_outputs]]].
     unfold "⇓" in Hadmit1, Hadmit2.
     contradict Hno_match_outputs.
-    assert (Hmatch_outputs1 : run_vmodule v1 e1 =( VarSet.of_list (Verilog.module_outputs v1) )= e1)
+    assert (Hmatch_outputs1 : run_vmodule v1 e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v1)) )= e1)
       by now setoid_rewrite Verilog.module_outputs_in_vars.
-    assert (Hmatch_outputs2 : run_vmodule v2 e2 =( VarSet.of_list (Verilog.module_outputs v2) )= e2)
+    assert (Hmatch_outputs2 : run_vmodule v2 e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v2)) )= e2)
       by now setoid_rewrite Verilog.module_outputs_in_vars.
     rewrite <- Hmatch_outputs1.
     rewrite <- Houtput_match in Hmatch_outputs2. rewrite <- Hmatch_outputs2.
@@ -536,10 +543,10 @@ Record verilog_to_smt_checked (v : Verilog.vmodule) := MkVerilogToSMTChecked {
     (* no_duplicate_writes : NoDup (Verilog.module_body_writes (Verilog.modBody v)); *)
     (* no_duplicate_outputs : NoDup (Verilog.module_outputs v); *)
     all_vars_driven :
-      VarSet.Equal
-        (VarSet.of_list (Verilog.modVariables v))
-	(Verilog.module_body_writes (Verilog.modBody v) ∪ VarSet.of_list (Verilog.Verilog.module_inputs v));
-    sorted : module_items_sorted (VarSet.of_list (Verilog.module_inputs v)) (Verilog.modBody v);
+      LocationSet.Equal
+        (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
+	(Verilog.module_body_writes (Verilog.modBody v) ∪ LocationSet.of_varset (VarSet.of_list (Verilog.Verilog.module_inputs v)));
+    sorted : module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v);
 }.
 
 Lemma verilog_to_smt_checks tag v smt :
@@ -591,8 +598,8 @@ Proof.
     + apply execution_defined_match_smt_all_same_values. assumption.
     + apply not_defined_match_on_smt_some_distinct_values; expect 1.
       apply not_defined_match_some_distinct.
-      * apply execution_of_valuation_defined_value.
-      * apply execution_of_valuation_defined_value.
+      * apply execution_of_valuation_defined_value, LocationSet.of_varset_in_bounds.
+      * apply execution_of_valuation_defined_value, LocationSet.of_varset_in_bounds.
       * unfold "_ =!!( _ )!!= _". intuition eauto.
     + assumption.
     + assumption.
@@ -625,8 +632,8 @@ Proof.
   all: eassumption.
 Qed.
 
-Lemma limit_to_regs_rewrite vars e1 e2 :
-  (forall var, var ∈ vars -> e1 var = e2 var) ->
+Lemma limit_to_regs_rewrite (vars : VarSet.t) e1 e2 :
+  (forall var, VarSet.In var vars -> e1 var = e2 var) ->
   RegisterState.limit_to_regs vars e1 = RegisterState.limit_to_regs vars e2.
 Proof.
   unfold RegisterState.limit_to_regs.
@@ -636,7 +643,7 @@ Proof.
 Qed.
 
 Lemma counterexample_execution_rewrite_left v e1 e1' v2 e2 :
-  e1 =( VarSet.of_list (Verilog.modVariables v) )= e1' ->
+  e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)) )= e1' ->
   counterexample_execution v e1 v2 e2 <-> counterexample_execution v e1' v2 e2.
 Proof.
   unfold counterexample_execution.
@@ -645,9 +652,9 @@ Proof.
   all: intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]].
   all: unpack_goal.
   all: try eassumption.
-  all: assert (Hinputs : e1 =( VarSet.of_list (Verilog.module_inputs v) )= e1')
+  all: assert (Hinputs : e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)) )= e1')
          by now setoid_rewrite Verilog.module_input_in_vars.
-  all: assert (Houtputs : e1 =( VarSet.of_list (Verilog.module_outputs v) )= e1')
+  all: assert (Houtputs : e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v)) )= e1')
          by now setoid_rewrite Verilog.module_outputs_in_vars.
   - rewrite H in Hvalid1. assumption.
   - rewrite <- Hinputs. apply Hdefined_in.
@@ -660,7 +667,7 @@ Qed.
 Lemma counterexample_execution_rewrite_right v1 e1 v2 e2 e2' :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
-  e2 =( VarSet.of_list (Verilog.modVariables v2) )= e2' ->
+  e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v2)) )= e2' ->
   counterexample_execution v1 e1 v2 e2 <-> counterexample_execution v1 e1 v2 e2'.
 Proof.
   unfold counterexample_execution.
@@ -669,9 +676,9 @@ Proof.
   all: intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]].
   all: unpack_goal.
   all: try eassumption.
-  all: assert (Hinputs : e2 =( VarSet.of_list (Verilog.module_inputs v2) )= e2')
+  all: assert (Hinputs : e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v2)) )= e2')
          by now setoid_rewrite Verilog.module_input_in_vars.
-  all: assert (Houtputs : e2 =( VarSet.of_list (Verilog.module_outputs v2) )= e2')
+  all: assert (Houtputs : e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v2)) )= e2')
          by now setoid_rewrite Verilog.module_outputs_in_vars.
   - rewrite H in Hvalid2. assumption.
   - rewrite <- Hinputs. apply Hdefined_in.
@@ -695,8 +702,8 @@ Qed.
 Lemma valid_execution_all_vars_defined v e :
   clean_module v ->
   v ⇓ e ->
-  RegisterState.defined_value_for (VarSet.of_list (Verilog.module_inputs v)) e ->
-  RegisterState.defined_value_for (VarSet.of_list (Verilog.modVariables v)) e.
+  RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) e ->
+  RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v))) e.
 Proof.
   unfold "⇓".
   intros [? Hvars_defined] Hadmit Hinputs_defined.

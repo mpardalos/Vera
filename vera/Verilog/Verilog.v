@@ -45,7 +45,7 @@ Delimit Scope verilog_scope with verilog.
 Local Open Scope verilog_scope.
 
 Module Notations.
-  Import VarSet.
+  Import LocationSet.
   Infix "∪" := union (at level 20, right associativity) : verilog_scope.
   Infix "∩" := inter (at level 20, right associativity) : verilog_scope.
   Infix "⊆" := Subset (at level 20, right associativity) : verilog_scope.
@@ -353,7 +353,7 @@ Module Verilog.
 
   Local Open Scope verilog.
 
-  Fixpoint expr_reads {w} (e : Verilog.expression w) : VarSet.t :=
+  Fixpoint expr_reads {w} (e : Verilog.expression w) : LocationSet.t :=
     match e with
     | (Verilog.UnaryOp op operand) => expr_reads operand
     | (Verilog.ArithmeticOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
@@ -366,42 +366,93 @@ Module Verilog.
     | (Verilog.Resize t expr _) => expr_reads expr
     | (Verilog.Concatenation e1 e2) => expr_reads e1 ∪ expr_reads e2
     | (Verilog.Replication _ e) => expr_reads e
-    | (Verilog.IntegerLiteral _ val) => VarSet.empty
-    | (Verilog.NamedExpression var) => { var }
+    | (Verilog.IntegerLiteral _ val) => { }
+    | (Verilog.NamedExpression var) => LocationSet.of_variable var
     end.
 
-  Definition statement_reads (s : Verilog.statement) : VarSet.t :=
+  Definition statement_reads (s : Verilog.statement) : LocationSet.t :=
     match s with
     | (Verilog.BlockingAssign lhs rhs) => expr_reads rhs  (* ONLY looking at rhs here *)
     end.
 
-  Definition statement_writes (s : Verilog.statement) : VarSet.t :=
+  Definition statement_writes (s : Verilog.statement) : LocationSet.t :=
     match s with
-    | (Verilog.BlockingAssign lhs rhs) => { lhs } (* ONLY looking at lhs here *)
+    | (Verilog.BlockingAssign lhs rhs) => LocationSet.of_variable lhs (* ONLY looking at lhs here *)
     end.
 
-  Definition module_item_reads (mi : Verilog.module_item) : VarSet.t :=
+  Definition module_item_reads (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
     | (Verilog.AlwaysComb stmt) => statement_reads stmt
     end.
 
-  Definition module_item_writes (mi : Verilog.module_item) : VarSet.t :=
+  Definition module_item_writes (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
     | (Verilog.AlwaysComb stmt) => statement_writes stmt
     end.
 
-  Fixpoint module_body_reads (mis : list Verilog.module_item) : VarSet.t :=
+  Fixpoint module_body_reads (mis : list Verilog.module_item) : LocationSet.t :=
     match mis with
     | [] => {}
     | (hd :: tl) => module_item_reads hd ∪ module_body_reads tl
     end.
 
-  Fixpoint module_body_writes (mis : list Verilog.module_item) : VarSet.t :=
+  Fixpoint module_body_writes (mis : list Verilog.module_item) : LocationSet.t :=
     match mis with
     | [] => {}
     | (hd :: tl) => module_item_writes hd ∪ module_body_writes tl
     end.
+
+  Lemma empty_in_bounds : LocationSet.InBounds { }.
+  Proof. intros loc Hin. exfalso. eapply LocationSet.empty_spec. eassumption. Qed.
+
+  Lemma expr_reads_in_bounds {w} (e : Verilog.expression w) :
+    LocationSet.InBounds (expr_reads e).
+  Proof.
+    induction e; simpl.
+    all: repeat apply LocationSet.union_in_bounds.
+    all: auto using LocationSet.of_variable_in_bounds, empty_in_bounds.
+  Qed.
+
+  Lemma statement_reads_in_bounds s : LocationSet.InBounds (statement_reads s).
+  Proof. destruct s; apply expr_reads_in_bounds. Qed.
+
+  Lemma statement_writes_in_bounds s : LocationSet.InBounds (statement_writes s).
+  Proof. destruct s; apply LocationSet.of_variable_in_bounds. Qed.
+
+  Lemma module_item_reads_in_bounds mi : LocationSet.InBounds (module_item_reads mi).
+  Proof. destruct mi; apply statement_reads_in_bounds. Qed.
+
+  Lemma module_item_writes_in_bounds mi : LocationSet.InBounds (module_item_writes mi).
+  Proof. destruct mi; apply statement_writes_in_bounds. Qed.
+
+  Lemma module_body_reads_in_bounds mis : LocationSet.InBounds (module_body_reads mis).
+  Proof.
+    induction mis; simpl.
+    - apply empty_in_bounds.
+    - apply LocationSet.union_in_bounds; auto using module_item_reads_in_bounds.
+  Qed.
+
+  Lemma module_body_writes_in_bounds mis : LocationSet.InBounds (module_body_writes mis).
+  Proof.
+    induction mis; simpl.
+    - apply empty_in_bounds.
+    - apply LocationSet.union_in_bounds; auto using module_item_writes_in_bounds.
+  Qed.
 End Verilog.
+
+#[global] Hint Resolve
+  Verilog.empty_in_bounds
+  Verilog.expr_reads_in_bounds
+  Verilog.statement_reads_in_bounds
+  Verilog.statement_writes_in_bounds
+  Verilog.module_item_reads_in_bounds
+  Verilog.module_item_writes_in_bounds
+  Verilog.module_body_reads_in_bounds
+  Verilog.module_body_writes_in_bounds
+  LocationSet.of_varset_in_bounds
+  LocationSet.of_variable_in_bounds
+  LocationSet.union_in_bounds
+  : core.
 
 Module RawVerilog.
   Include VerilogCommon.

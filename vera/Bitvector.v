@@ -1270,8 +1270,8 @@ Module XBV.
   Program Definition of_bits (bs : list RawXBV.bit) : xbv (N.of_nat (length bs)) :=
     {| bv := bs |}.
 
-  Definition bitOf {n} (i : nat) (x: xbv n): RawXBV.bit :=
-    RawXBV.bitOf i (bits x).
+  Definition bitOf {n} (i : N) (x: xbv n): RawXBV.bit :=
+    RawXBV.bitOf (N.to_nat i) (bits x).
 
   Import CommonNotations.
   Import EqNotations.
@@ -1310,6 +1310,32 @@ Module XBV.
     rewrite H. clear H.
     intros. f_equal.
     apply proof_irrelevance.
+  Qed.
+
+  Lemma bitOf_overflow n (x : xbv n) i :
+    (n <= i)%N ->
+    bitOf i x = X.
+  Proof.
+    intros H. unfold bitOf, RawXBV.bitOf.
+    apply List.nth_overflow.
+    destruct x as [bx wfx]. simpl in *.
+    unfold RawXBV.size in wfx. lia.
+  Qed.
+
+  Lemma bitOf_ext n (x y : xbv n) :
+    (forall i, (i < n)%N -> bitOf i x = bitOf i y) ->
+    x = y.
+  Proof.
+    intros H.
+    apply of_bits_equal.
+    destruct x as [bx wfx], y as [by' wfy].
+    unfold bits, RawXBV.size in *. simpl in *.
+    apply List.nth_ext with (d := X) (d' := X); [lia|].
+    intros k Hk.
+    specialize (H (N.of_nat k) ltac:(lia)).
+    unfold bitOf, RawXBV.bitOf, bits in H. simpl in H.
+    rewrite Nat2N.id in H.
+    exact H.
   Qed.
 
   Lemma xbv_bv_inverse n (bv : BV.bitvector n) :
@@ -1384,6 +1410,23 @@ Module XBV.
     - discriminate.
     - contradiction.
     - solve_by_inverts 2.
+  Qed.
+
+  Lemma bitOf_no_exes_to_bv n (x : xbv n) :
+    (forall i, (i < n)%N -> bitOf i x <> X) ->
+    exists bv, to_bv x = Some bv.
+  Proof.
+    intro H.
+    apply not_has_x_to_bv.
+    unfold has_x, RawXBV.has_x.
+    intro Hex.
+    apply List.Exists_exists in Hex.
+    destruct Hex as (b & Hin & ->).
+    apply List.In_nth with (d := X) in Hin.
+    destruct Hin as (k & Hk & Hnth).
+    apply (H (N.of_nat k)).
+    - destruct x as [bx wfx]. unfold RawXBV.size in wfx. cbn in *. lia.
+    - unfold bitOf, RawXBV.bitOf. rewrite Nat2N.id. assumption.
   Qed.
 
   Lemma from_bv_injective : forall n (bv1 bv2 : BV.bitvector n),
@@ -1726,7 +1769,7 @@ Module XBV.
 
   Lemma bitOf_in_bounds n w (bv : BV.bitvector w) def :
     (n < w)%N ->
-    RawXBV.bit_to_bool (bitOf (N.to_nat n) (from_bv bv)) = Some (List.nth (N.to_nat n) (BV.bits bv) def).
+    RawXBV.bit_to_bool (bitOf n (from_bv bv)) = Some (List.nth (N.to_nat n) (BV.bits bv) def).
   Proof.
     intros H.
     destruct bv as [bv wf].
@@ -1983,8 +2026,8 @@ Module XBV.
   Qed.
 
   Definition bit_of_as_bv i w (bv : BV.bitvector w) :
-    i < N.to_nat w ->
-    bitOf i (from_bv bv) = RawXBV.bool_to_bit (BV.bitOf i bv).
+    (i < w)%N ->
+    bitOf i (from_bv bv) = RawXBV.bool_to_bit (BV.bitOf (N.to_nat i) bv).
   Proof.
     destruct bv as [bv bv_wf]. unfold RawBV.size in *.
     unfold bitOf, RawXBV.bitOf, from_bv, RawXBV.from_bv, BV.bitOf, RawBV.bitOf;

@@ -112,7 +112,7 @@ Proof. subst. reflexivity. Qed.
 
 Lemma smt_select_bit_value ρ w (smt_vec : SMTLib.term (SMTLib.Sort_BitVec w)) (idx : N) :
     (idx < w)%N ->
-    XBV.of_bits [XBV.bitOf (N.to_nat idx) (XBV.from_bv (SMTLib.interp_term ρ smt_vec))]
+    XBV.of_bits [XBV.bitOf idx (XBV.from_bv (SMTLib.interp_term ρ smt_vec))]
       = XBV.from_bv (SMTLib.interp_term ρ (smt_select_bit smt_vec idx)).
 Proof.
   intros Hbound.
@@ -184,7 +184,9 @@ Proof.
   - (* literal *)
     reflexivity.
   - (* variable *)
-    apply Hmatch. VarSet.setdec.
+    apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
+    apply (Hmatch (Location.Mk var bit_idx)).
+    apply LocationSet.of_variable_spec. auto.
 Qed.
 
 (* DELETEME: Duplicate *)

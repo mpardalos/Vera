@@ -176,7 +176,7 @@ Hint Rewrite shr_empty : shr.
 Lemma bitOf_shr w n (xbv : XBV.xbv w) :
   (n < w)%N ->
   XBV.bitOf 0 (XBV.shr xbv n) =
-  XBV.bitOf (N.to_nat n) xbv.
+  XBV.bitOf n xbv.
 Proof.
   intros Hin_bounds.
   unfold XBV.shr, XBV.bitOf.
@@ -286,17 +286,17 @@ Proof.
 Qed.
 
 Lemma simpl_resize_reads {from} to (e : expression from) wf :
-  VarSet.Equal (expr_reads (simpl_resize to e wf)) (expr_reads e).
+  LocationSet.Equal (expr_reads (simpl_resize to e wf)) (expr_reads e).
 Proof.
   unfold simpl_resize.
   destruct (dec (from < to)%N).
   all: destruct_rew; simpl.
-  - VarSet.setdec.
+  - LocationSet.setdec.
   - reflexivity.
 Qed.
 
 Lemma equalized_shiftop_reads_reads_permutation w1 w2 wf op (lhs : expression w1) (rhs : expression w2) :
-  VarSet.Equal (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
+  LocationSet.Equal (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
 Proof.
   unfold equalized_shiftop.
   rewrite !simpl_resize_reads. simpl. rewrite !simpl_resize_reads.
@@ -304,7 +304,7 @@ Proof.
 Qed.
 
 Lemma simpl_expr_reads_permutation w (e : expression w) :
-  VarSet.Equal (expr_reads (simpl_expr e)) (expr_reads e).
+  LocationSet.Equal (expr_reads (simpl_expr e)) (expr_reads e).
 Proof.
   funelim (simpl_expr e); clear Heqcall.
   all: simpl.
@@ -312,10 +312,10 @@ Proof.
   all: try rewrite !simpl_resize_reads.
   all: try destruct_rew.
   all: repeat match goal with
-       | [ H : VarSet.Equal (expr_reads (simpl_expr _)) (expr_reads _) |- _ ] =>
+       | [ H : LocationSet.Equal (expr_reads (simpl_expr _)) (expr_reads _) |- _ ] =>
          rewrite H
        end.
-  all: (reflexivity || VarSet.setdec).
+  all: (reflexivity || LocationSet.setdec).
 Qed.
 
 Lemma simpl_vmodule_same_inputs v :
@@ -349,7 +349,7 @@ Proof.
     reflexivity.
   }
 
-  destruct (sort_module_items (VarSet.of_list (module_inputs v)) (modBody v));
+  destruct (sort_module_items (LocationSet.of_varset (VarSet.of_list (module_inputs v))) (modBody v));
     simpl; [|reflexivity].
   generalize (init // VarSet.of_list (module_inputs v)). clear init v.
   induction l; intros r; [reflexivity|].
