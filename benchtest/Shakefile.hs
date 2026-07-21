@@ -118,7 +118,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
   -- Solver used by both Vera and eqy. The artifact environment allows
   -- for "cvc5" or "z3". "Bitwuzla" was attempted too but appears to
   -- be buggy for this version of EQY.
-  addOracle $ \ConfigSolver -> pure "z3"
+  addOracle $ \ConfigSolver -> pure "cvc5"
   -- Timeout for vera/eqy runs (in seconds)
   addOracle $ \ConfigVeraTimeout -> pure 3600
   -- Vera memory limit (in GB)
@@ -366,36 +366,39 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
               ]
           ]
 
-  let runEquivalenceCheckers dir modA modB = do
+  let readVeraResults dir modA modB = do
         let genALogFile = dir </> (printf "%s.sv.log" modA)
         let genBLogFile = dir </> (printf "%s.sv.log" modB)
         let veraLogFile = dir </> (printf "%s_vs_%s.vera.log" modA modB)
-        let eqyLogFile = dir </> (printf "%s_vs_%s.eqy.log" modA modB)
-        need [genALogFile, genBLogFile, veraLogFile, eqyLogFile]
+        need [genALogFile, genBLogFile, veraLogFile]
         aSize <- readDesignSize <$> liftIO (T.readFile genALogFile)
         bSize <- readDesignSize <$> liftIO (T.readFile genBLogFile)
-
         veraOutput <- liftIO $ T.readFile veraLogFile
-        eqyOutput <- liftIO $ T.readFile eqyLogFile
         return
-          BenchmarkResult
-            { size = aSize + bSize
-            , vera =
-                RunResult
-                  { time = findPrefixedLine (T.pack "__time_vera: ") veraOutput
-                  , result = findPrefixedLine (T.pack "__result_vera: ") veraOutput
-                  }
-            , veraSolver =
-                RunResult
-                  { time = findPrefixedLine (T.pack "__time_smt: ") veraOutput
-                  , result = findPrefixedLine (T.pack "__result_smt: ") veraOutput
-                  }
-            , eqy =
-                RunResult
-                  { time = findPrefixedLine (T.pack "__time_eqy: ") eqyOutput
-                  , result = findPrefixedLine (T.pack "__result_eqy: ") eqyOutput
-                  }
-            }
+          ( aSize + bSize
+          , RunResult
+              { time = findPrefixedLine (T.pack "__time_vera: ") veraOutput
+              , result = findPrefixedLine (T.pack "__result_vera: ") veraOutput
+              }
+          , RunResult
+              { time = findPrefixedLine (T.pack "__time_smt: ") veraOutput
+              , result = findPrefixedLine (T.pack "__result_smt: ") veraOutput
+              }
+          )
+
+  let readEqyResult dir modA modB = do
+        let eqyLogFile = dir </> (printf "%s_vs_%s.eqy.log" modA modB)
+        need [eqyLogFile]
+        eqyOutput <- liftIO $ T.readFile eqyLogFile
+        return RunResult
+          { time = findPrefixedLine (T.pack "__time_eqy: ") eqyOutput
+          , result = findPrefixedLine (T.pack "__result_eqy: ") eqyOutput
+          }
+
+  let runEquivalenceCheckers dir modA modB = do
+        (size, vera, veraSolver) <- readVeraResults dir modA modB
+        eqy <- readEqyResult dir modA modB
+        return BenchmarkResult { size, vera, veraSolver, eqy }
 
   -- EPFL benchmarks
   let
@@ -503,42 +506,68 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
 
   phony "clean-epfl" $ removeFilesAfter "out/EPFL-benchmarks" ["//"]
 
+  let writeEpflSummary out header benchmarks makeRow = do
+        rows <- forP
+          [ (category, name, "orig", target)
+          | (category, name) <- benchmarks
+          , target <- ["orig_blif", "best_size", "best_depth"]
+          ]
+          $ \(category, name, modA, modB) ->
+              makeRow category name modA modB
+        liftIO $ T.writeFile out $ T.unlines (T.pack header : rows)
+
   phony "epfl" $ need ["out/EPFL-benchmarks/summary.csv"]
   "out/EPFL-benchmarks/summary.csv" %> \out -> do
     verilogFiles <- getDirectoryFiles "" ["EPFL-benchmarks/arithmetic/*.v", "EPFL-benchmarks/random_control/*.v"]
-    let targets =
-          [ (category, name, "orig", target)
+    let benchmarks =
+          [ (category, name)
           | verilogFile <- verilogFiles
-          , target <- ["orig_blif", "best_size", "best_depth"]
           , let Just [category, name] = filePattern "EPFL-benchmarks/*/*.v" verilogFile
           ]
-    lines <- forP targets $ \(category, name, modA, modB) -> do
-      let dir = "out/EPFL-benchmarks" </> category </> name
-      result <- runEquivalenceCheckers dir modA modB
-      return
-        ( T.intercalate
-            (T.pack ",")
-            [ T.pack category
-            , T.pack name
-            , T.pack modA
-            , T.pack modB
+    writeEpflSummary out
+      "Category,Name,A,B,Size,Vera Result,Vera time,Vera solver result,Vera solver time,EQY result,EQY time"
+      benchmarks
+      $ \category name modA modB -> do
+          let dir = "out/EPFL-benchmarks" </> category </> name
+          result <- runEquivalenceCheckers dir modA modB
+          return $ T.intercalate (T.pack ",")
+            [ T.pack category, T.pack name, T.pack modA, T.pack modB
             , T.show result.size
-            , result.vera.result
-            , result.vera.time
-            , result.veraSolver.result
-            , result.veraSolver.time
-            , result.eqy.result
-            , result.eqy.time
+            , result.vera.result, result.vera.time
+            , result.veraSolver.result, result.veraSolver.time
+            , result.eqy.result, result.eqy.time
             ]
-        )
-    liftIO $
-      T.writeFile
-        out
-        ( T.unlines
-            ( T.pack "Category,Name,A,B,Size,Vera Result,Vera time,Vera solver result,Vera solver time,EQY result,EQY time"
-                : lines
-            )
-        )
+
+  -- Quick EPFL benchmarks: those that complete in under ~20s in the cvc5 run
+  let quickEpflBenchmarks =
+        [ ("arithmetic", "adder")
+        , ("arithmetic", "bar")
+        , ("arithmetic", "max")
+        , ("random_control", "arbiter")
+        , ("random_control", "cavlc")
+        , ("random_control", "ctrl")
+        , ("random_control", "dec")
+        , ("random_control", "i2c")
+        , ("random_control", "int2float")
+        , ("random_control", "priority")
+        , ("random_control", "router")
+        , ("random_control", "voter")
+        ]
+
+  phony "epfl-quick" $ need ["out/EPFL-benchmarks/quick_summary.csv"]
+  "out/EPFL-benchmarks/quick_summary.csv" %> \out ->
+    writeEpflSummary out
+      "Category,Name,A,B,Size,Vera Result,Vera time,Vera solver result,Vera solver time"
+      quickEpflBenchmarks
+      $ \category name modA modB -> do
+          let dir = "out/EPFL-benchmarks" </> category </> name
+          (size, vera, veraSolver) <- readVeraResults dir modA modB
+          return $ T.intercalate (T.pack ",")
+            [ T.pack category, T.pack name, T.pack modA, T.pack modB
+            , T.show size
+            , vera.result, vera.time
+            , veraSolver.result, veraSolver.time
+            ]
 
   -- PULP ELAU -------------------------------------------------------------
   phony "pulp-elau" $ do
