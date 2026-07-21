@@ -281,6 +281,44 @@ Module RawBV.
   Qed.
 
   #[global] Hint Rewrite @replicate_size : xbv_size.
+
+  Print bv_add.
+
+  Equations set_bit_list (bv : bitvector) (idx : nat) (val : bool) : bitvector := {
+    | (_ :: tl), 0, val => val :: tl
+    | (b :: tl), (S idx'), val => b :: set_bit_list tl idx' val
+    | [], _, val => []
+  }.
+
+  Definition set_bit (bv : bitvector) (idx : N) (val : bool) : bitvector :=
+    if (idx <? size bv)%N
+    then set_bit_list bv (N.to_nat idx) val
+    else [].
+
+  Lemma set_bit_list_size bv idx val :
+    (idx < length bv) ->
+    length (set_bit_list bv idx val) = length bv.
+  Proof. 
+    intros wf.
+    funelim (set_bit_list bv idx val).
+    - reflexivity.
+    - reflexivity.
+    - simpl in *.
+      f_equal.
+      apply H.
+      lia.
+  Qed.
+    
+  Lemma set_bit_size bv idx val :
+    (idx < size bv)%N ->
+    size (set_bit bv idx val) = size bv.
+  Proof.
+    unfold set_bit, size. intros wf.
+    f_equal. N_to_nat.
+    autodestruct_eqn E.
+    - apply set_bit_list_size. exact wf.
+    - apply N.ltb_ge in E. lia.
+  Qed.
 End RawBV.
 
 Module BV.
@@ -494,6 +532,11 @@ Module BV.
   Definition replicate {n} (c : N) (bv : bitvector n) : bitvector (c * n) :=
     {| bv := RawBV.replicate c (bits bv) |}.
   Next Obligation. now rewrite RawBV.replicate_size, wf. Qed.
+
+  #[program]
+  Definition set_bit {w} (bv : bitvector w) (idx : N) (val : bool) (wf : (idx < w)%N): bitvector w :=
+    {| bv := RawBV.set_bit (bits bv) idx val |}.
+  Next Obligation. rewrite RawBV.set_bit_size; now rewrite wf. Qed.
 End BV.
 
 Module RawXBV.
@@ -1249,6 +1292,42 @@ Module RawXBV.
   Lemma from_bv_app b1 b2 :
     from_bv (b1 ++ b2)%list = (from_bv b1 ++ from_bv b2)%list.
   Proof. unfold from_bv. apply List.map_app. Qed.
+
+  Equations set_bit_list (bv : xbv) (idx : nat) (val : bit) : xbv := {
+    | (_ :: tl), 0, val => val :: tl
+    | (b :: tl), (S idx'), val => b :: set_bit_list tl idx' val
+    | [], _, val => []
+  }.
+
+  Definition set_bit (bv : xbv) (idx : N) (val : bit) : xbv :=
+    if (idx <? size bv)%N
+    then set_bit_list bv (N.to_nat idx) val
+    else [].
+
+  Lemma set_bit_list_size bv idx val :
+    (idx < length bv) ->
+    length (set_bit_list bv idx val) = length bv.
+  Proof. 
+    intros wf.
+    funelim (set_bit_list bv idx val).
+    - reflexivity.
+    - reflexivity.
+    - simpl in *.
+      f_equal.
+      apply H.
+      lia.
+  Qed.
+    
+  Lemma set_bit_size bv idx val :
+    (idx < size bv)%N ->
+    size (set_bit bv idx val) = size bv.
+  Proof.
+    unfold set_bit, size. intros wf.
+    f_equal. N_to_nat.
+    autodestruct_eqn E.
+    - apply set_bit_list_size. exact wf.
+    - apply N.ltb_ge in E. lia.
+  Qed.
 End RawXBV.
 
 Module XBV.
@@ -2039,6 +2118,11 @@ Module XBV.
       by reflexivity.
     apply List.map_nth.
   Qed.
+
+  #[program]
+  Definition set_bit {w} (bv : xbv w) (idx : N) (val : bit) (wf : (idx < w)%N): xbv w :=
+    {| bv := RawXBV.set_bit (bits bv) idx val |}.
+  Next Obligation. rewrite RawXBV.set_bit_size; now rewrite wf. Qed.
 End XBV.
 
 #[global]

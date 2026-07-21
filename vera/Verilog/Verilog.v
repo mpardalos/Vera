@@ -289,8 +289,13 @@ Module Verilog.
 
   Definition expr_type {w} (e : expression w) := w.
 
+  Inductive assign_target : N -> Type :=
+  | AssignVar (var : Var.t) : assign_target (Var.varType var)
+  | AssignBit (loc : Location.t) (wf : (Location.idx loc < Var.varType (Location.var loc))%N) : assign_target 1
+  .
+
   Inductive statement :=
-  | BlockingAssign (lhs : Var.t) (rhs : expression (Var.varType lhs))
+  | BlockingAssign {w} (lhs : assign_target w) (rhs : expression w)
   .
 
   Inductive module_item :=
@@ -370,6 +375,12 @@ Module Verilog.
     | (Verilog.NamedExpression var) => LocationSet.of_variable var
     end.
 
+  Definition assign_target_writes {w} (a : assign_target w) : LocationSet.t :=
+    match a with
+    | Verilog.AssignVar v => LocationSet.of_variable v
+    | Verilog.AssignBit loc _ => { loc }
+    end.
+
   Definition statement_reads (s : Verilog.statement) : LocationSet.t :=
     match s with
     | (Verilog.BlockingAssign lhs rhs) => expr_reads rhs  (* ONLY looking at rhs here *)
@@ -377,7 +388,7 @@ Module Verilog.
 
   Definition statement_writes (s : Verilog.statement) : LocationSet.t :=
     match s with
-    | (Verilog.BlockingAssign lhs rhs) => LocationSet.of_variable lhs (* ONLY looking at lhs here *)
+    | (Verilog.BlockingAssign lhs rhs) => assign_target_writes lhs (* ONLY looking at lhs here *)
     end.
 
   Definition module_item_reads (mi : Verilog.module_item) : LocationSet.t :=
@@ -416,8 +427,15 @@ Module Verilog.
   Lemma statement_reads_in_bounds s : LocationSet.InBounds (statement_reads s).
   Proof. destruct s; apply expr_reads_in_bounds. Qed.
 
+  Lemma assign_target_writes_in_bounds w a : LocationSet.InBounds (assign_target_writes (w:=w) a).
+  Proof.
+    destruct a.
+    - apply LocationSet.of_variable_in_bounds.
+    - apply LocationSet.singleton_in_bounds. exact wf.
+  Qed.
+  
   Lemma statement_writes_in_bounds s : LocationSet.InBounds (statement_writes s).
-  Proof. destruct s; apply LocationSet.of_variable_in_bounds. Qed.
+  Proof. destruct s; apply assign_target_writes_in_bounds. Qed.
 
   Lemma module_item_reads_in_bounds mi : LocationSet.InBounds (module_item_reads mi).
   Proof. destruct mi; apply statement_reads_in_bounds. Qed.
@@ -602,13 +620,19 @@ Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
 | RawVerilog.BlockingAssign (RawVerilog.NamedExpression var) rhs =>
   let* (w_rhs; t_rhs) := tc_expr rhs in
   let* t_rhs' := cast_width "Different widths in blocking assign" (Var.varType var) t_rhs in
-  inr (Verilog.BlockingAssign var t_rhs')
+  inr (Verilog.BlockingAssign (Verilog.AssignVar var) t_rhs')
+| RawVerilog.BlockingAssign (RawVerilog.BitSelect (RawVerilog.NamedExpression var) (RawVerilog.IntegerLiteral idx_bits)) rhs =>
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width "Different widths in blocking assign" 1 t_rhs in
+  let idx := RawBV.to_N idx_bits in
+  let* wf := assert_dec _ "Bit-select index (lhs) out of bounds"%string in
+  inr (Verilog.BlockingAssign (Verilog.AssignBit (Location.Mk var idx) wf) t_rhs')
 | RawVerilog.BlockingAssign (RawVerilog.Concatenation _ _) rhs =>
   inl "TODO: Assign to concatenation"%string
-| RawVerilog.BlockingAssign (RawVerilog.BitSelect _ _) rhs =>
-  inl "TODO: Assign to bitselect"%string
 | RawVerilog.BlockingAssign (RawVerilog.RangeSelect _ _ _) rhs =>
   inl "TODO: Assign to range-select"%string
+| RawVerilog.BlockingAssign (RawVerilog.BitSelect _ _) rhs =>
+  inl "Unsupported assignment target (invalid bit-select)"%string
 | RawVerilog.BlockingAssign lhs rhs =>
   inl "Unsupported assignment target"%string
 }

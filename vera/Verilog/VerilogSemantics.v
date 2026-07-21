@@ -66,6 +66,9 @@ Module RegisterState.
            | right _ => r var'
            end.
 
+  Definition set_location (loc : Location.t) (wf : (Location.idx loc < Var.varType (Location.var loc))%N) (bit : RawXBV.bit) (r : register_state) : register_state :=
+    set_reg (Location.var loc) (XBV.set_bit (r (Location.var loc)) (Location.idx loc) bit wf) r.
+
   Lemma set_reg_get_in var val regs :
     set_reg var val regs var = val.
   Proof.
@@ -790,17 +793,17 @@ Module Sort.
         reflexivity.
   Qed.
 
-  Section mi_show.
-    Local Open Scope string.
-    Import ShowNotation.
-    Global Instance moduleitem_Show : Show module_item :=
-      { show u :=
-          match u with
-        | Verilog.AlwaysComb (Verilog.BlockingAssign var _) =>
-          ("always_comb " ++ Var.varName var ++ " = ...")%string
-          end
-      }.
-  End mi_show.
+  (* Section mi_show.
+   *   Local Open Scope string.
+   *   Import ShowNotation.
+   *   Global Instance moduleitem_Show : Show module_item :=
+   *     { show u :=
+   *         match u with
+   *       | Verilog.AlwaysComb (Verilog.BlockingAssign var _) =>
+   *         ("always_comb " ++ Var.varName var ++ " = ...")%string
+   *         end
+   *     }.
+   * End mi_show. *)
 
   Equations sort_module_items_split_ready
     (ready : LocationSet.t)
@@ -1386,11 +1389,18 @@ Module CombinationalOnly.
       (XBV.from_bv val) ;
     eval_expr regs (Verilog.NamedExpression var) := regs var.
 
+  Equations set_target {w} (regs : RegisterState.t) (target : Verilog.assign_target w) (value : XBV.xbv w) : RegisterState.t :=
+    set_target regs (Verilog.AssignVar var) value :=
+      RegisterState.set_reg var value regs ;
+    set_target regs (Verilog.AssignBit loc wf) value :=
+      RegisterState.set_location loc wf (XBV.bitOf 0 value) regs ;
+    .
+
   Equations
     exec_statement (regs : RegisterState.t) (stmt : Verilog.statement) : RegisterState.t by struct :=
-    exec_statement regs (Verilog.BlockingAssign var rhs) :=
+    exec_statement regs (Verilog.BlockingAssign target rhs) :=
       let rhs_val := eval_expr regs rhs in
-      RegisterState.set_reg var rhs_val regs ;
+      set_target regs target rhs_val ;
   .
 
   Equations
@@ -1820,6 +1830,17 @@ Module Facts.
 
   (***** Statements ***********)
 
+  Lemma set_target_change_regs {w} target value regs1 regs2 :
+    set_target (w:=w) regs1 target value
+      =( Verilog.assign_target_writes target )=
+    set_target regs2 target value.
+  Proof.
+    destruct target.
+    all: simp set_target; simpl.
+    - eapply RegisterState.match_on_set_reg_elim2.
+    - admit.
+  Admitted.
+
   Lemma exec_statement_change_regs stmt regs1 regs2 :
     regs1 =(Verilog.statement_reads stmt)= regs2 ->
     exec_statement regs1 stmt
@@ -1832,8 +1853,13 @@ Module Facts.
     simp exec_statement in *; simpl.
     simp exec_statement statement_reads statement_writes in *.
     erewrite eval_expr_change_regs by eassumption.
-    eapply RegisterState.match_on_set_reg_elim2.
+    apply set_target_change_regs.
   Qed.
+
+  Lemma set_target_change_preserve {w} l target value regs1 regs2 :
+    regs1 =( l )= regs2 ->
+    set_target (w:=w) regs1 target value =( l )= set_target (w:=w) regs2 target value.
+  Proof. Admitted.
 
   Lemma exec_statement_change_preserve l stmt regs1 regs2 :
     regs1 =( Verilog.statement_reads stmt )= regs2 ->
@@ -1842,19 +1868,21 @@ Module Facts.
   Proof.
     intros Hmatch_other Hmatch_reads.
     destruct stmt; expect 1.
-    destruct lhs; simp exec_statement; try constructor; expect 1.
-    simpl; simp exec_statement statement_writes statement_reads expr_reads in *.
-    disjoint_saturate.
+    simp exec_statement. simpl in *.
     erewrite eval_expr_change_regs by eassumption.
-    destruct (eval_expr regs2 rhs); expect 1.
-    apply RegisterState.match_on_set_reg_elim2_in.
-    assumption.
+    eapply set_target_change_preserve.
+    exact Hmatch_reads.
   Qed.
 
   Lemma exec_statement_change_preserve_reads stmt regs1 regs2 :
     regs1 =( Verilog.statement_reads stmt )= regs2 ->
     exec_statement regs1 stmt =( Verilog.statement_reads stmt )= exec_statement regs2 stmt.
   Proof. auto using exec_statement_change_preserve. Qed.
+
+  Lemma set_target_preserve {w} target value regs l :
+    LocationSet.Disjoint l (Verilog.assign_target_writes target) ->
+    regs =( l )= set_target (w:=w) regs target value.
+  Proof. Admitted.
 
   Lemma exec_statement_preserve stmt regs  l :
     LocationSet.Disjoint l (Verilog.statement_writes stmt) ->
@@ -1864,8 +1892,7 @@ Module Facts.
     funelim (exec_statement regs stmt);
       try rewrite <- Heqcall in *; clear Heqcall.
     simpl in *.
-    symmetry. apply RegisterState.match_on_set_reg_elim.
-    LocationSet.setdec.
+    apply set_target_preserve. exact Hdisjoint.
   Qed.
 
   (***** / statements ***********)
@@ -2054,6 +2081,12 @@ End Facts.
 Module Clean.
   Import CombinationalOnly.
 
+  Lemma set_target_defined {w} l_before l_after r target value:
+    l_after ⊆ assign_target_writes target ∪ l_before ->
+    RegisterState.defined_value_for l_before r ->
+    RegisterState.defined_value_for l_after (set_target (w:=w) r target (XBV.from_bv value)).
+  Proof. Admitted.
+
   Lemma exec_statement_defined l_before l_after r stmt:
     statement_reads stmt ⊆ l_before ->
     l_after ⊆ statement_writes stmt ∪ l_before ->
@@ -2063,33 +2096,11 @@ Module Clean.
     intros Hreads_in Hafter_in Hinputs_defined.
     destruct stmt; expect 1.
     simp exec_statement in *. simpl in *.
-    unfold RegisterState.defined_value_for.
-    intros var Hvar_in.
-    unfold RegisterState.get_location.
-    destruct (dec (Location.var var = lhs)) as [e|n].
-    - destruct (dec (Location.idx var < Var.varType lhs)%N) as [Hin_range|Hout_range].
-      + rewrite e. rewrite RegisterState.set_reg_get_in.
-        destruct eval_expr_defined with (regs := r) (e := rhs) as [bv Hbv]; expect 2. {
-          setoid_rewrite Hreads_in. assumption.
-        }
-        rewrite Hbv.
-        rewrite XBV.bit_of_as_bv by assumption.
-        destruct (BV.bitOf (N.to_nat (Location.idx var)) bv); discriminate.
-      + specialize (Hafter_in var Hvar_in).
-        apply LocationSet.union_spec in Hafter_in.
-        destruct Hafter_in as [Hof_var | Hbefore].
-        * apply LocationSet.of_variable_spec in Hof_var. crush.
-        * exfalso. apply (Hinputs_defined var Hbefore).
-          unfold RegisterState.get_location.
-          rewrite e.
-          apply XBV.bitOf_overflow. lia.
-    - rewrite RegisterState.set_reg_get_out by crush.
-      assert (~ LocationSet.In var (LocationSet.of_variable lhs)) as Hnot
-          by (rewrite LocationSet.of_variable_spec; intuition).
-      specialize (Hafter_in var Hvar_in).
-      apply LocationSet.union_spec in Hafter_in.
-      destruct Hafter_in as [Hof_var | Hbefore]; [contradiction|].
-      apply (Hinputs_defined var Hbefore).
+    destruct eval_expr_defined with (regs := r) (e := rhs) as [bv Hbv]; expect 2. {
+      setoid_rewrite Hreads_in. assumption.
+    } rewrite Hbv.
+    eapply set_target_defined.
+    all: eassumption.
   Qed.
 
   Lemma exec_module_item_defined l_before l_after r mi:

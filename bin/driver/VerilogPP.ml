@@ -171,10 +171,17 @@ module Typed = struct
     | Verilog.NamedExpression var -> variable fmt var);
     Format.fprintf fmt "@]"
 
+  let assign_target (fmt : formatter) (t : Verilog.assign_target) =
+    match t with
+    | Verilog.AssignVar var -> variable fmt var
+    | Verilog.AssignBit loc ->
+        fprintf fmt "%a[%a]" variable loc.Location.var Zarith_Z.pp_print
+          loc.Location.idx
+
   let statement (fmt : formatter) (s : Verilog.statement) =
     match s with
-    | Verilog.BlockingAssign (lhs, rhs) ->
-        fprintf fmt "%a = %a" variable lhs expression rhs
+    | Verilog.BlockingAssign (_, lhs, rhs) ->
+        fprintf fmt "%a = %a" assign_target lhs expression rhs
 
   let mod_item (fmt : formatter) (i : Verilog.module_item) =
     fprintf fmt "always_comb %a" statement i

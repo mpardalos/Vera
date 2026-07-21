@@ -49,9 +49,9 @@ Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
       (exec_module_item regs mi) ρ ->
     SMTQueries.term_satisfied_by ρ t.
 Proof.
-  funelim (transfer_module_item tag mi); expect 1.
-  intros * Hdisjoint * Hexec Hmatch.
-  monad_inv; expect 1.
+  funelim (transfer_module_item tag mi).
+  all: intros * Hdisjoint * Hexec Hmatch.
+  all: monad_inv; expect 1.
   simp exec_module_item exec_statement in *.
   monad_inv.
   unfold SMTQueries.satisfied_by, SMTQueries.term_satisfied_by. repeat constructor.
@@ -67,6 +67,7 @@ Proof.
   rename_match
     (verilog_smt_match_states_partial (LocationSet.of_variable _) _ _ _)
     into Hafter.
+  simp set_target in Hbefore, Hafter.
   apply verilog_smt_match_states_partial_set_reg_out in Hbefore;
     [|LocationSet.setdec].
   assert (RegisterState.set_reg var (eval_expr regs rhs) regs var
@@ -116,6 +117,7 @@ Proof.
   destruct loc as [v bit_idx]. cbn in Hloc.
   destruct Hloc as [Hv _]. subst v.
   unfold RegisterState.get_location, execution_of_valuation. cbn.
+  simp set_target. simpl.
   rewrite RegisterState.set_reg_get_in.
   rewrite Hvalue_match.
   rewrite <- Hsat.

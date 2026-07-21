@@ -762,30 +762,6 @@ Module LocationSet <: WSets.
     intuition discriminate.
   Qed.
 
-  (* A set is in-bounds when every location's bit index is within its
-     variable's width.  Sets built from variables ([of_variable],
-     [of_varset]) are in-bounds by construction; the raw representation
-     does not enforce this (see the TODO at the top of this module). *)
-  Definition InBounds (s : t) : Prop :=
-    forall loc, In loc s -> (Location.idx loc < Var.varType (Location.var loc))%N.
-
-  Lemma of_varset_in_bounds vs : InBounds (of_varset vs).
-  Proof. intros loc Hin. apply of_varset_spec in Hin. intuition. Qed.
-
-  Lemma of_variable_in_bounds v : InBounds (of_variable v).
-  Proof.
-    intros loc Hin. apply of_variable_spec in Hin.
-    destruct Hin as [Hvar Hidx]. now rewrite Hvar.
-  Qed.
-
-  Lemma union_in_bounds s1 s2 :
-    InBounds s1 -> InBounds s2 -> InBounds (union s1 s2).
-  Proof. intros H1 H2 loc Hin. apply union_spec in Hin. intuition. Qed.
-
-  Lemma subset_in_bounds s1 s2 :
-    Subset s1 s2 -> InBounds s2 -> InBounds s1.
-  Proof. intros Hsub H loc Hin. auto. Qed.
-
   Global Instance Proper_of_varset_subset :
     Proper (VarSet.Subset ==> Subset) of_varset.
   Proof.
@@ -1210,5 +1186,39 @@ Module LocationSet <: WSets.
   Qed.
 
   Include MySet.
+
+  (* A set is in-bounds when every location's bit index is within its
+     variable's width.  Sets built from variables ([of_variable],
+     [of_varset]) are in-bounds by construction; the raw representation
+     does not enforce this (see the TODO at the top of this module). *)
+  Definition InBounds (s : t) : Prop :=
+    forall loc, In loc s -> (Location.idx loc < Var.varType (Location.var loc))%N.
+
+  Lemma of_varset_in_bounds vs : InBounds (of_varset vs).
+  Proof. intros loc Hin. apply of_varset_spec in Hin. intuition. Qed.
+
+  Lemma of_variable_in_bounds v : InBounds (of_variable v).
+  Proof.
+    intros loc Hin. apply of_variable_spec in Hin.
+    destruct Hin as [Hvar Hidx]. now rewrite Hvar.
+  Qed.
+
+  Lemma singleton_in_bounds loc :
+    (Location.idx loc < Var.varType (Location.var loc))%N ->
+    InBounds (singleton loc).
+  Proof.
+    intros wf loc' Hloc'.
+    replace loc with loc' in *.
+    - exact wf.
+    - apply singleton_spec. exact Hloc'.
+  Qed.
+
+  Lemma union_in_bounds s1 s2 :
+    InBounds s1 -> InBounds s2 -> InBounds (union s1 s2).
+  Proof. intros H1 H2 loc Hin. apply union_spec in Hin. intuition. Qed.
+
+  Lemma subset_in_bounds s1 s2 :
+    Subset s1 s2 -> InBounds s2 -> InBounds s1.
+  Proof. intros Hsub H loc Hin. auto. Qed.
 End LocationSet.
 Module LocationSetFacts := MSetFacts.Facts(LocationSet).
