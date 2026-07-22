@@ -153,7 +153,8 @@ Proof.
   unfold term_reflect, term_satisfied_by.
   intros H1. simpl.
   setoid_rewrite <- H1.
-  crush.
+  intros ρ.
+  destruct (SMTLib.interp_term ρ t); crush.
 Qed.
 
 Lemma mk_var_same_spec : forall name,
@@ -688,16 +689,6 @@ Proof.
   - rewrite Houtputs. apply Hnot_defined_out.
 Qed.
 
-Lemma verilog_to_smt_clean tag v smt :
-  VerilogToSMT.verilog_to_smt tag v = inr smt ->
-  clean_module v.
-Proof.
-  intros Htransf.
-  edestruct (verilog_to_smt_checks _ _ _ Htransf).
-  apply clean_module_statically; try eassumption; expect 1.
-  eexists. apply sort_module_items_stable. apply sorted0.
-Qed.
-
 (* TODO: Move me to semantics *)
 Lemma valid_execution_all_vars_defined v e :
   clean_module v ->
@@ -733,11 +724,11 @@ Proof.
   all: unfold counterexample_execution in Hcounterexample.
   all: decompose record Hcounterexample.
   all: eapply valid_execution_all_vars_defined.
-  - eapply verilog_to_smt_clean. eassumption.
+  - eapply VerilogToSMTCorrect.verilog_to_smt_clean. eassumption.
   - assumption.
   - rewrite <- inputs_match.
     eapply defined_match_on_defined_value_right. eassumption.
-  - eapply verilog_to_smt_clean. eassumption.
+  - eapply VerilogToSMTCorrect.verilog_to_smt_clean. eassumption.
   - assumption.
   - eapply defined_match_on_defined_value_left. eassumption.
 Qed.
@@ -751,6 +742,6 @@ Proof.
   destruct (equivalence_query_checks v1 v2 smt)
     as [[? [? ?]] [? [? ?]] [] [] inputs_match outputs_match];
     [assumption|].
-  apply no_counterexample_equivalent_iff; eauto using verilog_to_smt_clean.
+  apply no_counterexample_equivalent_iff; eauto using VerilogToSMTCorrect.verilog_to_smt_clean.
   eapply equivalence_query_unsat_no_counterexample; eauto.
 Qed.

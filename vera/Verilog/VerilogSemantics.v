@@ -1308,7 +1308,21 @@ Module CombinationalOnly.
 
   Equations eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv n :=
     eval_unaryop Verilog.UnaryPlus x := x;
-    eval_unaryop Verilog.UnaryNot x := XBV.not x
+    eval_unaryop Verilog.UnaryNot x := XBV.not x;
+    eval_unaryop Verilog.UnaryReduceAnd x :=
+      let bits := XBV.bits (XBV.size x) x in
+      match List.fold_left (fun acc b => and_bit acc b) bits I with
+      | X => XBV.exes (XBV.size x)
+      | O => XBV.zeros (XBV.size x)
+      | I => XBV.ones (XBV.size x)
+      end;
+    eval_unaryop Verilog.UnaryLogicalNot x :=
+      let bits := XBV.bits (XBV.size x) x in
+      match List.fold_left (fun acc b => or_bit acc b) bits O with
+      | X => XBV.exes (XBV.size x)
+      | O => XBV.ones (XBV.size x)
+      | I => XBV.zeros (XBV.size x)
+      end
   .
 
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
@@ -1385,8 +1399,7 @@ Module CombinationalOnly.
     eval_expr regs (Verilog.Replication count expr) :=
       let expr_val := eval_expr regs expr in
       (XBV.replicate count expr_val);
-    eval_expr regs (Verilog.IntegerLiteral _ val) :=
-      (XBV.from_bv val) ;
+    eval_expr regs (Verilog.IntegerLiteral _ val) := val ;
     eval_expr regs (Verilog.NamedExpression var) := regs var.
 
   Equations set_target {w} (regs : RegisterState.t) (target : Verilog.assign_target w) (value : XBV.xbv w) : RegisterState.t :=
@@ -1658,9 +1671,6 @@ Section ExpressionFacts.
     - apply XBV.xbv_bv_inverse.
   Qed.
 
-  Hint Rewrite select_bit_no_exes using lia : xbv.
-
-  Import SigTNotations.
   Import EqNotations. 
 
   Equations convert_bv {from} (to : N) (value : BV.bitvector from) : BV.bitvector to :=
@@ -1693,8 +1703,6 @@ Section ExpressionFacts.
       now rewrite <- eq_rect_eq.
   Qed.
 
-  Hint Rewrite convert_no_exes : xbv.
-  
   Lemma convert_from_bv w_from w_to (from : BV.bitvector w_from) :
     exists bv : BV.bitvector w_to, XBV.to_bv (convert w_to (XBV.from_bv from)) = Some bv.
   Proof.
@@ -1703,70 +1711,6 @@ Section ExpressionFacts.
     all: autorewrite with xbv.
     all: eauto.
   Qed.
-  
-  Lemma eval_expr_defined w regs e :
-      RegisterState.defined_value_for (expr_reads e) regs ->
-      exists bv, eval_expr (w:=w) regs e = XBV.from_bv bv.
-  Proof.
-    funelim (eval_expr regs e).
-    all: intros * Hdefined.
-    all: simp eval_expr expr_reads in *; simpl in *.
-    all: monad_inv.
-    all: RegisterState.unpack_defined_value_for.
-    all: repeat match goal with
-                | [ IH : context[RegisterState.defined_value_for _ _ -> exists _, _] |- _ ] =>
-                    let IH' := fresh "IH" in
-                    edestruct IH as [? IH']; eauto; clear IH; inv IH'
-                end.
-    all: repeat match goal with
-                | [ e : eval_expr _ _ = XBV.from_bv _ |- _ ] =>
-                    rewrite e in *; clear e
-                end.
-    - (* arithmeticop *) eapply eval_arithmeticop_no_exes.
-    - (* bitwiseop *) eapply eval_bitwiseop_no_exes.
-    - (* shiftop *) eapply eval_shiftop_no_exes.
-    - (* unop *) eapply eval_unop_no_exes.
-    - (* conditional *) eapply eval_conditional_no_exes.
-    - (* range select *) (* Not sure why it appears 4 times *)
-      autorewrite with xbv. eauto.
-    - autorewrite with xbv. eauto.
-    - autorewrite with xbv. eauto.
-    - autorewrite with xbv. eauto.
-    - (* bit select (in bounds by literal) *)
-      autorewrite with xbv. eauto.
-    - (* bit select (in bounds by width) *)
-      autorewrite with xbv in E. inv E.
-      pose proof (BV.to_N_max_bound _ x).
-      autorewrite with xbv. eauto.
-    - (* bit select (in bounds by width) *)
-      autorewrite with xbv in E. inv E.
-    - (* concat *)
-      autorewrite with xbv. eauto.
-    - (* replicate *)
-      autorewrite with xbv. eauto.
-    - (* literal *)
-      eauto.
-    - (* Variable *)
-      rename_match (RegisterState.defined_value_for (LocationSet.of_variable var) regs) into Hvar_defined.
-      edestruct (XBV.bitOf_no_exes_to_bv _ (regs var)) as [bv Hregs_var].
-      + intros bit_idx Hbit_idx.
-        apply (Hvar_defined (Location.Mk var bit_idx)).
-        apply LocationSet.of_variable_spec. auto.
-      + apply XBV.bv_xbv_inverse in Hregs_var. eauto.
-    - autorewrite with xbv. eauto.
-  Qed.
-  
-  Lemma eval_expr_no_exes w regs e :
-    RegisterState.defined_value_for (expr_reads e) regs ->
-    exists bv, XBV.to_bv (eval_expr (w:=w) regs e) = Some bv.
-  Proof.
-    intros * Hdefined.
-    pose proof eval_expr_defined as Hto_bv. insterU Hto_bv. destruct Hto_bv as [bv Hto_bv].
-    rewrite Hto_bv.
-    rewrite XBV.xbv_bv_inverse.
-    eauto.
-  Qed.
-  
 End ExpressionFacts.
 
 (* We duplicate the hints from above because we can't use #[global]
@@ -1777,6 +1721,7 @@ Hint Rewrite
   bitwise_or_no_exes
   bitwise_xor_no_exes
   : xbv.
+
 #[global]
 Hint Rewrite
   select_bit_no_exes
@@ -2080,117 +2025,12 @@ End Facts.
 
 Module Clean.
   Import CombinationalOnly.
-
-  Lemma set_target_defined {w} l_before l_after r target value:
-    l_after ⊆ assign_target_writes target ∪ l_before ->
-    RegisterState.defined_value_for l_before r ->
-    RegisterState.defined_value_for l_after (set_target (w:=w) r target (XBV.from_bv value)).
-  Proof. Admitted.
-
-  Lemma exec_statement_defined l_before l_after r stmt:
-    statement_reads stmt ⊆ l_before ->
-    l_after ⊆ statement_writes stmt ∪ l_before ->
-    RegisterState.defined_value_for l_before r ->
-    RegisterState.defined_value_for l_after (exec_statement r stmt).
-  Proof.
-    intros Hreads_in Hafter_in Hinputs_defined.
-    destruct stmt; expect 1.
-    simp exec_statement in *. simpl in *.
-    destruct eval_expr_defined with (regs := r) (e := rhs) as [bv Hbv]; expect 2. {
-      setoid_rewrite Hreads_in. assumption.
-    } rewrite Hbv.
-    eapply set_target_defined.
-    all: eassumption.
-  Qed.
-
-  Lemma exec_module_item_defined l_before l_after r mi:
-    Verilog.module_item_reads mi ⊆ l_before ->
-    l_after ⊆ Verilog.module_item_writes mi ∪ l_before ->
-    RegisterState.defined_value_for l_before r ->
-    RegisterState.defined_value_for l_after (exec_module_item r mi).
-  Proof.
-    destruct mi; expect 1.
-    simp module_item_reads module_item_writes exec_module_item in *.
-    apply exec_statement_defined.
-  Qed.
-
-  Lemma exec_module_body_defined l_before l_after r body:
-    module_items_sorted l_before body ->
-    l_after ⊆ Verilog.module_body_writes body ∪ l_before ->
-    RegisterState.defined_value_for l_before r ->
-    RegisterState.defined_value_for l_after (exec_module_body r body).
-  Proof.
-    revert r l_before l_after. induction body; intros * Hsorted Hafter_in Hinputs_defined.
-    - simp exec_module_body in *. simpl in *.
-      eapply RegisterState.defined_value_for_subset; [|eassumption].
-      LocationSet.setdec.
-    - simp exec_module_body in *. simpl in *.
-      apply IHbody with (l_before := (module_item_writes a ∪ l_before)).
-      + inv Hsorted. assumption.
-      + LocationSet.setdec.
-      + inv Hsorted.
-        eapply exec_module_item_defined; eauto; reflexivity.
-  Qed.
-
-  Lemma run_vmodule_defined r v:
-    vmodule_sortable v ->
-    RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) r ->
-    RegisterState.defined_value_for (Verilog.module_body_writes (Verilog.modBody v)) (run_vmodule v r).
-  Proof.
-    intros [sorted Hsort] Hdefined.
-    unfold run_vmodule. rewrite Hsort.
-    eapply exec_module_body_defined.
-    - eapply sort_module_items_sorted. eapply Hsort.
-    - rewrite <- sort_module_items_permutation with (body':=sorted) by eassumption.
-      LocationSet.setdec.
-    - unfold mk_initial_state.
-      rewrite RegisterState.limit_to_regs_match_on.
-      apply Hdefined.
-  Qed.
-
   Record clean_module v := MkCleanModule { 
     preserve_inputs : forall e, run_vmodule v e =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)) )= e;
     defined_outputs : forall e,
       RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) e ->
       RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v))) (run_vmodule v e)
   }.
-
-  Lemma clean_module_statically v :
-    LocationSet.Equal
-      (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
-      (Verilog.module_body_writes (Verilog.modBody v) ∪ LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) ->
-    vmodule_sortable v ->
-    clean_module v.
-  Proof.
-    intros Hwrites_outputs [sorted Hsort].
-    constructor.
-    all: unfold run_vmodule.
-    all: rewrite Hsort.
-    all: unfold mk_initial_state; simpl.
-    - intros e.
-      rewrite <- Facts.exec_module_body_preserve.
-      + apply RegisterState.limit_to_regs_match_on.
-      + symmetry.
-        apply module_items_sorted_no_overwrite.
-        eapply sort_module_items_sorted.
-	apply Hsort.
-    - intros e Hdefined.
-      setoid_rewrite Hwrites_outputs.
-      RegisterState.unpack_defined_value_for.
-      + setoid_rewrite (sort_module_items_permutation _ _ _ Hsort).
-        eapply exec_module_body_defined.
-        * eapply sort_module_items_sorted. eapply Hsort.
-        * LocationSet.setdec.
-        * apply RegisterState.defined_value_for_limit_to_regs.
-          assumption.
-      + rewrite <- Facts.exec_module_body_preserve.
-        * apply RegisterState.defined_value_for_limit_to_regs.
-	  apply Hdefined.
-        * symmetry.
-          apply module_items_sorted_no_overwrite.
-          eapply sort_module_items_sorted.
-          apply Hsort.
-  Qed.
 
   Lemma admit_run_vmodule v e:
     clean_module v ->

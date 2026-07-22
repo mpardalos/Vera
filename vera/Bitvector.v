@@ -577,6 +577,12 @@ Module RawXBV.
 
   Arguments size / _.
 
+  Fixpoint to_string (val : xbv) : string :=
+    match val with
+    | [] => ""
+    | b::bs => to_string bs ++ (match b with X => "X" | I => "1" | O => "0" end)
+    end.
+
   Lemma fold_size bv : N.of_nat (List.length bv) = size bv.
   Proof. reflexivity. Qed.
   
@@ -1328,6 +1334,9 @@ Module RawXBV.
     - apply set_bit_list_size. exact wf.
     - apply N.ltb_ge in E. lia.
   Qed.
+
+  Definition to_N (x : xbv) : option N :=
+    option_map RawBV.to_N (to_bv x).
 End RawXBV.
 
 Module XBV.

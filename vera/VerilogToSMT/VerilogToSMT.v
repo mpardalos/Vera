@@ -50,14 +50,14 @@ Local Definition width := N.
 
 Definition transf := sum string.
 
-Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=
+Definition static_value {w} (expr : Verilog.expression w) : option N :=
   match expr with
-  | Verilog.IntegerLiteral _ val => Some val
+  | Verilog.IntegerLiteral _ val => XBV.to_N val
   | _ => None
   end.
 
 Definition statically_in_bounds {w} (max_val : N) (expr : Verilog.expression w) : Prop :=
-  opt_prop (fun v => (BV.to_N v) < max_val)%N (static_value expr) \/ ((2 ^ w) < max_val)%N.
+  opt_prop (fun v => v < max_val)%N (static_value expr) \/ ((2 ^ w) < max_val)%N.
 
 Definition smt_var_info : Type := (smtname * width).
 
@@ -111,7 +111,17 @@ Section expr_to_smt.
     (* unaryop_to_smt Verilog.UnaryMinus operand := *)
     (*   ret (SMTLib.Term_BVUnaryOp SMTLib.BVNeg operand); *)
     unaryop_to_smt Verilog.UnaryNot operand :=
-      (SMTLib.Term_BVUnaryOp SMTLib.BVNot operand)
+      (SMTLib.Term_BVUnaryOp SMTLib.BVNot operand) ;
+    unaryop_to_smt Verilog.UnaryReduceAnd operand :=
+      SMTLib.Term_ITE
+        (SMTLib.Term_Eq operand (SMTLib.Term_BVLit w (BV.ones w)))
+        (SMTLib.Term_BVLit w (BV.ones w))
+        (SMTLib.Term_BVLit w (BV.zeros w)) ;
+    unaryop_to_smt Verilog.UnaryLogicalNot operand :=
+      SMTLib.Term_ITE
+        (SMTLib.Term_Eq operand (SMTLib.Term_BVLit w (BV.zeros w)))
+        (SMTLib.Term_BVLit w (BV.ones w))
+        (SMTLib.Term_BVLit w (BV.zeros w))
   .
 
   Definition conditional_to_smt {w_val}
@@ -162,7 +172,8 @@ Section expr_to_smt.
     expr_to_smt (Verilog.Resize to expr _) :=
       raise "Unexpected resize in VerilogToSMT stage"%string;
     expr_to_smt (Verilog.IntegerLiteral w val) :=
-      ret (SMTLib.Term_BVLit w val);
+      let* bv_val := opt_to_sum "Xs in VerilogToSMT stage"%string (XBV.to_bv val) in
+      ret (SMTLib.Term_BVLit w bv_val);
     expr_to_smt (Verilog.NamedExpression var) :=
       ret (var_to_smt var)
   .

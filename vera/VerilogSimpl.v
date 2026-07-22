@@ -29,7 +29,7 @@ Opaque N.add N.sub.
 
 Program Definition simpl_resize {from : N} (to : N) (expr : expression from) (wf : (to > 0)%N) : expression to :=
   match dec (from < to)%N with
-  | left _ => rew [expression] _ in Concatenation (IntegerLiteral _ (BV.zeros (to - from))) expr
+  | left _ => rew [expression] _ in Concatenation (IntegerLiteral _ (XBV.zeros (to - from))) expr
   | right _ => rew [expression] _ in RangeSelect expr (to - 1) 0 _ _
   end.
 Next Obligation. lia. Qed.

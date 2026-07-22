@@ -101,6 +101,8 @@ Variant bitwiseop :=
     | UnaryPlus (* +  *)
     (* | UnaryMinus (* -  *) *)
     | UnaryNot (* ~  *)
+    | UnaryLogicalNot (* !  *)
+    | UnaryReduceAnd (* &  *)
     (* | UnaryReduce... (* ~  *) *)
     (* | UnaryReduce... (* &  *) *)
     (* | UnaryReduce... (* ~& *) *)
@@ -201,6 +203,8 @@ Variant bitwiseop :=
           match u with
           | UnaryPlus => "+"
           | UnaryNot => "~"
+          | UnaryLogicalNot => "!"
+          | UnaryReduceAnd => "&"
           (* | UnaryMinus => "-" *)
           end
       }.
@@ -282,7 +286,7 @@ Module Verilog.
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
   | Replication {w} (count : N) (e : expression w) : expression (count * w)
-  | IntegerLiteral (w : N) : BV.bitvector w -> expression w
+  | IntegerLiteral (w : N) : XBV.xbv w -> expression w
   | NamedExpression (var : Var.t) : expression (Var.varType var)
   | Resize {w_from} (w_to : N) (from : expression w_from) (wf : (w_to > 0)%N) : expression w_to
   .
@@ -290,8 +294,13 @@ Module Verilog.
   Definition expr_type {w} (e : expression w) := w.
 
   Inductive assign_target : N -> Type :=
-  | AssignVar (var : Var.t) : assign_target (Var.varType var)
-  | AssignBit (loc : Location.t) (wf : (Location.idx loc < Var.varType (Location.var loc))%N) : assign_target 1
+  | AssignVar
+    (var : Var.t)
+    : assign_target (Var.varType var)
+  | AssignBit
+    (loc : Location.t)
+    (wf : (Location.idx loc < Var.varType (Location.var loc))%N)
+    : assign_target 1
   .
 
   Inductive statement :=
@@ -486,7 +495,7 @@ Module RawVerilog.
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation (lhs rhs : expression)
   | Replication (count : N) (expr : expression)
-  | IntegerLiteral (val : RawBV.bitvector)
+  | IntegerLiteral (val : RawXBV.xbv)
   | NamedExpression (var : Var.t)
   | Resize (to : N) (expr : expression)
   .
@@ -578,8 +587,8 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   inr (_; Verilog.Conditional t_cond t_ifTrue t_ifFalse')
 | RawVerilog.RangeSelect vec (RawVerilog.IntegerLiteral hi_lit) (RawVerilog.IntegerLiteral lo_lit) =>
   let* (w_vec; t_vec) := tc_expr vec in
-  let hi := RawBV.to_N hi_lit in
-  let lo := RawBV.to_N lo_lit in
+  let* hi := opt_to_sum "Xs in range bound"%string (RawXBV.to_N hi_lit) in
+  let* lo := opt_to_sum "Xs in range bound"%string (RawXBV.to_N lo_lit) in
   let* wf_hi := assert_dec _ "High bound of range select must be in-bounds"%string in
   let* wf_lo := assert_dec _ "Low bound of range select must be in-bounds"%string in
   inr (_; Verilog.RangeSelect t_vec hi lo wf_hi wf_lo) ;
@@ -589,10 +598,10 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   let* (w_vec; t_vec) := tc_expr vec in
   match idx with
   | RawVerilog.IntegerLiteral lit =>
-    let* wf := assert_dec
-      (BV.to_N (BV.of_bits lit) < w_vec)%N
+    let* idx := opt_to_sum "Xs in bit-select"%string (RawXBV.to_N lit) in
+    let* wf := assert_dec (idx < w_vec)%N
       ("bit-select index out of bounds (literal)")%string in
-    inr (1%N; Verilog.BitSelect_const t_vec (BV.to_N (BV.of_bits lit)) wf)
+    inr (1%N; Verilog.BitSelect_const t_vec idx wf)
   | _ =>
     let* (w_idx; t_idx) := tc_expr idx in
     let* wf_value := assert_dec _ "bit-select index out of bounds (width)"%string in
@@ -607,7 +616,7 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   let* (w_expr; t_expr) := tc_expr expr in
   inr (_; Verilog.Replication count t_expr)
 | RawVerilog.IntegerLiteral bits =>
-  inr (_; Verilog.IntegerLiteral _ (BV.of_bits bits))
+  inr (_; Verilog.IntegerLiteral _ (XBV.of_bits bits))
 | RawVerilog.NamedExpression var =>
   inr (_; Verilog.NamedExpression var)
 | RawVerilog.Resize to expr =>
@@ -624,7 +633,7 @@ Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
 | RawVerilog.BlockingAssign (RawVerilog.BitSelect (RawVerilog.NamedExpression var) (RawVerilog.IntegerLiteral idx_bits)) rhs =>
   let* (w_rhs; t_rhs) := tc_expr rhs in
   let* t_rhs' := cast_width "Different widths in blocking assign" 1 t_rhs in
-  let idx := RawBV.to_N idx_bits in
+  let* idx := opt_to_sum "Xs in bit-select"%string (RawXBV.to_N idx_bits) in
   let* wf := assert_dec _ "Bit-select index (lhs) out of bounds"%string in
   inr (Verilog.BlockingAssign (Verilog.AssignBit (Location.Mk var idx) wf) t_rhs')
 | RawVerilog.BlockingAssign (RawVerilog.Concatenation _ _) rhs =>

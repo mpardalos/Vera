@@ -59,7 +59,7 @@ Proof.
   all: simp eval_bitwiseop bitwiseop_to_smt in *.
   all: cbn [SMTLib.interp_term].
   all: autorewrite with xbv bv_binop in *.
-  all: reflexivity.
+  all: try reflexivity.
 Qed.
 
 Lemma shiftop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
@@ -182,6 +182,8 @@ Proof.
   - (* concat *)
     apply XBV.concat_no_exes.
   - (* literal *)
+    destruct (XBV.to_bv x) eqn:Hbv; simpl in E; inv E. 
+    apply XBV.bv_xbv_inverse in Hbv. subst x.
     reflexivity.
   - (* variable *)
     apply XBV.bitOf_ext. intros bit_idx Hbit_idx.

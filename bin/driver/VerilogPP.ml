@@ -72,7 +72,7 @@ module Raw = struct
     Format.fprintf fmt "@[";
     (match e with
     | RawVerilog.IntegerLiteral v ->
-        fprintf fmt "%a'b%s" Zarith_Z.pp_print (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
+        fprintf fmt "%a'b%s" Zarith_Z.pp_print (Vera.length v) (Util.lst_to_string (Vera.bits_to_binary_string v))
     | RawVerilog.RangeSelect (target, hi, lo) ->
         fprintf fmt "%a[%a:%a]" expression target expression hi expression lo
     | RawVerilog.BitSelect (target, index) ->
@@ -143,7 +143,7 @@ module Typed = struct
     Format.fprintf fmt "@[";
     (match e with
     | Verilog.IntegerLiteral (_, v) ->
-        fprintf fmt "%a'b%s" Zarith_Z.pp_print (Vera.RawBV.size v)
+        fprintf fmt "%a'b%s" Zarith_Z.pp_print (Vera.length v)
           (Util.lst_to_string (Vera.bits_to_binary_string v))
     | Verilog.Resize (_, t, e) ->
         fprintf fmt "( %a@ as@ %a )" expression e vtype t

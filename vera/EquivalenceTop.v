@@ -81,7 +81,7 @@ Proof.
   unfold VerilogEquivalence.equivalence_query in H.
   simpl in H.
   monad_inv.
-  eapply VerilogEquivalenceCorrectness.verilog_to_smt_clean.
+  eapply VerilogToSMTCorrect.verilog_to_smt_clean.
   eassumption.
 Qed.
 
@@ -93,7 +93,7 @@ Proof.
   unfold VerilogEquivalence.equivalence_query in H.
   simpl in H.
   monad_inv.
-  eapply VerilogEquivalenceCorrectness.verilog_to_smt_clean.
+  eapply VerilogToSMTCorrect.verilog_to_smt_clean.
   eassumption.
 Qed.
 
