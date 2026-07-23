@@ -105,7 +105,7 @@ Section expr_to_smt.
       SMTLib.Term_BVBinOp SMTLib.BVAnd lhs rhs
   .
 
-  Equations unaryop_to_smt {w} : Verilog.unaryop -> SMTLib.term (Sort_BitVec w) -> (SMTLib.term (Sort_BitVec w)) :=
+  Equations unaryop_to_smt {w} (op : Verilog.unaryop) : SMTLib.term (Sort_BitVec w) -> (SMTLib.term (Sort_BitVec (Verilog.unaryop_result op w))) :=
     unaryop_to_smt Verilog.UnaryPlus operand :=
       operand ;
     (* unaryop_to_smt Verilog.UnaryMinus operand := *)
@@ -115,13 +115,13 @@ Section expr_to_smt.
     unaryop_to_smt Verilog.UnaryReduceAnd operand :=
       SMTLib.Term_ITE
         (SMTLib.Term_Eq operand (SMTLib.Term_BVLit w (BV.ones w)))
-        (SMTLib.Term_BVLit w (BV.ones w))
-        (SMTLib.Term_BVLit w (BV.zeros w)) ;
+        (SMTLib.Term_BVLit 1 (BV.ones 1))
+        (SMTLib.Term_BVLit 1 (BV.zeros 1)) ;
     unaryop_to_smt Verilog.UnaryLogicalNot operand :=
       SMTLib.Term_ITE
         (SMTLib.Term_Eq operand (SMTLib.Term_BVLit w (BV.zeros w)))
-        (SMTLib.Term_BVLit w (BV.ones w))
-        (SMTLib.Term_BVLit w (BV.zeros w))
+        (SMTLib.Term_BVLit 1 (BV.ones 1))
+        (SMTLib.Term_BVLit 1 (BV.zeros 1))
   .
 
   Definition conditional_to_smt {w_val}

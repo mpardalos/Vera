@@ -40,6 +40,8 @@ let shiftop fmt = function
 let unaryop fmt = function
   | Verilog.UnaryPlus -> fprintf fmt "+"
   | Verilog.UnaryNot -> fprintf fmt "~"
+  | Verilog.UnaryLogicalNot -> fprintf fmt "!"
+  | Verilog.UnaryReduceAnd -> fprintf fmt "&"
 
 let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"

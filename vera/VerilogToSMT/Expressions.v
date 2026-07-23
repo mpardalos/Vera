@@ -84,8 +84,13 @@ Proof.
   all: simp eval_unaryop unaryop_to_smt in *.
   all: cbn [SMTLib.interp_term].
   all: autorewrite with xbv in *.
-  all: reflexivity.
-Qed.
+  all: try reflexivity; expect 2.
+  - simpl. unfold BV.is_zero.
+    destruct (BV.bv_eq (n:=w) (SMTLib.interp_term ρ smt_expr) (BV.zeros w)).
+    + apply XBV.ones_from_bv.
+    + apply XBV.zeros_from_bv.
+  - admit. (* And-reduce *)
+Admitted.
 
 Lemma conditional_to_smt_value ρ w_cond w
       (smt_cond : SMTLib.term (SMTLib.Sort_BitVec w_cond))

@@ -258,6 +258,8 @@ let read_binary_op = function
 
 let read_unary_op = function
   | "BitwiseNot" -> Vera.RawVerilog.UnaryNot
+  | "BitwiseAnd" -> Vera.RawVerilog.UnaryReduceAnd
+  | "LogicalNot" -> Vera.RawVerilog.UnaryLogicalNot
   | str -> raise (SlangUnexpectedValueFor ("unary operator", str))
 
 let read_name str = Scanf.sscanf str "%d %s" (fun _ n -> n)

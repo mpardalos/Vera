@@ -113,6 +113,14 @@ Variant bitwiseop :=
     (* | UnaryReduce... (* ^~ *) *)
   .
 
+  Definition unaryop_result (op : unaryop) (w : N) : N :=
+    match op with
+    | UnaryPlus => w
+    | UnaryNot => w
+    | UnaryLogicalNot => 1
+    | UnaryReduceAnd => 1
+    end.
+
   Variant vector_declaration :=
     | Scalar
     | Vector (msb : N) (lsb : N).
@@ -264,7 +272,7 @@ Module Verilog.
     (wf_lhs : (w1 > 0)%N)
     (wf_rhs : (w2 > 0)%N)
     : expression w1
-  | UnaryOp {w} (op : unaryop) : expression w -> expression w
+  | UnaryOp {w} (op : unaryop) : expression w -> expression (unaryop_result op w)
   | Conditional {w_val w_cond : N} : expression w_cond -> expression w_val -> expression w_val -> expression w_val
   | RangeSelect {w_val}
     (val : expression w_val)

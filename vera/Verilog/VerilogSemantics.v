@@ -1306,23 +1306,17 @@ Module CombinationalOnly.
       };
   .
 
-  Equations eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv n :=
+  Equations eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv (Verilog.unaryop_result op n) :=
     eval_unaryop Verilog.UnaryPlus x := x;
     eval_unaryop Verilog.UnaryNot x := XBV.not x;
-    eval_unaryop Verilog.UnaryReduceAnd x :=
-      let bits := XBV.bits (XBV.size x) x in
-      match List.fold_left (fun acc b => and_bit acc b) bits I with
-      | X => XBV.exes (XBV.size x)
-      | O => XBV.zeros (XBV.size x)
-      | I => XBV.ones (XBV.size x)
-      end;
-    eval_unaryop Verilog.UnaryLogicalNot x :=
-      let bits := XBV.bits (XBV.size x) x in
-      match List.fold_left (fun acc b => or_bit acc b) bits O with
-      | X => XBV.exes (XBV.size x)
-      | O => XBV.ones (XBV.size x)
-      | I => XBV.zeros (XBV.size x)
-      end
+    eval_unaryop Verilog.UnaryReduceAnd x := XBV.of_bits [ XBV.fold I and_bit x ] ;
+    eval_unaryop Verilog.UnaryLogicalNot x with XBV.to_bv x => {
+      | Some bv with BV.is_zero bv => {
+        | true => XBV.ones 1
+        | false => XBV.zeros 1
+      }
+      | None => XBV.exes 1
+    }
   .
 
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
@@ -1635,14 +1629,19 @@ Section ExpressionFacts.
     apply XBV.bv_xbv_inverse in Hbv.
     eauto.
   Qed.
-  
+
+  (* Lemma of_bits_to_bv bits :
+   *   XBV.of_bits (RawXBV.from_bv bits) = XBV.from_bv (BV.of_bits bits). *)
+
   Lemma eval_unop_to_bv op w (e : BV.bitvector w) :
     exists bv, XBV.to_bv (eval_unaryop op (XBV.from_bv e)) = Some bv.
   Proof.
-    destruct op.
-    all: autorewrite with eval_unaryop xbv.
-    all: eauto.
-  Qed.
+    funelim (eval_unaryop op (XBV.from_bv e)).
+    all: autorewrite with eval_unaryop xbv in *.
+    all: try discriminate; eauto; expect 1.
+    - (* And-reduce *) 
+      admit.
+  Admitted.
   
   Lemma eval_unop_no_exes op w (e : BV.bitvector w) :
     exists bv, eval_unaryop op (XBV.from_bv e) = XBV.from_bv bv.

@@ -1337,6 +1337,9 @@ Module RawXBV.
 
   Definition to_N (x : xbv) : option N :=
     option_map RawBV.to_N (to_bv x).
+
+  Definition fold {A} (acc : A) (f : A -> bit -> A) (x : xbv) : A :=
+    List.fold_left f x acc.
 End RawXBV.
 
 Module XBV.
@@ -2132,6 +2135,9 @@ Module XBV.
   Definition set_bit {w} (bv : xbv w) (idx : N) (val : bit) (wf : (idx < w)%N): xbv w :=
     {| bv := RawXBV.set_bit (bits bv) idx val |}.
   Next Obligation. rewrite RawXBV.set_bit_size; now rewrite wf. Qed.
+
+  Definition fold {A w} (acc : A) (f : A -> bit -> A) (x : xbv w) : A :=
+    RawXBV.fold acc f (bits x).
 End XBV.
 
 #[global]
