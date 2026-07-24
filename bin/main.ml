@@ -14,13 +14,13 @@ let typed_module_of_file f =
   let m = module_of_file f in
   Vera.Typecheck.tc_vmodule m
 
-let sorted_module_of_file f =
-  let* m = typed_module_of_file f in
-  Vera.sort_vmodule m
-
 let simpl_module_of_file f =
   let* m = typed_module_of_file f in
   Inr (Vera.simpl_vmodule m)
+
+let sorted_module_of_file f =
+  let* m = simpl_module_of_file f in
+  Vera.sort_vmodule m
 
 let smt_of_file filename =
   (* Need to tag it as left or right, doesn't matter here because we only
@@ -71,10 +71,10 @@ let rec lower level filename =
         (Vera.Inr (module_of_file filename))
   | `Typed ->
       display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename)
-  | `Sorted ->
-      display_or_error VerilogPP.Typed.vmodule (sorted_module_of_file filename)
   | `Simplified ->
       display_or_error VerilogPP.Typed.vmodule (simpl_module_of_file filename)
+  | `PreSMT | `Sorted ->
+      display_or_error VerilogPP.Typed.vmodule (sorted_module_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
   | `All ->
       printf "\n-- parsed -- \n";
@@ -130,6 +130,7 @@ let lower_cmd =
         ("typed", `Typed);
         ("sorted", `Sorted);
         ("simplified", `Simplified);
+        ("pre-smt", `PreSMT);
         ("smt", `SMT);
         ("all", `All);
       ]

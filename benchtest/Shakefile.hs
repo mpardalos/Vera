@@ -570,15 +570,29 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             ]
 
   -- PULP ELAU -------------------------------------------------------------
-  phony "pulp-elau" $ do
+  phony "pulp-elau" $ need ["out/pulp-elau/summary.csv"]
+
+  "out/pulp-elau/summary.csv" %> \out -> do
     sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
-    need [ "out" </> "pulp-elau" </> design </> variant <.> target
+    let logFiles =
+         [ (design, variant, "out" </> "pulp-elau" </> design </> variant <.> target)
          | sourceFile <- sourceFiles
          , let design = dropExtension sourceFile
          , design /= "arith_utils"
          , variant <- ["slow", "medium", "fast"]
-         , target <- ["sv", "simplified.vera"]
+         , target <- ["lowered.vera"]
          ]
+    need [f | (_, _, f) <- logFiles]
+    
+    liftIO $ T.writeFile out $ (T.pack "Benchmark,Speed,Result\n")
+    forM_ logFiles $ \(design, variant, logFile) -> liftIO $ do
+      text <- readFile logFile
+      let result =
+            if any (`isInfixOf` text) ["Error", "exception"]
+            then "Error"
+            else "OK"
+      appendFile out $ intercalate "," [design, variant, result]
+      appendFile out $ "\n"
 
   "out/pulp-elau/*/*.sv" !%> \out [design, variant] -> do
     let top :: String = case variant of
@@ -600,14 +614,15 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         top speed out :: String
       ]
 
-  "out/pulp-elau/*/*.*.vera" !%> \out [design, variant, level] -> do
+  "out/pulp-elau/*/*.lowered.vera.log" %> \out -> need [dropExtension out]
+  "out/pulp-elau/*/*.lowered.vera" !%> \out [design, variant] -> do
     let
       src = "out/pulp-elau" </> design </> variant <.> "sv"
       log = out <.> "log"
     timeout <- askOracle ConfigVeraTimeout
     veraMemoryLimit <- askOracle ConfigVeraMemoryLimit
     need [vera, src]
-    (Exit _) <- cmd
+    (Exit exitCode) <- cmd
       (Traced "vera")
       (Timeout timeout)
       (FileStdout out)
@@ -617,9 +632,10 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
       (AddEnv "VERA_TRACE" "1")
       vera
       "lower"
-      level
+      "pre-smt"
       src
     return ()
+
   --------------------------------------------------------------------------
 
 -- Helpers
