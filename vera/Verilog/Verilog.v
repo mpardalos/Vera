@@ -309,6 +309,9 @@ Module Verilog.
     (loc : Location.t)
     (wf : (Location.idx loc < Var.varType (Location.var loc))%N)
     : assign_target 1
+  | AssignSlice {w}
+    (slice : Slice.t w)
+    : assign_target w
   .
 
   Inductive statement :=
@@ -395,7 +398,8 @@ Module Verilog.
   Definition assign_target_writes {w} (a : assign_target w) : LocationSet.t :=
     match a with
     | Verilog.AssignVar v => LocationSet.of_variable v
-    | Verilog.AssignBit loc _ => { loc }
+    | Verilog.AssignBit loc _ => LocationSet.singleton loc
+    | Verilog.AssignSlice slice => LocationSet.of_slice slice
     end.
 
   Definition statement_reads (s : Verilog.statement) : LocationSet.t :=
@@ -449,6 +453,7 @@ Module Verilog.
     destruct a.
     - apply LocationSet.of_variable_in_bounds.
     - apply LocationSet.singleton_in_bounds. exact wf.
+    - apply LocationSet.of_slice_in_bounds.
   Qed.
   
   Lemma statement_writes_in_bounds s : LocationSet.InBounds (statement_writes s).
@@ -633,25 +638,27 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   inr (_; Verilog.Resize to t_expr wf)
 }.
 
-Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
-| RawVerilog.BlockingAssign (RawVerilog.NamedExpression var) rhs =>
-  let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width "Different widths in blocking assign" (Var.varType var) t_rhs in
-  inr (Verilog.BlockingAssign (Verilog.AssignVar var) t_rhs')
-| RawVerilog.BlockingAssign (RawVerilog.BitSelect (RawVerilog.NamedExpression var) (RawVerilog.IntegerLiteral idx_bits)) rhs =>
-  let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width "Different widths in blocking assign" 1 t_rhs in
+Equations tc_assign_target : RawVerilog.expression -> transf { w & Verilog.assign_target w } := {
+| RawVerilog.NamedExpression var => inr (_; Verilog.AssignVar var)
+| RawVerilog.BitSelect (RawVerilog.NamedExpression var) (RawVerilog.IntegerLiteral idx_bits) =>
   let* idx := opt_to_sum "Xs in bit-select"%string (RawXBV.to_N idx_bits) in
   let* wf := assert_dec _ "Bit-select index (lhs) out of bounds"%string in
-  inr (Verilog.BlockingAssign (Verilog.AssignBit (Location.Mk var idx) wf) t_rhs')
-| RawVerilog.BlockingAssign (RawVerilog.Concatenation _ _) rhs =>
-  inl "TODO: Assign to concatenation"%string
-| RawVerilog.BlockingAssign (RawVerilog.RangeSelect _ _ _) rhs =>
-  inl "TODO: Assign to range-select"%string
-| RawVerilog.BlockingAssign (RawVerilog.BitSelect _ _) rhs =>
-  inl "Unsupported assignment target (invalid bit-select)"%string
+  inr (_; Verilog.AssignBit (Location.Mk var idx) wf)
+| RawVerilog.RangeSelect (RawVerilog.NamedExpression var) (RawVerilog.IntegerLiteral hi_bits) (RawVerilog.IntegerLiteral lo_bits) =>
+  let* hi := opt_to_sum "Xs in range-select hi"%string (RawXBV.to_N hi_bits) in
+  let* lo := opt_to_sum "Xs in range-select lo"%string (RawXBV.to_N lo_bits) in
+  let w : N := (1 + hi - lo)%N in
+  let* wf := assert_dec _ "Slice indices (lhs) out of bounds"%string in
+  inr (w; Verilog.AssignSlice (Slice.Mk w var lo wf))
+| _ => inl "Invalid assignment LHS"%string
+}.
+
+Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
 | RawVerilog.BlockingAssign lhs rhs =>
-  inl "Unsupported assignment target"%string
+  let* (w_lhs; t_lhs) := tc_assign_target lhs in
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width "Different widths in blocking assign" w_lhs t_rhs in
+  inr (Verilog.BlockingAssign t_lhs t_rhs')
 }
 .
 

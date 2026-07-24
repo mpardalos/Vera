@@ -171,6 +171,20 @@ Module Location <: UsualOrderedType.
   Qed.
 End Location.
 
+Module Slice.
+  Record t {w : N} := Mk {
+    var : Var.t;
+    lo : N;
+    wf : (lo + w <= Var.varType var)%N
+  }.
+
+  Arguments t : clear implicits.
+
+  Definition has_location {w} (slice : t w) (loc : Location.t) : Prop :=
+    slice.(var) = loc.(Location.var)
+    /\ (slice.(lo) <= loc.(Location.idx) < slice.(lo) + w)%N.
+End Slice.
+
 Module Type UsualWSets.
   Declare Module E : UsualDecidableType.
   Include WSetsOn E.
@@ -381,6 +395,16 @@ Module LocationSet <: WSets.
                 | None => N.shiftl 1 loc.(Location.idx)
                 end in
     VarMap.add loc.(Location.var) mask s.
+
+  Definition add_slice {w} (slice : Slice.t w) (s : t) : t :=
+    let mask := match VarMap.find slice.(Slice.var) s with
+                | Some m => N.lor m (N.shiftl (N.ones w) slice.(Slice.lo))
+                | None => N.shiftl (N.ones w) slice.(Slice.lo)
+                end in
+    VarMap.add slice.(Slice.var) mask s.
+
+  Definition of_slice {w} (slice : Slice.t w) : t :=
+    add_slice slice empty.
 
   Definition add_variable (v : Var.t) (s : t) : t :=
     VarMap.add v (N.ones (Var.varType v)) s.
@@ -725,6 +749,43 @@ Module LocationSet <: WSets.
     intros. unfold of_variable. rewrite add_variable_spec_full.
     unfold In, mem, empty.
     rewrite VarMapFacts.empty_o.
+    intuition discriminate.
+  Qed.
+
+  Lemma add_slice_spec {w} s (slice : Slice.t w) (loc : elt) :
+    In loc (add_slice slice s) <-> Slice.has_location slice loc \/ In loc s.
+  Proof.
+    unfold add_slice, In, mem, Slice.has_location.
+    destruct slice as [slice_var slice_lo slice_wf].
+    destruct loc as [loc_var loc_idx].
+    simpl.
+    destruct (Var.eq_dec loc_var slice_var).
+    - subst loc_var. rewrite VarMapFacts.add_eq_o by reflexivity.
+      assert (Hslice : N.testbit (N.shiftl (N.ones w) slice_lo) loc_idx = true
+                       <-> (slice_lo <= loc_idx < slice_lo + w)%N).
+      { destruct (N.le_gt_cases slice_lo loc_idx) as [Hle|Hlt].
+        - rewrite N.shiftl_spec_high by (assumption || apply N.le_0_l).
+          rewrite N.ones_spec_iff. lia.
+        - rewrite N.shiftl_spec_low by assumption.
+          split; [discriminate | lia]. }
+      destruct (VarMap.find slice_var s) as [m|] eqn:Efind.
+      + rewrite N.lor_spec, Bool.orb_true_iff, Hslice. split.
+        * intros [HA|HB]; [right; assumption | left; split; [reflexivity|assumption]].
+        * intros [[_ HB]|HA]; [right; assumption | left; assumption].
+      + rewrite Hslice. split.
+        * intros HB. left. split; [reflexivity | assumption].
+        * intros [[_ HB]|HF]; [assumption | discriminate].
+    - rewrite VarMapFacts.add_neq_o by auto.
+      split.
+      + intros HX. right. assumption.
+      + intros [[Heq _]|HX]; [congruence | assumption].
+  Qed.
+    
+  Lemma of_slice_spec {w} (slice : Slice.t w) (loc : elt) :
+    In loc (of_slice slice) <-> Slice.has_location slice loc.
+  Proof.
+    unfold of_slice. rewrite add_slice_spec.
+    unfold empty, In, mem. rewrite VarMapFacts.empty_o.
     intuition discriminate.
   Qed.
 
@@ -1213,6 +1274,16 @@ Module LocationSet <: WSets.
     - apply singleton_spec. exact Hloc'.
   Qed.
 
+  Lemma of_slice_in_bounds {w} slice :
+    InBounds (of_slice (w:=w) slice).
+  Proof.
+    intros loc Hloc.
+    apply of_slice_spec in Hloc.
+    unfold Slice.has_location in Hloc.
+    destruct Hloc as [Hvar Hidx].
+    admit.
+  Admitted.
+
   Lemma union_in_bounds s1 s2 :
     InBounds s1 -> InBounds s2 -> InBounds (union s1 s2).
   Proof. intros H1 H2 loc Hin. apply union_spec in Hin. intuition. Qed.
@@ -1222,3 +1293,4 @@ Module LocationSet <: WSets.
   Proof. intros Hsub H loc Hin. auto. Qed.
 End LocationSet.
 Module LocationSetFacts := MSetFacts.Facts(LocationSet).
+

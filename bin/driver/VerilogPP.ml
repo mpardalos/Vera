@@ -179,6 +179,10 @@ module Typed = struct
     | Verilog.AssignBit loc ->
         fprintf fmt "%a[%a]" variable loc.Location.var Zarith_Z.pp_print
           loc.Location.idx
+    | Verilog.AssignSlice (width, slice) ->
+        fprintf fmt "%a[%a:%a]" variable slice.Slice.var Zarith_Z.pp_print
+          (Zarith_Z.pred (Zarith_Z.add slice.Slice.lo width)) Zarith_Z.pp_print
+          slice.Slice.lo
 
   let statement (fmt : formatter) (s : Verilog.statement) =
     match s with

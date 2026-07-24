@@ -319,6 +319,44 @@ Module RawBV.
     - apply set_bit_list_size. exact wf.
     - apply N.ltb_ge in E. lia.
   Qed.
+
+  Equations set_slice_list (bv : bitvector) (start : nat) (bits : bitvector) : bitvector := {
+    | bs, 0, [] => bs
+    | (_ :: bs), 0, (b' :: bs') => b' :: set_slice_list bs 0 bs'
+    | (b :: bs), (S idx'), bs' => b :: set_slice_list bs idx' bs'
+    | [], _, val => []
+  }.
+
+  Definition set_slice (bv : bitvector) (start : N) (bits : bitvector) : bitvector :=
+    if (start + size bits <=? size bv)%N
+    then set_slice_list bv (N.to_nat start) bits
+    else [].
+
+  Lemma set_slice_list_size bv start bits :
+    (start + length bits <= length bv) ->
+    length (set_slice_list bv start bits) = length bv.
+  Proof.
+    intros wf.
+    funelim (set_slice_list bv start bits).
+    - reflexivity.
+    - reflexivity.
+    - simpl in *. f_equal.
+      apply H. lia.
+    - reflexivity.
+    - simpl in *. f_equal.
+      apply H. lia.
+  Qed.
+
+  Lemma set_slice_size bv start bits :
+    (start + size bits <= size bv)%N ->
+    size (set_slice bv start bits) = size bv.
+  Proof.
+    unfold set_slice, size. intros wf.
+    f_equal. N_to_nat.
+    autodestruct_eqn E.
+    - apply set_slice_list_size. exact wf.
+    - apply N.leb_gt in E. lia.
+  Qed.
 End RawBV.
 
 Module BV.
@@ -537,6 +575,12 @@ Module BV.
   Definition set_bit {w} (bv : bitvector w) (idx : N) (val : bool) (wf : (idx < w)%N): bitvector w :=
     {| bv := RawBV.set_bit (bits bv) idx val |}.
   Next Obligation. rewrite RawBV.set_bit_size; now rewrite wf. Qed.
+
+  #[program]
+  Definition set_slice {w n} (bv : bitvector w) (start : N) (bits : bitvector n)
+    (wf : (start + n <= w)%N) : bitvector w :=
+    {| bv := RawBV.set_slice (BV.bits bv) start (BV.bits bits) |}.
+  Next Obligation. rewrite RawBV.set_slice_size; now rewrite ! wf. Qed.
 End BV.
 
 Module RawXBV.
@@ -1333,6 +1377,44 @@ Module RawXBV.
     autodestruct_eqn E.
     - apply set_bit_list_size. exact wf.
     - apply N.ltb_ge in E. lia.
+  Qed.
+
+  Equations set_slice_list (bv : xbv) (start : nat) (bits : xbv) : xbv := {
+    | bs, 0, [] => bs
+    | (_ :: bs), 0, (b' :: bs') => b' :: set_slice_list bs 0 bs'
+    | (b :: bs), (S idx'), bs' => b :: set_slice_list bs idx' bs'
+    | [], _, val => []
+  }.
+
+  Definition set_slice (bv : xbv) (start : N) (bits : xbv) : xbv :=
+    if (start + size bits <=? size bv)%N
+    then set_slice_list bv (N.to_nat start) bits
+    else [].
+
+  Lemma set_slice_list_size bv start bits :
+    (start + length bits <= length bv) ->
+    length (set_slice_list bv start bits) = length bv.
+  Proof.
+    intros wf.
+    funelim (set_slice_list bv start bits).
+    - reflexivity.
+    - reflexivity.
+    - simpl in *. f_equal.
+      apply H. lia.
+    - reflexivity.
+    - simpl in *. f_equal.
+      apply H. lia.
+  Qed.
+
+  Lemma set_slice_size bv start bits :
+    (start + size bits <= size bv)%N ->
+    size (set_slice bv start bits) = size bv.
+  Proof.
+    unfold set_slice, size. intros wf.
+    f_equal. N_to_nat.
+    autodestruct_eqn E.
+    - apply set_slice_list_size. exact wf.
+    - apply N.leb_gt in E. lia.
   Qed.
 
   Definition to_N (x : xbv) : option N :=
@@ -2136,6 +2218,12 @@ Module XBV.
     {| bv := RawXBV.set_bit (bits bv) idx val |}.
   Next Obligation. rewrite RawXBV.set_bit_size; now rewrite wf. Qed.
 
+  #[program]
+  Definition set_slice {w n} (bv : xbv w) (start : N) (bits : xbv n)
+    (wf : (start + n <= w)%N) : xbv w :=
+    {| bv := RawXBV.set_slice (XBV.bits bv) start (XBV.bits bits) |}.
+  Next Obligation. rewrite RawXBV.set_slice_size; now rewrite ! wf. Qed.
+
   Definition fold {A w} (acc : A) (f : A -> bit -> A) (x : xbv w) : A :=
     RawXBV.fold acc f (bits x).
 End XBV.
@@ -2159,5 +2247,3 @@ Hint Rewrite
   XBV.extr_no_exes 
   using lia
   : xbv.
-
-

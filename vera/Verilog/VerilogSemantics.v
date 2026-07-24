@@ -69,6 +69,9 @@ Module RegisterState.
   Definition set_location (loc : Location.t) (wf : (Location.idx loc < Var.varType (Location.var loc))%N) (bit : RawXBV.bit) (r : register_state) : register_state :=
     set_reg (Location.var loc) (XBV.set_bit (r (Location.var loc)) (Location.idx loc) bit wf) r.
 
+  Definition set_slice {w} (slice : Slice.t w) (value : XBV.xbv w) (r : register_state) : register_state :=
+    set_reg (Slice.var slice) (XBV.set_slice (r (Slice.var slice)) (Slice.lo slice) value (Slice.wf slice)) r.
+
   Lemma set_reg_get_in var val regs :
     set_reg var val regs var = val.
   Proof.
@@ -1401,6 +1404,8 @@ Module CombinationalOnly.
       RegisterState.set_reg var value regs ;
     set_target regs (Verilog.AssignBit loc wf) value :=
       RegisterState.set_location loc wf (XBV.bitOf 0 value) regs ;
+    set_target regs (Verilog.AssignSlice slice) value :=
+      RegisterState.set_slice slice value regs ;
     .
 
   Equations
