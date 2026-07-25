@@ -796,18 +796,6 @@ Module Sort.
         reflexivity.
   Qed.
 
-  (* Section mi_show.
-   *   Local Open Scope string.
-   *   Import ShowNotation.
-   *   Global Instance moduleitem_Show : Show module_item :=
-   *     { show u :=
-   *         match u with
-   *       | Verilog.AlwaysComb (Verilog.BlockingAssign var _) =>
-   *         ("always_comb " ++ Var.varName var ++ " = ...")%string
-   *         end
-   *     }.
-   * End mi_show. *)
-
   Equations sort_module_items_split_ready
     (ready : LocationSet.t)
     (chosen : list module_item)

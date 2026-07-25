@@ -524,6 +524,14 @@ Definition opt_to_sum {E A} (e: E) (o : option A) : E + A :=
   | Some a => inr a
   end.
 
+Global Instance N_Show : Show N := {
+  show n := show (N.to_nat n)
+}.
+
+Global Instance positive_Show : Show positive := {
+  show n := show (Pos.to_nat n)
+}.
+
 Definition newline : string := String "010" EmptyString.
 
 (* Debug tracing — computes to identity in proofs, extracts to Printf *)

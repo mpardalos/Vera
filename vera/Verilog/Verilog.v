@@ -172,9 +172,6 @@ Variant bitwiseop :=
     Local Open Scope string.
     Import ShowNotation.
 
-    Global Instance variable_Show : Show Var.t :=
-      { show v := (Var.varName v ++ "[" ++ to_string (N.to_nat (Var.varType v - 1)) ++ ":0]")%string } .
-
     Global Instance arithmeticop_Show : Show arithmeticop :=
       { show u :=
           match u with
@@ -478,6 +475,62 @@ Module Verilog.
     - apply empty_in_bounds.
     - apply LocationSet.union_in_bounds; auto using module_item_writes_in_bounds.
   Qed.
+
+  Section show.
+    Import Ascii.
+    Import ShowNotation.
+    Import String.
+    Local Open Scope show_scope.
+    Local Open Scope string.
+
+    Global Instance assign_target_Show {w} : Show (assign_target w) :=
+      { show u :=
+          match u with
+          | AssignVar var => show var
+          | AssignBit loc _ => show loc
+          | AssignSlice slice => show slice
+          end
+      }.
+
+    (* Note: this has to be a Fixpoint, since instance fields cannot be
+       recursive *)
+    Fixpoint show_expression {w} (u : expression w) : showM :=
+      match u with
+      | ArithmeticOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
+      | BitwiseOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
+      | ShiftOp op lhs rhs _ _ => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
+      | UnaryOp op e => "(" << show op << " " << show_expression e << ")"
+      | Conditional cond ifT ifF => "(" << show_expression cond << " ? " << show_expression ifT << " : " << show_expression ifF << ")"
+      | RangeSelect vec hi lo _ _ => show_expression vec << "[" << show hi << ":" << show lo << "]"
+      | BitSelect_const vec idx _ => show_expression vec << "[" << show idx << "]"
+      | BitSelect_width vec idx _ _ => show_expression vec << "[" << show_expression idx << "]"
+      | Concatenation lhs rhs => "{" << show_expression lhs << ", " << show_expression rhs << "}"
+      | Replication count e => "{" << show count << "{" << show_expression e << "}}"
+      | IntegerLiteral _ val => show val
+      | NamedExpression var => show var
+      | Resize to e _ => show to << "'(" << show_expression e << ")"
+      end.
+
+    Global Instance expression_Show {w} : Show (expression w) :=
+      { show := show_expression }.
+
+    Global Instance statement_Show : Show statement :=
+      { show u :=
+          match u with
+          | Verilog.BlockingAssign lhs rhs =>
+            show lhs << " = " << show rhs
+          end
+      }.
+
+    Global Instance module_item_Show : Show module_item :=
+      { show u :=
+          match u with
+          | Verilog.AlwaysComb stmt =>
+            ("always_comb "%string << show stmt )
+          end
+      }.
+  End show.
+
 End Verilog.
 
 #[global] Hint Resolve

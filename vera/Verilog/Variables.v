@@ -13,7 +13,10 @@ From Stdlib Require Import MSetInterface.
 From Stdlib Require Import Lia.
 From Stdlib Require String.
 Import String (string).
+Import (notations) String.
 From Stdlib Require Import Logic.ProofIrrelevance.
+
+From ExtLib Require Import Programming.Show.
 
 From vera Require Import Tactics.
 From vera Require Import Decidable.
@@ -169,6 +172,9 @@ Module Location <: UsualOrderedType.
     subst.
     constructor. reflexivity.
   Qed.
+
+    (* Global Instance slice_Show {w} : Show (Slice.t w).
+     * Proof. Admitted. *)
 End Location.
 
 Module Slice.
@@ -1294,3 +1300,28 @@ Module LocationSet <: WSets.
 End LocationSet.
 Module LocationSetFacts := MSetFacts.Facts(LocationSet).
 
+Section show.
+  Import Ascii.
+  Import ShowNotation.
+  Import String.
+  Local Open Scope show_scope.
+  Local Open Scope string.
+
+  Global Instance variable_Show : Show Var.t := {
+    show v := (Var.varName v << "<" << show v.(Var.varType) << ">")
+  } .
+
+  Global Instance location_Show : Show Location.t := {
+    show loc := show loc.(Location.var) << "[" << show loc.(Location.idx) << "]"
+  }.
+
+  Global Instance slice_Show {w} : Show (Slice.t w) := {
+    show slice := show slice.(Slice.var) << "[" << show w << "+:" << show slice.(Slice.lo) << "]"
+  }.
+
+  Global Instance locationset_Show : Show LocationSet.t := {
+    show s := "{" << VarMap.fold (fun var mask rest =>
+      rest << newline << show var << "(" << show mask << ")"
+    ) s empty << newline << "}"
+  }.
+End show.

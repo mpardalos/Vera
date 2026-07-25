@@ -11,6 +11,7 @@ From Stdlib Require Import Logic.ProofIrrelevance.
 From ExtLib Require Import Structures.Traversable.
 From ExtLib Require Import Data.Monads.OptionMonad.
 From ExtLib Require Import Data.List.
+From ExtLib Require Import Programming.Show.
 
 From vera Require Import Tactics.
 From vera Require Import Common.
@@ -2226,6 +2227,15 @@ Module XBV.
 
   Definition fold {A w} (acc : A) (f : A -> bit -> A) (x : xbv w) : A :=
     RawXBV.fold acc f (bits x).
+
+  Section show.
+    Import ShowNotation.
+    Local Open Scope show_scope.
+
+    (* Verilog literal syntax, e.g. 8'b0001XX01 *)
+    Global Instance xbv_Show {w} : Show (xbv w) :=
+      { show v := show w << "'b"%string << RawXBV.to_string (bits v) }.
+  End show.
 End XBV.
 
 #[global]
