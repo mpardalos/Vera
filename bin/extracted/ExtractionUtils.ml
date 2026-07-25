@@ -9,7 +9,7 @@ let make_prefix n marker =
   Buffer.add_string buf marker;
   Buffer.contents buf
 
-let my_rocq_trace msg f =
+let my_rocq_traceBracket msg f =
   if not !trace_enabled then f ()
   else begin
     if not !trace_started then begin
@@ -27,3 +27,8 @@ let my_rocq_trace msg f =
     Printf.eprintf "[%8.3f] %s %s (%.3fs)\n%!" (elapsed ()) (make_prefix n "+") msg took;
     result
   end
+
+let my_rocq_trace msg f =
+  if !trace_enabled
+    then Printf.eprintf "%s %s\n%!" (make_prefix !trace_indent ">") msg;
+  f ()

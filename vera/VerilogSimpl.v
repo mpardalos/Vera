@@ -80,7 +80,7 @@ Equations simpl_expr {w} : expression w -> expression w := {
 Next Obligation. lia. Qed.
 
 Definition simpl_vmodule (v : vmodule) : vmodule :=
-  trace ("Simplify " ++ Verilog.modName v) {|
+  traceBracket ("Simplify " ++ Verilog.modName v) {|
     Verilog.modName := Verilog.modName v;
     Verilog.modVariableDecls := Verilog.modVariableDecls v;
     Verilog.modBody := map

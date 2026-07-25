@@ -535,7 +535,12 @@ Global Instance positive_Show : Show positive := {
 Definition newline : string := String "010" EmptyString.
 
 (* Debug tracing — computes to identity in proofs, extracts to Printf *)
-Definition traceThunk {A : Type} (_msg : string) (x : unit -> A) : A := x tt.
-Arguments traceThunk / _ _.
+Definition traceBracket_ {A : Type} (_msg : string) (x : unit -> A) : A := x tt.
+Arguments traceBracket_ / _ _.
 
-Notation trace msg x := (traceThunk msg (fun tt => x)).
+Notation traceBracket msg x := (traceBracket_ msg (fun tt => x)).
+
+Definition trace_ {A : Type} (_msg : string) (x : unit -> A) : A := x tt.
+Arguments trace_ / _ _.
+
+Notation trace msg x := (trace_ msg (fun tt => x)).
