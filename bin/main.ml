@@ -155,7 +155,9 @@ let vera_cmd =
 
 let () =
   (match Sys.getenv_opt "VERA_TRACE" with
-  | Some ("1" | "true" | "yes") -> ExtractionUtils.trace_enabled := true
+   | Some ("1" | "true" | "yes") ->
+      Printf.eprintf "Enabling VERA_TRACE\n%!";
+      ExtractionUtils.trace_enabled := true
   | _ -> ());
   (match Sys.getenv_opt "VERA_MAX_MEMORY" with
   | Some s ->
