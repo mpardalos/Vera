@@ -809,7 +809,7 @@ Module Sort.
       with LocationSet.disjoint (module_item_writes mi) ready,
            LocationSet.subset (module_item_reads mi) ready => {
       | false, _    =>
-        trace ("Conflict on " ++ to_string mi) None (* Conflict *)
+        (* trace ("Conflict on " ++ to_string mi) *) None (* Conflict *)
       | true, false => (* Not ready *)
         sort_module_items_split_ready ready chosen (mi :: skipped) mis'
       | true, true => (* Ready *)
@@ -841,13 +841,13 @@ Module Sort.
     (sorted : list module_item)
     : option (list module_item) by struct fuel := {
       | _, vars_ready, [], sorted => Some (rev sorted)
-      | 0, vars_ready, _, sorted => trace "Ran out of fuel" None
-      | (S fuel'), vars_ready, ms, sorted with (trace ("Ready: " ++ to_string vars_ready) sort_module_items_split_ready vars_ready [] [] ms) => {
-        | None => trace "Chosing failed" None
+      | 0, vars_ready, _, sorted => (* trace "Ran out of fuel" *) None
+      | (S fuel'), vars_ready, ms, sorted with ((* trace ("Ready: " ++ to_string vars_ready) *) sort_module_items_split_ready vars_ready [] [] ms) => {
+        | None => (* trace "Chosing failed" *) None
         | Some (vars_ready', chosen, rest) =>
           if is_empty chosen
-          then trace ("Chosing picked nothing in " ++ to_string rest) None
-          else trace ("Chose " ++ to_string chosen) (sort_module_items_tailrec fuel' vars_ready' rest (chosen ++ sorted))
+          then (* trace ("Chosing picked nothing in " ++ to_string rest) *) None
+          else (* trace ("Chose " ++ to_string chosen) *) (sort_module_items_tailrec fuel' vars_ready' rest (chosen ++ sorted))
       }
     }.
 
@@ -971,7 +971,7 @@ Module Sort.
       inversion 1.
     - destruct (is_empty chosen); [inversion 1|].
       intros Hrest.
-      apply H in Hrest; [|constructor].
+      apply H in Hrest. (* ; [|constructor]. *)
       apply sort_module_items_split_ready_perm in Heq. simpl in Heq.
       rewrite <- Hrest.
       rewrite Heq.
@@ -994,7 +994,7 @@ Module Sort.
     - inv Hsort. exact Hsorted.
     - inv Hsort.
     - apply H.
-      + constructor.
+      (* + constructor. *)
       + rewrite rev_app_distr.
         apply module_items_sorted_app.
         * exact Hsorted.
@@ -1046,7 +1046,7 @@ Module Sort.
         * destruct (is_empty (rev l ++ [m])) eqn:E.
           -- admit.
           -- reflexivity.
-        * constructor.
+        (* * constructor. *)
         * exact Hsorted.
         * simpl in Hready'.
           rewrite ! module_body_writes_app.
@@ -1200,7 +1200,7 @@ Module Sort.
          * replace (is_empty (map f chosen)) with false by admit. *)
         rewrite H.
         + autodestruct; reflexivity.
-        + constructor.
+        (* + constructor. *)
         + assumption.
         + admit.
       - eapply sort_module_items_split_ready_map_none in Heq; [|exact Hinputs_eq].
