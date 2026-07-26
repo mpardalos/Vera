@@ -1418,6 +1418,9 @@ Module CombinationalOnly.
       RegisterState.set_location loc wf (XBV.bitOf 0 value) regs ;
     set_target regs (Verilog.AssignSlice slice) value :=
       RegisterState.set_slice slice value regs ;
+    set_target regs (@Verilog.AssignConcat w1 w2 t1 t2) value :=
+      (* TODO: Check endianness *)
+      set_target (set_target regs t2 (convert w2 value)) t1 (convert w1 (XBV.shl value w2))
     .
 
   Equations
@@ -1802,6 +1805,8 @@ Module Facts.
     all: simp set_target; simpl.
     - eapply RegisterState.match_on_set_reg_elim2.
     - admit.
+    - admit.
+    - admit. (* TODO: Concat correct. Needs separation of locations. *)
   Admitted.
 
   Lemma exec_statement_change_regs stmt regs1 regs2 :

@@ -162,7 +162,7 @@ module Typed = struct
     | Verilog.BitSelect (_, target, index) ->
         fprintf fmt "%a[%a]" variable target expression index
     | Verilog.Concatenation (_, _, lhs, rhs) ->
-        fprintf fmt "{%a %a}" expression lhs expression rhs
+        fprintf fmt "{%a, %a}" expression lhs expression rhs
     | Verilog.Replication (_, count, expr) ->
         fprintf fmt "{%a{%a}}" Zarith_Z.pp_print count expression expr
     | Verilog.Conditional (_, _, cond, t, f) ->
@@ -171,7 +171,7 @@ module Typed = struct
     | Verilog.NamedExpression var -> variable fmt var);
     Format.fprintf fmt "@]"
 
-  let assign_target (fmt : formatter) (t : Verilog.assign_target) =
+  let rec assign_target (fmt : formatter) (t : Verilog.assign_target) =
     match t with
     | Verilog.AssignVar var -> variable fmt var
     | Verilog.AssignBit loc ->
@@ -181,6 +181,8 @@ module Typed = struct
         fprintf fmt "%a[%a:%a]" variable slice.Slice.var Zarith_Z.pp_print
           (Zarith_Z.pred (Zarith_Z.add slice.Slice.lo width)) Zarith_Z.pp_print
           slice.Slice.lo
+    | Verilog.AssignConcat (_, _, lhs, rhs) ->
+        fprintf fmt "{%a, %a}" assign_target lhs assign_target rhs
 
   let statement (fmt : formatter) (s : Verilog.statement) =
     match s with

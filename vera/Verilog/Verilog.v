@@ -304,6 +304,9 @@ Module Verilog.
   | AssignSlice {w}
     (slice : Slice.t w)
     : assign_target w
+  | AssignConcat {w1 w2}
+    (e1 : assign_target w1) (e2 : assign_target w2)
+    : assign_target (w1 + w2)
   .
 
   Inductive statement :=
@@ -400,11 +403,12 @@ Module Verilog.
     | (Verilog.NamedExpression var) => LocationSet.of_variable var
     end.
 
-  Definition assign_target_writes {w} (a : assign_target w) : LocationSet.t :=
+  Fixpoint assign_target_writes {w} (a : assign_target w) : LocationSet.t :=
     match a with
     | Verilog.AssignVar v => LocationSet.of_variable v
     | Verilog.AssignBit loc _ => LocationSet.singleton loc
     | Verilog.AssignSlice slice => LocationSet.of_slice slice
+    | Verilog.AssignConcat t1 t2 => assign_target_writes t1 ∪ assign_target_writes t2
     end.
 
   Definition statement_reads (s : Verilog.statement) : LocationSet.t :=
@@ -467,10 +471,13 @@ Module Verilog.
 
   Lemma assign_target_writes_in_bounds w a : LocationSet.InBounds (assign_target_writes (w:=w) a).
   Proof.
-    destruct a.
+    induction a.
     - apply LocationSet.of_variable_in_bounds.
     - apply LocationSet.singleton_in_bounds. exact wf.
     - apply LocationSet.of_slice_in_bounds.
+    - simpl.
+      apply LocationSet.union_in_bounds.
+      all: assumption.
   Qed.
   
   Lemma statement_writes_in_bounds s : LocationSet.InBounds (statement_writes s).
@@ -503,14 +510,16 @@ Module Verilog.
     Local Open Scope show_scope.
     Local Open Scope string.
 
+    Fixpoint show_assign_target {w} (t : assign_target w) : showM :=
+      match t with
+      | AssignVar var => show var
+      | AssignBit loc _ => show loc
+      | AssignSlice slice => show slice
+      | AssignConcat t1 t2 => "{" << show_assign_target t1 << ", " << show_assign_target t2 << "}"
+      end.
+
     Global Instance assign_target_Show {w} : Show (assign_target w) :=
-      { show u :=
-          match u with
-          | AssignVar var => show var
-          | AssignBit loc _ => show loc
-          | AssignSlice slice => show slice
-          end
-      }.
+      { show := show_assign_target }.
 
     (* Note: this has to be a Fixpoint, since instance fields cannot be
        recursive *)
@@ -712,6 +721,10 @@ Equations tc_assign_target : RawVerilog.expression -> transf { w & Verilog.assig
   let w : N := (1 + hi - lo)%N in
   let* wf := assert_dec _ "Slice indices (lhs) out of bounds"%string in
   inr (w; Verilog.AssignSlice (Slice.Mk w var lo wf))
+| RawVerilog.Concatenation lhs rhs =>
+  let* (w_lhs; t_lhs) := tc_assign_target lhs in
+  let* (w_rhs; t_rhs) := tc_assign_target rhs in
+  inr (_; Verilog.AssignConcat t_lhs t_rhs)
 | _ => inl "Invalid assignment LHS"%string
 }.
 
