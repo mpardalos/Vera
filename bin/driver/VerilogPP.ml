@@ -157,12 +157,10 @@ module Typed = struct
         fprintf fmt "( %a@ %a@ %a )" expression l shiftop op expression r
     | Verilog.UnaryOp (_, op, e) ->
         fprintf fmt "( %a@ %a )" unaryop op expression e
-    | Verilog.RangeSelect (_, target, hi, lo) ->
-        fprintf fmt "%a[%a:%a]" expression target Zarith_Z.pp_print hi Zarith_Z.pp_print lo
-    | Verilog.BitSelect_width (_, _, target, index) ->
-        fprintf fmt "%a[%a]" expression target expression index
-    | Verilog.BitSelect_const (w_index, target, index) ->
-        fprintf fmt "%a[%a'd%a]" expression target Zarith_Z.pp_print w_index Zarith_Z.pp_print index
+    | Verilog.RangeSelect (target, hi, lo) ->
+        fprintf fmt "%a[%a:%a]" variable target Zarith_Z.pp_print hi Zarith_Z.pp_print lo
+    | Verilog.BitSelect (_, target, index) ->
+        fprintf fmt "%a[%a]" variable target expression index
     | Verilog.Concatenation (_, _, lhs, rhs) ->
         fprintf fmt "{%a %a}" expression lhs expression rhs
     | Verilog.Replication (_, count, expr) ->

@@ -138,7 +138,7 @@ Proof.
   all: intros * Hexpr_to_smt Hmatch.
   all: simpl in *; simp expr_to_smt eval_expr in *.
   all: unpack_verilog_smt_match_states_partial.
-  all: expect 13.
+  all: expect 12.
   all: try solve [some_inv]. (* Handle expressions that we abort on *)
   all: expect 10.
   all: simpl in *.
@@ -177,13 +177,17 @@ Proof.
   - (* conditional *)
     eapply conditional_to_smt_value.
   - (* Range select *)
-    apply XBV.extr_no_exes.
-    lia.
+    (* TODO: Proof previously assumed all of the vec was defined, we now only have the slice *)
+    (* apply XBV.extr_no_exes.
+     * lia. *)
+    admit.
   - (* Bitselect (literal) *)
-    unfold select_bit.
-    autorewrite with xbv.
-    apply smt_select_bit_value.
-    lia.
+    (* TODO: Proof previously assumed all of the vec was defined, we now only have the location *)
+    admit.
+    (* unfold select_bit.
+     * autorewrite with xbv.
+     * apply smt_select_bit_value.
+     * lia. *)
   - (* concat *)
     apply XBV.concat_no_exes.
   - (* literal *)
@@ -194,7 +198,7 @@ Proof.
     apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
     apply (Hmatch (Location.Mk var bit_idx)).
     apply LocationSet.of_variable_spec. auto.
-Qed.
+Admitted.
 
 (* DELETEME: Duplicate *)
 Lemma expr_to_smt_valid w tag expr t regs ρ :

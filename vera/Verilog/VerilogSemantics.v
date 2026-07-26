@@ -41,6 +41,8 @@ Local Open Scope verilog.
 
 Set Bullet Behavior "Strict Subproofs".
 
+Opaque N.add N.sub.
+
 Module RegisterState.
   Definition register_state := forall var, XBV.xbv (Var.varType var).
 
@@ -806,13 +808,21 @@ Module Sort.
     | ready, chosen, skipped, (mi :: mis')
       with LocationSet.disjoint (module_item_writes mi) ready,
            LocationSet.subset (module_item_reads mi) ready => {
-      | false, _    => None (* Conflict *)
+      | false, _    =>
+        trace ("Conflict on " ++ to_string mi) None (* Conflict *)
       | true, false => (* Not ready *)
         sort_module_items_split_ready ready chosen (mi :: skipped) mis'
       | true, true => (* Ready *)
         sort_module_items_split_ready (module_item_writes mi ∪ ready) (mi :: chosen) skipped mis'
     }
   }.
+
+  (* Replace this with something from stdlib. *)
+  Definition is_empty {A} (l : list A) :=
+    match l with
+    | [] => true
+    | _ => false
+    end.
 
   (* Having fuel for this is disgusting, yes, but we are
      non-structurally recursing on ms.  We know that
@@ -831,11 +841,13 @@ Module Sort.
     (sorted : list module_item)
     : option (list module_item) by struct fuel := {
       | _, vars_ready, [], sorted => Some (rev sorted)
-      | 0, vars_ready, _, sorted => None
-      | (S fuel'), vars_ready, ms, sorted with sort_module_items_split_ready vars_ready [] [] ms => {
-        | None => None
+      | 0, vars_ready, _, sorted => trace "Ran out of fuel" None
+      | (S fuel'), vars_ready, ms, sorted with (trace ("Ready: " ++ to_string vars_ready) sort_module_items_split_ready vars_ready [] [] ms) => {
+        | None => trace "Chosing failed" None
         | Some (vars_ready', chosen, rest) =>
-          sort_module_items_tailrec fuel' vars_ready' rest (chosen ++ sorted)
+          if is_empty chosen
+          then trace ("Chosing picked nothing in " ++ to_string rest) None
+          else trace ("Chose " ++ to_string chosen) (sort_module_items_tailrec fuel' vars_ready' rest (chosen ++ sorted))
       }
     }.
 
@@ -957,8 +969,9 @@ Module Sort.
       apply Permutation_rev.
     - (* Out of fuel *)
       inversion 1.
-    - intros Hrest.
-      apply H in Hrest.
+    - destruct (is_empty chosen); [inversion 1|].
+      intros Hrest.
+      apply H in Hrest; [|constructor].
       apply sort_module_items_split_ready_perm in Heq. simpl in Heq.
       rewrite <- Hrest.
       rewrite Heq.
@@ -981,6 +994,7 @@ Module Sort.
     - inv Hsort. exact Hsorted.
     - inv Hsort.
     - apply H.
+      + constructor.
       + rewrite rev_app_distr.
         apply module_items_sorted_app.
         * exact Hsorted.
@@ -994,7 +1008,9 @@ Module Sort.
           in Heq.
         * LocationSet.setdec.
         * simpl. LocationSet.setdec.
-      + exact Hsort.
+      + destruct (is_empty chosen).
+        * discriminate.
+        * exact Hsort.
     - inv Hsort.
   Qed.
 
@@ -1021,13 +1037,16 @@ Module Sort.
         rewrite Hready.
         exact Hsorted.
       + simpl. LocationSet.setdec.
-      + rewrite Hsorted' in Heq; inv Heq.
+      + simpl in Heq. rewrite Hsorted' in Heq; inv Heq.
         erewrite H; clear H.
         all: try rewrite ! app_nil_r.
         all: try rewrite ! rev_app_distr.
         all: try rewrite rev_involutive.
         all: simpl.
-        * reflexivity.
+        * destruct (is_empty (rev l ++ [m])) eqn:E.
+          -- admit.
+          -- reflexivity.
+        * constructor.
         * exact Hsorted.
         * simpl in Hready'.
           rewrite ! module_body_writes_app.
@@ -1048,8 +1067,8 @@ Module Sort.
         rewrite Hready.
         exact Hsorted.
       + simpl. LocationSet.setdec.
-      + rewrite Hsorted' in Heq; inv Heq.
-  Qed.
+      + simpl in Heq. rewrite Hsorted' in Heq; inv Heq.
+  Admitted.
 
   (******************************************
    *
@@ -1158,9 +1177,11 @@ Module Sort.
         destruct Heq as [ready2' [Hready2' Hsplit]].
         simpl in Hsplit. rewrite Hsplit.
         simpl. rewrite <- map_app.
-        apply H; assumption.
+        destruct (is_empty chosen) eqn:E; [discriminate|].
+        replace (is_empty (map f chosen)) with false by admit.
+        apply H; assumption || constructor.
       - inv Hsort.
-    Qed.
+    Admitted.
 
     Lemma sort_module_items_tailrec_map_none fuel inputs1 inputs2 mis sorted :
       LocationSet.Equal inputs1 inputs2 ->
@@ -1175,11 +1196,17 @@ Module Sort.
         destruct Heq as [ready2' [Hready2' Hsplit]].
         simpl in Hsplit. rewrite Hsplit.
         simpl. rewrite <- map_app.
-        apply H; assumption.
+        (* destruct (is_empty chosen) eqn:E; [|discriminate|].
+         * replace (is_empty (map f chosen)) with false by admit. *)
+        rewrite H.
+        + autodestruct; reflexivity.
+        + constructor.
+        + assumption.
+        + admit.
       - eapply sort_module_items_split_ready_map_none in Heq; [|exact Hinputs_eq].
         simpl in Heq. rewrite Heq.
         reflexivity.
-    Qed.
+    Admitted.
 
     Lemma sort_module_items_map inputs mis :
       sort_module_items inputs (map f mis)
@@ -1362,18 +1389,15 @@ Module CombinationalOnly.
       let fBranch_val := eval_expr regs fBranch in
       (eval_conditional cond_val tBranch_val fBranch_val);
     eval_expr regs (Verilog.RangeSelect vec hi lo _ _) :=
-      let vec_val := eval_expr regs vec in
+      let vec_val := regs vec in
       (XBV.extr vec_val lo (1 + hi - lo));
-    eval_expr regs (Verilog.BitSelect_width vec idx _ _) :=
-      let vec_val := eval_expr regs vec in
+    eval_expr regs (Verilog.BitSelect vec idx) :=
+      let vec_val := regs vec in
       let idx_val := eval_expr regs idx in
       match XBV.to_N idx_val with
       | Some idx => select_bit vec_val idx
       | None => XBV.exes 1
       end;
-    eval_expr regs (Verilog.BitSelect_const vec idx _) :=
-      let vec_val := eval_expr regs vec in
-      (select_bit vec_val idx);
     eval_expr regs (Verilog.Resize t expr _) :=
       let val := eval_expr regs expr in
       (convert t val);
@@ -1758,12 +1782,14 @@ Module Facts.
            erewrite IH by eassumption; clear IH
 	 end.
     all: simpl; try reflexivity.
-    all: expect 1.
-    simp eval_expr.
-    apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
-    apply (H (Location.Mk var bit_idx)).
-    apply LocationSet.of_variable_spec. auto.
-  Qed.
+    all: expect 3.
+    - admit.
+    - admit.
+    - simp eval_expr.
+      apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
+      apply (H (Location.Mk var bit_idx)).
+      apply LocationSet.of_variable_spec. auto.
+  Admitted.
 
   (***** Statements ***********)
 

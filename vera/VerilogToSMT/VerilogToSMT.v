@@ -162,13 +162,14 @@ Section expr_to_smt.
       let* ifF_smt := expr_to_smt ifF in
       ret (conditional_to_smt cond_type cond_smt ifT_smt ifF_smt);
     expr_to_smt (Verilog.RangeSelect vec hi lo _ wf) :=
-      let* vec_smt := expr_to_smt vec in
+      let vec_smt := var_to_smt vec in
       ret (SMTLib.Term_BVExtract hi lo wf vec_smt);
-    expr_to_smt (Verilog.BitSelect_width vec idx _ _) :=
-      raise "Unexpected variable bit select"%string;
-    expr_to_smt (Verilog.BitSelect_const vec idx _) :=
-      let* vec_smt := expr_to_smt vec in
+    expr_to_smt (Verilog.BitSelect vec (Verilog.IntegerLiteral w xbv_idx)) :=
+      let vec_smt := var_to_smt vec in
+      let* idx := opt_to_sum "Xs in BitSelect index"%string (XBV.to_N xbv_idx) in
       ret (smt_select_bit vec_smt idx);
+    expr_to_smt (Verilog.BitSelect vec _) :=
+      raise "Unexpected variable bit-select in VerilogToSMT stage"%string;
     expr_to_smt (Verilog.Resize to expr _) :=
       raise "Unexpected resize in VerilogToSMT stage"%string;
     expr_to_smt (Verilog.IntegerLiteral w val) :=

@@ -44,6 +44,8 @@ Delimit Scope verilog_scope with verilog.
 
 Local Open Scope verilog_scope.
 
+Opaque N.add N.sub.
+
 Module Notations.
   Import LocationSet.
   Infix "∪" := union (at level 20, right associativity) : verilog_scope.
@@ -271,22 +273,15 @@ Module Verilog.
     : expression w1
   | UnaryOp {w} (op : unaryop) : expression w -> expression (unaryop_result op w)
   | Conditional {w_val w_cond : N} : expression w_cond -> expression w_val -> expression w_val -> expression w_val
-  | RangeSelect {w_val}
-    (val : expression w_val)
+  | RangeSelect
+    (vec : Var.t)
     (hi lo : N)
-    (wf_hi : (hi < w_val)%N)
+    (wf_hi : (hi < Var.varType vec)%N)
     (wf_lo : (lo <= hi)%N)
     : expression (1 + hi - lo)%N
-  | BitSelect_const {w_val}
-    (val : expression w_val)
-    (sel : N)
-    (wf : (sel < w_val)%N)
-    : expression 1
-  | BitSelect_width {w_val w_sel}
-    (val : expression w_val)
+  | BitSelect {w_sel}
+    (vec : Var.t)
     (sel : expression w_sel)
-    (wf_val : (2 ^ w_sel <= w_val)%N)
-    (wf_nonzero : (w_sel > 0)%N)
     : expression 1
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
@@ -375,6 +370,12 @@ Module Verilog.
 
   Local Open Scope verilog.
 
+  Lemma range_select_slice_wf {vec : Var.t} {hi lo : N} :
+    (hi < Var.varType vec)%N ->
+    (lo <= hi)%N ->
+    (lo + (1 + hi - lo) <= Var.varType vec)%N.
+  Proof. lia. Qed.
+
   Fixpoint expr_reads {w} (e : Verilog.expression w) : LocationSet.t :=
     match e with
     | (Verilog.UnaryOp op operand) => expr_reads operand
@@ -382,9 +383,16 @@ Module Verilog.
     | (Verilog.BitwiseOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.ShiftOp op lhs rhs _ _) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.Conditional cond tBranch fBranch) => expr_reads cond ∪ expr_reads tBranch ∪ expr_reads fBranch
-    | (Verilog.RangeSelect vec hi lo _ _) => expr_reads vec
-    | (Verilog.BitSelect_width vec idx _ _) => expr_reads vec ∪ expr_reads idx
-    | (Verilog.BitSelect_const vec idx _) => expr_reads vec
+    | (Verilog.RangeSelect vec hi lo wf1 wf2) => LocationSet.of_slice (Slice.Mk (1 + hi - lo) vec lo (range_select_slice_wf wf1 wf2))
+    | (Verilog.BitSelect vec (Verilog.IntegerLiteral _ xbv_idx)) =>
+      match XBV.to_N xbv_idx with
+      | Some idx =>
+        if (idx <? Var.varType vec)%N
+        then LocationSet.singleton (Location.Mk vec idx)
+        else LocationSet.empty
+      | None => LocationSet.empty (* If index is X, result is always X *)
+      end
+    | (Verilog.BitSelect vec idx) => LocationSet.of_variable vec ∪ expr_reads idx
     | (Verilog.Resize t expr _) => expr_reads expr
     | (Verilog.Concatenation e1 e2) => expr_reads e1 ∪ expr_reads e2
     | (Verilog.Replication _ e) => expr_reads e
@@ -439,7 +447,19 @@ Module Verilog.
   Proof.
     induction e; simpl.
     all: repeat apply LocationSet.union_in_bounds.
-    all: auto using LocationSet.of_variable_in_bounds, empty_in_bounds.
+    all: auto using
+      LocationSet.singleton_in_bounds, LocationSet.of_slice_in_bounds,
+      LocationSet.of_variable_in_bounds, empty_in_bounds.
+    destruct e; simpl.
+    all: try apply LocationSet.union_in_bounds.
+    all: auto using
+      LocationSet.singleton_in_bounds, LocationSet.of_slice_in_bounds,
+      LocationSet.of_variable_in_bounds, empty_in_bounds.
+    simpl in *.
+    autodestruct_eqn E.
+    apply LocationSet.singleton_in_bounds.
+    apply N.ltb_lt.
+    assumption.
   Qed.
 
   Lemma statement_reads_in_bounds s : LocationSet.InBounds (statement_reads s).
@@ -501,9 +521,8 @@ Module Verilog.
       | ShiftOp op lhs rhs _ _ => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
       | UnaryOp op e => "(" << show op << " " << show_expression e << ")"
       | Conditional cond ifT ifF => "(" << show_expression cond << " ? " << show_expression ifT << " : " << show_expression ifF << ")"
-      | RangeSelect vec hi lo _ _ => show_expression vec << "[" << show hi << ":" << show lo << "]"
-      | BitSelect_const vec idx _ => show_expression vec << "[" << show idx << "]"
-      | BitSelect_width vec idx _ _ => show_expression vec << "[" << show_expression idx << "]"
+      | RangeSelect vec hi lo _ _ => show vec << "[" << show hi << ":" << show lo << "]"
+      | BitSelect vec idx => show vec << "[" << show_expression idx << "]"
       | Concatenation lhs rhs => "{" << show_expression lhs << ", " << show_expression rhs << "}"
       | Replication count e => "{" << show count << "{" << show_expression e << "}}"
       | IntegerLiteral _ val => show val
@@ -651,29 +670,19 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   let* (w_ifFalse; t_ifFalse) := tc_expr ifFalse in
   let* t_ifFalse' := cast_width "Different widths in conditional" w_ifTrue t_ifFalse in
   inr (_; Verilog.Conditional t_cond t_ifTrue t_ifFalse')
-| RawVerilog.RangeSelect vec (RawVerilog.IntegerLiteral hi_lit) (RawVerilog.IntegerLiteral lo_lit) =>
-  let* (w_vec; t_vec) := tc_expr vec in
+| RawVerilog.RangeSelect (RawVerilog.NamedExpression vec) (RawVerilog.IntegerLiteral hi_lit) (RawVerilog.IntegerLiteral lo_lit) =>
   let* hi := opt_to_sum "Xs in range bound"%string (RawXBV.to_N hi_lit) in
   let* lo := opt_to_sum "Xs in range bound"%string (RawXBV.to_N lo_lit) in
   let* wf_hi := assert_dec _ "High bound of range select must be in-bounds"%string in
   let* wf_lo := assert_dec _ "Low bound of range select must be in-bounds"%string in
-  inr (_; Verilog.RangeSelect t_vec hi lo wf_hi wf_lo) ;
+  inr (_; Verilog.RangeSelect vec hi lo wf_hi wf_lo) ;
 | RawVerilog.RangeSelect vec _ _ =>
-  raise "Range select must have literal bounds"%string ;
-| RawVerilog.BitSelect vec idx =>
-  let* (w_vec; t_vec) := tc_expr vec in
-  match idx with
-  | RawVerilog.IntegerLiteral lit =>
-    let* idx := opt_to_sum "Xs in bit-select"%string (RawXBV.to_N lit) in
-    let* wf := assert_dec (idx < w_vec)%N
-      ("bit-select index out of bounds (literal)")%string in
-    inr (1%N; Verilog.BitSelect_const t_vec idx wf)
-  | _ =>
-    let* (w_idx; t_idx) := tc_expr idx in
-    let* wf_value := assert_dec _ "bit-select index out of bounds (width)"%string in
-    let* wf_nonzero := assert_dec _ "bit-select index is zero-width"%string in
-    inr (1%N; Verilog.BitSelect_width t_vec t_idx wf_value wf_nonzero)
-  end
+  raise "Range select must have variable target, literal bounds"%string ;
+| RawVerilog.BitSelect (RawVerilog.NamedExpression vec) idx =>
+  let* (w_idx; t_idx) := tc_expr idx in
+  inr (1%N; Verilog.BitSelect vec t_idx)
+| RawVerilog.BitSelect _ _ =>
+  raise "BitSelect must target variable"%string
 | RawVerilog.Concatenation lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
