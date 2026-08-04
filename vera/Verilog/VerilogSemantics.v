@@ -72,7 +72,7 @@ Module RegisterState.
     set_reg (Location.var loc) (XBV.set_bit (r (Location.var loc)) (Location.idx loc) bit wf) r.
 
   Definition set_slice {w} (slice : Slice.t w) (value : XBV.xbv w) (r : register_state) : register_state :=
-    set_reg (Slice.var slice) (XBV.set_slice (r (Slice.var slice)) (Slice.lo slice) value (Slice.wf slice)) r.
+    set_reg (Slice.get_var slice) (XBV.set_slice (r (Slice.get_var slice)) (Slice.get_lo slice) value (Slice.wf_width slice)) r.
 
   Lemma set_reg_get_in var val regs :
     set_reg var val regs var = val.
@@ -1388,7 +1388,7 @@ Module CombinationalOnly.
       let tBranch_val := eval_expr regs tBranch in
       let fBranch_val := eval_expr regs fBranch in
       (eval_conditional cond_val tBranch_val fBranch_val);
-    eval_expr regs (Verilog.RangeSelect vec hi lo _ _) :=
+    eval_expr regs (Verilog.RangeSelect (Slice.Mk vec hi lo _)) :=
       let vec_val := regs vec in
       (XBV.extr vec_val lo (1 + hi - lo));
     eval_expr regs (Verilog.BitSelect vec idx) :=

@@ -76,7 +76,7 @@ Equations simpl_expr {w} : expression w -> expression w := {
     (* TODO: Convert replications to concats *)
     Replication n (simpl_expr e)
   | Conditional cond ifT ifF => Conditional (simpl_expr cond) (simpl_expr ifT) (simpl_expr ifF)
-  | RangeSelect vec hi lo _ wf => RangeSelect vec hi lo _ wf
+  | RangeSelect slice => RangeSelect slice
   | BitSelect vec (IntegerLiteral w idx) => BitSelect vec (IntegerLiteral w idx)
   | BitSelect vec idx =>
     (* No variable bitselect in SMTLIB. Also, the shift we add must be balanced, as above. *)

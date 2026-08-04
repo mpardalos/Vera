@@ -22,6 +22,8 @@ From vera Require Import Tactics.
 From vera Require Import Decidable.
 From vera Require Import Common.
 
+Opaque N.add N.sub.
+
 Module Var <: UsualOrderedType.
   Definition type := N.
 
@@ -183,17 +185,35 @@ Module Location <: UsualOrderedType.
 End Location.
 
 Module Slice.
-  Record t {w : N} := Mk {
-    var : Var.t;
-    lo : N;
-    wf : (lo + w <= Var.varType var)%N
-  }.
+  Inductive t : N -> Type := Mk
+    (var : Var.t)
+    (hi lo : N)
+    (wf : (lo <= hi < Var.varType var)%N)
+    : t (1 + hi - lo)
+    .
 
   Arguments t : clear implicits.
 
+  Definition get_var {w} (s : t w) :=
+    let '(Mk var _ _ _) := s in var.
+
+  Definition get_hi {w} (s : t w) :=
+    let '(Mk _ hi _ _) := s in hi.
+
+  Definition get_lo {w} (s : t w) :=
+    let '(Mk _ _ lo _) := s in lo.
+
+  Definition get_wf {w} (s : t w) :
+    (get_lo s <= get_hi s < Var.varType (get_var s))%N :=
+    let '(Mk _ _ _ wf) := s in wf.
+
+  Lemma wf_width {w} (slice : Slice.t w) :
+    (get_lo slice + w <= Var.varType (get_var slice))%N.
+  Proof. destruct slice. simpl. lia. Qed.
+
   Definition has_location {w} (slice : t w) (loc : Location.t) : Prop :=
-    slice.(var) = loc.(Location.var)
-    /\ (slice.(lo) <= loc.(Location.idx) < slice.(lo) + w)%N.
+    get_var slice = Location.var loc
+    /\ (get_lo slice <= Location.idx loc < get_lo slice + w)%N.
 End Slice.
 
 Module Type UsualWSets.
@@ -408,11 +428,11 @@ Module LocationSet <: WSets.
     VarMap.add loc.(Location.var) mask s.
 
   Definition add_slice {w} (slice : Slice.t w) (s : t) : t :=
-    let mask := match VarMap.find slice.(Slice.var) s with
-                | Some m => N.lor m (N.shiftl (N.ones w) slice.(Slice.lo))
-                | None => N.shiftl (N.ones w) slice.(Slice.lo)
+    let mask := match VarMap.find (Slice.get_var slice) s with
+                | Some m => N.lor m (N.shiftl (N.ones w) (Slice.get_lo slice))
+                | None => N.shiftl (N.ones w) (Slice.get_lo slice)
                 end in
-    VarMap.add slice.(Slice.var) mask s.
+    VarMap.add (Slice.get_var slice) mask s.
 
   Definition of_slice {w} (slice : Slice.t w) : t :=
     add_slice slice empty.
@@ -763,15 +783,18 @@ Module LocationSet <: WSets.
     intuition discriminate.
   Qed.
 
+  Opaque N.add N.sub.
+
   Lemma add_slice_spec {w} s (slice : Slice.t w) (loc : elt) :
     In loc (add_slice slice s) <-> Slice.has_location slice loc \/ In loc s.
   Proof.
     unfold add_slice, In, mem, Slice.has_location.
-    destruct slice as [slice_var slice_lo slice_wf].
+    destruct slice as [slice_var slice_hi slice_lo].
     destruct loc as [loc_var loc_idx].
     simpl.
     destruct (Var.eq_dec loc_var slice_var).
     - subst loc_var. rewrite VarMapFacts.add_eq_o by reflexivity.
+      remember (1 + slice_hi - slice_lo)%N as w.
       assert (Hslice : N.testbit (N.shiftl (N.ones w) slice_lo) loc_idx = true
                        <-> (slice_lo <= loc_idx < slice_lo + w)%N).
       { destruct (N.le_gt_cases slice_lo loc_idx) as [Hle|Hlt].
@@ -1321,7 +1344,7 @@ Section show.
   }.
 
   Global Instance slice_Show {w} : Show (Slice.t w) := {
-    show slice := show slice.(Slice.var) << "[" << show w << "+:" << show slice.(Slice.lo) << "]"
+    show slice := show (Slice.get_var slice) << "[" << show (Slice.get_hi slice) << ":" << show (Slice.get_lo slice) << "]"
   }.
 
   Global Instance locationset_Show : Show LocationSet.t := {

@@ -17,6 +17,8 @@ From ExtLib Require Import Structures.Monads.
 From ExtLib Require Import Data.Monads.EitherMonad.
 From ExtLib Require Import Structures.MonadExc.
 From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Structures.Traversable.
+From ExtLib Require Import Data.List.
 
 From vera Require Import Common.
 From vera Require Import Tactics.
@@ -273,12 +275,7 @@ Module Verilog.
     : expression w1
   | UnaryOp {w} (op : unaryop) : expression w -> expression (unaryop_result op w)
   | Conditional {w_val w_cond : N} : expression w_cond -> expression w_val -> expression w_val -> expression w_val
-  | RangeSelect
-    (vec : Var.t)
-    (hi lo : N)
-    (wf_hi : (hi < Var.varType vec)%N)
-    (wf_lo : (lo <= hi)%N)
-    : expression (1 + hi - lo)%N
+  | RangeSelect {w} (slice : Slice.t w) : expression w
   | BitSelect {w_sel}
     (vec : Var.t)
     (sel : expression w_sel)
@@ -386,7 +383,7 @@ Module Verilog.
     | (Verilog.BitwiseOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.ShiftOp op lhs rhs _ _) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.Conditional cond tBranch fBranch) => expr_reads cond ∪ expr_reads tBranch ∪ expr_reads fBranch
-    | (Verilog.RangeSelect vec hi lo wf1 wf2) => LocationSet.of_slice (Slice.Mk (1 + hi - lo) vec lo (range_select_slice_wf wf1 wf2))
+    | (Verilog.RangeSelect slice) => LocationSet.of_slice slice
     | (Verilog.BitSelect vec (Verilog.IntegerLiteral _ xbv_idx)) =>
       match XBV.to_N xbv_idx with
       | Some idx =>
@@ -530,7 +527,7 @@ Module Verilog.
       | ShiftOp op lhs rhs _ _ => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
       | UnaryOp op e => "(" << show op << " " << show_expression e << ")"
       | Conditional cond ifT ifF => "(" << show_expression cond << " ? " << show_expression ifT << " : " << show_expression ifF << ")"
-      | RangeSelect vec hi lo _ _ => show vec << "[" << show hi << ":" << show lo << "]"
+      | RangeSelect (Slice.Mk vec hi lo _) => show vec << "[" << show hi << ":" << show lo << "]"
       | BitSelect vec idx => show vec << "[" << show_expression idx << "]"
       | Concatenation lhs rhs => "{" << show_expression lhs << ", " << show_expression rhs << "}"
       | Replication count e => "{" << show count << "{" << show_expression e << "}}"
@@ -682,9 +679,8 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
 | RawVerilog.RangeSelect (RawVerilog.NamedExpression vec) (RawVerilog.IntegerLiteral hi_lit) (RawVerilog.IntegerLiteral lo_lit) =>
   let* hi := opt_to_sum "Xs in range bound"%string (RawXBV.to_N hi_lit) in
   let* lo := opt_to_sum "Xs in range bound"%string (RawXBV.to_N lo_lit) in
-  let* wf_hi := assert_dec _ "High bound of range select must be in-bounds"%string in
-  let* wf_lo := assert_dec _ "Low bound of range select must be in-bounds"%string in
-  inr (_; Verilog.RangeSelect vec hi lo wf_hi wf_lo) ;
+  let* wf := assert_dec _ "Range select out-of-bounds"%string in
+  inr (_; Verilog.RangeSelect (Slice.Mk vec hi lo wf)) ;
 | RawVerilog.RangeSelect vec _ _ =>
   raise "Range select must have variable target, literal bounds"%string ;
 | RawVerilog.BitSelect (RawVerilog.NamedExpression vec) idx =>
@@ -718,9 +714,8 @@ Equations tc_assign_target : RawVerilog.expression -> transf { w & Verilog.assig
 | RawVerilog.RangeSelect (RawVerilog.NamedExpression var) (RawVerilog.IntegerLiteral hi_bits) (RawVerilog.IntegerLiteral lo_bits) =>
   let* hi := opt_to_sum "Xs in range-select hi"%string (RawXBV.to_N hi_bits) in
   let* lo := opt_to_sum "Xs in range-select lo"%string (RawXBV.to_N lo_bits) in
-  let w : N := (1 + hi - lo)%N in
-  let* wf := assert_dec _ "Slice indices (lhs) out of bounds"%string in
-  inr (w; Verilog.AssignSlice (Slice.Mk w var lo wf))
+  let* wf := assert_dec _ "Range select out-of-bounds"%string in
+  inr ((1 + hi - lo)%N; Verilog.AssignSlice (Slice.Mk var hi lo wf))
 | RawVerilog.Concatenation lhs rhs =>
   let* (w_lhs; t_lhs) := tc_assign_target lhs in
   let* (w_rhs; t_rhs) := tc_assign_target rhs in
@@ -751,12 +746,20 @@ Equations tc_module_item_lst : list RawVerilog.module_item -> transf (list Veril
   inr (t_mi :: t_mis)
 }.
 
+Definition tc_variable_declaration (vdecl : RawVerilog.variable_declaration) :=
+  match RawVerilog.varDeclVectorDeclaration vdecl with
+  | RawVerilog.Scalar => inr vdecl
+  | RawVerilog.Vector msb 0 => inr vdecl
+  | _ => inl "Invalid variable bounds (LSB must be 0)"%string
+  end.
+
 Definition tc_vmodule (m : RawVerilog.vmodule) : transf Verilog.vmodule :=
   traceBracket ("Typecheck " ++ RawVerilog.modName m) (
+    let* t_modVariableDecls := mapT tc_variable_declaration (RawVerilog.modVariableDecls m) in
     let* t_modBody := tc_module_item_lst (RawVerilog.modBody m) in
     inr {|
         Verilog.modName := RawVerilog.modName m;
-        Verilog.modVariableDecls := RawVerilog.modVariableDecls m;
+        Verilog.modVariableDecls := t_modVariableDecls ;
         Verilog.modBody := t_modBody
     |}
   )

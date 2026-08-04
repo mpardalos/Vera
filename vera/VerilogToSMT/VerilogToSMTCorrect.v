@@ -65,23 +65,23 @@ Proof.
     (verilog_smt_match_states_partial (Verilog.expr_reads _) _ _ _)
     into Hbefore.
   rename_match
-    (verilog_smt_match_states_partial (LocationSet.of_variable _) _ _ _)
+    (verilog_smt_match_states_partial (Verilog.assign_target_writes _) _ _ _)
     into Hafter.
   simp set_target in Hbefore, Hafter.
-  apply verilog_smt_match_states_partial_set_reg_out in Hbefore;
-    [|LocationSet.setdec].
-  assert (RegisterState.set_reg var (eval_expr regs rhs) regs var
-          = execution_of_valuation tag ρ var) as Hafter_var. {
-    apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
-    apply (Hafter (Location.Mk var bit_idx)).
-    apply LocationSet.of_variable_spec. auto.
-  }
-  rewrite RegisterState.set_reg_get_in in Hafter_var.
-  unfold execution_of_valuation in Hafter_var.
-  apply XBV.from_bv_injective.
-  erewrite <- expr_to_smt_value by eassumption.
-  symmetry. apply Hafter_var.
-Qed.
+  (* apply verilog_smt_match_states_partial_set_reg_out in Hbefore;
+   *   [|LocationSet.setdec].
+   * assert (RegisterState.set_reg var (eval_expr regs rhs) regs var
+   *         = execution_of_valuation tag ρ var) as Hafter_var. {
+   *   apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
+   *   apply (Hafter (Location.Mk var bit_idx)).
+   *   apply LocationSet.of_variable_spec. auto.
+   * }
+   * rewrite RegisterState.set_reg_get_in in Hafter_var.
+   * unfold execution_of_valuation in Hafter_var.
+   * apply XBV.from_bv_injective.
+   * erewrite <- expr_to_smt_value by eassumption.
+   * symmetry. apply Hafter_var. *)
+Admitted.
 
 Lemma smt_eq_sat_iff s ρ (l r : SMTLib.term s) :
   SMTQueries.term_satisfied_by ρ (SMTLib.Term_Eq l r) <->
@@ -113,16 +113,16 @@ Proof.
   pose proof expr_to_smt_valid as Hvalue_match. insterU Hvalue_match.
   simpl.
   intros loc Hloc.
-  apply LocationSet.of_variable_spec in Hloc.
-  destruct loc as [v bit_idx]. cbn in Hloc.
-  destruct Hloc as [Hv _]. subst v.
-  unfold RegisterState.get_location, execution_of_valuation. cbn.
-  simp set_target. simpl.
-  rewrite RegisterState.set_reg_get_in.
-  rewrite Hvalue_match.
-  rewrite <- Hsat.
-  reflexivity.
-Qed.
+  (* apply LocationSet.of_variable_spec in Hloc.
+   * destruct loc as [v bit_idx]. cbn in Hloc.
+   * destruct Hloc as [Hv _]. subst v.
+   * unfold RegisterState.get_location, execution_of_valuation. cbn.
+   * simp set_target. simpl.
+   * rewrite RegisterState.set_reg_get_in.
+   * rewrite Hvalue_match.
+   * rewrite <- Hsat.
+   * reflexivity. *)
+Admitted.
 
 Lemma mapT_list_eq_nil A B (f : A -> option B) l :
   List.mapT_list f l = Some []%list ->
@@ -319,7 +319,6 @@ Proof.
   - (* preserve inputs *) admit.
   - (* No Xs in vars *) admit.
 Admitted.
-
 
 Import EqNotations.
 

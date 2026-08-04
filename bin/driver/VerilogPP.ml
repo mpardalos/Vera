@@ -157,7 +157,7 @@ module Typed = struct
         fprintf fmt "( %a@ %a@ %a )" expression l shiftop op expression r
     | Verilog.UnaryOp (_, op, e) ->
         fprintf fmt "( %a@ %a )" unaryop op expression e
-    | Verilog.RangeSelect (target, hi, lo) ->
+    | Verilog.RangeSelect (w, (Slice.Mk (target, hi, lo))) ->
         fprintf fmt "%a[%a:%a]" variable target Zarith_Z.pp_print hi Zarith_Z.pp_print lo
     | Verilog.BitSelect (_, target, index) ->
         fprintf fmt "%a[%a]" variable target expression index
@@ -175,14 +175,15 @@ module Typed = struct
     match t with
     | Verilog.AssignVar var -> variable fmt var
     | Verilog.AssignBit loc ->
-        fprintf fmt "%a[%a]" variable loc.Location.var Zarith_Z.pp_print
-          loc.Location.idx
-    | Verilog.AssignSlice (width, slice) ->
-        fprintf fmt "%a[%a:%a]" variable slice.Slice.var Zarith_Z.pp_print
-          (Zarith_Z.pred (Zarith_Z.add slice.Slice.lo width)) Zarith_Z.pp_print
-          slice.Slice.lo
+       fprintf fmt "%a[%a]" variable loc.Location.var Zarith_Z.pp_print
+         loc.Location.idx
+    | Verilog.AssignSlice (width, (Slice.Mk (var, hi, lo))) ->
+       fprintf fmt "%a[%a:%a]"
+         variable var
+         Zarith_Z.pp_print hi
+         Zarith_Z.pp_print lo
     | Verilog.AssignConcat (_, _, lhs, rhs) ->
-        fprintf fmt "{%a, %a}" assign_target lhs assign_target rhs
+       fprintf fmt "{%a, %a}" assign_target lhs assign_target rhs
 
   let statement (fmt : formatter) (s : Verilog.statement) =
     match s with

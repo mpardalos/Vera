@@ -161,9 +161,9 @@ Section expr_to_smt.
       let* ifT_smt := expr_to_smt ifT in
       let* ifF_smt := expr_to_smt ifF in
       ret (conditional_to_smt cond_type cond_smt ifT_smt ifF_smt);
-    expr_to_smt (Verilog.RangeSelect vec hi lo _ wf) :=
+    expr_to_smt (Verilog.RangeSelect (Slice.Mk vec hi lo wf)) :=
       let vec_smt := var_to_smt vec in
-      ret (SMTLib.Term_BVExtract hi lo wf vec_smt);
+      ret (SMTLib.Term_BVExtract hi lo (proj1 wf) vec_smt);
     expr_to_smt (Verilog.BitSelect vec (Verilog.IntegerLiteral w xbv_idx)) :=
       let vec_smt := var_to_smt vec in
       let* idx := opt_to_sum "Xs in BitSelect index"%string (XBV.to_N xbv_idx) in
@@ -179,13 +179,27 @@ Section expr_to_smt.
       ret (var_to_smt var)
   .
 
+  Opaque N.sub N.add.
+
+  Equations assign_target_to_smt {w} : Verilog.assign_target w -> transf (SMTLib.term (Sort_BitVec w)) :=
+    assign_target_to_smt (Verilog.AssignSlice (Slice.Mk var hi lo wf)) :=
+      ret (SMTLib.Term_BVExtract hi lo (proj1 wf) (var_to_smt var));
+    assign_target_to_smt (Verilog.AssignBit (Location.Mk vec idx) wf) :=
+      let vec_smt := var_to_smt vec in
+      ret (smt_select_bit vec_smt idx);
+    assign_target_to_smt (Verilog.AssignVar var) :=
+      ret (var_to_smt var);
+    assign_target_to_smt (Verilog.AssignConcat e1 e2) :=
+      let* e1_smt := assign_target_to_smt e1 in
+      let* e2_smt := assign_target_to_smt e2 in
+      ret (SMTLib.Term_BVConcat e1_smt e2_smt);
+  .
+
   Equations transfer_module_item : Verilog.module_item -> transf (SMTLib.term Sort_Bool) :=
-    transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign (Verilog.AssignVar var) rhs)) :=
-      let lhs_smt := var_to_smt var in
+    transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign lhs rhs)) :=
+      let* lhs_smt := assign_target_to_smt lhs in
       let* rhs_smt := expr_to_smt rhs in
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
-    transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign _ _)) :=
-      raise "Unexpected assign LHS in VerilogToSMT stage"%string;
   .
 
   Equations transfer_module_body : list Verilog.module_item -> transf (list (SMTLib.term Sort_Bool)) :=

@@ -633,7 +633,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
       (AddEnv "VERA_TRACE" "1")
       vera
       "lower"
-      "pre-smt"
+      "smt"
       src
     return ()
 
