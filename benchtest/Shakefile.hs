@@ -585,10 +585,11 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     need [f | (_, _, f) <- logFiles]
     
     liftIO $ T.writeFile out $ (T.pack "Benchmark,Speed,Result\n")
-    forM_ logFiles $ \(design, variant, logFile) -> liftIO $ do
-      text <- readFile logFile
+    forM_ logFiles $ \(design, variant, outFile) -> liftIO $ do
+      outText <- readFile outFile
+      logText <- readFile (outFile <.> "log")
       let result =
-            if any (`isInfixOf` text) ["Error", "exception"]
+            if or [ msg `isInfixOf` txt | msg <- ["Error", "exception"], txt <- [outText, logText]]
             then "Error"
             else "OK"
       appendFile out $ intercalate "," [design, variant, result]
