@@ -7,6 +7,11 @@ From vera Require Import VerilogSimpl.
 From vera Require Import DropUnused.
 From vera Require VerilogEquivalence.
 From vera Require Import Common.
+From vera Require Import VerilogSemantics.
+From vera Require Import Tactics.
+Import CombinationalOnly.
+Import DefinedEquivalence.
+Import ExactEquivalence.
 
 From ExtLib Require Import Structures.Monads.
 
@@ -17,6 +22,49 @@ From Equations Require Import Equations.
 Import MonadLetNotation.
 Local Open Scope monad_scope.
 Local Open Scope string.
+Local Open Scope verilog_scope.
+
+Module Pass.
+  Record t := Mk {
+    pass_name : string;
+    pass_apply :> Verilog.vmodule -> string + Verilog.vmodule;
+    pass_correct : forall v1 v2, pass_apply v1 = inr v2 -> v1 ~~~ v2
+  }.
+
+  #[program]
+  Definition pure
+    (name : string)
+    (f : Verilog.vmodule -> Verilog.vmodule)
+    (f_correct : forall v, f v ~~~ v)
+    : t := {|
+      pass_name := name;
+      pass_apply v := ret (f v)
+    |}.
+  Next Obligation. symmetry. apply f_correct. Qed.
+
+  #[program]
+  Definition compose (p1 p2 : t) : t := {|
+    pass_name := pass_name p1 ++ " ∘ " ++ pass_name p2;
+    pass_apply v :=
+      let* v' := pass_apply p1 v in
+      pass_apply p2 v'
+  |}.
+  Next Obligation.
+    monad_inv.
+    transitivity v.
+    - eapply pass_correct. eassumption.
+    - eapply pass_correct. eassumption.
+  Qed.
+End Pass.
+
+Import (coercions) Pass.
+
+Declare Scope pass_scope.
+Delimit Scope pass_scope with pass.
+
+Infix "∘" := Pass.compose (at level 20, right associativity) : pass_scope.
+
+Local Open Scope pass.
 
 Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
   traceBracket ("Sort " ++ Verilog.modName v) (
@@ -31,33 +79,6 @@ Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
       Verilog.modBody := sorted_body
     |}
   ).
-
-Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string SMTQueries.query :=
-  let* sorted1 := sort_vmodule verilog1 in
-  let simplified1 := simpl_vmodule sorted1 in
-  let* unused_dropped1 := drop_unused simplified1 in
-
-  let* sorted2 := sort_vmodule verilog2 in
-  let simplified2 := simpl_vmodule sorted2 in
-  let* unused_dropped2 := drop_unused simplified2 in
-
-  VerilogEquivalence.equivalence_query unused_dropped1 unused_dropped2.
-
-From vera Require Import VerilogSMT.
-From vera Require Import SMTQueries.
-From vera Require Import VerilogSemantics.
-Import CombinationalOnly.
-Import DefinedEquivalence.
-Import ExactEquivalence.
-From vera Require Import Tactics.
-From vera Require Import VerilogEquivalenceCorrectness.
-
-From Stdlib Require Import Relations.
-From Stdlib Require Import Structures.Equalities.
-From Stdlib Require Import Morphisms.
-From Stdlib Require Import Setoid.
-
-Local Open Scope verilog_scope.
 
 Theorem sort_vmodule_exact_equivalence v1 v2 :
   sort_vmodule v1 = inr v2 ->
@@ -75,6 +96,35 @@ Proof.
     by eauto using sort_module_items_sorted.
   reflexivity.
 Qed.
+
+Definition sort_vmodule_pass : Pass.t :=
+  Pass.Mk "Sort" sort_vmodule sort_vmodule_exact_equivalence.
+Definition simpl_vmodule_pass : Pass.t :=
+  Pass.pure "Simpl" simpl_vmodule simpl_vmodule_exact_equivalence.
+Definition drop_unused_pass : Pass.t :=
+  Pass.Mk "DropUnused" drop_unused drop_unused_exact_equivalence.
+
+Definition verilog_pipeline : Pass.t :=
+  sort_vmodule_pass
+  ∘ simpl_vmodule_pass
+  ∘ drop_unused_pass.
+
+Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string SMTQueries.query :=
+  let* verilog1' := verilog_pipeline verilog1 in
+  let* verilog2' := verilog_pipeline verilog2 in
+
+  VerilogEquivalence.equivalence_query verilog1' verilog2'.
+
+(****** Continue here **********)
+
+From vera Require Import VerilogSMT.
+From vera Require Import SMTQueries.
+From vera Require Import VerilogEquivalenceCorrectness.
+
+From Stdlib Require Import Relations.
+From Stdlib Require Import Structures.Equalities.
+From Stdlib Require Import Morphisms.
+From Stdlib Require Import Setoid.
 
 Lemma equivalence_query_clean_left v1 v2 smt :
   VerilogEquivalence.equivalence_query v1 v2 = inr smt ->
@@ -100,6 +150,8 @@ Proof.
   eassumption.
 Qed.
 
+Opaque verilog_pipeline.
+
 Theorem equivalence_query_general_unsat_correct v1 v2 smt :
   equivalence_query_general v1 v2 = inr smt ->
   (forall ρ, ~ satisfied_by ρ smt) ->
@@ -107,12 +159,8 @@ Theorem equivalence_query_general_unsat_correct v1 v2 smt :
 Proof.
   unfold equivalence_query_general.
   intros. monad_inv.
-  rewrite sort_vmodule_exact_equivalence with (v1:=v1) by eassumption.
-  rewrite sort_vmodule_exact_equivalence with (v1:=v2) by eassumption.
-  rewrite <- simpl_vmodule_exact_equivalence with (v:=v).
-  rewrite <- simpl_vmodule_exact_equivalence with (v:=v3).
-  rewrite drop_unused_exact_equivalence with (v1 := simpl_vmodule v) by eassumption.
-  rewrite drop_unused_exact_equivalence with (v1 := simpl_vmodule v3) by eassumption.
+  rewrite Pass.pass_correct with (v1:=v1) by eassumption.
+  rewrite Pass.pass_correct with (v1:=v2) by eassumption.
   eapply VerilogEquivalenceCorrectness.equivalence_query_unsat_correct.
   all: eassumption.
 Qed.
@@ -165,17 +213,10 @@ Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
 Proof.
   intros. unfold equivalence_query_general in *. monad_inv.
   eexists. eexists.
-  eapply counterexample_transfer with (v1:=v0) (v2:=v4).
-  - symmetry. 
-    etransitivity. { apply sort_vmodule_exact_equivalence. eassumption. }
-    etransitivity. { symmetry. apply simpl_vmodule_exact_equivalence. }
-    apply drop_unused_exact_equivalence. eassumption.
-  - symmetry. 
-    etransitivity. { apply sort_vmodule_exact_equivalence. eassumption. }
-    etransitivity. { symmetry. apply simpl_vmodule_exact_equivalence. }
-    apply drop_unused_exact_equivalence. eassumption.
-  - eapply equivalence_query_sat_correct.
-    all: eassumption.
+  eapply counterexample_transfer with (v1:=v) (v2:=v0).
+  - symmetry. eapply Pass.pass_correct. eassumption.
+  - symmetry. eapply Pass.pass_correct. eassumption.
+  - eapply equivalence_query_sat_correct. all: eassumption.
 Qed.
 
 Print Assumptions equivalence_query_general_unsat_correct.
