@@ -4,6 +4,7 @@ From vera Require VerilogSemantics.
 Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
 From vera Require Import VerilogSimpl.
+From vera Require Import DropUnused.
 From vera Require VerilogEquivalence.
 From vera Require Import Common.
 
@@ -34,11 +35,13 @@ Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
 Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string SMTQueries.query :=
   let* sorted1 := sort_vmodule verilog1 in
   let simplified1 := simpl_vmodule sorted1 in
+  let* unused_dropped1 := drop_unused simplified1 in
 
   let* sorted2 := sort_vmodule verilog2 in
   let simplified2 := simpl_vmodule sorted2 in
+  let* unused_dropped2 := drop_unused simplified2 in
 
-  VerilogEquivalence.equivalence_query simplified1 simplified2.
+  VerilogEquivalence.equivalence_query unused_dropped1 unused_dropped2.
 
 From vera Require Import VerilogSMT.
 From vera Require Import SMTQueries.
@@ -58,7 +61,7 @@ Local Open Scope verilog_scope.
 
 Theorem sort_vmodule_exact_equivalence v1 v2 :
   sort_vmodule v1 = inr v2 ->
-  v2 ~~~ v1.
+  v1 ~~~ v2.
 Proof.
   unfold sort_vmodule. intros H.
   simpl in H. monad_inv.
@@ -104,10 +107,12 @@ Theorem equivalence_query_general_unsat_correct v1 v2 smt :
 Proof.
   unfold equivalence_query_general.
   intros. monad_inv.
-  rewrite <- sort_vmodule_exact_equivalence with (v1:=v1) by eassumption.
-  rewrite <- sort_vmodule_exact_equivalence with (v1:=v2) by eassumption.
+  rewrite sort_vmodule_exact_equivalence with (v1:=v1) by eassumption.
+  rewrite sort_vmodule_exact_equivalence with (v1:=v2) by eassumption.
   rewrite <- simpl_vmodule_exact_equivalence with (v:=v).
-  rewrite <- simpl_vmodule_exact_equivalence with (v:=v0).
+  rewrite <- simpl_vmodule_exact_equivalence with (v:=v3).
+  rewrite drop_unused_exact_equivalence with (v1 := simpl_vmodule v) by eassumption.
+  rewrite drop_unused_exact_equivalence with (v1 := simpl_vmodule v3) by eassumption.
   eapply VerilogEquivalenceCorrectness.equivalence_query_unsat_correct.
   all: eassumption.
 Qed.
@@ -160,13 +165,15 @@ Theorem equivalence_query_general_sat_correct v1 v2 smt ρ :
 Proof.
   intros. unfold equivalence_query_general in *. monad_inv.
   eexists. eexists.
-  eapply counterexample_transfer with (v1:=simpl_vmodule v) (v2:=simpl_vmodule v0).
-  - rewrite simpl_vmodule_exact_equivalence.
-    apply sort_vmodule_exact_equivalence.
-    assumption.
-  - rewrite simpl_vmodule_exact_equivalence.
-    apply sort_vmodule_exact_equivalence.
-    assumption.
+  eapply counterexample_transfer with (v1:=v0) (v2:=v4).
+  - symmetry. 
+    etransitivity. { apply sort_vmodule_exact_equivalence. eassumption. }
+    etransitivity. { symmetry. apply simpl_vmodule_exact_equivalence. }
+    apply drop_unused_exact_equivalence. eassumption.
+  - symmetry. 
+    etransitivity. { apply sort_vmodule_exact_equivalence. eassumption. }
+    etransitivity. { symmetry. apply simpl_vmodule_exact_equivalence. }
+    apply drop_unused_exact_equivalence. eassumption.
   - eapply equivalence_query_sat_correct.
     all: eassumption.
 Qed.

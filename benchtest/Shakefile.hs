@@ -120,7 +120,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
   -- be buggy for this version of EQY.
   addOracle $ \ConfigSolver -> pure "cvc5"
   -- Timeout for vera/eqy runs (in seconds)
-  addOracle $ \ConfigVeraTimeout -> pure 3600
+  addOracle $ \ConfigVeraTimeout -> pure 300
   -- Vera memory limit (in GB)
   addOracle $ \ConfigVeraMemoryLimit -> pure 32
   ----------------------------------------------------------
