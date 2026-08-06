@@ -52,11 +52,6 @@ Definition decls_drop_vars (drop : VarSet.t) :=
 
 Definition drop_unused1 (m : vmodule) : string + (LocationSet.t * vmodule) :=
   traceBracket ("Drop unused (iteration) " ++ Verilog.modName m) (
-    assert_dec
-      (Sort.module_items_sorted
-        (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs m)))
-        (modBody m))
-      "Unsorted module in drop_internal";;
     let external_vars :=
       LocationSet.union
         (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs m)))
@@ -86,6 +81,11 @@ Fixpoint drop_unused_rec (fuel : nat) (m : vmodule) : string + vmodule :=
 
 Definition drop_unused (m : vmodule) : string + vmodule :=
   traceBracket ("Drop unused " ++ Verilog.modName m) (
+    assert_dec
+      (Sort.module_items_sorted
+        (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs m)))
+        (modBody m))
+      "Unsorted module in drop_internal";;
     drop_unused_rec (List.length (modBody m)) m
   ).
 
