@@ -264,6 +264,16 @@ Module MySet(Import S : UsualWSets).
     symmetry proved by Disjoint_sym
     as Disjoint_rel.
 
+  Global Instance dec_vs_Empty (a : t) : DecProp (Empty a).
+  Proof.
+    destruct (is_empty a) eqn:Eq.
+    - left.
+      now apply is_empty_spec.
+    - right. intros contra.
+      apply is_empty_spec in contra.
+      congruence.
+  Qed.
+
   Global Instance dec_vs_In (v : E.t) (a : t) : DecProp (In v a).
   Proof.
     destruct (mem v a) eqn:Eq.

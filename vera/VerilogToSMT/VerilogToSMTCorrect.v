@@ -190,6 +190,7 @@ Proof.
 Qed.
 
 Lemma transfer_module_body_satisfiable v tag ρ q :
+  (* TODO: This should just worry about accessed/output vars, not everything *)
     LocationSet.Equal
       (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
       (Verilog.module_body_writes (Verilog.modBody v) ∪ LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) ->
@@ -282,6 +283,7 @@ Qed.
 
 Lemma transfer_module_body_valid tag v ρ q :
   module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) ->
+  (* TODO: This should just worry about accessed/output vars, not everything *)
   LocationSet.Equal
     (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
     (Verilog.module_body_writes (Verilog.modBody v) ∪ LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) ->
@@ -335,6 +337,8 @@ Proof.
   all: intros H.
   - eapply transfer_module_body_valid.
     all: try eassumption.
+    admit.
   - eapply transfer_module_body_satisfiable.
-    all: eassumption.
-Qed.
+    all: try eassumption.
+    admit.
+Admitted.

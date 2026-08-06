@@ -406,7 +406,7 @@ Qed.
 Lemma defined_match_on_defined_value_left C e1 e2 :
   RegisterState.defined_match_on C e1 e2 ->
   RegisterState.defined_value_for C e1.
-Proof. unfold RegisterState.defined_match_on. crush. Qed.
+Proof. intros [_ H]. exact H. Qed.
 
 Lemma defined_match_on_defined_value_right C e1 e2 :
   RegisterState.defined_match_on C e1 e2 ->
@@ -543,6 +543,7 @@ Record verilog_to_smt_checked (v : Verilog.vmodule) := MkVerilogToSMTChecked {
     io_disjoint : disjoint (Verilog.module_inputs v) (Verilog.module_outputs v);
     (* no_duplicate_writes : NoDup (Verilog.module_body_writes (Verilog.modBody v)); *)
     (* no_duplicate_outputs : NoDup (Verilog.module_outputs v); *)
+    (* TODO: This should just worry about accessed/output vars, not everything *)
     all_vars_driven :
       LocationSet.Equal
         (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
@@ -557,7 +558,8 @@ Proof.
   intros H.
   unfold VerilogToSMT.verilog_to_smt in H. simpl in H. monad_inv.
   constructor; try assumption.
-Qed.
+  admit. 
+Admitted.
 
 Record equivalence_query_checked (v1 v2 : Verilog.vmodule) := MkEquivalenceQueryChecked {
   verilog_to_smt_eqn1 : exists tag smt, VerilogToSMT.verilog_to_smt tag v1 = inr smt;

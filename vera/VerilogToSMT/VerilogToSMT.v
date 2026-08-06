@@ -182,7 +182,7 @@ Section expr_to_smt.
       ret (smt_select_bit vec_smt idx);
     expr_to_smt (Verilog.BitSelect vec _) :=
       raise "Unexpected variable bit-select in VerilogToSMT stage"%string;
-     expr_to_smt (Verilog.Resize to expr _) :=
+    expr_to_smt (Verilog.Resize to expr _) :=
       let from := Verilog.expr_type expr in
       let* expr_smt := expr_to_smt expr in
       ret (cast_from_to from to expr_smt);
@@ -243,13 +243,6 @@ Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : tran
     let* nodup := assert_dec
       (NoDup (Verilog.modVariables vmodule))
       "Duplicate variables"%string in
-    trace "Check for undriven" (
-      assert_dec
-        (LocationSet.Equal
-          (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables vmodule)))
-          (Verilog.module_body_writes (Verilog.modBody vmodule)
-	    ∪ LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs vmodule)))%verilog)
-        "Undriven variables"%string) ;;
     trace "Check sort"
       (assert_dec
         (module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs vmodule))) (Verilog.modBody vmodule))

@@ -8,6 +8,7 @@ Import Verilog.
 From vera Require Import VerilogSemantics.
 
 From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Programming.Show.
 
 From Stdlib Require Import BinNums.
 From Stdlib Require Import ZArith.
@@ -27,19 +28,21 @@ Local Open Scope verilog_scope.
 Import EqNotations.
 Opaque N.add N.sub.
 
-Equations module_body_drop_vars :
-    VarSet.t ->
+(* This will create partially (and wholly) undriven variables *)
+
+Equations module_body_drop_assigns :
+    LocationSet.t ->
     list module_item ->
-    (VarSet.t * list module_item) :=
-  module_body_drop_vars drop [] := (VarSet.empty, []);
-  module_body_drop_vars drop (AlwaysComb (BlockingAssign lhs rhs) :: body)
+    (LocationSet.t * list module_item) :=
+  module_body_drop_assigns drop [] := (LocationSet.empty, []);
+  module_body_drop_assigns drop (AlwaysComb (BlockingAssign lhs rhs) :: body)
     (* There should be a specialized subset op for locationset in varset *)
-    with (dec (VarSet.Subset (assign_target_writes_vars lhs) drop)) := {
+    with (dec (assign_target_writes lhs ⊆ drop)) := {
     | left _ =>
-      let (dropped', body') := module_body_drop_vars drop body in
-      (VarSet.union dropped' (assign_target_writes_vars lhs), body')
+      let (dropped', body') := module_body_drop_assigns drop body in
+      (dropped' ∪ assign_target_writes lhs, body')
     | right _ =>
-      let (dropped', body') := module_body_drop_vars drop body in
+      let (dropped', body') := module_body_drop_assigns drop body in
       (dropped', AlwaysComb (BlockingAssign lhs rhs) :: body')
     
   }.
@@ -47,7 +50,7 @@ Equations module_body_drop_vars :
 Definition decls_drop_vars (drop : VarSet.t) :=
   List.filter (fun d => negb (VarSet.mem (variable_of_decl d) drop)).
 
-Definition drop_unused1 (m : vmodule) : string + (VarSet.t * vmodule) :=
+Definition drop_unused1 (m : vmodule) : string + (LocationSet.t * vmodule) :=
   traceBracket ("Drop unused (iteration) " ++ Verilog.modName m) (
     assert_dec
       (Sort.module_items_sorted
@@ -55,18 +58,17 @@ Definition drop_unused1 (m : vmodule) : string + (VarSet.t * vmodule) :=
         (modBody m))
       "Unsorted module in drop_internal";;
     let external_vars :=
-      VarSet.union
-        (VarSet.of_list (Verilog.module_inputs m))
-        (VarSet.of_list (Verilog.module_outputs m)) in
-    let drop_vars :=
-      VarSet.diff
-        (VarSet.of_list (modVariables m))
-        (VarSet.union (module_body_reads_vars (modBody m)) external_vars) in
-    let (dropped, body) := module_body_drop_vars drop_vars (modBody m) in
-    let decls := decls_drop_vars dropped (modVariableDecls m) in
-    ret (dropped, {|
+      LocationSet.union
+        (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs m)))
+        (LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs m))) in
+    let drop_locations :=
+      LocationSet.diff
+        (LocationSet.of_varset (VarSet.of_list (modVariables m)))
+        (module_body_reads (modBody m) ∪ external_vars) in
+    let (dropped, body) := module_body_drop_assigns drop_locations (modBody m) in
+    inr (dropped, {|
       modName := modName m;
-      modVariableDecls := decls;
+      modVariableDecls := modVariableDecls m;
       modBody := body
     |})
   )
@@ -77,7 +79,7 @@ Fixpoint drop_unused_rec (fuel : nat) (m : vmodule) : string + vmodule :=
   | 0 => ret m
   | S n =>
     let* (dropped, m') := drop_unused1 m in
-    if VarSet.is_empty dropped
+    if LocationSet.is_empty (trace ("Dropped " ++ to_string (LocationSet.cardinal dropped) ++ " locations") dropped)
     then ret m'
     else drop_unused_rec n m'
   end.
