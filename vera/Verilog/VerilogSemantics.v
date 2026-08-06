@@ -587,7 +587,9 @@ Module Sort.
       module_items_sorted vars (mi :: mis)
   .
 
-  Global Instance dec_module_items_sorted vars ms : DecProp (module_items_sorted vars ms).
+  #[refine]
+  Global Instance dec_module_items_sorted vars ms : DecProp (module_items_sorted vars ms) :=
+    traceBracket "Check sort" _.
   Proof.
     revert vars.
     induction ms; intros vars.
