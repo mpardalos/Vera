@@ -283,8 +283,6 @@ Module RawBV.
 
   #[global] Hint Rewrite @replicate_size : xbv_size.
 
-  Print bv_add.
-
   Equations set_bit_list (bv : bitvector) (idx : nat) (val : bool) : bitvector := {
     | (_ :: tl), 0, val => val :: tl
     | (b :: tl), (S idx'), val => b :: set_bit_list tl idx' val
