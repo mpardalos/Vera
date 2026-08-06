@@ -67,7 +67,10 @@ Extraction "Vera.ml"
   int_from_nat
   int_to_nat
   VerilogEquivalence.equivalence_query
+  EquivalenceTop.lower_verilog
+  EquivalenceTop.verilog_to_smt_general
   EquivalenceTop.equivalence_query_general
+  EquivalenceTop.verilog_pipeline
   Verilog.Typecheck.tc_vmodule
   VerilogToSMT.expr_to_smt
   VerilogSemantics.Sort.sort_module_items

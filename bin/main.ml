@@ -14,22 +14,14 @@ let typed_module_of_file f =
   let m = module_of_file f in
   Vera.Typecheck.tc_vmodule m
 
-let sorted_module_of_file f =
+let lowered_module_of_file f =
   let* m = typed_module_of_file f in
-  Vera.sort_vmodule m
-
-let simpl_module_of_file f =
-  let* m = sorted_module_of_file f in
-  Inr (Vera.simpl_vmodule m)
-
-let unused_dropped_module_of_file f =
-  let* m = simpl_module_of_file f in
-  Vera.drop_unused m
+  Vera.lower_verilog m
 
 let smt_of_file filename =
   (* Need to tag it as left or right, doesn't matter here because we only
       translate one module *)
-  Vera.verilog_to_smt VerilogLeft =<< unused_dropped_module_of_file filename
+  Vera.verilog_to_smt_general VerilogLeft =<< typed_module_of_file filename
 
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =
@@ -75,12 +67,8 @@ let rec lower level filename =
         (Vera.Inr (module_of_file filename))
   | `Typed ->
       display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename)
-  | `Sorted ->
-      display_or_error VerilogPP.Typed.vmodule (sorted_module_of_file filename)
-  | `Simplified ->
-      display_or_error VerilogPP.Typed.vmodule (simpl_module_of_file filename)
-  | `UnusedDropped | `PreSMT ->
-      display_or_error VerilogPP.Typed.vmodule (unused_dropped_module_of_file filename)
+  | `PreSMT ->
+      display_or_error VerilogPP.Typed.vmodule (lowered_module_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
 
 let compare_cmd =
@@ -127,9 +115,6 @@ let lower_cmd =
       [
         ("parsed", `Parsed);
         ("typed", `Typed);
-        ("sorted", `Sorted);
-        ("simplified", `Simplified);
-        ("unused-dropped", `UnusedDropped);
         ("pre-smt", `PreSMT);
         ("smt", `SMT);
       ]

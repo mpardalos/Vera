@@ -109,6 +109,13 @@ Definition verilog_pipeline : Pass.t :=
   ∘ simpl_vmodule_pass
   ∘ drop_unused_pass.
 
+Definition lower_verilog :=
+  Pass.pass_apply verilog_pipeline.
+
+Definition verilog_to_smt_general t verilog : sum string SMTQueries.query :=
+  let* verilog' := verilog_pipeline verilog in
+  VerilogToSMT.verilog_to_smt t verilog'.
+
 Definition equivalence_query_general (verilog1 verilog2 : Verilog.vmodule) : sum string SMTQueries.query :=
   let* verilog1' := verilog_pipeline verilog1 in
   let* verilog2' := verilog_pipeline verilog2 in
