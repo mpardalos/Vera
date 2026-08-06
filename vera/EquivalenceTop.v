@@ -17,6 +17,7 @@ Import ExactEquivalence.
 From ExtLib Require Import Structures.Monads.
 
 From Stdlib Require Import String.
+From Stdlib Require Import Sorting.Permutation.
 
 From Equations Require Import Equations.
 
@@ -67,36 +68,77 @@ Infix "∘" := Pass.compose (at level 20, right associativity) : pass_scope.
 
 Local Open Scope pass.
 
-Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
-  traceBracket ("Sort " ++ Verilog.modName v) (
-    let* sorted_body :=
-      match sort_module_items (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) with
-      | None => inl "Module not sortable"
-      | Some sorted => inr sorted
-      end in
-    ret {|
-      Verilog.modName := Verilog.modName v;
-      Verilog.modVariableDecls := Verilog.modVariableDecls v;
-      Verilog.modBody := sorted_body
-    |}
-  ).
+Section sort.
+  Import Verilog.
+  Import SigTNotations.
 
-Theorem sort_vmodule_exact_equivalence v1 v2 :
-  sort_vmodule v1 = inr v2 ->
-  v1 ~~~ v2.
-Proof.
-  unfold sort_vmodule. intros H.
-  simpl in H. monad_inv.
-  rename_match (sort_module_items _ _ = Some _) into Hsort.
-  apply equal_exact_equivalence; try reflexivity; expect 1.
-  unfold run_vmodule. simpl.
-  unfold Verilog.module_inputs in *; simpl in *.
-  apply functional_extensionality.
-  intros regs. rewrite Hsort.
-  rewrite sort_module_items_stable
-    by eauto using sort_module_items_sorted.
-  reflexivity.
-Qed.
+  Program Definition sort_module_body v
+    : string
+      + {
+        sorted : list Verilog.module_item
+        & sort_module_items (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) = Some sorted
+      } :=
+    match sort_module_items (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) with
+    | None => inl "Module not sortable"
+    | Some sorted => inr (sorted; _)
+    end.
+
+  Lemma sort_module_body_spec v sorted Hsort :
+    sort_module_body v = inr (sorted; Hsort) ->
+    sort_module_items
+      (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)))
+      (Verilog.modBody v) = Some sorted.
+  Proof.
+    unfold sort_module_body.
+    destruct (sort_module_items
+                (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)))
+                (Verilog.modBody v)) eqn:E;
+      intros; congruence.
+  Qed.
+
+  Lemma sort_module_body_wf_write_targets v sorted :
+    sort_module_items (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) = Some sorted ->
+    LocationSet.Subset
+      (module_body_writes sorted)
+      (LocationSet.of_varset
+        (VarSet.diff
+           (VarSet.of_list (List.map variable_of_decl (modVariableDecls v)))
+           (VarSet.of_list (inputs_of_decls (modVariableDecls v))))).
+  Proof.
+    intros Hperm.
+    rewrite <- sort_module_items_permutation by eassumption.
+    apply modWfWriteTargets.
+  Qed.
+
+  Definition sort_vmodule (v : Verilog.vmodule) : string + Verilog.vmodule :=
+    traceBracket ("Sort " ++ Verilog.modName v) (
+      let* (sorted_body; Hsort) := sort_module_body v in
+      ret {|
+        Verilog.modName := Verilog.modName v;
+        Verilog.modVariableDecls := Verilog.modVariableDecls v;
+        Verilog.modBody := sorted_body;
+        Verilog.modWfVariablesNoDup := Verilog.modWfVariablesNoDup v;
+        Verilog.modWfWriteTargets := sort_module_body_wf_write_targets v sorted_body Hsort
+      |}
+    ).
+  
+  Theorem sort_vmodule_exact_equivalence v1 v2 :
+    sort_vmodule v1 = inr v2 ->
+    v1 ~~~ v2.
+  Proof.
+    unfold sort_vmodule. intros H.
+    simpl in H. monad_inv.
+    pose proof (sort_module_body_spec _ _ _ E) as Hsort.
+    apply equal_exact_equivalence; try reflexivity; expect 1.
+    unfold run_vmodule. simpl.
+    unfold Verilog.module_inputs in *; simpl in *.
+    apply functional_extensionality.
+    intros regs. rewrite Hsort.
+    rewrite sort_module_items_stable
+      by eauto using sort_module_items_sorted.
+    reflexivity.
+  Qed.
+End sort.
 
 Definition sort_vmodule_pass : Pass.t :=
   Pass.Mk "Sort" sort_vmodule sort_vmodule_exact_equivalence.

@@ -86,13 +86,38 @@ Equations simpl_expr {w} : expression w -> expression w := {
   | NamedExpression var => NamedExpression var
 }.
 
+Definition simpl_module_body : list module_item -> list module_item :=
+    map (fun '(AlwaysComb (BlockingAssign lhs rhs)) => AlwaysComb (BlockingAssign lhs (simpl_expr rhs))).
+
+Lemma simpl_module_body_writes mis :
+  LocationSet.Equal
+    (module_body_writes (simpl_module_body mis))
+    (module_body_writes mis).
+Proof.
+  induction mis.
+  - reflexivity.
+  - destruct a as [[lhs rhs]]. simpl.
+    rewrite IHmis. reflexivity.
+Qed.
+
+Lemma simpl_module_body_wf_write_targets v : 
+  module_body_writes (simpl_module_body (modBody v))
+  ⊆ LocationSet.of_varset
+      (VarSet.diff
+         (VarSet.of_list (map variable_of_decl (modVariableDecls v)))
+         (VarSet.of_list (inputs_of_decls (modVariableDecls v)))).
+Proof.
+  rewrite simpl_module_body_writes.
+  apply Verilog.modWfWriteTargets.
+Qed.
+
 Definition simpl_vmodule (v : vmodule) : vmodule :=
   traceBracket ("Simplify " ++ Verilog.modName v) {|
     Verilog.modName := Verilog.modName v;
     Verilog.modVariableDecls := Verilog.modVariableDecls v;
-    Verilog.modBody := map
-      (fun '(AlwaysComb (BlockingAssign lhs rhs)) => AlwaysComb (BlockingAssign lhs (simpl_expr rhs)))
-      (Verilog.modBody v)
+    Verilog.modBody := simpl_module_body (Verilog.modBody v);
+    Verilog.modWfVariablesNoDup := Verilog.modWfVariablesNoDup v;
+    Verilog.modWfWriteTargets := simpl_module_body_wf_write_targets v;
   |}.
 
 From vera Require Import VerilogSemantics.
@@ -320,6 +345,7 @@ Proof.
   simpl.
   rewrite simpl_vmodule_same_inputs.
 
+  unfold simpl_module_body.
   rewrite sort_module_items_map; expect 3; cycle 1.
   {
     intros [[lhs rhs]].

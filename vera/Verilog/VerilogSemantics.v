@@ -1990,6 +1990,32 @@ Module Facts.
       eassumption.
   Qed.
 
+  Lemma sortable_decidable v : { vmodule_sortable v } + { ~ vmodule_sortable v}.
+  Proof.
+    unfold vmodule_sortable.
+    destruct
+      (sort_module_items
+        (LocationSet.of_varset (VarSet.of_list (module_inputs v))) 
+        (modBody v)).
+    - left. eexists. reflexivity.
+    - right. intros [? ?]. discriminate.
+  Qed.
+
+  Lemma admit_run_vmodule v e:
+    v ⇓ run_vmodule v e.
+  Proof.
+    unfold "⇓".
+    (* intros Hsortable. *)
+    destruct (sortable_decidable v).
+    - setoid_rewrite run_vmodule_preserve_inputs at 2.
+      + reflexivity.
+      + assumption.
+    - unfold run_vmodule, vmodule_sortable in *.
+      destruct (sort_module_items (LocationSet.of_varset (VarSet.of_list (module_inputs v))) (modBody v)).
+      + contradict n. eauto.
+      + reflexivity.
+  Qed.
+
   (************* /modules ***********)
 
   Lemma set_reg_swap var1 var2 x1 x2 regs :
@@ -2048,32 +2074,17 @@ Module Facts.
    * Admitted. *)
 End Facts.
 
-Module Clean.
+Module DefinedEquivalence.
   Import CombinationalOnly.
+
+  Declare Scope verilog.
+  Local Open Scope verilog.
+
   Record clean_module v := MkCleanModule { 
-    preserve_inputs : forall e, run_vmodule v e =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)) )= e;
     defined_outputs : forall e,
       RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) e ->
       RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v))) (run_vmodule v e)
   }.
-
-  Lemma admit_run_vmodule v e:
-    clean_module v ->
-    v ⇓ (run_vmodule v e).
-  Proof.
-    unfold "⇓".
-    intros [Hpreserve_inputs Hdefined].
-    setoid_rewrite Hpreserve_inputs at 2.
-    reflexivity.
-  Qed.
-End Clean.
-
-Module DefinedEquivalence.
-  Import CombinationalOnly.
-  Export Clean.
-
-  Declare Scope verilog.
-  Local Open Scope verilog.
 
   Record defined_equivalence (v1 v2 : Verilog.vmodule) : Prop :=
     MkDefinedEquivalence {
@@ -2147,7 +2158,6 @@ End DefinedEquivalence.
 
 Module ExactEquivalence.
   Import CombinationalOnly.
-  Export Clean.
 
   Declare Scope verilog.
   Local Open Scope verilog.
@@ -2294,19 +2304,13 @@ Module ExactEquivalence.
   Proof.
     intros [Hsame_vars Hequiv] Hclean1.
     constructor.
-    - intros e.
-      rewrite <- (Verilog.module_inputs_same _ _ Hsame_vars).
-      transitivity (run_vmodule v1 e).
-      + setoid_rewrite Verilog.module_input_in_vars.
-        symmetry. apply Hequiv.
-      + apply preserve_inputs. apply Hclean1.
-    - intros e Hinputs_defined.
-      specialize (Hequiv e).
-      rewrite <- (Verilog.module_variables_same _ _ Hsame_vars).
-      rewrite <- Hequiv.
-      apply Hclean1.
-      rewrite (Verilog.module_inputs_same _ _ Hsame_vars).
-      apply Hinputs_defined.
+    intros e Hinputs_defined.
+    specialize (Hequiv e).
+    rewrite <- (Verilog.module_variables_same _ _ Hsame_vars).
+    rewrite <- Hequiv.
+    apply Hclean1.
+    rewrite (Verilog.module_inputs_same _ _ Hsame_vars).
+    apply Hinputs_defined.
   Qed.
 
   (* a ~~~ b -> b ~~ c -> a ~~ c *)

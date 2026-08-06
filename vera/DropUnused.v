@@ -47,8 +47,35 @@ Equations module_body_drop_assigns :
     
   }.
 
-Definition decls_drop_vars (drop : VarSet.t) :=
-  List.filter (fun d => negb (VarSet.mem (variable_of_decl d) drop)).
+(* Definition decls_drop_vars (drop : VarSet.t) :=
+ *   List.filter (fun d => negb (VarSet.mem (variable_of_decl d) drop)). *)
+
+Lemma module_body_drop_assigns_writes drop mis : 
+  LocationSet.Subset
+    (module_body_writes (snd (module_body_drop_assigns drop mis)))
+    (module_body_writes mis).
+Proof.
+  funelim (module_body_drop_assigns drop mis).
+  all: simpl.
+  - reflexivity.
+  - destruct (module_body_drop_assigns drop body) as [dropped' body'].
+    simpl in *.
+    LocationSet.setdec.
+  - destruct (module_body_drop_assigns drop body) as [dropped' body'].
+    simpl in *.
+    LocationSet.setdec.
+Qed.
+
+Lemma module_body_drop_assigns_wf_write_targets drop v : 
+  module_body_writes (snd (module_body_drop_assigns drop (modBody v)))
+  ⊆ LocationSet.of_varset
+      (VarSet.diff
+         (VarSet.of_list (map variable_of_decl (modVariableDecls v)))
+         (VarSet.of_list (inputs_of_decls (modVariableDecls v)))).
+Proof.
+  rewrite module_body_drop_assigns_writes.
+  apply Verilog.modWfWriteTargets.
+Qed.
 
 Definition drop_unused1 (m : vmodule) : string + (LocationSet.t * vmodule) :=
   traceBracket ("Drop unused (iteration) " ++ Verilog.modName m) (
@@ -60,11 +87,13 @@ Definition drop_unused1 (m : vmodule) : string + (LocationSet.t * vmodule) :=
       LocationSet.diff
         (LocationSet.of_varset (VarSet.of_list (modVariables m)))
         (module_body_reads (modBody m) ∪ external_vars) in
-    let (dropped, body) := module_body_drop_assigns drop_locations (modBody m) in
-    inr (dropped, {|
+    let result := module_body_drop_assigns drop_locations (modBody m) in
+    inr (fst result, {|
       modName := modName m;
       modVariableDecls := modVariableDecls m;
-      modBody := body
+      modBody := snd result;
+      modWfVariablesNoDup := modWfVariablesNoDup m;
+      modWfWriteTargets := module_body_drop_assigns_wf_write_targets drop_locations m
     |})
   )
   .

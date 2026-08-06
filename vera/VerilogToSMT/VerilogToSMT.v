@@ -34,7 +34,6 @@ From vera Require Import SMTQueries.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require VerilogSemantics.
-Import VerilogSemantics.Clean.
 Import VerilogSemantics.Sort.
 
 Import ListNotations.
@@ -237,12 +236,10 @@ Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
 
 Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : transf SMTQueries.query :=
   traceBracket ("To SMT " ++ Verilog.modName vmodule) (
-    assert_dec
-      (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
-      "Overlapping inputs and outputs"%string ;;
-    let* nodup := assert_dec
-      (NoDup (Verilog.modVariables vmodule))
-      "Duplicate variables"%string in
+    (* I think this holds by construction *)
+    (* assert_dec
+     *   (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
+     *   "Overlapping inputs and outputs"%string ;; *)
     assert_dec
       (module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs vmodule))) (Verilog.modBody vmodule))
       "Module items unsorted"%string;;

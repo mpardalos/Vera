@@ -43,14 +43,57 @@ Equations break_const_assigns_module_item : module_item -> list module_item := {
   | mi := [ mi ]
 }.
 
+Definition break_const_assigns_module_body : list module_item -> list module_item :=
+  flat_map break_const_assigns_module_item.
+
+Lemma break_const_assigns_module_item_writes mi :
+  LocationSet.Equal
+    (module_body_writes (break_const_assigns_module_item mi))
+    (module_item_writes mi).
+Proof.
+  funelim (break_const_assigns_module_item mi).
+  all: clear Heqcall; simpl.
+  all: try LocationSet.setdec; expect 1.
+  funelim (break_const_assign target val).
+  all: simpl.
+  all: try LocationSet.setdec; expect 1.
+  rewrite map_app.
+  rewrite module_body_writes_app.
+  rewrite H.
+  rewrite H0.
+  reflexivity.
+Qed.
+
+Lemma break_const_assigns_module_body_writes mis :
+  LocationSet.Equal
+    (module_body_writes (break_const_assigns_module_body mis))
+    (module_body_writes mis).
+Proof.
+  unfold break_const_assigns_module_body.
+  induction mis.
+  all: simpl.
+  2: rewrite module_body_writes_app, break_const_assigns_module_item_writes, IHmis.
+  all: reflexivity.
+Qed.
+
+Lemma break_const_assigns_wf_write_targets v :
+   module_body_writes (break_const_assigns_module_body (modBody v))
+   ⊆ LocationSet.of_varset
+       (VarSet.diff
+          (VarSet.of_list (map variable_of_decl (modVariableDecls v)))
+          (VarSet.of_list (inputs_of_decls (modVariableDecls v)))).
+Proof.
+  rewrite break_const_assigns_module_body_writes.
+  apply Verilog.modWfWriteTargets.
+Qed.
+
 Definition break_const_assigns_vmodule (v : vmodule) : vmodule :=
   traceBracket ("Break const assigns " ++ Verilog.modName v) {|
     Verilog.modName := Verilog.modName v;
     Verilog.modVariableDecls := Verilog.modVariableDecls v;
-    Verilog.modBody :=
-      flat_map
-        break_const_assigns_module_item
-        (Verilog.modBody v)
+    Verilog.modBody := break_const_assigns_module_body (Verilog.modBody v);
+    Verilog.modWfVariablesNoDup := Verilog.modWfVariablesNoDup v;
+    Verilog.modWfWriteTargets := break_const_assigns_wf_write_targets v;
   |}.
 
 From vera Require Import VerilogSemantics.

@@ -314,12 +314,12 @@ Qed.
 
 Lemma verilog_to_smt_clean tag v smt :
   verilog_to_smt tag v = inr smt ->
-  Clean.clean_module v.
+  DefinedEquivalence.clean_module v.
 Proof.
   unfold verilog_to_smt. simpl. intros Htransf. monad_inv.
   constructor.
-  - (* preserve inputs *) admit.
-  - (* No Xs in vars *) admit.
+  (* No Xs in vars *)
+  admit.
 Admitted.
 
 Import EqNotations.

@@ -471,11 +471,13 @@ Qed.
 Lemma no_counterexample_equivalent_iff v1 v2 :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
+  vmodule_sortable v1 ->
+  vmodule_sortable v2 ->
   clean_module v1 ->
   clean_module v2 ->
   (forall e1 e2, ~ counterexample_execution v1 e1 v2 e2) <-> (v1 ~~ v2).
 Proof.
-  intros Hinput_match Houtput_match Hclean1 Hclean2.
+  intros Hinput_match Houtput_match Hsortable1 Hsortable2 Hclean1 Hclean2.
   unfold counterexample_execution.
   split. 
   - intros H.
@@ -486,21 +488,15 @@ Proof.
      * + RegisterState.unpack_defined_value_for. *)
     assert (Hmatch_inputs : run_vmodule v1 e =!!( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v1)) )!!= run_vmodule v2 e). {
       split.
-      - rewrite preserve_inputs by assumption.
+      - rewrite Facts.run_vmodule_preserve_inputs by assumption.
         rewrite Hinput_match.
-        rewrite preserve_inputs by assumption.
+        rewrite Facts.run_vmodule_preserve_inputs by assumption.
 	reflexivity.
-      - rewrite preserve_inputs by assumption.
+      - rewrite Facts.run_vmodule_preserve_inputs by assumption.
         apply Hno_exes.
     }
-    assert (Hrun1 : v1 ⇓ run_vmodule v1 e). {
-      apply admit_run_vmodule.
-      apply Hclean1.
-    }
-    assert (Hrun2 : v2 ⇓ run_vmodule v2 e). {
-      apply admit_run_vmodule.
-      apply Hclean2.
-    }
+    assert (Hrun1 : v1 ⇓ run_vmodule v1 e) by apply Facts.admit_run_vmodule.
+    assert (Hrun2 : v2 ⇓ run_vmodule v2 e) by apply Facts.admit_run_vmodule.
     specialize (H (run_vmodule v1 e) (run_vmodule v2 e)).
     apply not_and_or in H. destruct H; [contradiction|].
     apply not_and_or in H. destruct H; [contradiction|].
@@ -524,11 +520,13 @@ Qed.
 Lemma not_equivalent_counterexample_iff v1 v2 :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
+  vmodule_sortable v1 ->
+  vmodule_sortable v2 ->
   clean_module v1 ->
   clean_module v2 ->
   (exists e1 e2, counterexample_execution v1 e1 v2 e2) <-> ~ (v1 ~~ v2).
 Proof.
-  intros Hinput_match Houtput_match Hclean1 Hclean2.
+  intros Hinput_match Houtput_match Hsortable1 Hsortable2 Hclean1 Hclean2.
   setoid_rewrite <- no_counterexample_equivalent_iff; try assumption; [idtac].
   split.
   - intros [e1 [e2 H1]] H2. eapply H2. eapply H1.
@@ -699,7 +697,7 @@ Lemma valid_execution_all_vars_defined v e :
   RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v))) e.
 Proof.
   unfold "⇓".
-  intros [? Hvars_defined] Hadmit Hinputs_defined.
+  intros [Hvars_defined] Hadmit Hinputs_defined.
   rewrite <- Hadmit.
   apply Hvars_defined.
   apply Hinputs_defined.
@@ -745,5 +743,11 @@ Proof.
     as [[? [? ?]] [? [? ?]] [] [] inputs_match outputs_match];
     [assumption|].
   apply no_counterexample_equivalent_iff; eauto using VerilogToSMTCorrect.verilog_to_smt_clean.
-  eapply equivalence_query_unsat_no_counterexample; eauto.
+  - unfold vmodule_sortable. eexists.
+    apply sort_module_items_stable.
+    assumption.
+  - unfold vmodule_sortable. eexists.
+    apply sort_module_items_stable.
+    assumption.
+  - eapply equivalence_query_unsat_no_counterexample; eauto.
 Qed.
