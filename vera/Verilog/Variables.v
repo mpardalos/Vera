@@ -350,6 +350,15 @@ Module MySet(Import S : UsualWSets).
       left. assumption.
   Qed.
 
+  Lemma of_list_nil :
+    Equal (of_list nil) empty.
+  Proof.
+    unfold Equal.
+    setoid_rewrite In_of_list.
+    setoid_rewrite empty_iff.
+    split; inversion 1.
+  Qed.
+
   Lemma of_list_cons {x l} :
     Equal (of_list (x :: l)) (add x (of_list l)).
   Proof.
@@ -386,6 +395,19 @@ Module MySet(Import S : UsualWSets).
       (@list_subset E.t ==> Subset)
       of_list.
   Proof. intros l1 l2 Hsub. now apply subset_of_list. Qed.
+
+  Lemma disjoint_of_list {l1 l2} :
+    Common.disjoint l1 l2 ->
+    Disjoint (of_list l1) (of_list l2).
+  Proof.
+    unfold Disjoint.
+    induction 1.
+    - rewrite of_list_nil.
+      fsetdec.
+    - rewrite of_list_cons.
+      rewrite <- In_of_list in H.
+      fsetdec.
+  Qed.
 
   Lemma subset_singleton_iff x s : Subset (singleton x) s <-> In x s.
   Proof. split; fsetdec. Qed.

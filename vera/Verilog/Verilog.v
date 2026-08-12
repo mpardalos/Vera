@@ -585,6 +585,38 @@ Module Verilog.
     funelim (outputs_of_decls decls); rewrite <- Heqcall in *; crush.
   Qed.
 
+  Lemma module_input_output_disjoint v :
+    disjoint (Verilog.module_inputs v) (Verilog.module_outputs v).
+  Proof.
+    unfold disjoint, module_inputs, module_outputs.
+    pose proof (modWfVariablesNoDup v) as Hnodup.
+    generalize dependent (modVariableDecls v). clear v. intros decls ?.
+    apply Forall_forall. intros var Hvar.
+    funelim (inputs_of_decls decls).
+    all: simp outputs_of_decls in *.
+    all: rewrite <- Heqcall in Hvar; clear Heqcall.
+    all: try (rewrite Heq; clear Heq; simpl in *).
+    - intros [].
+    - inv Hnodup.
+      destruct Hvar as [Hvar|Hvar].
+      + intro contra. contradict H2. subst.
+        clear H H3.
+        funelim (outputs_of_decls ds).
+        all: rewrite <- Heqcall in *; clear Heqcall.
+        all: crush.
+      + apply H; eassumption.
+    - inv Hnodup.
+      intros [contra|contra].
+      + contradict H2. subst.
+        clear H H3.
+        funelim (inputs_of_decls ds).
+        all: rewrite <- Heqcall in *; clear Heqcall.
+        all: crush.
+      + eapply H; eassumption.
+    - inv Hnodup.
+      apply H; eassumption.
+
+
   Lemma module_inputs_same v1 v2 :
     modVariableDecls v1 = modVariableDecls v2 ->
     module_inputs v1 = module_inputs v2.

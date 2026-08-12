@@ -236,10 +236,6 @@ Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
 
 Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : transf SMTQueries.query :=
   traceBracket ("To SMT " ++ Verilog.modName vmodule) (
-    (* I think this holds by construction *)
-    (* assert_dec
-     *   (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
-     *   "Overlapping inputs and outputs"%string ;; *)
     assert_dec
       (module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs vmodule))) (Verilog.modBody vmodule))
       "Module items unsorted"%string;;
