@@ -473,19 +473,14 @@ Lemma no_counterexample_equivalent_iff v1 v2 :
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
   vmodule_sortable v1 ->
   vmodule_sortable v2 ->
-  clean_module v1 ->
-  clean_module v2 ->
   (forall e1 e2, ~ counterexample_execution v1 e1 v2 e2) <-> (v1 ~~ v2).
 Proof.
-  intros Hinput_match Houtput_match Hsortable1 Hsortable2 Hclean1 Hclean2.
+  intros Hinput_match Houtput_match Hsortable1 Hsortable2.
   unfold counterexample_execution.
   split. 
   - intros H.
     constructor; try assumption; [idtac].
     intros e Hno_exes.
-    (* split; intros He.
-     * (\* This is duplicated, ideally we want a "without loss of generality" tactic *\)
-     * + RegisterState.unpack_defined_value_for. *)
     assert (Hmatch_inputs : run_vmodule v1 e =!!( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v1)) )!!= run_vmodule v2 e). {
       split.
       - rewrite Facts.run_vmodule_preserve_inputs by assumption.
@@ -522,11 +517,9 @@ Lemma not_equivalent_counterexample_iff v1 v2 :
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
   vmodule_sortable v1 ->
   vmodule_sortable v2 ->
-  clean_module v1 ->
-  clean_module v2 ->
   (exists e1 e2, counterexample_execution v1 e1 v2 e2) <-> ~ (v1 ~~ v2).
 Proof.
-  intros Hinput_match Houtput_match Hsortable1 Hsortable2 Hclean1 Hclean2.
+  intros Hinput_match Houtput_match Hsortable1 Hsortable2.
   setoid_rewrite <- no_counterexample_equivalent_iff; try assumption; [idtac].
   split.
   - intros [e1 [e2 H1]] H2. eapply H2. eapply H1.

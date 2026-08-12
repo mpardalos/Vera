@@ -2090,8 +2090,6 @@ Module DefinedEquivalence.
     MkDefinedEquivalence {
       inputs_same : Verilog.module_inputs v1 = Verilog.module_inputs v2;
       outputs_same : Verilog.module_outputs v1 = Verilog.module_outputs v2;
-      clean_left : clean_module v1;
-      clean_right : clean_module v2;
       execution_match : forall init,
         RegisterState.defined_value_for
           (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v1))) init ->
@@ -2104,12 +2102,10 @@ Module DefinedEquivalence.
     v1 ~~ v2 ->
     v2 ~~ v1.
   Proof.
-    intros [? ? ? ? execution_match].
+    intros [? ? execution_match].
     constructor.
     - symmetry. assumption.
     - symmetry. assumption.
-    - assumption.
-    - assumption.
     - intros. symmetry.
       rewrite <- outputs_same0 in *.
       rewrite <- inputs_same0 in *.
@@ -2124,8 +2120,6 @@ Module DefinedEquivalence.
     constructor.
     - congruence.
     - congruence.
-    - assumption.
-    - assumption.
     - intros.
       rewrite <- inputs_same0 in *.
       rewrite <- outputs_same0 in *.
@@ -2141,11 +2135,7 @@ Module DefinedEquivalence.
   Proof.
     intros [].
     constructor.
-    - reflexivity.
-    - reflexivity.
-    - assumption.
-    - assumption.
-    - reflexivity.
+    all: reflexivity.
   Qed.
 
   Add Parametric Relation :
@@ -2170,6 +2160,8 @@ Module ExactEquivalence.
      clean_module to transfer over this, and clean_module looks at
      internal variables.
 
+     TODO: We have since removed the requirement for "clean" from
+     defined equivalence, so this might need to change.
    *)
   Record exact_equivalence (v1 v2 : Verilog.vmodule) : Prop :=
     MkExactEquivalence {
@@ -2266,12 +2258,10 @@ Module ExactEquivalence.
   Import DefinedEquivalence.
 
   Lemma exact_equivalence_defined_equivalence v1 v2 :
-    clean_module v1 ->
-    clean_module v2 ->
     v1 ~~~ v2 ->
     v1 ~~ v2.
   Proof.
-    intros Hclean1 Hclean2 Hequiv.
+    intros Hequiv.
     constructor.
     - destruct Hequiv.
       apply Verilog.module_inputs_same.
@@ -2279,8 +2269,6 @@ Module ExactEquivalence.
     - destruct Hequiv.
       apply Verilog.module_outputs_same.
       apply same_vars0.
-    - apply Hclean1.
-    - apply Hclean2.
     - intros.
       destruct Hequiv.
       rewrite Verilog.module_outputs_in_vars.
@@ -2295,22 +2283,6 @@ Module ExactEquivalence.
     intros Heqvars Hmatch.
     constructor.
     all: assumption.
-  Qed.
-
-  Lemma transfer_clean v1 v2 :
-    v1 ~~~ v2 ->
-    clean_module v1 ->
-    clean_module v2.
-  Proof.
-    intros [Hsame_vars Hequiv] Hclean1.
-    constructor.
-    intros e Hinputs_defined.
-    specialize (Hequiv e).
-    rewrite <- (Verilog.module_variables_same _ _ Hsame_vars).
-    rewrite <- Hequiv.
-    apply Hclean1.
-    rewrite (Verilog.module_inputs_same _ _ Hsame_vars).
-    apply Hinputs_defined.
   Qed.
 
   (* a ~~~ b -> b ~~ c -> a ~~ c *)
@@ -2329,10 +2301,6 @@ Module ExactEquivalence.
         apply Verilog.module_outputs_same in same_vars0.
         apply Verilog.module_outputs_same in same_vars1.
         congruence.
-      + destruct Heq_behaviour.
-        eapply transfer_clean; eassumption.
-      + destruct Heq_behaviour.
-        eapply transfer_clean; eassumption.
       + intros e Hinputs_defined.
         destruct Heq, Heq', Heq_behaviour.
 	transitivity (run_vmodule v1 e). {
@@ -2360,14 +2328,6 @@ Module ExactEquivalence.
         apply Verilog.module_outputs_same in same_vars0.
         apply Verilog.module_outputs_same in same_vars1.
         congruence.
-      + destruct Heq_behaviour.
-        eapply transfer_clean.
-	* symmetry. eassumption.
-	* eassumption. 
-      + destruct Heq_behaviour.
-        eapply transfer_clean.
-	* symmetry. eassumption.
-	* eassumption. 
       + intros e Hinputs_defined.
         destruct Heq, Heq', Heq_behaviour.
 	transitivity (run_vmodule v2 e). {
