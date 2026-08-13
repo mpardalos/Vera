@@ -6,6 +6,7 @@ From Stdlib Require Import BinInt.
 From Stdlib Require Import PeanoNat.
 From Stdlib Require Import Lia.
 From Stdlib Require Import Sorting.Permutation.
+From Stdlib Require Import ProofIrrelevance.
 
 From vera Require SMTLib.
 
@@ -226,4 +227,16 @@ Definition opt_dec (P : Prop) `{DecProp P} : option P :=
   | left prf => Some prf
   end.
 
+Lemma dec_yes {P} `{DecProp P} (prf : P) : dec P = left prf.
+Proof.
+  destruct (dec P).
+  - f_equal. apply proof_irrelevance.
+  - contradiction.
+Qed.
 
+Lemma dec_no {P} `{DecProp P} (prf : ~ P) : dec P = right prf.
+Proof.
+  destruct (dec P).
+  - contradiction.
+  - f_equal. apply proof_irrelevance.
+Qed.

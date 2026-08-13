@@ -334,20 +334,6 @@ Module RegisterState.
     autodestruct; reflexivity.
   Qed.
 
-  Lemma dec_yes {P} `{DecProp P} (prf : P) : dec P = left prf.
-  Proof.
-    destruct (dec P).
-    - f_equal. apply proof_irrelevance.
-    - contradiction.
-  Qed.
-
-  Lemma dec_no {P} `{DecProp P} (prf : ~ P) : dec P = right prf.
-  Proof.
-    destruct (dec P).
-    - contradiction.
-    - f_equal. apply proof_irrelevance.
-  Qed.
-
   Lemma limit_to_regs_empty st : st // VarSet.empty = empty.
   Proof.
     apply functional_extensionality_dep.
@@ -1229,11 +1215,11 @@ Module Sort.
    * Print Assumptions sort_module_items_permutation.
    * Print Assumptions sort_module_items_map. *)
 
-  Definition vmodule_sortable (v : vmodule) : Prop :=
-    exists sorted, sort_module_items (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) = Some sorted.
+  Definition vmodule_sortable {i o} (v : vmodule i o) : Prop :=
+    exists sorted, sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) = Some sorted.
 
   (* Checking that typeclasses eauto can indeed find this instance *)
-  Goal (forall v, DecProp (vmodule_sortable v)). typeclasses eauto. Qed.
+  Goal (forall i o (v : vmodule i o), DecProp (vmodule_sortable v)). typeclasses eauto. Qed.
 End Sort.
 
 Module CombinationalOnly.
@@ -1446,18 +1432,12 @@ Module CombinationalOnly.
       exec_module_body regs' mis;
   .
 
-  Definition mk_initial_state (v : vmodule) (regs : RegisterState.t) : RegisterState.t :=
-    regs // VarSet.of_list (module_inputs v).
+  Definition mk_initial_state {i o} (v : vmodule i o) (regs : RegisterState.t) : RegisterState.t :=
+    regs // VarSet.of_list i.
 
-  Lemma initial_state_same v1 v2 regs :
-    Verilog.modVariableDecls v1 = Verilog.modVariableDecls v2 ->
+  Lemma initial_state_same {i o1 o2} (v1 : vmodule i o1) (v2 : vmodule i o2) regs :
     mk_initial_state v1 regs = mk_initial_state v2 regs.
-  Proof.
-    unfold mk_initial_state.
-    intros.
-    erewrite Verilog.module_inputs_same by eassumption.
-    reflexivity.
-  Qed.
+  Proof. reflexivity. Qed.
 
   (* We make a choice here, about how to handle non-sortable
      modules. Originally, this return `option
@@ -1472,15 +1452,15 @@ Module CombinationalOnly.
      a sentinel "empty" state.
   *)
 
-  Definition run_vmodule (v : Verilog.vmodule) (inputs : RegisterState.t) : RegisterState.t :=
-    match sort_module_items (LocationSet.of_varset (VarSet.of_list (module_inputs v))) (Verilog.modBody v) with
-    | None => RegisterState.empty
+  Definition run_vmodule {i o} (v : vmodule i o) (inputs : RegisterState.t) : RegisterState.t :=
+    match sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) with
+    | None => mk_initial_state v inputs
     | Some sorted => exec_module_body (mk_initial_state v inputs) sorted
     end.
 
-  Global Instance Proper_run_vmodule_match_on v :
+  Global Instance Proper_run_vmodule_match_on {i o} (v : vmodule i o) :
     Proper
-      (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) ==> eq)
+      (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list i)) ==> eq)
       (run_vmodule v).
   Proof.
     intros r1 r2 Heq.
@@ -1488,13 +1468,13 @@ Module CombinationalOnly.
     unfold mk_initial_state.
     autodestruct.
     - rewrite Heq. reflexivity.
-    - reflexivity.
+    - rewrite Heq. reflexivity.
   Qed.
 
   Notation execution := RegisterState.t.
 
-  Definition valid_execution (v : Verilog.vmodule) (e : execution) :=
-    run_vmodule v e =( LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)) )= e.
+  Definition valid_execution {i o} (v : vmodule i o) (e : execution) :=
+    run_vmodule v e =( module_locations v )= e.
 
   Infix "⇓" := valid_execution (at level 20) : verilog_scope.
 
@@ -1973,47 +1953,45 @@ Module Facts.
 
   (************* modules ***********)
 
-  Lemma run_vmodule_preserve_inputs v e :
-    vmodule_sortable v ->
-    run_vmodule v e =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)) )= e.
+  Lemma run_vmodule_preserve_inputs {i o} (v : vmodule i o) e :
+    run_vmodule v e =( LocationSet.of_varset (VarSet.of_list i) )= e.
   Proof.
-    unfold vmodule_sortable, run_vmodule.
-    intros [sorted Hsort]. rewrite Hsort.
-    symmetry.
-    unfold mk_initial_state.
-    rewrite <- exec_module_body_preserve.
+    unfold vmodule_sortable, run_vmodule, mk_initial_state.
+    autodestruct_eqn E.
     - symmetry.
-      apply RegisterState.limit_to_regs_match_on.
-    - symmetry.
-      apply module_items_sorted_no_overwrite.
-      eapply sort_module_items_sorted.
-      eassumption.
+      rewrite <- exec_module_body_preserve.
+      + symmetry.
+        apply RegisterState.limit_to_regs_match_on.
+      + symmetry.
+        apply module_items_sorted_no_overwrite.
+        eapply sort_module_items_sorted.
+        eassumption.
+    - apply RegisterState.limit_to_regs_match_on.
   Qed.
 
-  Lemma sortable_decidable v : { vmodule_sortable v } + { ~ vmodule_sortable v}.
+  Lemma sortable_decidable {i o} (v : vmodule i o) : { vmodule_sortable v } + { ~ vmodule_sortable v}.
   Proof.
     unfold vmodule_sortable.
     destruct
       (sort_module_items
-        (LocationSet.of_varset (VarSet.of_list (module_inputs v))) 
+        (LocationSet.of_varset (VarSet.of_list i)) 
         (modBody v)).
     - left. eexists. reflexivity.
     - right. intros [? ?]. discriminate.
   Qed.
 
-  Lemma admit_run_vmodule v e:
+  Lemma admit_run_vmodule {i o} (v : vmodule i o) e:
     v ⇓ run_vmodule v e.
   Proof.
     unfold "⇓".
     (* intros Hsortable. *)
     destruct (sortable_decidable v).
     - setoid_rewrite run_vmodule_preserve_inputs at 2.
-      + reflexivity.
-      + assumption.
+      reflexivity.
     - unfold run_vmodule, vmodule_sortable in *.
-      destruct (sort_module_items (LocationSet.of_varset (VarSet.of_list (module_inputs v))) (modBody v)).
+      destruct (sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (modBody v)).
       + contradict n. eauto.
-      + reflexivity.
+      + unfold mk_initial_state. rewrite RegisterState.limit_to_regs_twice. reflexivity.
   Qed.
 
   (************* /modules ***********)
@@ -2080,67 +2058,34 @@ Module DefinedEquivalence.
   Declare Scope verilog.
   Local Open Scope verilog.
 
-  Record clean_module v := MkCleanModule { 
+  Record clean_module {i o} (v : vmodule i o) := MkCleanModule { 
     defined_outputs : forall e,
       RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) e ->
-      RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v))) (run_vmodule v e)
+      RegisterState.defined_value_for (module_locations v) (run_vmodule v e)
   }.
 
-  Record defined_equivalence (v1 v2 : Verilog.vmodule) : Prop :=
-    MkDefinedEquivalence {
-      inputs_same : Verilog.module_inputs v1 = Verilog.module_inputs v2;
-      outputs_same : Verilog.module_outputs v1 = Verilog.module_outputs v2;
-      execution_match : forall init,
-        RegisterState.defined_value_for
-          (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v1))) init ->
-          (run_vmodule v1 init =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v1)) )= run_vmodule v2 init)
-    }.
+  Definition defined_equivalence {i o} (v1 v2 : Verilog.vmodule i o) : Prop :=
+      forall init,
+        RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list i)) init ->
+        (run_vmodule v1 init =( LocationSet.of_varset (VarSet.of_list o) )= run_vmodule v2 init).
 
   Infix "~~" := defined_equivalence (at level 20) : verilog_scope.
 
-  Lemma defined_equivalence_sym v1 v2:
+  Lemma defined_equivalence_sym {i o} (v1 v2 : vmodule i o):
     v1 ~~ v2 ->
     v2 ~~ v1.
-  Proof.
-    intros [? ? execution_match].
-    constructor.
-    - symmetry. assumption.
-    - symmetry. assumption.
-    - intros. symmetry.
-      rewrite <- outputs_same0 in *.
-      rewrite <- inputs_same0 in *.
-      apply execution_match.
-      apply H.
-  Qed.
+  Proof. unfold "~~". symmetry. auto. Qed.
 
-  Lemma defined_equivalence_trans v1 v2 v3:
+  Lemma defined_equivalence_trans {i o} (v1 v2 v3 : vmodule i o):
     v1 ~~ v2 -> v2 ~~ v3 -> v1 ~~ v3.
-  Proof.
-    intros [] [].
-    constructor.
-    - congruence.
-    - congruence.
-    - intros.
-      rewrite <- inputs_same0 in *.
-      rewrite <- outputs_same0 in *.
-      etransitivity.
-      + apply execution_match0.
-        apply H.
-      + apply execution_match1.
-        apply H.
-  Qed.
+  Proof. unfold "~~". intros. etransitivity. all: auto. Qed.
 
-  Lemma defined_equivalence_refl_cond v v':
-    v ~~ v' -> v ~~ v.
-  Proof.
-    intros [].
-    constructor.
-    all: reflexivity.
-  Qed.
+  Lemma defined_equivalence_refl {i o} (v : vmodule i o) : v ~~ v.
+  Proof. unfold "~~". intros. reflexivity. Qed.
 
-  Add Parametric Relation :
-    Verilog.vmodule defined_equivalence
-    (* No reflexivity! *)
+  Add Parametric Relation {i o} :
+    (Verilog.vmodule i o) defined_equivalence
+    reflexivity proved by defined_equivalence_refl
     symmetry proved by defined_equivalence_sym
     transitivity proved by defined_equivalence_trans
     as defined_equivalence_rel.
@@ -2152,199 +2097,56 @@ Module ExactEquivalence.
   Declare Scope verilog.
   Local Open Scope verilog.
 
-  (* This is the strongest notion of equivalence before definitional equality.
-
-     The modules contain the exact same variables, and give them the
-     exact same values, they might just calculate them in different
-     ways. This used to just look at outputs, but, we need
-     clean_module to transfer over this, and clean_module looks at
-     internal variables.
-
-     TODO: We have since removed the requirement for "clean" from
-     defined equivalence, so this might need to change.
-   *)
-  Record exact_equivalence (v1 v2 : Verilog.vmodule) : Prop :=
-    MkExactEquivalence {
-      same_vars : Verilog.modVariableDecls v1 = Verilog.modVariableDecls v2;
-      execution_match : forall init, run_vmodule v1 init =( LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v1)))= run_vmodule v2 init
-    }.
+  Definition exact_equivalence {i o} (v1 v2 : Verilog.vmodule i o) : Prop :=
+    forall init, run_vmodule v1 init =( LocationSet.of_varset (VarSet.of_list o))= run_vmodule v2 init.
 
   Infix "~~~" := exact_equivalence (at level 20) : verilog_scope.
 
-  Lemma exact_equivalence_sym v1 v2:
+  Lemma exact_equivalence_sym {i o} (v1 v2 : vmodule i o) :
     v1 ~~~ v2 ->
     v2 ~~~ v1.
-  Proof.
-    intros [? execution_match].
-    constructor.
-    - symmetry. assumption.
-    - symmetry.
-      rewrite <- (Verilog.module_variables_same _ _ same_vars0).
-      auto.
-  Qed.
+  Proof. unfold "~~~". intros H. symmetry. auto. Qed.
 
-  Lemma exact_equivalence_trans v1 v2 v3:
+  Lemma exact_equivalence_trans {i o} (v1 v2 v3 : vmodule i o) :
     v1 ~~~ v2 -> v2 ~~~ v3 -> v1 ~~~ v3.
-  Proof.
-    intros [] [].
-    constructor.
-    - congruence.
-    - etransitivity.
-      all: rewrite <- (Verilog.module_variables_same _ _ same_vars0) in *.
-      all: eauto.
-  Qed.
+  Proof. unfold "~~~". intros H. etransitivity; eauto. Qed.
 
-  Lemma exact_equivalence_refl v : v ~~~ v.
+  Lemma exact_equivalence_refl {i o} (v : vmodule i o) : v ~~~ v.
   Proof. constructor; reflexivity. Qed.
 
-  Add Parametric Relation :
-    Verilog.vmodule exact_equivalence
+  Add Parametric Relation {i o} :
+    (Verilog.vmodule i o) exact_equivalence
     reflexivity proved by exact_equivalence_refl
     symmetry proved by exact_equivalence_sym
     transitivity proved by exact_equivalence_trans
     as exact_equivalence_rel.
 
-  Global Instance Proper_valid_execution_exact_equivalence :
-    Proper (exact_equivalence ==> eq ==> iff) valid_execution.
-  Proof.
-    repeat intro. subst.
-    destruct H.
-    unfold "⇓".
-    rewrite <- (Verilog.module_variables_same _ _ same_vars0).
-    setoid_rewrite execution_match0.
-    reflexivity.
-  Qed.
+  (* FIXME: This might be needed. Delete if not *)
+  (* Global Instance Proper_valid_execution_exact_equivalence {i o} :
+   *   Proper (@exact_equivalence i o ==> eq ==> iff) valid_execution.
+   * Proof. unfold "~~~", "⇓". solve_proper. Qed. *)
 
-  Lemma equal_exact_equivalence v1 v2 :
-    Verilog.modVariableDecls v1 = Verilog.modVariableDecls v2 ->
+  Lemma equal_exact_equivalence {i o} (v1 v2 : vmodule i o) :
     run_vmodule v1 = run_vmodule v2 ->
     v1 ~~~ v2.
-  Proof.
-    intros Hvars Hmatch.
-    constructor; try eassumption; expect 1.
-    intros regs.
-    unfold "⇓".
-    rewrite Hmatch.
-    reflexivity.
-  Qed.
-
-  Lemma exact_equivalence_same_inputs v1 v2 :
-    v1 ~~~ v2 ->
-    Verilog.module_inputs v1 = Verilog.module_inputs v2.
-  Proof.
-    intros [].
-    apply Verilog.module_inputs_same.
-    apply same_vars0.
-  Qed.
-
-  Lemma exact_equivalence_same_outputs v1 v2 :
-    v1 ~~~ v2 ->
-    Verilog.module_outputs v1 = Verilog.module_outputs v2.
-  Proof.
-    intros [].
-    apply Verilog.module_outputs_same.
-    apply same_vars0.
-  Qed.
-
-  Lemma exact_equivalence_same_vars v1 v2 :
-    v1 ~~~ v2 ->
-    Verilog.modVariables v1 = Verilog.modVariables v2.
-  Proof.
-    intros [].
-    apply Verilog.module_variables_same.
-    apply same_vars0.
-  Qed.
+  Proof. unfold "~~~", "⇓". intros <-. reflexivity. Qed.
 
   Import DefinedEquivalence.
 
-  Lemma exact_equivalence_defined_equivalence v1 v2 :
+  Lemma exact_equivalence_defined_equivalence {i o} (v1 v2 : vmodule i o) :
     v1 ~~~ v2 ->
     v1 ~~ v2.
-  Proof.
-    intros Hequiv.
-    constructor.
-    - destruct Hequiv.
-      apply Verilog.module_inputs_same.
-      apply same_vars0.
-    - destruct Hequiv.
-      apply Verilog.module_outputs_same.
-      apply same_vars0.
-    - intros.
-      destruct Hequiv.
-      rewrite Verilog.module_outputs_in_vars.
-      apply execution_match0.
-  Qed.
+  Proof. unfold "~~~", "~~". easy. Qed.
 
-  Lemma exact_by_output_equality v1 v2:
-    Verilog.modVariableDecls v1 = Verilog.modVariableDecls v2 ->
-    (forall initial, run_vmodule v1 initial =( LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v1)) )= run_vmodule v2 initial) ->
+  Lemma exact_by_output_equality {i o} (v1 v2 : vmodule i o) :
+    (forall initial, run_vmodule v1 initial =( LocationSet.of_varset (VarSet.of_list o) )= run_vmodule v2 initial) ->
     v1 ~~~ v2.
-  Proof.
-    intros Heqvars Hmatch.
-    constructor.
-    all: assumption.
-  Qed.
+  Proof. intros H. exact H. Qed.
 
   (* a ~~~ b -> b ~~ c -> a ~~ c *)
-  Global Instance Proper_defined_equivalence_exact_equivalence :
+  Global Instance Proper_defined_equivalence_exact_equivalence {i o} :
     Proper
-      (exact_equivalence ==> exact_equivalence ==> iff)
+      (@exact_equivalence i o ==> @exact_equivalence i o ==> iff)
       (defined_equivalence).
-  Proof.
-    intros v1 v2 Heq v1' v2' Heq'. split; intro Heq_behaviour.
-    - constructor.
-      + destruct Heq, Heq', Heq_behaviour.
-        apply Verilog.module_inputs_same in same_vars0.
-        apply Verilog.module_inputs_same in same_vars1.
-        congruence.
-      + destruct Heq, Heq', Heq_behaviour.
-        apply Verilog.module_outputs_same in same_vars0.
-        apply Verilog.module_outputs_same in same_vars1.
-        congruence.
-      + intros e Hinputs_defined.
-        destruct Heq, Heq', Heq_behaviour.
-	transitivity (run_vmodule v1 e). {
-	  symmetry. 
-	  setoid_rewrite Verilog.module_outputs_in_vars.
-	  setoid_rewrite <- (Verilog.module_variables_same _ _ same_vars0).
-	  apply execution_match0.
-	}
-	transitivity (run_vmodule v1' e). {
-	  setoid_rewrite <- (Verilog.module_outputs_same _ _ same_vars0).
-	  apply execution_match2.
-	  setoid_rewrite (Verilog.module_inputs_same _ _ same_vars0).
-	  apply Hinputs_defined.
-	}
-	setoid_rewrite <- (Verilog.module_outputs_same _ _ same_vars0).
-	rewrite outputs_same0.
-	setoid_rewrite Verilog.module_outputs_in_vars.
-	apply execution_match1.
-    - constructor.
-      + destruct Heq, Heq', Heq_behaviour.
-        apply Verilog.module_inputs_same in same_vars0.
-        apply Verilog.module_inputs_same in same_vars1.
-        congruence.
-      + destruct Heq, Heq', Heq_behaviour.
-        apply Verilog.module_outputs_same in same_vars0.
-        apply Verilog.module_outputs_same in same_vars1.
-        congruence.
-      + intros e Hinputs_defined.
-        destruct Heq, Heq', Heq_behaviour.
-	transitivity (run_vmodule v2 e). {
-	  setoid_rewrite Verilog.module_outputs_in_vars.
-	  apply execution_match0.
-	}
-	transitivity (run_vmodule v2' e). {
-	  setoid_rewrite (Verilog.module_outputs_same _ _ same_vars0).
-	  apply execution_match2.
-	  setoid_rewrite <- (Verilog.module_inputs_same _ _ same_vars0).
-	  apply Hinputs_defined.
-	}
-	symmetry.
-	setoid_rewrite (Verilog.module_outputs_same _ _ same_vars0).
-	rewrite outputs_same0.
-	setoid_rewrite <- (Verilog.module_outputs_same _ _ same_vars1).
-	setoid_rewrite Verilog.module_outputs_in_vars.
-	apply execution_match1.
-  Qed.
+  Proof. unfold "~~~", "~~". solve_proper. Qed.
 End ExactEquivalence.

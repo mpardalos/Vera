@@ -30,92 +30,76 @@ Opaque N.add N.sub.
 
 (* This will create partially (and wholly) undriven variables *)
 
-Equations module_body_drop_assigns :
+Equations module_body_keep_assigns :
     LocationSet.t ->
     list module_item ->
-    (LocationSet.t * list module_item) :=
-  module_body_drop_assigns drop [] := (LocationSet.empty, []);
-  module_body_drop_assigns drop (AlwaysComb (BlockingAssign lhs rhs) :: body)
-    (* There should be a specialized subset op for locationset in varset *)
-    with (dec (assign_target_writes lhs ⊆ drop)) := {
-    | left _ =>
-      let (dropped', body') := module_body_drop_assigns drop body in
+    (LocationSet.t * list module_item) := {
+  | keep, [] => (LocationSet.empty, []);
+  | keep, (AlwaysComb (BlockingAssign lhs rhs) :: body)
+    with (LocationSet.disjoint (assign_target_writes lhs) keep) => {
+    | true =>
+      let (dropped', body') := module_body_keep_assigns keep body in
       (dropped' ∪ assign_target_writes lhs, body')
-    | right _ =>
-      let (dropped', body') := module_body_drop_assigns drop body in
+    | false =>
+      let (dropped', body') := module_body_keep_assigns keep body in
       (dropped', AlwaysComb (BlockingAssign lhs rhs) :: body')
-    
-  }.
+  }
+}.
 
 (* Definition decls_drop_vars (drop : VarSet.t) :=
  *   List.filter (fun d => negb (VarSet.mem (variable_of_decl d) drop)). *)
 
-Lemma module_body_drop_assigns_writes drop mis : 
+Lemma module_body_drop_assigns_writes keep mis : 
   LocationSet.Subset
-    (module_body_writes (snd (module_body_drop_assigns drop mis)))
+    (module_body_writes (snd (module_body_keep_assigns keep mis)))
     (module_body_writes mis).
 Proof.
-  funelim (module_body_drop_assigns drop mis).
+  funelim (module_body_keep_assigns keep mis).
   all: simpl.
   - reflexivity.
-  - destruct (module_body_drop_assigns drop body) as [dropped' body'].
+  - destruct (module_body_keep_assigns keep body) as [dropped' body'].
     simpl in *.
     LocationSet.setdec.
-  - destruct (module_body_drop_assigns drop body) as [dropped' body'].
+  - destruct (module_body_keep_assigns keep body) as [dropped' body'].
     simpl in *.
     LocationSet.setdec.
 Qed.
 
-Lemma module_body_drop_assigns_wf_write_targets drop v : 
-  module_body_writes (snd (module_body_drop_assigns drop (modBody v)))
-  ⊆ LocationSet.of_varset
-      (VarSet.diff
-         (VarSet.of_list (map variable_of_decl (modVariableDecls v)))
-         (VarSet.of_list (inputs_of_decls (modVariableDecls v)))).
-Proof.
-  rewrite module_body_drop_assigns_writes.
-  apply Verilog.modWfWriteTargets.
-Qed.
-
-Definition drop_unused1 (m : vmodule) : string + (LocationSet.t * vmodule) :=
-  traceBracket ("Drop unused (iteration) " ++ Verilog.modName m) (
+#[refine]
+Definition drop_unused1 {i o} (v : vmodule i o) : string + (LocationSet.t * vmodule i o) :=
+  traceBracket ("Drop unused (iteration) " ++ Verilog.modName v) (
     let external_vars :=
       LocationSet.union
-        (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs m)))
-        (LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs m))) in
-    let drop_locations :=
-      LocationSet.diff
-        (LocationSet.of_varset (VarSet.of_list (modVariables m)))
-        (module_body_reads (modBody m) ∪ external_vars) in
-    let result := module_body_drop_assigns drop_locations (modBody m) in
+        (LocationSet.of_varset (VarSet.of_list i))
+        (LocationSet.of_varset (VarSet.of_list o)) in
+    let keep_locations :=
+        (module_body_reads (modBody v) ∪ external_vars) in
+    let result := module_body_keep_assigns keep_locations (modBody v) in
     inr (fst result, {|
-      modName := modName m;
-      modVariableDecls := modVariableDecls m;
+      modName := modName v;
       modBody := snd result;
-      modWfVariablesNoDup := modWfVariablesNoDup m;
-      modWfWriteTargets := module_body_drop_assigns_wf_write_targets drop_locations m
     |})
-  )
-  .
+  ).
+Proof. all: destruct v; assumption. Qed.
 
-Fixpoint drop_unused_rec (fuel : nat) (m : vmodule) : string + vmodule :=
+Fixpoint drop_unused_rec {i o} (fuel : nat) (v : vmodule i o) : string + vmodule i o :=
   match fuel with
-  | 0 => ret m
+  | 0 => ret v
   | S n =>
-    let* (dropped, m') := drop_unused1 m in
+    let* (dropped, m') := drop_unused1 v in
     if LocationSet.is_empty (trace ("Dropped " ++ to_string (LocationSet.cardinal dropped) ++ " locations") dropped)
     then ret m'
     else drop_unused_rec n m'
   end.
 
-Definition drop_unused (m : vmodule) : string + vmodule :=
-  traceBracket ("Drop unused " ++ Verilog.modName m) (
+Definition drop_unused {i o} (v : vmodule i o) : string + vmodule i o :=
+  traceBracket ("Drop unused " ++ Verilog.modName v) (
     assert_dec
       (Sort.module_items_sorted
-        (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs m)))
-        (modBody m))
+        (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)))
+        (modBody v))
       "Unsorted module in drop_internal";;
-    drop_unused_rec (List.length (modBody m)) m
+    drop_unused_rec (List.length (modBody v)) v
   ).
 
 (* Lemma decls_drop_internal_keep_inputs decls :
@@ -363,7 +347,7 @@ Definition drop_unused (m : vmodule) : string + vmodule :=
 
 Import ExactEquivalence.
 
-Theorem drop_unused_exact_equivalence v1 v2 :
+Theorem drop_unused_exact_equivalence {i o} (v1 v2 : vmodule i o) :
   drop_unused v1 = inr v2 ->
   v1 ~~~ v2.
 Proof. Admitted.

@@ -1,4 +1,5 @@
 From Stdlib Require Import ZArith.
+From Stdlib Require Import NArith.
 From Stdlib Require Import BinNums.
 From Stdlib Require Import Ascii.
 From Stdlib Require Import String.
@@ -173,63 +174,68 @@ Proof.
   destruct (BV.bitOf _ _); discriminate.
 Qed.
 
-Definition valuation_of_executions (e1 e2 : execution) : SMTLib.valuation :=
-  fun sym =>
-  match untag_name (SMTLib.symName sym), SMTLib.symSort sym with
-  | Some (t, varName), SMTLib.Sort_BitVec w =>
-    match dec (w > 0)%N with
-    | left prf =>
-      match XBV.to_bv (tag_choose t e1 e2 (Var.MkVariable varName w prf)) with
-      | Some bv => bv
-      | None => default (SMTLib.Sort_BitVec w)
-      end
-    | right _ => default (SMTLib.Sort_BitVec w)
-    end
-  | _, s => default s
-  end.
-
-Lemma execution_of_valuation_left_match_on e1 e2 vs :
-  RegisterState.defined_value_for (LocationSet.of_varset vs) e1 ->
-  execution_of_valuation VerilogLeft
-    (valuation_of_executions e1 e2) =( LocationSet.of_varset vs )= e1.
-Proof.
-  intros Hdefined loc Hin.
-  pose proof (proj1 (LocationSet.of_varset_spec _ _) Hin) as [Hvar_in Hidx].
-  edestruct (XBV.bitOf_no_exes_to_bv _ (e1 (Location.var loc))) as [bv Hbv]. {
-    intros i Hi.
-    apply (Hdefined (Location.Mk (Location.var loc) i)).
-    apply LocationSet.of_varset_spec. simpl. auto.
+Equations valuation_of_executions : execution -> execution -> SMTLib.valuation := {
+  | e1, e2, {| SMTLib.symName := symName; SMTLib.symSort := SMTLib.Sort_BitVec w |} with untag_name symName, (dec (w > 0)%N) => {
+    | Some (t, varName), left prf =>
+        XBV.to_bv_def false (tag_choose t e1 e2 (Var.MkVariable varName w prf))
+    | _, _ => default (SMTLib.Sort_BitVec w)
   }
-  unfold RegisterState.get_location.
-  f_equal.
-  unfold valuation_of_executions, execution_of_valuation, verilog_to_smt_var.
-  destruct loc as [var idx]. simpl in *. destruct var. simpl in *.
-  destruct (dec (varType > 0)%N) as [varTypeWf'|?]; [|contradiction].
-  replace varTypeWf' with varTypeWf in * by apply proof_irrelevance.
-  rewrite Hbv.
-  apply XBV.bv_xbv_inverse. assumption.
+  | e1, e2, {| SMTLib.symSort := s |} => default s
+}.
+
+Remark to_from_smt_value_inversion {n} idx (xbv : XBV.xbv n) :
+  XBV.bitOf idx xbv <> RawXBV.X ->
+  XBV.bitOf idx (XBV.from_bv (XBV.to_bv_def false xbv)) = XBV.bitOf idx xbv.
+Proof.
+  unfold XBV.bitOf, RawXBV.bitOf.
+  XBV.bitvector_erase.
+  subst.
+  generalize dependent (N.to_nat idx). clear idx. 
+  induction bv0; intros idx H; [reflexivity|].
+  destruct idx; simpl.
+  - destruct a; simpl in *.
+    + contradiction.
+    + reflexivity.
+    + reflexivity.
+  - simpl in H.
+    apply IHbv0.
+    exact H.
 Qed.
 
-Lemma execution_of_valuation_right_match_on e1 e2 vs :
-  RegisterState.defined_value_for (LocationSet.of_varset vs) e2 ->
-  execution_of_valuation VerilogRight
-    (valuation_of_executions e1 e2) =( LocationSet.of_varset vs )= e2.
+Lemma execution_of_valuation_left_match_on e1 e2 ls :
+  RegisterState.defined_value_for ls e1 ->
+  execution_of_valuation VerilogLeft
+    (valuation_of_executions e1 e2) =( ls )= e1.
 Proof.
   intros Hdefined loc Hin.
-  pose proof (proj1 (LocationSet.of_varset_spec _ _) Hin) as [Hvar_in Hidx].
-  edestruct (XBV.bitOf_no_exes_to_bv _ (e2 (Location.var loc))) as [bv Hbv]. {
-    intros i Hi.
-    apply (Hdefined (Location.Mk (Location.var loc) i)).
-    apply LocationSet.of_varset_spec. simpl. auto.
-  }
-  unfold RegisterState.get_location.
-  f_equal.
-  unfold valuation_of_executions, execution_of_valuation, verilog_to_smt_var.
-  destruct loc as [var idx]. simpl in *. destruct var. simpl in *.
-  destruct (dec (varType > 0)%N) as [varTypeWf'|?]; [|contradiction].
-  replace varTypeWf' with varTypeWf in * by apply proof_irrelevance.
-  rewrite Hbv.
-  apply XBV.bv_xbv_inverse. assumption.
+  pose proof (Hdefined _ Hin) as Hnot_x.
+  unfold RegisterState.get_location, execution_of_valuation in *.
+  destruct loc as [[varName varType] idx]; simpl in *.
+  unfold verilog_to_smt_var. simpl.
+  simp valuation_of_executions.
+  rewrite untag_tag_name.
+  simpl.
+  rewrite (dec_yes varTypeWf).
+  apply to_from_smt_value_inversion.
+  apply Hnot_x.
+Qed.
+
+Lemma execution_of_valuation_right_match_on e1 e2 ls :
+  RegisterState.defined_value_for ls e2 ->
+  execution_of_valuation VerilogRight
+    (valuation_of_executions e1 e2) =( ls )= e2.
+Proof.
+  intros Hdefined loc Hin.
+  pose proof (Hdefined _ Hin) as Hnot_x.
+  unfold RegisterState.get_location, execution_of_valuation in *.
+  destruct loc as [[varName varType] idx]; simpl in *.
+  unfold verilog_to_smt_var. simpl.
+  simp valuation_of_executions.
+  rewrite untag_tag_name.
+  simpl.
+  rewrite (dec_yes varTypeWf).
+  apply to_from_smt_value_inversion.
+  apply Hnot_x.
 Qed.
 
 Definition verilog_smt_match_states_partial

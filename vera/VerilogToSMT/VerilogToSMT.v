@@ -234,7 +234,7 @@ Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
   | _, _ => None
   end.
 
-Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : transf SMTQueries.query :=
+Definition verilog_to_smt {i o} (name_tag : VarTag) (vmodule : Verilog.vmodule i o) : transf SMTQueries.query :=
   traceBracket ("To SMT " ++ Verilog.modName vmodule) (
     assert_dec
       (module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs vmodule))) (Verilog.modBody vmodule))

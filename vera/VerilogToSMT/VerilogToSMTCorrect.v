@@ -189,33 +189,23 @@ Proof.
     LocationSet.setdec.
 Qed.
 
-Lemma transfer_module_body_satisfiable v tag ρ q :
-  (* TODO: This should just worry about accessed/output vars, not everything *)
-    LocationSet.Equal
-      (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
-      (Verilog.module_body_writes (Verilog.modBody v) ∪ LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) ->
-    module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) ->
+Lemma transfer_module_body_satisfiable {i o} (v : Verilog.vmodule i o) tag ρ q :
+    module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) ->
     transfer_module_body tag (Verilog.modBody v) = inr q ->
-    v ⇓ (execution_of_valuation tag ρ) ->
+    v ⇓ execution_of_valuation tag ρ ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q.
 Proof.
-  intros * Hall_driven Hsorted Htransfer Hvalid .
+  intros * Hsorted Htransfer Hvalid .
   unfold "⇓" in Hvalid.
   RegisterState.unpack_match_on.
   repeat unfold mk_initial_state, run_vmodule in *.
   rewrite ! sort_module_items_stable in * by eassumption.
   eapply transfer_module_body_exec_satisfiable; eauto.
   apply execution_match_on_verilog_smt_match_states_partial.
+  unfold Verilog.module_locations in Hvalid.
   RegisterState.unpack_match_on.
-  - setoid_rewrite Verilog.module_input_in_vars.
-    apply Hvalid.
-  - setoid_replace
-      (Verilog.module_body_writes (Verilog.modBody v))
-      with
-      (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
-      using relation LocationSet.Subset.
-    + exact Hvalid.
-    + LocationSet.setdec.
+  - eassumption.
+  - eassumption.
 Qed.
 
 Global Instance verilog_smt_match_states_partial_proper C :
@@ -281,12 +271,11 @@ Proof.
       eassumption.
 Qed.
 
-Lemma transfer_module_body_valid tag v ρ q :
-  module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v) ->
-  (* TODO: This should just worry about accessed/output vars, not everything *)
+Lemma transfer_module_body_valid {i o} tag (v : Verilog.vmodule i o) ρ q :
+  module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) ->
   LocationSet.Equal
-    (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
-    (Verilog.module_body_writes (Verilog.modBody v) ∪ LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) ->
+    (Verilog.module_locations v)
+    (Verilog.module_writes v ∪ LocationSet.of_varset (VarSet.of_list i)) ->
   transfer_module_body tag (Verilog.modBody v) = inr q ->
   List.Forall (SMTQueries.term_satisfied_by ρ) q ->
   v ⇓ execution_of_valuation tag ρ.
@@ -296,6 +285,7 @@ Proof.
   repeat unfold mk_initial_state, run_vmodule in *.
   rewrite sort_module_items_stable by assumption. simpl.
   eapply verilog_smt_match_states_partial_execution_match_on.
+  unfold Verilog.module_locations.
   setoid_rewrite Hall_driven.
   unpack_verilog_smt_match_states_partial.
   - eapply transfer_module_body_exec_valid.
@@ -312,7 +302,7 @@ Proof.
       apply Hsorted.
 Qed.
 
-Lemma verilog_to_smt_clean tag v smt :
+Lemma verilog_to_smt_clean {i o} tag (v : Verilog.vmodule i o) smt :
   verilog_to_smt tag v = inr smt ->
   DefinedEquivalence.clean_module v.
 Proof.
@@ -324,7 +314,7 @@ Admitted.
 
 Import EqNotations.
 
-Theorem verilog_to_smt_correct tag v smt :
+Theorem verilog_to_smt_correct {i o} tag (v : Verilog.vmodule i o) smt :
   verilog_to_smt tag v = inr smt ->
   SMTQueries.smt_reflect
     smt
@@ -340,5 +330,4 @@ Proof.
     admit.
   - eapply transfer_module_body_satisfiable.
     all: try eassumption.
-    admit.
 Admitted.

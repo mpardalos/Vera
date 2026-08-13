@@ -100,25 +100,13 @@ Proof.
     rewrite IHmis. reflexivity.
 Qed.
 
-Lemma simpl_module_body_wf_write_targets v : 
-  module_body_writes (simpl_module_body (modBody v))
-  ⊆ LocationSet.of_varset
-      (VarSet.diff
-         (VarSet.of_list (map variable_of_decl (modVariableDecls v)))
-         (VarSet.of_list (inputs_of_decls (modVariableDecls v)))).
-Proof.
-  rewrite simpl_module_body_writes.
-  apply Verilog.modWfWriteTargets.
-Qed.
-
-Definition simpl_vmodule (v : vmodule) : vmodule :=
+#[refine]
+Definition simpl_vmodule {i o} (v : vmodule i o) : vmodule i o :=
   traceBracket ("Simplify " ++ Verilog.modName v) {|
     Verilog.modName := Verilog.modName v;
-    Verilog.modVariableDecls := Verilog.modVariableDecls v;
     Verilog.modBody := simpl_module_body (Verilog.modBody v);
-    Verilog.modWfVariablesNoDup := Verilog.modWfVariablesNoDup v;
-    Verilog.modWfWriteTargets := simpl_module_body_wf_write_targets v;
   |}.
+Proof. all: destruct v; assumption. Defined.
 
 From vera Require Import VerilogSemantics.
 Import (notations) RegisterState.
@@ -326,26 +314,12 @@ Proof.
   all: (reflexivity || LocationSet.setdec).
 Qed.
 
-Lemma simpl_vmodule_same_inputs v :
-  module_inputs (simpl_vmodule v) = module_inputs v.
-Proof. apply Verilog.module_inputs_same. reflexivity. Qed.
-
-Lemma simpl_vmodule_same_outputs v :
-  module_outputs (simpl_vmodule v) = module_outputs v.
-Proof. apply Verilog.module_outputs_same. reflexivity. Qed.
-
-Lemma simpl_vmodule_same_variables v :
-  modVariables (simpl_vmodule v) = modVariables v.
-Proof. apply Verilog.module_variables_same. reflexivity. Qed.
-
-Lemma simpl_vmodule_correct init v :
+Lemma simpl_vmodule_correct init {i o} (v : vmodule i o) :
   run_vmodule (simpl_vmodule v) init = run_vmodule v init.
 Proof.
-  unfold run_vmodule, mk_initial_state.
+  unfold run_vmodule, mk_initial_state, simpl_vmodule, simpl_module_body.
   simpl.
-  rewrite simpl_vmodule_same_inputs.
-
-  unfold simpl_module_body.
+  
   rewrite sort_module_items_map; expect 3; cycle 1.
   {
     intros [[lhs rhs]].
@@ -358,9 +332,9 @@ Proof.
     reflexivity.
   }
 
-  destruct (sort_module_items (LocationSet.of_varset (VarSet.of_list (module_inputs v))) (modBody v));
+  destruct (sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (modBody v));
     simpl; [|reflexivity].
-  generalize (init // VarSet.of_list (module_inputs v)). clear init v.
+  generalize (init // VarSet.of_list i). clear init v.
   induction l; intros r; [reflexivity|].
   destruct a; expect 1. destruct s; expect 1.
   simpl. simp exec_module_body exec_module_item exec_statement. simpl.
@@ -371,11 +345,10 @@ Qed.
 
 Import ExactEquivalence.
 
-Theorem simpl_vmodule_exact_equivalence v :
+Theorem simpl_vmodule_exact_equivalence {i o} (v : vmodule i o) :
   simpl_vmodule v ~~~ v.
 Proof.
   apply exact_by_output_equality.
-  - reflexivity.
-  - intros initial. rewrite simpl_vmodule_correct.
-    reflexivity.
+  intros initial. rewrite simpl_vmodule_correct.
+  reflexivity.
 Qed.

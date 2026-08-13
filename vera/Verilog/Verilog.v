@@ -541,96 +541,36 @@ Module Verilog.
   Qed.
 
   (** Verilog modules *)
-  Record vmodule :=
+  Record vmodule {inputs outputs : list Var.t} :=
     MkMod
       { modName : name
-      ; modVariableDecls : list variable_declaration
       ; modBody : list module_item
-      ; modWfVariablesNoDup :
-        NoDup (map variable_of_decl modVariableDecls)
-      ; modWfWriteTargets :
-        LocationSet.Subset
-          (module_body_writes modBody)
-          (LocationSet.of_varset
-            (VarSet.diff
-              (VarSet.of_list (map variable_of_decl modVariableDecls))
-              (VarSet.of_list (inputs_of_decls modVariableDecls))))
+      ; modWfIODisjoint : disjoint inputs outputs
+      ; modWfInputsNoDup : NoDup inputs
+      ; modWfOutputsNoDup : NoDup outputs
       }
   .
 
-  Definition modVariables (v : vmodule) : list Var.t :=
-    map variable_of_decl (modVariableDecls v).
+  Arguments vmodule : clear implicits.
 
-  Definition module_inputs (v : Verilog.vmodule) : list Var.t :=
-    inputs_of_decls (modVariableDecls v).
+  Definition module_inputs {i o} (v : vmodule i o) : list Var.t := i.
+  Definition module_outputs {i o} (v : vmodule i o) : list Var.t := o.
 
-  Definition module_outputs (v : Verilog.vmodule) : list Var.t :=
-    outputs_of_decls (modVariableDecls v).
+  Definition module_reads {i o} (v : vmodule i o) : LocationSet.t :=
+    module_body_reads (modBody v).
 
-  Lemma module_input_in_vars v :
-    list_subset (Verilog.module_inputs v) (Verilog.modVariables v).
-  Proof.
-    apply Forall_forall.
-    unfold Verilog.module_inputs, Verilog.modVariables.
-    generalize (modVariableDecls v). intros decls var Hvar_in. 
-    funelim (inputs_of_decls decls); rewrite <- Heqcall in *; crush.
-  Qed.
+  Definition module_writes {i o} (v : vmodule i o) : LocationSet.t :=
+    module_body_writes (modBody v).
 
-  Lemma module_outputs_in_vars v :
-    list_subset (Verilog.module_outputs v) (Verilog.modVariables v).
-  Proof.
-    apply Forall_forall.
-    unfold Verilog.module_outputs, Verilog.modVariables.
-    generalize (modVariableDecls v). intros decls var Hvar_in. 
-    funelim (outputs_of_decls decls); rewrite <- Heqcall in *; crush.
-  Qed.
+  Definition module_locations {i o} (v : vmodule i o) : LocationSet.t :=
+    LocationSet.of_varset (VarSet.of_list i)
+    ∪ LocationSet.of_varset (VarSet.of_list o)
+    ∪ module_reads v
+    ∪ module_writes v.
 
-  Lemma module_input_output_disjoint v :
-    disjoint (Verilog.module_inputs v) (Verilog.module_outputs v).
-  Proof.
-    unfold disjoint, module_inputs, module_outputs.
-    pose proof (modWfVariablesNoDup v) as Hnodup.
-    generalize dependent (modVariableDecls v). clear v. intros decls ?.
-    apply Forall_forall. intros var Hvar.
-    funelim (inputs_of_decls decls).
-    all: simp outputs_of_decls in *.
-    all: rewrite <- Heqcall in Hvar; clear Heqcall.
-    all: try (rewrite Heq; clear Heq; simpl in *).
-    - intros [].
-    - inv Hnodup.
-      destruct Hvar as [Hvar|Hvar].
-      + intro contra. contradict H2. subst.
-        clear H H3.
-        funelim (outputs_of_decls ds).
-        all: rewrite <- Heqcall in *; clear Heqcall.
-        all: crush.
-      + apply H; eassumption.
-    - inv Hnodup.
-      intros [contra|contra].
-      + contradict H2. subst.
-        clear H H3.
-        funelim (inputs_of_decls ds).
-        all: rewrite <- Heqcall in *; clear Heqcall.
-        all: crush.
-      + eapply H; eassumption.
-    - inv Hnodup.
-      apply H; eassumption.
-
-
-  Lemma module_inputs_same v1 v2 :
-    modVariableDecls v1 = modVariableDecls v2 ->
-    module_inputs v1 = module_inputs v2.
-  Proof. unfold module_inputs. crush. Qed.
-
-  Lemma module_outputs_same v1 v2 :
-    modVariableDecls v1 = modVariableDecls v2 ->
-    module_outputs v1 = module_outputs v2.
-  Proof. unfold module_outputs. crush. Qed.
-
-  Lemma module_variables_same v1 v2 :
-    modVariableDecls v1 = modVariableDecls v2 ->
-    modVariables v1 = modVariables v2.
-  Proof. unfold modVariables. crush. Qed.
+  Lemma module_input_output_disjoint {i o} (v : vmodule i o) :
+    disjoint (module_inputs v) (module_outputs v).
+  Proof. exact (modWfIODisjoint v). Qed.
 
   Definition var_names : list Var.t -> list name :=
     map Var.varName.
@@ -802,34 +742,6 @@ Module RawVerilog.
       ; modBody : list module_item
       }
   .
-
-  Definition modVariables (v : vmodule) : list Var.t :=
-    map variable_of_decl (modVariableDecls v).
-
-  Definition module_inputs (v : vmodule) : list Var.t :=
-    inputs_of_decls (modVariableDecls v).
-
-  Definition module_outputs (v : vmodule) : list Var.t :=
-    outputs_of_decls (modVariableDecls v).
-
-  Lemma module_input_in_vars v :
-    list_subset (module_inputs v) (modVariables v).
-  Proof.
-    apply List.Forall_forall.
-    unfold module_inputs, modVariables.
-    generalize (modVariableDecls v). intros decls var Hvar_in. 
-    funelim (inputs_of_decls decls); rewrite <- Heqcall in *; crush.
-  Qed.
-
-  Lemma module_outputs_in_vars v :
-    list_subset (module_outputs v) (modVariables v).
-  Proof.
-    apply List.Forall_forall.
-    unfold module_outputs, modVariables.
-    generalize (modVariableDecls v). intros decls var Hvar_in. 
-    funelim (outputs_of_decls decls); rewrite <- Heqcall in *; crush.
-  Qed.
-
 End RawVerilog.
 
 Module Typecheck.
@@ -948,19 +860,38 @@ Definition tc_variable_declaration (vdecl : RawVerilog.variable_declaration) :=
   | _ => inl "Invalid variable bounds (LSB must be 0)"%string
   end.
 
-Definition tc_vmodule (m : RawVerilog.vmodule) : transf Verilog.vmodule :=
+Equations inputs_of_decls : list RawVerilog.variable_declaration -> list Var.t := {
+  | [] => []
+  | d :: ds with RawVerilog.varDeclPort d => {
+    | Some PortIn => RawVerilog.variable_of_decl d :: inputs_of_decls ds
+    | _ => inputs_of_decls ds
+  }
+}.
+
+Equations outputs_of_decls : list RawVerilog.variable_declaration -> list Var.t := {
+  | [] => []
+  | d :: ds with RawVerilog.varDeclPort d => {
+    | Some PortOut => RawVerilog.variable_of_decl d :: inputs_of_decls ds
+    | _ => inputs_of_decls ds
+  }
+}.
+
+Definition tc_vmodule (m : RawVerilog.vmodule) : transf { '(i, o) & Verilog.vmodule i o } :=
   traceBracket ("Typecheck " ++ RawVerilog.modName m) (
     let* t_modVariableDecls := mapT tc_variable_declaration (RawVerilog.modVariableDecls m) in
+    let inputs := inputs_of_decls t_modVariableDecls in
+    let outputs := outputs_of_decls t_modVariableDecls in
     let* t_modBody := tc_module_item_lst (RawVerilog.modBody m) in
-    let* variablesNoDup := assert_dec _ "Duplicate vars"%string in
-    let* writesInVars := assert_dec _ "Writes to invalid targets"%string in
-    inr {|
+    let* modWfIODisjoint := assert_dec _ "Overlap between inputs and outputs"%string in
+    let* modWfInputsNoDup := assert_dec _ "Duplicate inputs"%string in
+    let* modWfOutputsNoDup := assert_dec _ "Duplicate outputs"%string in
+    inr ((inputs, outputs); {|
         Verilog.modName := RawVerilog.modName m;
-        Verilog.modVariableDecls := t_modVariableDecls ;
         Verilog.modBody := t_modBody;
-        Verilog.modWfVariablesNoDup := variablesNoDup;
-        Verilog.modWfWriteTargets := writesInVars;
-    |}
+        Verilog.modWfIODisjoint := modWfIODisjoint;
+        Verilog.modWfInputsNoDup := modWfInputsNoDup;
+        Verilog.modWfOutputsNoDup := modWfOutputsNoDup;
+    |})
   )
 .
 End Typecheck.

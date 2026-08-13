@@ -708,6 +708,23 @@ Module RawXBV.
 
   #[global] Hint Rewrite @to_bv_size : xbv_size.
 
+  Definition to_bv_def (def : bool) (xbv : xbv) : RawBV.bitvector :=
+    map
+      (fun b => match b with
+              | RawXBV.I => true
+              | RawXBV.O => false
+              | RawXBV.X => def
+              end)
+      xbv.
+
+  Lemma to_bv_def_size def xbv :
+    RawBV.size (to_bv_def def xbv) = size xbv.
+  Proof.
+    unfold RawBV.size, to_bv_def.
+    rewrite length_map.
+    reflexivity.
+  Qed.
+  
   Definition replicate_bit (n : N) (b : bit) :=
     List.repeat b (N.to_nat n).
 
@@ -1482,6 +1499,16 @@ Module XBV.
     rewrite H. clear H.
     intros. f_equal.
     apply proof_irrelevance.
+  Qed.
+
+  #[program]
+  Definition to_bv_def {n} (def : bool) (xbv : xbv n) : BV.bitvector n :=
+    {|
+      BV.bv := RawXBV.to_bv_def def (XBV.bits xbv);
+    |}.
+  Next Obligation.
+    rewrite RawXBV.to_bv_def_size.
+    apply XBV.wf.
   Qed.
 
   Lemma bitOf_overflow n (x : xbv n) i :

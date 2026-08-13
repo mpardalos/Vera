@@ -10,24 +10,27 @@ let ( =<< ) a b = b >>= a
 
 let module_of_file = ParseSlang.parse_verilog_file
 
-let typed_module_of_file f =
+(* filename -> (inputs * outputs * module) *)
+let typed_module_of_file f : (Vera.Var.variable list * Vera.Var.variable list * Vera.Verilog.vmodule ) Vera.Typecheck.transf =
   let m = module_of_file f in
-  Vera.Typecheck.tc_vmodule m
+  let* (Vera.ExistT ((i, o), m)) = Vera.Typecheck.tc_vmodule m in
+  Vera.Inr (i, o, Obj.magic m)
 
 let lowered_module_of_file f =
-  let* m = typed_module_of_file f in
-  Vera.lower_verilog m
+  let* (i, o, m) = typed_module_of_file f in
+  Vera.lower_verilog i o (Obj.magic m)
 
 let smt_of_file filename =
   (* Need to tag it as left or right, doesn't matter here because we only
       translate one module *)
-  Vera.verilog_to_smt_general VerilogLeft =<< typed_module_of_file filename
+  let* (i, o, m) = typed_module_of_file filename in
+  Vera.verilog_to_smt_general i o VerilogLeft m
 
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =
-    let* m1 = typed_module_of_file filename1 in
-    let* m2 = typed_module_of_file filename2 in
-    Vera.equivalence_query_general m1 m2
+    let* (i1, o1, m1) = typed_module_of_file filename1 in
+    let* (i2, o2, m2) = typed_module_of_file filename2 in
+    Vera.equivalence_query_general i1 o1 i2 o2 m1 m2
   in
   match query_result with
   | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
@@ -66,7 +69,7 @@ let rec lower level filename =
       display_or_error VerilogPP.Raw.vmodule
         (Vera.Inr (module_of_file filename))
   | `Typed ->
-      display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename)
+      display_or_error VerilogPP.Typed.vmodule (let* (_, _, m) = typed_module_of_file filename in Vera.Inr m)
   | `PreSMT ->
       display_or_error VerilogPP.Typed.vmodule (lowered_module_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)

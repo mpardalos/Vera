@@ -64,37 +64,13 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma break_const_assigns_module_body_writes mis :
-  LocationSet.Equal
-    (module_body_writes (break_const_assigns_module_body mis))
-    (module_body_writes mis).
-Proof.
-  unfold break_const_assigns_module_body.
-  induction mis.
-  all: simpl.
-  2: rewrite module_body_writes_app, break_const_assigns_module_item_writes, IHmis.
-  all: reflexivity.
-Qed.
-
-Lemma break_const_assigns_wf_write_targets v :
-   module_body_writes (break_const_assigns_module_body (modBody v))
-   ⊆ LocationSet.of_varset
-       (VarSet.diff
-          (VarSet.of_list (map variable_of_decl (modVariableDecls v)))
-          (VarSet.of_list (inputs_of_decls (modVariableDecls v)))).
-Proof.
-  rewrite break_const_assigns_module_body_writes.
-  apply Verilog.modWfWriteTargets.
-Qed.
-
-Definition break_const_assigns_vmodule (v : vmodule) : vmodule :=
+#[refine]
+Definition break_const_assigns_vmodule {i o} (v : vmodule i o) : vmodule i o :=
   traceBracket ("Break const assigns " ++ Verilog.modName v) {|
     Verilog.modName := Verilog.modName v;
-    Verilog.modVariableDecls := Verilog.modVariableDecls v;
     Verilog.modBody := break_const_assigns_module_body (Verilog.modBody v);
-    Verilog.modWfVariablesNoDup := Verilog.modWfVariablesNoDup v;
-    Verilog.modWfWriteTargets := break_const_assigns_wf_write_targets v;
   |}.
+Proof. all: destruct v. all: assumption. Qed.
 
 From vera Require Import VerilogSemantics.
 Import ExactEquivalence.
@@ -128,6 +104,6 @@ Proof.
   - apply IHtarget2.
 Qed.
 
-Theorem break_const_assigns_exact_equivalence v :
+Theorem break_const_assigns_exact_equivalence {i o} (v : vmodule i o) :
   break_const_assigns_vmodule v ~~~ v.
 Proof. Admitted.

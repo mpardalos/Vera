@@ -85,9 +85,9 @@ Definition smt_distinct_value (var : Var.t) (ρ : SMTLib.valuation) :=
 Definition smt_some_distinct_values (vars : VarSet.t) (ρ : SMTLib.valuation) :=
   exists var, VarSet.In var vars /\ smt_distinct_value var ρ.
 
-Definition counterexample_valuation v1 v2 ρ :=
-  smt_all_same_values (VarSet.of_list (Verilog.module_inputs v1)) ρ
-  /\ smt_some_distinct_values (VarSet.of_list (Verilog.module_outputs v1)) ρ
+Definition counterexample_valuation {i o} (v1 v2 : Verilog.vmodule i o) ρ :=
+  smt_all_same_values (VarSet.of_list i) ρ
+  /\ smt_some_distinct_values (VarSet.of_list o) ρ
   /\ v1 ⇓ execution_of_valuation VerilogLeft ρ
   /\ v2 ⇓ execution_of_valuation VerilogRight ρ
   .
@@ -99,11 +99,11 @@ Definition execution_some_distinct_value (C : VarSet.t) (e1 e2 : execution) : Pr
     /\ e2 var = XBV.from_bv bv2
     /\ bv1 <> bv2.
 
-Definition counterexample_execution v1 e1 v2 e2 :=
+Definition counterexample_execution {i o} (v1 v2 : Verilog.vmodule i o) e1 e2 :=
   v1 ⇓ e1
   /\ v2 ⇓ e2
-  /\ e1 =!!(LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v1)))!!= e2
-  /\ ~ (e1 =(LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v1)))= e2).
+  /\ e1 =!!(LocationSet.of_varset (VarSet.of_list i))!!= e2
+  /\ ~ (e1 =(LocationSet.of_varset (VarSet.of_list o))= e2).
 
 Lemma smt_some_distinct_values_add var vars :
   pointwise_relation SMTLib.valuation iff
@@ -261,7 +261,7 @@ Proof.
   reflexivity.
 Qed.
 
-Theorem equivalence_query_spec verilog1 verilog2 smt :
+Theorem equivalence_query_spec {i o} (verilog1 verilog2 : Verilog.vmodule i o) smt :
   equivalence_query verilog1 verilog2 = inr smt ->
   smt_reflect
     smt
@@ -422,24 +422,23 @@ Global Instance match_on_eq_subrelation vars :
   subrelation eq (RegisterState.match_on vars).
 Proof. intros a b <-. reflexivity. Qed.
 
-Global Instance Proper_valid_execution v :
+Global Instance Proper_valid_execution {i o} (v : Verilog.vmodule i o) :
   Proper
-    (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v))) ==> iff)
+    (RegisterState.match_on (Verilog.module_locations v) ==> iff)
     (valid_execution v).
 Proof.
-  repeat intro.
   unfold valid_execution.
+  repeat intro.
+  setoid_replace x with y
+    using relation (RegisterState.match_on (Verilog.module_locations v))
+    at 2
+    by assumption.
+  unfold Verilog.module_locations in H.
   RegisterState.unpack_match_on.
-  assert (Hmatch_inputs : x =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)) )= y)
-    by now setoid_rewrite Verilog.module_input_in_vars.
-  split.
-  all: intros H1.
-  - setoid_rewrite <- H at 2.
-    setoid_rewrite <- Hmatch_inputs.
-    apply H1.
-  - rewrite H at 2.
-    setoid_rewrite Hmatch_inputs.
-    apply H1.
+  setoid_replace x with y
+    using relation (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list i)))
+    by assumption.
+  reflexivity.
 Qed.
 
 Ltac assert_rewrite r :=
@@ -450,45 +449,41 @@ Lemma list_subset_empty {A} (l : list A) :
   list_subset [] l.
 Proof. apply Forall_nil. Qed.
 
-Lemma execution_congruent v e1 e2 :
+Lemma execution_congruent {i o} (v : Verilog.vmodule i o) e1 e2 :
   v ⇓ e1 -> v ⇓ e2 ->
-  e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)) )= e2 ->
-  e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v)) )= e2.
+  e1 =( LocationSet.of_varset (VarSet.of_list i) )= e2 ->
+  e1 =( LocationSet.of_varset (VarSet.of_list o) )= e2.
 Proof.
   unfold "⇓".
   intros Hadmit1 Hadmit2 Hinput_match.
+  unfold Verilog.module_locations in *.
   RegisterState.unpack_match_on.
-  assert (Houtputs1 : run_vmodule v e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v)) )= e1)
-    by now setoid_rewrite Verilog.module_outputs_in_vars.
-  rewrite <- Houtputs1.
-  assert (Houtputs2 : run_vmodule v e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v)) )= e2)
-    by now setoid_rewrite Verilog.module_outputs_in_vars.
-  rewrite <- Houtputs2.
+  setoid_replace e1 with (run_vmodule v e1)
+    using relation (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list o)))
+    by (symmetry; assumption).
+  setoid_replace e2 with (run_vmodule v e2)
+    using relation (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list o)))
+    by (symmetry; assumption).
   rewrite Hinput_match.
   reflexivity.
 Qed.
 
-Lemma no_counterexample_equivalent_iff v1 v2 :
-  Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
-  Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
+Lemma no_counterexample_equivalent_iff {i o} (v1 v2 : Verilog.vmodule i o) :
   vmodule_sortable v1 ->
   vmodule_sortable v2 ->
-  (forall e1 e2, ~ counterexample_execution v1 e1 v2 e2) <-> (v1 ~~ v2).
+  (forall e1 e2, ~ counterexample_execution v1 v2 e1 e2) <-> (v1 ~~ v2).
 Proof.
-  intros Hinput_match Houtput_match Hsortable1 Hsortable2.
+  intros Hsortable1 Hsortable2.
   unfold counterexample_execution.
   split. 
   - intros H.
-    constructor; try assumption; [idtac].
     intros e Hno_exes.
-    assert (Hmatch_inputs : run_vmodule v1 e =!!( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v1)) )!!= run_vmodule v2 e). {
+    assert (Hmatch_inputs : run_vmodule v1 e =!!( LocationSet.of_varset (VarSet.of_list i) )!!= run_vmodule v2 e). {
       split.
-      - rewrite Facts.run_vmodule_preserve_inputs by assumption.
-        rewrite Hinput_match.
-        rewrite Facts.run_vmodule_preserve_inputs by assumption.
+      - do 2 rewrite Facts.run_vmodule_preserve_inputs by assumption.
 	reflexivity.
       - rewrite Facts.run_vmodule_preserve_inputs by assumption.
-        apply Hno_exes.
+        exact Hno_exes.
     }
     assert (Hrun1 : v1 ⇓ run_vmodule v1 e) by apply Facts.admit_run_vmodule.
     assert (Hrun2 : v2 ⇓ run_vmodule v2 e) by apply Facts.admit_run_vmodule.
@@ -498,26 +493,28 @@ Proof.
     apply not_and_or in H. destruct H; [contradiction|].
     apply NNPP in H.
     assumption.
-  - intros [] e1 e2 [Hadmit1 [Hadmit2 [[Hmatch_inputs Hinputs_defined] Hno_match_outputs]]].
+  - intros H e1 e2 [Hadmit1 [Hadmit2 [[Hmatch_inputs Hinputs_defined] Hno_match_outputs]]].
     unfold "⇓" in Hadmit1, Hadmit2.
     contradict Hno_match_outputs.
-    assert (Hmatch_outputs1 : run_vmodule v1 e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v1)) )= e1)
-      by now setoid_rewrite Verilog.module_outputs_in_vars.
-    assert (Hmatch_outputs2 : run_vmodule v2 e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v2)) )= e2)
-      by now setoid_rewrite Verilog.module_outputs_in_vars.
-    rewrite <- Hmatch_outputs1.
-    rewrite <- Houtput_match in Hmatch_outputs2. rewrite <- Hmatch_outputs2.
-    rewrite Hinput_match in Hmatch_inputs. setoid_rewrite <- Hmatch_inputs.
-    apply execution_match0.
-    apply Hinputs_defined.
+    unfold Verilog.module_locations in *.
+    RegisterState.unpack_match_on.
+    setoid_replace e1 with (run_vmodule v1 e1)
+      using relation (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list o)))
+      by (symmetry; assumption).
+    setoid_replace e2 with (run_vmodule v2 e2)
+      using relation (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list o)))
+      by (symmetry; assumption).
+    rewrite <- Hmatch_inputs.
+    apply H.
+    exact Hinputs_defined.
 Qed.
 
-Lemma not_equivalent_counterexample_iff v1 v2 :
+Lemma not_equivalent_counterexample_iff {i o} (v1 v2 : Verilog.vmodule i o) :
   Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
   vmodule_sortable v1 ->
   vmodule_sortable v2 ->
-  (exists e1 e2, counterexample_execution v1 e1 v2 e2) <-> ~ (v1 ~~ v2).
+  (exists e1 e2, counterexample_execution v1 v2 e1 e2) <-> ~ (v1 ~~ v2).
 Proof.
   intros Hinput_match Houtput_match Hsortable1 Hsortable2.
   setoid_rewrite <- no_counterexample_equivalent_iff; try assumption; [idtac].
@@ -530,35 +527,28 @@ Proof.
     exists e1, e2. apply H1.
 Qed.
 
-Record verilog_to_smt_checked (v : Verilog.vmodule) := MkVerilogToSMTChecked {
-    (* TODO: This should just worry about accessed/output vars, not everything *)
-    all_vars_driven :
-      LocationSet.Equal
-        (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)))
-	(Verilog.module_body_writes (Verilog.modBody v) ∪ LocationSet.of_varset (VarSet.of_list (Verilog.Verilog.module_inputs v)));
-    sorted : module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v);
+Record verilog_to_smt_checked {i o} (v : Verilog.vmodule i o) := MkVerilogToSMTChecked {
+  sorted : module_items_sorted (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) (Verilog.modBody v);
 }.
 
-Lemma verilog_to_smt_checks tag v smt :
+Lemma verilog_to_smt_checks {i o} tag (v : Verilog.vmodule i o) smt :
   VerilogToSMT.verilog_to_smt tag v = inr smt ->
   verilog_to_smt_checked v.
 Proof.
   intros H.
   unfold VerilogToSMT.verilog_to_smt in H. simpl in H. monad_inv.
-  constructor; try assumption.
-  admit. 
-Admitted.
+  constructor; assumption.
+Qed.
 
-Record equivalence_query_checked (v1 v2 : Verilog.vmodule) := MkEquivalenceQueryChecked {
-  verilog_to_smt_eqn1 : exists tag smt, VerilogToSMT.verilog_to_smt tag v1 = inr smt;
-  verilog_to_smt_eqn2 : exists tag smt, VerilogToSMT.verilog_to_smt tag v2 = inr smt;
-  verilog_to_smt_checked1 : verilog_to_smt_checked v1;
-  verilog_to_smt_checked2 : verilog_to_smt_checked v2;
-  inputs_match : Verilog.module_inputs v1 = Verilog.module_inputs v2;
-  outputs_match : Verilog.module_outputs v1 = Verilog.module_outputs v2;
-}.
+Record equivalence_query_checked {i o} (v1 v2 : Verilog.vmodule i o) :=
+  MkEquivalenceQueryChecked {
+    verilog_to_smt_eqn1 : exists tag smt, VerilogToSMT.verilog_to_smt tag v1 = inr smt;
+    verilog_to_smt_eqn2 : exists tag smt, VerilogToSMT.verilog_to_smt tag v2 = inr smt;
+    verilog_to_smt_checked1 : verilog_to_smt_checked v1;
+    verilog_to_smt_checked2 : verilog_to_smt_checked v2;
+  }.
 
-Lemma equivalence_query_checks v1 v2 smt :
+Lemma equivalence_query_checks {i o} (v1 v2 : Verilog.vmodule i o) smt :
   equivalence_query v1 v2 = inr smt ->
   equivalence_query_checked v1 v2.
 Proof.
@@ -567,12 +557,12 @@ Proof.
   constructor; eauto using verilog_to_smt_checks.
 Qed.
 
-Lemma counterexample_valuation_execution v1 v2 ρ :
+Lemma counterexample_valuation_execution {i o} (v1 v2 : Verilog.vmodule i o) ρ :
   equivalence_query_checked v1 v2 ->
   counterexample_valuation v1 v2 ρ <->
-    counterexample_execution
-      v1 (execution_of_valuation VerilogLeft ρ)
-      v2 (execution_of_valuation VerilogRight ρ).
+    counterexample_execution v1 v2
+      (execution_of_valuation VerilogLeft ρ)
+      (execution_of_valuation VerilogRight ρ).
 Proof.
   intros Hequivalence_query.
   destruct Hequivalence_query.
@@ -596,13 +586,13 @@ Proof.
     + assumption.
 Qed.
 
-Theorem equivalence_query_execution_spec v1 v2 smt :
+Theorem equivalence_query_execution_spec {i o} (v1 v2 : Verilog.vmodule i o) smt :
   equivalence_query v1 v2 = inr smt ->
   smt_reflect
     smt
-    (fun ρ => counterexample_execution
-      v1 (execution_of_valuation VerilogLeft ρ)
-      v2 (execution_of_valuation VerilogRight ρ)).
+    (fun ρ => counterexample_execution v1 v2
+      (execution_of_valuation VerilogLeft ρ)
+      (execution_of_valuation VerilogRight ρ)).
 Proof.
   intros Hfunc.
   setoid_rewrite <- counterexample_valuation_execution;
@@ -611,12 +601,12 @@ Proof.
   assumption.
 Qed.
 
-Theorem equivalence_query_sat_correct v1 v2 smt ρ :
+Theorem equivalence_query_sat_correct {i o} (v1 v2 : Verilog.vmodule i o) smt ρ :
   equivalence_query v1 v2 = inr smt ->
   satisfied_by ρ smt ->
-  counterexample_execution
-    v1 (execution_of_valuation VerilogLeft ρ)
-    v2 (execution_of_valuation VerilogRight ρ).
+  counterexample_execution v1 v2
+    (execution_of_valuation VerilogLeft ρ)
+    (execution_of_valuation VerilogRight ρ).
 Proof.
   intros.
   eapply equivalence_query_execution_spec.
@@ -633,9 +623,9 @@ Proof.
   intros var. autodestruct; crush.
 Qed.
 
-Lemma counterexample_execution_rewrite_left v e1 e1' v2 e2 :
-  e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v)) )= e1' ->
-  counterexample_execution v e1 v2 e2 <-> counterexample_execution v e1' v2 e2.
+Lemma counterexample_execution_rewrite_left {i o} (v v2 : Verilog.vmodule i o) e1 e1' e2 :
+  e1 =( Verilog.module_locations v )= e1' ->
+  counterexample_execution v v2 e1 e2 <-> counterexample_execution v v2 e1' e2.
 Proof.
   unfold counterexample_execution.
   intros H.
@@ -643,11 +633,11 @@ Proof.
   all: intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]].
   all: unpack_goal.
   all: try eassumption.
-  all: assert (Hinputs : e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v)) )= e1')
-         by now setoid_rewrite Verilog.module_input_in_vars.
-  all: assert (Houtputs : e1 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v)) )= e1')
-         by now setoid_rewrite Verilog.module_outputs_in_vars.
-  - rewrite H in Hvalid1. assumption.
+  all: assert (Hinputs : e1 =( LocationSet.of_varset (VarSet.of_list i) )= e1')
+         by (unfold Verilog.module_locations in H; RegisterState.unpack_match_on; assumption).
+  all: assert (Houtputs : e1 =( LocationSet.of_varset (VarSet.of_list o) )= e1')
+         by (unfold Verilog.module_locations in H; RegisterState.unpack_match_on; assumption).
+  - rewrite <- H. exact Hvalid1.
   - rewrite <- Hinputs. apply Hdefined_in.
   - rewrite <- Houtputs. apply Hnot_defined_out.
   - rewrite H. assumption.
@@ -655,23 +645,21 @@ Proof.
   - rewrite Houtputs. apply Hnot_defined_out.
 Qed.
 
-Lemma counterexample_execution_rewrite_right v1 e1 v2 e2 e2' :
-  Verilog.module_inputs v1 = Verilog.module_inputs v2 ->
-  Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
-  e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v2)) )= e2' ->
-  counterexample_execution v1 e1 v2 e2 <-> counterexample_execution v1 e1 v2 e2'.
+Lemma counterexample_execution_rewrite_right {i o} (v1 v2 : Verilog.vmodule i o) e1 e2 e2' :
+  e2 =( Verilog.module_locations v2 )= e2' ->
+  counterexample_execution v1 v2 e1 e2 <-> counterexample_execution v1 v2 e1 e2'.
 Proof.
   unfold counterexample_execution.
-  intros -> -> H.
+  intros H.
   split.
   all: intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]].
   all: unpack_goal.
   all: try eassumption.
-  all: assert (Hinputs : e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v2)) )= e2')
-         by now setoid_rewrite Verilog.module_input_in_vars.
-  all: assert (Houtputs : e2 =( LocationSet.of_varset (VarSet.of_list (Verilog.module_outputs v2)) )= e2')
-         by now setoid_rewrite Verilog.module_outputs_in_vars.
-  - rewrite H in Hvalid2. assumption.
+  all: assert (Hinputs : e2 =( LocationSet.of_varset (VarSet.of_list i) )= e2')
+         by (unfold Verilog.module_locations in H; RegisterState.unpack_match_on; assumption).
+  all: assert (Houtputs : e2 =( LocationSet.of_varset (VarSet.of_list o) )= e2')
+         by (unfold Verilog.module_locations in H; RegisterState.unpack_match_on; assumption).
+  - rewrite <- H. exact Hvalid2.
   - rewrite <- Hinputs. apply Hdefined_in.
   - rewrite <- Houtputs. apply Hnot_defined_out.
   - rewrite H. assumption.
@@ -680,11 +668,11 @@ Proof.
 Qed.
 
 (* TODO: Move me to semantics *)
-Lemma valid_execution_all_vars_defined v e :
+Lemma valid_execution_all_vars_defined {i o} (v : Verilog.vmodule i o) e :
   clean_module v ->
   v ⇓ e ->
-  RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) e ->
-  RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.modVariables v))) e.
+  RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list i)) e ->
+  RegisterState.defined_value_for (Verilog.module_locations v) e.
 Proof.
   unfold "⇓".
   intros [Hvars_defined] Hadmit Hinputs_defined.
@@ -693,14 +681,14 @@ Proof.
   apply Hinputs_defined.
 Qed.
 
-Lemma equivalence_query_unsat_no_counterexample v1 v2 smt :
+Lemma equivalence_query_unsat_no_counterexample {i o} (v1 v2 : Verilog.vmodule i o) smt :
   equivalence_query v1 v2 = inr smt ->
   (forall ρ, ~ satisfied_by ρ smt) ->
-  (forall e1 e2, ~ counterexample_execution v1 e1 v2 e2).
+  (forall e1 e2, ~ counterexample_execution v1 v2 e1 e2).
 Proof.
   intros Hquery Hunsat e1 e2 Hcounterexample.
   destruct (equivalence_query_checks v1 v2 smt)
-    as [[? [? ?]] [? [? ?]] ? ? inputs_match outputs_match];
+    as [[? [? ?]] [? [? ?]] ? ?];
     [assumption|].
   eapply Hunsat with (ρ := valuation_of_executions e1 e2).
   eapply equivalence_query_execution_spec; eauto.
@@ -716,21 +704,20 @@ Proof.
   all: eapply valid_execution_all_vars_defined.
   - eapply VerilogToSMTCorrect.verilog_to_smt_clean. eassumption.
   - assumption.
-  - rewrite <- inputs_match.
-    eapply defined_match_on_defined_value_right. eassumption.
+  - eapply defined_match_on_defined_value_right. eassumption.
   - eapply VerilogToSMTCorrect.verilog_to_smt_clean. eassumption.
   - assumption.
   - eapply defined_match_on_defined_value_left. eassumption.
 Qed.
 
-Theorem equivalence_query_unsat_correct v1 v2 smt :
+Theorem equivalence_query_unsat_correct {i o} (v1 v2 : Verilog.vmodule i o) smt :
   equivalence_query v1 v2 = inr smt ->
   (forall ρ, ~ satisfied_by ρ smt) ->
   v1 ~~ v2.
 Proof.
   intros Hquery Hunsat.
   destruct (equivalence_query_checks v1 v2 smt)
-    as [[? [? ?]] [? [? ?]] [] [] inputs_match outputs_match];
+    as [[? [? ?]] [? [? ?]] [] []];
     [assumption|].
   apply no_counterexample_equivalent_iff; eauto using VerilogToSMTCorrect.verilog_to_smt_clean.
   - unfold vmodule_sortable. eexists.
