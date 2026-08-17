@@ -805,13 +805,6 @@ Module Sort.
     }
   }.
 
-  (* Replace this with something from stdlib. *)
-  Definition is_empty {A} (l : list A) :=
-    match l with
-    | [] => true
-    | _ => false
-    end.
-
   (* Having fuel for this is disgusting, yes, but we are
      non-structurally recursing on ms.  We know that
      sort_module_items_select_tailrec returns a smaller list than it
@@ -832,10 +825,10 @@ Module Sort.
       | 0, vars_ready, _, sorted => (* trace "Ran out of fuel" *) None
       | (S fuel'), vars_ready, ms, sorted with ((* trace ("Ready: " ++ to_string vars_ready) *) sort_module_items_split_ready vars_ready [] [] ms) => {
         | None => (* trace "Chosing failed" *) None
+        | Some (vars_ready', [], rest) =>
+          (* trace ("Chosing picked nothing in " ++ to_string rest) *) None
         | Some (vars_ready', chosen, rest) =>
-          if is_empty chosen
-          then (* trace ("Chosing picked nothing in " ++ to_string rest) *) None
-          else (* trace ("Chose " ++ to_string chosen) *) (sort_module_items_tailrec fuel' vars_ready' rest (chosen ++ sorted))
+          (* trace ("Chose " ++ to_string chosen) *) (sort_module_items_tailrec fuel' vars_ready' rest (chosen ++ sorted))
       }
     }.
 
@@ -957,10 +950,11 @@ Module Sort.
       apply Permutation_rev.
     - (* Out of fuel *)
       inversion 1.
-    - destruct (is_empty chosen); [inversion 1|].
-      intros Hrest.
+    - (* Selected nothing *)
+      inversion 1.
+    - intros Hrest.
       apply H in Hrest. (* ; [|constructor]. *)
-      apply sort_module_items_split_ready_perm in Heq. simpl in Heq.
+      apply sort_module_items_split_ready_perm in Heq.
       rewrite <- Hrest.
       rewrite Heq.
       rewrite app_assoc.
@@ -981,6 +975,7 @@ Module Sort.
     all: intros Hsorted Hsub Hsort.
     - inv Hsort. exact Hsorted.
     - inv Hsort.
+    - inv Hsort.
     - apply H.
       (* + constructor. *)
       + rewrite rev_app_distr.
@@ -996,9 +991,7 @@ Module Sort.
           in Heq.
         * LocationSet.setdec.
         * simpl. LocationSet.setdec.
-      + destruct (is_empty chosen).
-        * discriminate.
-        * exact Hsort.
+      + exact Hsort.
     - inv Hsort.
   Qed.
 
@@ -1025,23 +1018,10 @@ Module Sort.
         rewrite Hready.
         exact Hsorted.
       + simpl. LocationSet.setdec.
-      + simpl in Heq. rewrite Hsorted' in Heq; inv Heq.
-        erewrite H; clear H.
-        all: try rewrite ! app_nil_r.
-        all: try rewrite ! rev_app_distr.
-        all: try rewrite rev_involutive.
-        all: simpl.
-        * destruct (is_empty (rev l ++ [m])) eqn:E.
-          -- admit.
-          -- reflexivity.
-        (* * constructor. *)
-        * exact Hsorted.
-        * simpl in Hready'.
-          rewrite ! module_body_writes_app.
-          rewrite <- Permutation_rev.
-          simpl.
-          LocationSet.setdec.
-        * lia.
+      + rewrite Hsorted' in Heq. inv Heq.
+        rewrite app_nil_r in H1.
+        apply app_eq_nil in H1.
+        intuition discriminate. 
     - destruct sort_module_items_split_ready_stable
         with
           (initial_inputs:=vars_ready)
@@ -1055,8 +1035,36 @@ Module Sort.
         rewrite Hready.
         exact Hsorted.
       + simpl. LocationSet.setdec.
-      + simpl in Heq. rewrite Hsorted' in Heq; inv Heq.
-  Admitted.
+      + rewrite Hsorted' in Heq; inv Heq.
+        rewrite ! app_nil_r in *.
+        rewrite H2.
+        erewrite H.
+        all: try rewrite <- H2.
+        all: try rewrite ! rev_app_distr.
+        all: try rewrite rev_involutive.
+        * reflexivity.
+        * exact Hsorted.
+        * simpl in Hready'.
+          rewrite ! module_body_writes_app.
+          rewrite <- Permutation_rev.
+          simpl.
+          LocationSet.setdec.
+        * simpl. lia.
+    - destruct sort_module_items_split_ready_stable
+        with
+          (initial_inputs:=vars_ready)
+          (ready:=vars_ready)
+          (chosen:=@nil module_item)
+          (skipped:=@nil module_item)
+          (mis:=m::l)
+        as [sorted' [Hready' Hsorted']].
+      + simpl. apply module_items_sorted_app_inv_tail in Hsorted.
+        rewrite <- Permutation_rev in Hsorted.
+        rewrite Hready.
+        exact Hsorted.
+      + simpl. LocationSet.setdec.
+      + rewrite Hsorted' in Heq. inv Heq.
+  Qed.
 
   (******************************************
    *
@@ -1161,15 +1169,17 @@ Module Sort.
       all: simpl; simp sort_module_items_tailrec; simpl.
       - inv Hsort. rewrite map_rev. reflexivity.
       - inv Hsort.
+      - inv Hsort.
       - eapply sort_module_items_split_ready_map_some in Heq; [|exact Hinputs_eq].
         destruct Heq as [ready2' [Hready2' Hsplit]].
-        simpl in Hsplit. rewrite Hsplit.
-        simpl. rewrite <- map_app.
-        destruct (is_empty chosen) eqn:E; [discriminate|].
-        replace (is_empty (map f chosen)) with false by admit.
-        apply H; assumption || constructor.
+        simpl in Hsplit. rewrite Hsplit. simpl.
+        replace (f m0 :: map f l1 ++ map f sorted) with (map f (m0 :: l1 ++ sorted))
+          by now rewrite <- map_app.
+        apply H.
+        * assumption. 
+        * assumption.
       - inv Hsort.
-    Admitted.
+    Qed.
 
     Lemma sort_module_items_tailrec_map_none fuel inputs1 inputs2 mis sorted :
       LocationSet.Equal inputs1 inputs2 ->
@@ -1183,18 +1193,19 @@ Module Sort.
       - eapply sort_module_items_split_ready_map_some in Heq; [|exact Hinputs_eq].
         destruct Heq as [ready2' [Hready2' Hsplit]].
         simpl in Hsplit. rewrite Hsplit.
-        simpl. rewrite <- map_app.
-        (* destruct (is_empty chosen) eqn:E; [|discriminate|].
-         * replace (is_empty (map f chosen)) with false by admit. *)
-        rewrite H.
-        + autodestruct; reflexivity.
-        (* + constructor. *)
+        reflexivity.
+      - eapply sort_module_items_split_ready_map_some in Heq; [|exact Hinputs_eq].
+        destruct Heq as [ready2' [Hready2' Hsplit]].
+        simpl in Hsplit. rewrite Hsplit. simpl.
+        replace (f m0 :: map f l1 ++ map f sorted) with (map f (m0 :: l1 ++ sorted))
+          by now rewrite <- map_app.
+        apply H.
         + assumption.
-        + admit.
+        + assumption.
       - eapply sort_module_items_split_ready_map_none in Heq; [|exact Hinputs_eq].
         simpl in Heq. rewrite Heq.
         reflexivity.
-    Admitted.
+    Qed.
 
     Lemma sort_module_items_map inputs mis :
       sort_module_items inputs (map f mis)
