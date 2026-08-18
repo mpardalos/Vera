@@ -53,39 +53,27 @@ Next Obligation. lia. Qed.
 
 Show Obligation Tactic.
 
-Inductive upper_bound {w} (e : expression w) (bound : N) : Prop :=
-  | upper_bound_static bv :
-      eval_expr_static e = Some xbv ->
-      XBV.to_N xbv = Some val ->
-      val <= bound.
-
-Fixpoint simpl_expr {w} (e : expression w) : expression w :=
-  match e with
+Equations simpl_expr {w} (e : expression w) : expression w := {
   | UnaryOp op e => UnaryOp op (simpl_expr e)
   | ArithmeticOp op lhs rhs => ArithmeticOp op (simpl_expr lhs) (simpl_expr rhs)
   | BitwiseOp op lhs rhs => BitwiseOp op (simpl_expr lhs) (simpl_expr rhs)
-  | @ShiftOp w1 w2 op lhs rhs wf_lhs wf_rhs =>
-    match dec (w1 = w2) with
+  | @ShiftOp w1 w2 op lhs rhs wf_lhs wf_rhs with dec (w1 = w2) => {
     | left E => ShiftOp op (simpl_expr lhs) (simpl_expr rhs) wf_lhs wf_rhs
     | right _ =>
       (* Shift operand widths must match in SMTLIB *)
       equalized_shiftop wf_lhs op (simpl_expr lhs) (simpl_expr rhs)
-    end
+  }
   | Concatenation e1 e2 => Concatenation (simpl_expr e1) (simpl_expr e2)
   | Replication n e =>
     (* TODO: Convert replications to concats *)
     Replication n (simpl_expr e)
   | Conditional cond ifT ifF => Conditional (simpl_expr cond) (simpl_expr ifT) (simpl_expr ifF)
   | RangeSelect slice => RangeSelect slice
-  | BitSelect vec (IntegerLiteral w idx) =>
-      BitSelect vec (IntegerLiteral w idx)
-  | BitSelect vec idx =>
-    (* No variable bitselect in SMTLIB. Also, the shift we add must be balanced, as above. *)
-    Resize 1 (equalized_shiftop (Var.varTypeWf vec) BinaryShiftRight (NamedExpression vec) (simpl_expr idx)) eq_refl
+  | BitSelect vec idx => BitSelect vec (simpl_expr idx)
   | Resize to expr wf => Resize to (simpl_expr expr) wf
   | IntegerLiteral w val => IntegerLiteral w val
   | NamedExpression var => NamedExpression var
-  end .
+  }.
 
 Definition simpl_module_body : list module_item -> list module_item :=
     map (fun '(AlwaysComb (BlockingAssign lhs rhs)) => AlwaysComb (BlockingAssign lhs (simpl_expr rhs))).
@@ -181,51 +169,51 @@ Proof.
   - destruct_rew. reflexivity.
 Qed.
 
-(* TODO: Move me to bitvectors *)
-Lemma bitOf_exes i n : XBV.bitOf i (XBV.exes n) = RawXBV.X.
-Proof. apply nth_repeat. Qed.
-
-Hint Rewrite bitOf_exes : xbv.
-
-(* TODO: Move me to bitvectors *)
-Lemma shr_empty n : RawXBV.shr [] n = [].
-Proof. destruct n. all: simp shr. all: reflexivity. Qed.
-
-Hint Rewrite shr_empty : shr.
-
-(* TODO: Move me to bitvectors *)
-Lemma bitOf_shr w n (xbv : XBV.xbv w) :
-  (n < w)%N ->
-  XBV.bitOf 0 (XBV.shr xbv n) =
-  XBV.bitOf n xbv.
-Proof.
-  intros Hin_bounds.
-  unfold XBV.shr, XBV.bitOf.
-  XBV.bitvector_erase. subst.
-  N_to_nat.
-  unfold RawXBV.bitOf.
-  funelim (RawXBV.shr bv n); expect 3.
-  1, 2: reflexivity.
-  simpl in *.
-  rewrite <- H by lia.
-  apply app_nth1.
-  pose proof (RawXBV.shr_size n bs).
-  crush.
-Qed.
-
-Hint Rewrite bitOf_shr using lia : xbv.
-
-Lemma extr_all w (xbv : XBV.xbv w) : XBV.extr xbv 0 w = xbv.
-Proof.
-  XBV.bitvector_erase. subst.
-  unfold RawXBV.extr, RawXBV.size.
-  autodestruct_eqn E; [|apply N.leb_gt in E; lia].
-  clear E.
-  induction bv.
-  - reflexivity.
-  - rewrite Nat2N.id in *. simpl in *. simp extract.
-    f_equal. exact IHbv.
-Qed.
+(* (\* TODO: Move me to bitvectors *\)
+ * Lemma bitOf_exes i n : XBV.bitOf i (XBV.exes n) = RawXBV.X.
+ * Proof. apply nth_repeat. Qed.
+ * 
+ * Hint Rewrite bitOf_exes : xbv.
+ * 
+ * (\* TODO: Move me to bitvectors *\)
+ * Lemma shr_empty n : RawXBV.shr [] n = [].
+ * Proof. destruct n. all: simp shr. all: reflexivity. Qed.
+ * 
+ * Hint Rewrite shr_empty : shr.
+ * 
+ * (\* TODO: Move me to bitvectors *\)
+ * Lemma bitOf_shr w n (xbv : XBV.xbv w) :
+ *   (n < w)%N ->
+ *   XBV.bitOf 0 (XBV.shr xbv n) =
+ *   XBV.bitOf n xbv.
+ * Proof.
+ *   intros Hin_bounds.
+ *   unfold XBV.shr, XBV.bitOf.
+ *   XBV.bitvector_erase. subst.
+ *   N_to_nat.
+ *   unfold RawXBV.bitOf.
+ *   funelim (RawXBV.shr bv n); expect 3.
+ *   1, 2: reflexivity.
+ *   simpl in *.
+ *   rewrite <- H by lia.
+ *   apply app_nth1.
+ *   pose proof (RawXBV.shr_size n bs).
+ *   crush.
+ * Qed.
+ * 
+ * Hint Rewrite bitOf_shr using lia : xbv.
+ * 
+ * Lemma extr_all w (xbv : XBV.xbv w) : XBV.extr xbv 0 w = xbv.
+ * Proof.
+ *   XBV.bitvector_erase. subst.
+ *   unfold RawXBV.extr, RawXBV.size.
+ *   autodestruct_eqn E; [|apply N.leb_gt in E; lia].
+ *   clear E.
+ *   induction bv.
+ *   - reflexivity.
+ *   - rewrite Nat2N.id in *. simpl in *. simp extract.
+ *     f_equal. exact IHbv.
+ * Qed. *)
 
 Lemma eval_equalized_shiftop {w1 w2} regs op wf (lhs : expression w1) (rhs : expression w2) :
   eval_expr regs (equalized_shiftop wf op lhs rhs)
@@ -250,87 +238,67 @@ Proof.
   - apply convert_exes. lia.
 Qed.
 
-Lemma select_bit_extr {w} (x : XBV.xbv w) n :
-  select_bit x n = XBV.extr x n 1.
-Proof.
-  unfold select_bit, XBV.bitOf.
-  XBV.bitvector_erase.
-  unfold RawXBV.extr, RawXBV.bitOf.
-  subst.
-  funelim (RawXBV.extract bv (N.to_nat n) (N.to_nat 1)).
-  (* solve this *)
-Admitted.
-
-Lemma convert_one {w} (x : XBV.xbv w) :
-  (w > 0)%N ->
-  convert 1 x = select_bit x 0.
-Proof.
-  intros Hwf.
-  rewrite select_bit_extr.
-  funelim (convert 1 x).
-  - lia.
-  - reflexivity.
-  - assert (from = 1)%N by lia. subst.
-    destruct_rew. simpl.
-    rewrite extr_all. reflexivity.
-Qed.
+(* Lemma select_bit_extr {w} (x : XBV.xbv w) n :
+ *   select_bit x n = XBV.extr x n 1.
+ * Proof.
+ *   unfold select_bit, XBV.bitOf.
+ *   XBV.bitvector_erase.
+ *   unfold RawXBV.extr, RawXBV.bitOf.
+ *   subst.
+ *   funelim (RawXBV.extract bv (N.to_nat n) (N.to_nat 1)).
+ *   (\* solve this *\)
+ * Admitted.
+ * 
+ * Lemma convert_one {w} (x : XBV.xbv w) :
+ *   (w > 0)%N ->
+ *   convert 1 x = select_bit x 0.
+ * Proof.
+ *   intros Hwf.
+ *   rewrite select_bit_extr.
+ *   funelim (convert 1 x).
+ *   - lia.
+ *   - reflexivity.
+ *   - assert (from = 1)%N by lia. subst.
+ *     destruct_rew. simpl.
+ *     rewrite extr_all. reflexivity.
+ * Qed. *)
 
 Lemma simpl_expr_correct {w} regs (e : expression w) :
   eval_expr regs (simpl_expr e) = eval_expr regs e.
 Proof.
-  revert regs.
-  induction e; intros regs.
-  all: simpl.
-  all: autodestruct.
+  funelim (simpl_expr e).
   all: try rewrite eval_equalized_shiftop.
-  (* all: simp eval_expr; simpl. *)
-  all: try (simp eval_expr; simpl; repeat match goal with
+  all: simp eval_expr.
+  all: repeat match goal with
        | [ Hinduct : forall r, eval_expr r (simpl_expr _) = eval_expr r _ |- _ ] =>
          rewrite Hinduct in *
-       end; reflexivity).
-  (* We should now only have copies of the variable bit-select case *)
-  all: match goal with
-       |- eval_expr ?r (Resize 1 (equalized_shiftop _ _ _ (simpl_expr ?e)) _) = eval_expr _ (BitSelect _ ?e) =>
-         generalize dependent e; intros
        end.
-  all: simp eval_expr; simpl; rewrite eval_equalized_shiftop; simp eval_expr.
-  all: rewrite IHe; clear IHe.
-  all: simp eval_shiftop.
-  all: unfold XBV.to_N.
-  all: destruct (XBV.to_bv (eval_expr regs e)) eqn:Ee.
-  all: simpl.
-  all: rewrite convert_one by (apply Var.varTypeWf).
-  all: try solve [apply XBV.extr_exes].
-  all: 
-Admitted.
+  all: reflexivity.
+Qed.
 
-(* Lemma simpl_resize_reads {from} to (e : expression from) wf :
- *   LocationSet.Equal (expr_reads (simpl_resize to e wf)) (expr_reads e).
- * Proof.
- *   unfold simpl_resize.
- *   destruct (dec (from < to)%N).
- *   all: destruct_rew; simpl.
- *   - LocationSet.setdec.
- *   - reflexivity.
- * Qed. *)
-
-Lemma equalized_shiftop_reads_reads_permutation w1 w2 wf op (lhs : expression w1) (rhs : expression w2) :
+Lemma equalized_shiftop_reads_reads_Equal w1 w2 wf op (lhs : expression w1) (rhs : expression w2) :
   LocationSet.Equal (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
 Proof. reflexivity. Qed.
 
-Lemma simpl_expr_reads_permutation w (e : expression w) :
+Lemma simpl_expr_reads_Equal w (e : expression w) :
   LocationSet.Equal (expr_reads (simpl_expr e)) (expr_reads e).
 Proof.
   funelim (simpl_expr e); clear Heqcall.
   all: simpl.
-  all: try rewrite equalized_shiftop_reads_reads_permutation.
-  all: try rewrite !simpl_resize_reads.
-  all: try destruct_rew.
   all: repeat match goal with
        | [ H : LocationSet.Equal (expr_reads (simpl_expr _)) (expr_reads _) |- _ ] =>
          rewrite H
        end.
-  all: (reflexivity || LocationSet.setdec).
+  all: try LocationSet.setdec.
+  all: expect 1. (* BitSelect *)
+  destruct idx.
+  all: simpl in *; simp simpl_expr in *; simpl in *.
+  all: try rewrite ! H.
+  all: try reflexivity.
+  all: expect 1.
+  destruct (dec (w1 = w2)); simpl in *.
+  all: rewrite H.
+  all: reflexivity.
 Qed.
 
 Lemma simpl_vmodule_correct init {i o} (v : vmodule i o) :
@@ -343,7 +311,7 @@ Proof.
   {
     intros [[lhs rhs]].
     simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
-    apply simpl_expr_reads_permutation.
+    apply simpl_expr_reads_Equal.
   }
   {
     intros [[lhs rhs]].
