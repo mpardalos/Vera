@@ -160,8 +160,6 @@ Definition rew_interface {i1 o1 i2 o2} (inputs_eq : i1 = i2) (outputs_eq : o1 = 
   rew [fun i : list Var.t => vmodule i o2] inputs_eq in
   rew [fun o : list Var.t => vmodule i1 o] outputs_eq in v.
 
-Search (_ = rew _ in _).
-
 Lemma rew_interface_refl {i o} (inputs_eq : i = i) (outputs_eq : o = o) (v : vmodule i o) :
   rew_interface inputs_eq outputs_eq v = v.
 Proof. unfold rew_interface. rewrite <- ! eq_rect_eq. reflexivity. Qed.

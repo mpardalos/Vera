@@ -1762,11 +1762,15 @@ Module XBV.
     reflexivity.
   Qed.
 
-  Lemma concat_empty1 {w} (x1 : xbv 0) (x2 : xbv w) :
-    rew [xbv] (N.add_0_l w) in concat x1 x2 = x2.
+  Lemma concat_empty1 {w} E (x1 : xbv 0) (x2 : xbv w) :
+    rew [xbv] E in concat x1 x2 = x2.
   Proof.
     bitvector_erase. unfold RawXBV.concat. now rewrite List.app_nil_r.
   Qed.
+
+  Lemma concat_empty2 {w} E (x1 : xbv w) (x2 : xbv 0) :
+    rew [xbv] E in concat x1 x2 = x1.
+  Proof. bitvector_erase. reflexivity. Qed.
 
   #[program]
   Definition not {n} (bv : xbv n) : xbv n :=

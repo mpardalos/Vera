@@ -53,38 +53,39 @@ Next Obligation. lia. Qed.
 
 Show Obligation Tactic.
 
-#[local]
-Obligation Tactic :=
-  simpl in *; Tactics.program_simplify;
-  CoreTactics.equations_simpl;
-  try Tactics.program_solve_wf;
-  try solve [apply Var.varTypeWf];
-  try lia.
+Inductive upper_bound {w} (e : expression w) (bound : N) : Prop :=
+  | upper_bound_static bv :
+      eval_expr_static e = Some xbv ->
+      XBV.to_N xbv = Some val ->
+      val <= bound.
 
-Equations simpl_expr {w} : expression w -> expression w := {
+Fixpoint simpl_expr {w} (e : expression w) : expression w :=
+  match e with
   | UnaryOp op e => UnaryOp op (simpl_expr e)
   | ArithmeticOp op lhs rhs => ArithmeticOp op (simpl_expr lhs) (simpl_expr rhs)
   | BitwiseOp op lhs rhs => BitwiseOp op (simpl_expr lhs) (simpl_expr rhs)
-  | @ShiftOp w1 w2 op lhs rhs _ _ with dec (w1 = w2) => {
-    | left E => ShiftOp op (simpl_expr lhs) (simpl_expr rhs) _ _
+  | @ShiftOp w1 w2 op lhs rhs wf_lhs wf_rhs =>
+    match dec (w1 = w2) with
+    | left E => ShiftOp op (simpl_expr lhs) (simpl_expr rhs) wf_lhs wf_rhs
     | right _ =>
       (* Shift operand widths must match in SMTLIB *)
-      equalized_shiftop _ op (simpl_expr lhs) (simpl_expr rhs)
-  }
+      equalized_shiftop wf_lhs op (simpl_expr lhs) (simpl_expr rhs)
+    end
   | Concatenation e1 e2 => Concatenation (simpl_expr e1) (simpl_expr e2)
   | Replication n e =>
     (* TODO: Convert replications to concats *)
     Replication n (simpl_expr e)
   | Conditional cond ifT ifF => Conditional (simpl_expr cond) (simpl_expr ifT) (simpl_expr ifF)
   | RangeSelect slice => RangeSelect slice
-  | BitSelect vec (IntegerLiteral w idx) => BitSelect vec (IntegerLiteral w idx)
+  | BitSelect vec (IntegerLiteral w idx) =>
+      BitSelect vec (IntegerLiteral w idx)
   | BitSelect vec idx =>
     (* No variable bitselect in SMTLIB. Also, the shift we add must be balanced, as above. *)
-    Resize 1 (equalized_shiftop _ BinaryShiftRight (NamedExpression vec) idx) _
+    Resize 1 (equalized_shiftop (Var.varTypeWf vec) BinaryShiftRight (NamedExpression vec) (simpl_expr idx)) eq_refl
   | Resize to expr wf => Resize to (simpl_expr expr) wf
   | IntegerLiteral w val => IntegerLiteral w val
   | NamedExpression var => NamedExpression var
-}.
+  end .
 
 Definition simpl_module_body : list module_item -> list module_item :=
     map (fun '(AlwaysComb (BlockingAssign lhs rhs)) => AlwaysComb (BlockingAssign lhs (simpl_expr rhs))).
@@ -249,40 +250,58 @@ Proof.
   - apply convert_exes. lia.
 Qed.
 
+Lemma select_bit_extr {w} (x : XBV.xbv w) n :
+  select_bit x n = XBV.extr x n 1.
+Proof.
+  unfold select_bit, XBV.bitOf.
+  XBV.bitvector_erase.
+  unfold RawXBV.extr, RawXBV.bitOf.
+  subst.
+  funelim (RawXBV.extract bv (N.to_nat n) (N.to_nat 1)).
+  (* solve this *)
+Admitted.
+
+Lemma convert_one {w} (x : XBV.xbv w) :
+  (w > 0)%N ->
+  convert 1 x = select_bit x 0.
+Proof.
+  intros Hwf.
+  rewrite select_bit_extr.
+  funelim (convert 1 x).
+  - lia.
+  - reflexivity.
+  - assert (from = 1)%N by lia. subst.
+    destruct_rew. simpl.
+    rewrite extr_all. reflexivity.
+Qed.
+
 Lemma simpl_expr_correct {w} regs (e : expression w) :
   eval_expr regs (simpl_expr e) = eval_expr regs e.
 Proof.
-  funelim (simpl_expr e).
-  all: simp eval_expr in *; simpl in *.
-  all: repeat match goal with
+  revert regs.
+  induction e; intros regs.
+  all: simpl.
+  all: autodestruct.
+  all: try rewrite eval_equalized_shiftop.
+  (* all: simp eval_expr; simpl. *)
+  all: try (simp eval_expr; simpl; repeat match goal with
        | [ Hinduct : forall r, eval_expr r (simpl_expr _) = eval_expr r _ |- _ ] =>
          rewrite Hinduct in *
+       end; reflexivity).
+  (* We should now only have copies of the variable bit-select case *)
+  all: match goal with
+       |- eval_expr ?r (Resize 1 (equalized_shiftop _ _ _ (simpl_expr ?e)) _) = eval_expr _ (BitSelect _ ?e) =>
+         generalize dependent e; intros
        end.
-  all: try reflexivity.
-  all: clear Heqcall.
-  all: (* TODO: Skip all the variants of the bitselect for now *)
-       try match goal with
-       | |- convert 1 _ = _ => admit
-       end.
-  (* - (\* Variable bitselect *\)
-   *   rewrite eval_equalized_shiftop.
-   *   simp eval_shiftop.
-   *   unfold select_bit.
-   *   destruct (XBV.to_N (eval_expr regs idx)) eqn:E; simpl.
-   *   + (\* well-defined *\)
-   *     rewrite bitOf_shr by (apply XBV.to_N_max_bound in E; lia).
-   *     rewrite H.
-   *     reflexivity.
-   *   + (\* X index *\)
-   *     rewrite bitOf_exes.
-   *     XBV.bitvector_erase.
-   *     reflexivity. *)
-  (* - (\* Resize *\)
-   *   rewrite eval_simpl_resize. rewrite H. reflexivity. *)
-  - (* shifts *)
-    rewrite eval_equalized_shiftop.
-    rewrite H. rewrite H0.
-    reflexivity.
+  all: simp eval_expr; simpl; rewrite eval_equalized_shiftop; simp eval_expr.
+  all: rewrite IHe; clear IHe.
+  all: simp eval_shiftop.
+  all: unfold XBV.to_N.
+  all: destruct (XBV.to_bv (eval_expr regs e)) eqn:Ee.
+  all: simpl.
+  all: rewrite convert_one by (apply Var.varTypeWf).
+  all: try solve [apply XBV.extr_exes].
+  all: 
 Admitted.
 
 (* Lemma simpl_resize_reads {from} to (e : expression from) wf :

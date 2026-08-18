@@ -1498,6 +1498,61 @@ Module CombinationalOnly.
   Global Instance Proper_execution_no_exes_for :
     Proper (pointwise_relation Var.t iff ==> eq ==> iff) execution_no_exes_for.
   Proof. repeat intro. subst. crush. Qed.
+
+  Equations
+    eval_expr_static {w} (e : Verilog.expression w) : option (XBV.xbv w) :=
+    eval_expr_static (Verilog.UnaryOp op operand) :=
+      let* operand_val := eval_expr_static operand in
+      Some (eval_unaryop op operand_val);
+    eval_expr_static (Verilog.ArithmeticOp op lhs rhs) :=
+      let* lhs_val := eval_expr_static lhs in
+      let* rhs_val := eval_expr_static rhs in
+      Some (eval_arithmeticop op lhs_val rhs_val);
+    eval_expr_static (Verilog.BitwiseOp op lhs rhs) :=
+      let* lhs_val := eval_expr_static lhs in
+      let* rhs_val := eval_expr_static rhs in
+      Some (eval_bitwiseop op lhs_val rhs_val);
+    eval_expr_static (Verilog.ShiftOp op lhs rhs _ _) :=
+      let* lhs_val := eval_expr_static lhs in
+      let* rhs_val := eval_expr_static rhs in
+      Some (eval_shiftop op lhs_val rhs_val);
+    eval_expr_static (Verilog.Conditional cond tBranch fBranch) :=
+      let* cond_val := eval_expr_static cond in
+      let* tBranch_val := eval_expr_static tBranch in
+      let* fBranch_val := eval_expr_static fBranch in
+      Some (eval_conditional cond_val tBranch_val fBranch_val);
+    eval_expr_static (Verilog.RangeSelect _) :=
+      None; (* range select is always on a variable *)
+    eval_expr_static (Verilog.BitSelect vec idx) :=
+      None; (* bit select is always on a variable *)
+    eval_expr_static (Verilog.Resize t expr _) :=
+      let* val := eval_expr_static expr in
+      Some (convert t val);
+    eval_expr_static (Verilog.Concatenation e1 e2) :=
+      let* val1 := eval_expr_static e1 in
+      let* val2 := eval_expr_static e2 in
+      Some (XBV.concat val1 val2);
+    eval_expr_static (Verilog.Replication count expr) :=
+      let* expr_val := eval_expr_static expr in
+      Some (XBV.replicate count expr_val);
+    eval_expr_static (Verilog.IntegerLiteral _ val) := Some val ;
+    eval_expr_static (Verilog.NamedExpression var) := None.
+
+  Lemma eval_expr_static_spec {w} regs (e : expression w) x :
+    eval_expr_static e = Some x ->
+    eval_expr regs e = x.
+  Proof.
+    intros H.
+    induction e.
+    all: simp eval_expr eval_expr_static in *.
+    all: monad_inv.
+    all: simpl.
+    all: repeat match goal with
+         | [ IH : forall x, Some _ = Some _ -> eval_expr _ _ = _ |- _ ] =>
+           erewrite IH by reflexivity; clear IH
+         end.
+    all: reflexivity.
+  Qed.
 End CombinationalOnly.
 
 Section ExpressionFacts.
@@ -1722,6 +1777,29 @@ Section ExpressionFacts.
     all: try destruct_rew; simpl.
     all: autorewrite with xbv.
     all: eauto.
+  Qed.
+
+  Inductive upper_bound_static {w} (e : expression w) (bound : N) : Prop :=
+  | upper_bound_static_eval xbv val
+    (Heval : eval_expr_static e = Some xbv)
+    (Hto_N : XBV.to_N xbv = Some val)
+    (Hbound : (val < bound)%N)
+  | upper_bound_static_by_width
+    (Hwidth : (2 ^ w < bound)%N).
+
+  Lemma upper_bound_static_spec {w} regs (e : expression w) b val :
+    upper_bound_static e b ->
+    XBV.to_N (eval_expr regs e) = Some val ->
+    (val < b)%N.
+  Proof.
+    intros H Heval.
+    inv H.
+    - erewrite eval_expr_static_spec in Heval by eassumption.
+      replace val0 with val in * by congruence.
+      exact Hbound.
+    - transitivity (2 ^ w)%N.
+      + eapply XBV.to_N_max_bound. exact Heval.
+      + exact Hwidth.
   Qed.
 End ExpressionFacts.
 
