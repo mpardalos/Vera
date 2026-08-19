@@ -8,6 +8,7 @@ Import Verilog.
 (* From vera Require VerilogSemantics. *)
 
 From ExtLib Require Import Structures.Monads.
+From ExtLib Require Import Programming.Show.
 
 From Stdlib Require Import BinNums.
 From Stdlib Require Import ZArith.
@@ -37,9 +38,10 @@ Equations break_const_assign {w} : assign_target w -> XBV.xbv w -> list { w' & (
 
 Equations break_const_assigns_module_item : module_item -> list module_item := {
   | AlwaysComb (BlockingAssign target (IntegerLiteral _ val)) :=
-    map
+    trace ("Break const assign to " ++ to_string target)
+    (map
       (fun '(w; (target, val)) => AlwaysComb (BlockingAssign target (IntegerLiteral _ val)))
-      (break_const_assign target val)
+      (break_const_assign target val))
   | mi := [ mi ]
 }.
 
