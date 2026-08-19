@@ -366,6 +366,24 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
               ]
           ]
 
+  let readVeraLog :: Text -> (RunResult, RunResult)
+      readVeraLog log =
+          ( RunResult
+              { time = findPrefixedLine (T.pack "__time_vera: ") log
+              , result = findPrefixedLine (T.pack "__result_vera: ") log
+              }
+          , RunResult
+              { time = findPrefixedLine (T.pack "__time_smt: ") log
+              , result = findPrefixedLine (T.pack "__result_smt: ") log
+              }
+          )
+
+  let readEqyLog :: Text -> RunResult
+      readEqyLog log = RunResult
+          { time = findPrefixedLine (T.pack "__time_eqy: ") log
+          , result = findPrefixedLine (T.pack "__result_eqy: ") log
+          }
+
   let readVeraResults dir modA modB = do
         let genALogFile = dir </> (printf "%s.sv.log" modA)
         let genBLogFile = dir </> (printf "%s.sv.log" modB)
@@ -373,27 +391,13 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         need [genALogFile, genBLogFile, veraLogFile]
         aSize <- readDesignSize <$> liftIO (T.readFile genALogFile)
         bSize <- readDesignSize <$> liftIO (T.readFile genBLogFile)
-        veraOutput <- liftIO $ T.readFile veraLogFile
-        return
-          ( aSize + bSize
-          , RunResult
-              { time = findPrefixedLine (T.pack "__time_vera: ") veraOutput
-              , result = findPrefixedLine (T.pack "__result_vera: ") veraOutput
-              }
-          , RunResult
-              { time = findPrefixedLine (T.pack "__time_smt: ") veraOutput
-              , result = findPrefixedLine (T.pack "__result_smt: ") veraOutput
-              }
-          )
+        (veraResult, smtResult) <- readVeraLog <$> liftIO (T.readFile veraLogFile)
+        return (aSize + bSize, veraResult, smtResult)
 
   let readEqyResult dir modA modB = do
         let eqyLogFile = dir </> (printf "%s_vs_%s.eqy.log" modA modB)
         need [eqyLogFile]
-        eqyOutput <- liftIO $ T.readFile eqyLogFile
-        return RunResult
-          { time = findPrefixedLine (T.pack "__time_eqy: ") eqyOutput
-          , result = findPrefixedLine (T.pack "__result_eqy: ") eqyOutput
-          }
+        readEqyLog <$> liftIO (T.readFile eqyLogFile)
 
   let runEquivalenceCheckers dir modA modB = do
         (size, vera, veraSolver) <- readVeraResults dir modA modB
@@ -570,9 +574,9 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             ]
 
   -- PULP ELAU -------------------------------------------------------------
-  phony "pulp-elau" $ need ["out/pulp-elau/summary.csv"]
+  -- phony "pulp-elau" $ need ["out/pulp-elau/summary.csv"]
 
-  "out/pulp-elau/summary.csv" %> \out -> do
+  "out/pulp-elau/to_smt_summary.csv" %> \out -> do
     sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
     let logFiles =
          [ (design, variant, "out" </> "pulp-elau" </> design </> variant <.> target)
@@ -594,6 +598,38 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             else "OK"
       appendFile out $ intercalate "," [design, variant, result]
       appendFile out $ "\n"
+
+  "out/pulp-elau/summary.csv" %> \out -> do
+    sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
+    let tests =
+          [ ( design,
+              variant1,
+              variant2,
+              "out" </> "pulp-elau" </> design </> printf "%s_vs_%s.vera.log" variant1 variant2
+            )
+          | sourceFile <- sourceFiles,
+            let design = dropExtension sourceFile,
+            design /= "arith_utils",
+            (variant1, variant2) <- [("slow", "medium"), ("slow", "fast"), ("medium", "fast")]
+          ]
+    need [logFile | (_, _, _, logFile) <- tests]
+
+    let csvHeader = T.pack "Design,Variant1,Variant2,Vera Result,Vera Time,SMT Result,SMT Time"
+    csvLines <- forM tests $ \(design, variant1, variant2, logFile) -> do
+      (veraResult, veraSMTResult) <- readVeraLog <$> liftIO (T.readFile logFile)
+      pure $
+        T.intercalate
+          (T.pack ",")
+          [ T.pack design,
+            T.pack variant1,
+            T.pack variant2,
+            veraResult.result,
+            veraResult.time,
+            veraSMTResult.result,
+            veraSMTResult.time
+          ]
+
+    liftIO $ T.writeFile out (T.unlines (csvHeader : csvLines))
 
   "out/pulp-elau/*/*.sv" !%> \out [design, variant] -> do
     let top :: String = case variant of
@@ -707,3 +743,7 @@ readDesignSize txt =
                   _ -> Nothing
                   )
   & fromMaybe (-1)
+
+-- `need`, then T.read a file
+readFileT' :: FilePath -> Action Text
+readFileT' fp = need [fp] >> liftIO (T.readFile fp)
