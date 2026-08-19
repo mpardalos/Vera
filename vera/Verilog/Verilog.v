@@ -176,6 +176,14 @@ Variant bitwiseop :=
     Local Open Scope string.
     Import ShowNotation.
 
+    Global Instance variable_declaration_Show : Show variable_declaration :=
+      { show d :=
+          (match varDeclPort d with None => "" | Some PortIn => "input " | Some PortOut => "output " end) ++
+          varDeclName d ++
+          (match varDeclVectorDeclaration d with Scalar => ""
+                                               | Vector msb lsb => "[" ++ to_string msb ++ ":" ++ to_string lsb ++ "]" end)
+      }.
+
     Global Instance arithmeticop_Show : Show arithmeticop :=
       { show u :=
           match u with
@@ -853,10 +861,10 @@ Equations tc_module_item_lst : list RawVerilog.module_item -> transf (list Veril
   inr (t_mi :: t_mis)
 }.
 
-Definition tc_variable_declaration (vdecl : RawVerilog.variable_declaration) :=
+Definition tc_variable_declaration (vdecl : RawVerilog.variable_declaration) : string + unit :=
   match RawVerilog.varDeclVectorDeclaration vdecl with
-  | RawVerilog.Scalar => inr vdecl
-  | RawVerilog.Vector msb 0 => inr vdecl
+  | RawVerilog.Scalar => inr tt
+  | RawVerilog.Vector msb 0 => inr tt
   | _ => inl "Invalid variable bounds (LSB must be 0)"%string
   end.
 
@@ -871,18 +879,40 @@ Equations inputs_of_decls : list RawVerilog.variable_declaration -> list Var.t :
 Equations outputs_of_decls : list RawVerilog.variable_declaration -> list Var.t := {
   | [] => []
   | d :: ds with RawVerilog.varDeclPort d => {
-    | Some PortOut => RawVerilog.variable_of_decl d :: inputs_of_decls ds
-    | _ => inputs_of_decls ds
+    | Some PortOut => RawVerilog.variable_of_decl d :: outputs_of_decls ds
+    | _ => outputs_of_decls ds
   }
 }.
 
+Equations check_disjoint {A} `{Show A} `{forall (x y : A), DecProp (x = y)} (l1 l2 : list A) : A + (disjoint l1 l2) := {
+  | [], l2 => inr (Forall_nil _)
+  | (x :: xs), l2 with dec (In x l2), check_disjoint xs l2 => {
+    | left _, _ => inl x
+    | right _, inl msg => inl msg
+    | right x_not_in, inr rest_disjoint => inr (Forall_cons x x_not_in rest_disjoint)
+  }
+}.
+
+Definition map_inl {A B C} (f : A -> B) (s : A + C) : B + C :=
+  match s with
+  | inl x => inl (f x)
+  | inr y => inr y
+  end.
+
 Definition tc_vmodule (m : RawVerilog.vmodule) : transf { '(i, o) & Verilog.vmodule i o } :=
   traceBracket ("Typecheck " ++ RawVerilog.modName m) (
-    let* t_modVariableDecls := mapT tc_variable_declaration (RawVerilog.modVariableDecls m) in
-    let inputs := inputs_of_decls t_modVariableDecls in
-    let outputs := outputs_of_decls t_modVariableDecls in
+    mapT tc_variable_declaration (RawVerilog.modVariableDecls m) ;;
+    let inputs := inputs_of_decls (RawVerilog.modVariableDecls m) in
+    let outputs := outputs_of_decls (RawVerilog.modVariableDecls m) in
     let* t_modBody := tc_module_item_lst (RawVerilog.modBody m) in
-    let* modWfIODisjoint := assert_dec _ "Overlap between inputs and outputs"%string in
+    let* modWfIODisjoint :=
+      map_inl (fun var => (
+        "Input/Output overlap: found '" ++ to_string var ++ "' in both" ++ newline ++
+        "Inputs: " ++ to_string inputs ++ newline ++
+        "Outputs: " ++ to_string outputs ++ newline
+        )%string)
+      (check_disjoint inputs outputs)
+    in
     let* modWfInputsNoDup := assert_dec _ "Duplicate inputs"%string in
     let* modWfOutputsNoDup := assert_dec _ "Duplicate outputs"%string in
     inr ((inputs, outputs); {|
