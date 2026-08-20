@@ -598,8 +598,8 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                 ]
 
     -- PULP ELAU -------------------------------------------------------------
-    -- phony "pulp-elau" $ need ["out/pulp-elau/summary.csv"]
 
+    phony "pulp-elau-to-smt" $ need ["out/pulp-elau/to_smt_summary.csv"]
     "out/pulp-elau/to_smt_summary.csv" %> \out -> do
         sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
         let logFiles =
@@ -624,6 +624,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             appendFile out $ intercalate "," [design, variant, result]
             appendFile out $ "\n"
 
+    phony "pulp-elau" $ need ["out/pulp-elau/summary.csv"]
     "out/pulp-elau/summary.csv" %> \out -> do
         sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
         benchmarksReport out (T.pack "Design,Variant1,Variant2,Vera Result,Vera Time,SMT Result,SMT Time,EQY Result,EQY Time") $
