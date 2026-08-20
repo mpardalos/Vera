@@ -109,6 +109,21 @@ yosysMemory = 1
 eqyMemory :: Int
 eqyMemory = 4
 
+getPorts :: Maybe String -> FilePath -> Action [ByteString]
+getPorts direction modulePath = do
+  let dirFilter = case direction of
+        Nothing -> "true"
+        Just dir -> printf ".direction == \"%s\"" dir
+  need [modulePath]
+  let portFilter :: String = printf ".design.members[1].body.members[] | select(.kind == \"Port\" and %s) | .name" dirFilter
+  Stdout (basePortsLines :: ByteString) <- 
+      cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" modulePath portFilter :: String)
+  return (BS8.lines basePortsLines)
+
+getAllPorts = getPorts Nothing
+getInputs = getPorts (Just "In")
+getOutputs = getPorts (Just "Out")
+
 main :: IO ()
 main = shakeArgs shakeOptions{shakeThreads = 0} $ do
   --- SETTINGS ---------------------------------------------
@@ -263,6 +278,9 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     let template = "templates/compare.eqy.j2"
     need [template]
     solver <- askOracle ConfigSolver
+    outputs <- getOutputs (dir </> mod1 <.> "sv")
+    let outputsJson =
+          "[" ++ intercalate "," [ "\"" ++ BS8.unpack output ++ "\"" | output <- outputs ] ++ "]"
     cmd_
       (Traced "jinja")
       (FileStdout out)
@@ -273,7 +291,11 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
       ("SV_GOLD=" <> (".." </> mod1 <.> "sv"))
       "-D"
       ("SV_GATE=" <> (".." </> mod2 <.> "sv"))
+      (Stdin ("{\"OUTPUTS\":" ++ outputsJson ++ "}"))
+      "--format=json"
       template
+      "-"
+
   "//*_vs_*.eqy.log" !%> \out [dir, mod1, mod2] -> do
     let eqyDir = dropExtensions out
         eqyFile = eqyDir </> "compare.eqy"
@@ -431,13 +453,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
   let
     renamePorts :: FilePath -> FilePath -> Action ()
     renamePorts base target = do
-      let portFilter = ".design.members[1].body.members[] | select(.kind == \"Port\") | .name"
-      Stdout (basePortsLines :: ByteString) <- withResource memResource slangMemory $
-          cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" base portFilter :: String)
-      Stdout (targetPortsLines :: ByteString) <- withResource memResource slangMemory $
-          cmd Shell (printf "slang -q --ast-json=- %s | jq -r '%s'" target portFilter :: String)
-      let basePorts :: [ByteString] = BS8.lines basePortsLines
-      let targetPorts :: [ByteString] = BS8.lines targetPortsLines
+      (basePorts, targetPorts) <- getAllPorts base `par` getAllPorts target
       if (sort basePorts /= sort targetPorts)
         then do
           -- The port we are renaming to needs to be escaped. This:
@@ -605,18 +621,20 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
           [ ( design,
               variant1,
               variant2,
-              "out" </> "pulp-elau" </> design </> printf "%s_vs_%s.vera.log" variant1 variant2
+              "out" </> "pulp-elau" </> design </> printf "%s_vs_%s.vera.log" variant1 variant2,
+              "out" </> "pulp-elau" </> design </> printf "%s_vs_%s.eqy.log" variant1 variant2
             )
           | sourceFile <- sourceFiles,
             let design = dropExtension sourceFile,
             design /= "arith_utils",
             (variant1, variant2) <- [("slow", "medium"), ("slow", "fast"), ("medium", "fast")]
           ]
-    need [logFile | (_, _, _, logFile) <- tests]
+    need [logFile | (_, _, _, veraLog, eqyLog) <- tests, logFile <- [veraLog, eqyLog]]
 
-    let csvHeader = T.pack "Design,Variant1,Variant2,Vera Result,Vera Time,SMT Result,SMT Time"
-    csvLines <- forM tests $ \(design, variant1, variant2, logFile) -> do
-      (veraResult, veraSMTResult) <- readVeraLog <$> liftIO (T.readFile logFile)
+    let csvHeader = T.pack "Design,Variant1,Variant2,Vera Result,Vera Time,SMT Result,SMT Time,EQY Result,EQY Time"
+    csvLines <- forM tests $ \(design, variant1, variant2, veraLog, eqyLog) -> do
+      (veraResult, veraSMTResult) <- readVeraLog <$> liftIO (T.readFile veraLog)
+      eqyResult <- readEqyLog <$> liftIO (T.readFile eqyLog)
       pure $
         T.intercalate
           (T.pack ",")
@@ -626,7 +644,9 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             veraResult.result,
             veraResult.time,
             veraSMTResult.result,
-            veraSMTResult.time
+            veraSMTResult.time,
+            eqyResult.result,
+            eqyResult.time
           ]
 
     liftIO $ T.writeFile out (T.unlines (csvHeader : csvLines))
