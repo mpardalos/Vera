@@ -54,7 +54,11 @@
           pkgs.iverilog
           pkgs.jinja2-cli
           (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
-          (pkgs.haskellPackages.ghcWithPackages (ps: with ps; [ shake haskell-language-server ]))
+          (pkgs.haskellPackages.ghcWithPackages (ps: with ps; [
+            shake
+            cassava
+            haskell-language-server
+          ]))
           pkgs.z3
           pkgs.cvc5
           pkgs.gnuplot

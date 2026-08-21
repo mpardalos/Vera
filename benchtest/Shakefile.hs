@@ -1,5 +1,6 @@
 #!/usr/bin/env runhaskell
 
+{-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -23,6 +24,7 @@ import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.Lazy qualified as LBS
 import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Char (isDigit)
+import Data.Csv
 import Data.Data (Typeable)
 import Data.Function ((&))
 import Data.Functor ((<&>))
@@ -95,6 +97,27 @@ data RunResult = RunResult
     , result :: Text
     }
 
+{- | Named fields for one run, prefixed so that the several runs in a
+'BenchmarkResult' do not collide. E.g. @prefix = "Vera"@ gives the columns
+@Vera Result@ and @Vera Time@.
+-}
+runResultFields :: ByteString -> (ByteString, ByteString)
+runResultFields prefix = (prefix <> BS8.pack " Result", prefix <> BS8.pack " Time")
+
+runResultHeader :: ByteString -> Header
+runResultHeader (runResultFields -> (resultField, timeField)) =
+    header [resultField, timeField]
+
+runResultToNamedRecord :: ByteString -> RunResult -> NamedRecord
+runResultToNamedRecord (runResultFields -> (resultField, timeField)) r =
+    namedRecord [resultField .= r.result, timeField .= r.time]
+
+parseRunResult :: ByteString -> NamedRecord -> Parser RunResult
+parseRunResult (runResultFields -> (resultField, timeField)) m = do
+    result <- m .: resultField
+    time <- m .: timeField
+    pure RunResult{time, result}
+
 gibiBytes :: Int -> Int
 gibiBytes = (1024 * 1024 * 1024 *)
 
@@ -132,8 +155,7 @@ getInputs = getPorts (Just "In")
 getOutputs = getPorts (Just "Out")
 
 data Benchmark = MkBenchmark
-    { reportInfo :: [Text]
-    , baseDir :: FilePath
+    { baseDir :: FilePath
     , modA :: String
     , modB :: String
     }
@@ -146,20 +168,60 @@ data BenchmarkResult = MkBenchmarkResult
     , eqyRun :: RunResult
     }
 
-resultToCSVLine :: BenchmarkResult -> Text
-resultToCSVLine r =
-    T.intercalate
-        (T.pack ",")
-        ( r.benchmark.reportInfo
-            ++ [ T.pack (show r.size)
-               , r.veraRun.result
-               , r.veraRun.time
-               , r.veraSMTRun.result
-               , r.veraSMTRun.time
-               , r.eqyRun.result
-               , r.eqyRun.time
-               ]
-        )
+designField, modAField, modBField, sizeField :: ByteString
+designField = BS8.pack "Design"
+modAField = BS8.pack "A"
+modBField = BS8.pack "B"
+sizeField = BS8.pack "Size"
+
+veraPrefix, smtPrefix, eqyPrefix :: ByteString
+veraPrefix = BS8.pack "Vera"
+smtPrefix = BS8.pack "SMT"
+eqyPrefix = BS8.pack "EQY"
+
+instance ToNamedRecord Benchmark where
+    toNamedRecord b =
+        namedRecord
+            [ designField .= b.baseDir
+            , modAField .= b.modA
+            , modBField .= b.modB
+            ]
+
+instance FromNamedRecord Benchmark where
+    parseNamedRecord m =
+        MkBenchmark <$> m .: designField <*> m .: modAField <*> m .: modBField
+
+instance DefaultOrdered Benchmark where
+    headerOrder _ = header [designField, modAField, modBField]
+
+instance ToNamedRecord BenchmarkResult where
+    toNamedRecord r =
+        mconcat
+            [ toNamedRecord r.benchmark
+            , namedRecord [sizeField .= r.size]
+            , runResultToNamedRecord veraPrefix r.veraRun
+            , runResultToNamedRecord smtPrefix r.veraSMTRun
+            , runResultToNamedRecord eqyPrefix r.eqyRun
+            ]
+
+instance FromNamedRecord BenchmarkResult where
+    parseNamedRecord m = do
+        benchmark <- parseNamedRecord m
+        size <- m .: sizeField
+        veraRun <- parseRunResult veraPrefix m
+        veraSMTRun <- parseRunResult smtPrefix m
+        eqyRun <- parseRunResult eqyPrefix m
+        pure MkBenchmarkResult{benchmark, size, veraRun, veraSMTRun, eqyRun}
+
+instance DefaultOrdered BenchmarkResult where
+    headerOrder _ =
+        mconcat
+            [ headerOrder (undefined :: Benchmark)
+            , header [sizeField]
+            , runResultHeader veraPrefix
+            , runResultHeader smtPrefix
+            , runResultHeader eqyPrefix
+            ]
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeThreads = 0} $ do
@@ -474,10 +536,14 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                         `par` getDesignSize (b.baseDir </> b.modB <.> "sv")
                 pure MkBenchmarkResult{benchmark = b, size = sizeA + sizeB, veraRun, veraSMTRun, eqyRun}
 
-    let benchmarksReport :: FilePath -> Text -> [Benchmark] -> Action ()
-        benchmarksReport out header benchmarks = do
+    let benchmarksReport :: FilePath -> [Benchmark] -> Action ()
+        benchmarksReport out benchmarks = do
             results <- runBenchmarks benchmarks
-            writeFileT' out (T.unlines (header : map resultToCSVLine results))
+            -- encodeDefaultOrderedByName writes the header itself. The
+            -- non-default line ending keeps the file plain-\n, as before.
+            let csv = encodeDefaultOrderedByNameWith defaultEncodeOptions{encUseCrLf = False} results
+            liftIO (LBS.writeFile out csv)
+            trackWrite [out]
 
     -- EPFL benchmarks
     let blifToVerilog :: FilePath -> FilePath -> Action ()
@@ -554,12 +620,10 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
 
     phony "clean-epfl" $ removeFilesAfter "out/EPFL-benchmarks" ["//"]
 
-    let epflHeader = T.pack "Category,Name,A,B,Size,Vera Result,Vera time,Vera solver result,Vera solver time,EQY result,EQY time"
     let mkEPFLBenchmarks :: [(String, String)] -> [Benchmark]
         mkEPFLBenchmarks benchmarks =
             [ MkBenchmark
-                { reportInfo = [T.pack category, T.pack name, T.pack modA, T.pack modB]
-                , baseDir = "out/EPFL-benchmarks" </> category </> name
+                { baseDir = "out/EPFL-benchmarks" </> category </> name
                 , modA
                 , modB
                 }
@@ -571,7 +635,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     phony "epfl" $ need ["out/EPFL-benchmarks/summary.csv"]
     "out/EPFL-benchmarks/summary.csv" %> \out -> do
         verilogFiles <- getDirectoryFiles "" ["EPFL-benchmarks/arithmetic/*.v", "EPFL-benchmarks/random_control/*.v"]
-        benchmarksReport out epflHeader $
+        benchmarksReport out $
             mkEPFLBenchmarks
                 [ (category, name)
                 | verilogFile <- verilogFiles
@@ -581,7 +645,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     -- Quick EPFL benchmarks: those that complete in under ~20s in the cvc5 run
     phony "epfl-quick" $ need ["out/EPFL-benchmarks/quick_summary.csv"]
     "out/EPFL-benchmarks/quick_summary.csv" %> \out -> do
-        benchmarksReport out epflHeader $
+        benchmarksReport out $
             mkEPFLBenchmarks
                 [ ("arithmetic", "adder")
                 , ("arithmetic", "bar")
@@ -627,10 +691,9 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     phony "pulp-elau" $ need ["out/pulp-elau/summary.csv"]
     "out/pulp-elau/summary.csv" %> \out -> do
         sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
-        benchmarksReport out (T.pack "Design,Variant1,Variant2,Vera Result,Vera Time,SMT Result,SMT Time,EQY Result,EQY Time") $
+        benchmarksReport out $
             [ MkBenchmark
-                { reportInfo = [T.pack design, T.pack modA, T.pack modB]
-                , baseDir = "out" </> "pulp-elau" </> design
+                { baseDir = "out" </> "pulp-elau" </> design
                 , modA
                 , modB
                 }
