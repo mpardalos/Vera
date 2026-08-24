@@ -33,7 +33,8 @@ let compare ~solver ~dump_query filename1 filename2 =
     Vera.equivalence_query_general i1 o1 i2 o2 m1 m2
   in
   match query_result with
-  | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
+  | Vera.Inl err ->
+      raise (Failure (sprintf "Error: %s\n" (Util.lst_to_string err)))
   | Vera.Inr query -> (
       (match dump_query with
       | Some "-" ->
@@ -46,17 +47,7 @@ let compare ~solver ~dump_query filename1 filename2 =
          eprintf "Query written to %s\n" fp;
          flush stderr; flush stdout
       | _ -> ());
-      match solver query with
-      | SMTLIB.UNSAT, out ->
-          printf "Equivalent (UNSAT)\n";
-          if out != "unsat" then printf "%s\n" out
-      | SMTLIB.SAT, out ->
-          printf "Non-equivalent (SAT)\n";
-          printf "%s\n" out
-      | SMTLIB.Error, out ->
-         (* TODO: This gets printed for the dummy solver. *)
-          printf "Error\n";
-          printf "%s\n" out)
+      printf "%s\n" (solver query))
 
 let rec lower level filename =
   let display_or_error pp result =
