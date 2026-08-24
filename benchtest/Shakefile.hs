@@ -9,6 +9,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -18,6 +19,7 @@ import Control.DeepSeq (NFData)
 import Control.Monad (forM, forM_, guard, join, void, when)
 import Data.Bifunctor (bimap)
 import Data.Binary (Binary)
+import Data.Bits (xor)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
@@ -26,11 +28,14 @@ import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Char (isDigit)
 import Data.Csv
 import Data.Data (Typeable)
+import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.Functor ((<&>))
 import Data.Hashable (Hashable)
-import Data.List (find, intercalate, isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix, unsnoc)
+import Data.IORef (modifyIORef', newIORef, readIORef)
+import Data.List (find, groupBy, intercalate, isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix, unsnoc)
 import Data.List.Extra (firstJust)
+import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -38,6 +43,7 @@ import Data.Text.Encoding qualified as T
 import Data.Text.IO.Utf8 qualified as T
 import Data.Time.Clock (diffUTCTime, getCurrentTime)
 import Data.Tuple (swap)
+import Data.Vector qualified as V
 import Debug.Trace
 import Development.Shake
 import Development.Shake.Command
@@ -96,6 +102,7 @@ data RunResult = RunResult
     { time :: Text
     , result :: Text
     }
+    deriving (Show)
 
 {- | Named fields for one run, prefixed so that the several runs in a
 'BenchmarkResult' do not collide. E.g. @prefix = "Vera"@ gives the columns
@@ -159,6 +166,11 @@ data Benchmark = MkBenchmark
     , modA :: String
     , modB :: String
     }
+    deriving (Show)
+
+benchmarkName :: Benchmark -> String
+benchmarkName MkBenchmark{..} =
+    printf "%s/%s_vs_%s" baseDir modA modB
 
 data BenchmarkResult = MkBenchmarkResult
     { benchmark :: Benchmark
@@ -167,6 +179,7 @@ data BenchmarkResult = MkBenchmarkResult
     , veraSMTRun :: RunResult
     , eqyRun :: RunResult
     }
+    deriving (Show)
 
 designField, modAField, modBField, sizeField :: ByteString
 designField = BS8.pack "Design"
@@ -688,7 +701,30 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             appendFile out $ intercalate "," [design, variant, result]
             appendFile out $ "\n"
 
-    phony "pulp-elau" $ need ["out/pulp-elau/summary.csv"]
+    phony "pulp-elau" $ do
+        let summaryFile = "out/pulp-elau/summary.csv"
+        need [summaryFile]
+        csv <- liftIO (LBS.readFile summaryFile)
+        let Right (_, results) = decodeByName @BenchmarkResult csv
+        let
+            groups =
+                Map.toList . Map.fromListWith (++) $
+                    [ (message, [name])
+                    | MkBenchmarkResult{..} <- V.toList results
+                    , let name = benchmarkName benchmark & dropDirectory1 & dropDirectory1
+                    , message <- case (T.unpack veraRun.result, T.unpack veraSMTRun.result, T.unpack eqyRun.result) of
+                        ("OK", "OK", "OK") -> ["Both OK"]
+                        ("OK", "OK", _) -> ["Only Vera"]
+                        ("OK", _, "OK") -> ["Only EQY (SMT timeout)"]
+                        (_, _, "OK") -> ["Only EQY (Failed to generate)"]
+                        (_, _, _) -> ["Both failed"]
+                    ]
+        forM_ groups $ \(message, benchmarks) -> do
+          putInfo (printf "%s (%d)" message (length benchmarks))
+          when (message /= "Both OK") $ 
+            forM_ benchmarks $ \name -> putInfo (printf "  - %s" name)
+        putInfo (printf "\nFull details in %s" summaryFile)
+
     "out/pulp-elau/summary.csv" %> \out -> do
         sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
         benchmarksReport out $
