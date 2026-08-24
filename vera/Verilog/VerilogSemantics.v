@@ -457,13 +457,22 @@ Module RegisterState.
     assumption.
   Qed.
 
-  Lemma match_on_empty locs regs1 regs2 :
+  Lemma match_on_Empty locs regs1 regs2 :
     LocationSet.Empty locs ->
     regs1 =( locs )= regs2.
   Proof.
     unfold "_ =( _ )= _". intros Hempty loc Hin.
     exfalso. eapply Hempty. eassumption.
   Qed.
+
+  Lemma match_on_empty regs1 regs2 :
+    regs1 =( {} )= regs2.
+  Proof.
+    apply match_on_Empty.
+    apply LocationSet.empty_spec.
+  Qed.
+
+  (* TODO: These are introduction, not elimination rules. Rename appropriately *)
 
   Lemma match_on_set_reg_elim2_in C var x regs1 regs2 :
     regs1 =( C )= regs2 ->
@@ -549,6 +558,123 @@ Module RegisterState.
     - rewrite RegisterState.set_reg_get_out by congruence. reflexivity.
   Qed.
 
+  Lemma match_on_set_location_elim2 loc wf1 wf2 x regs1 regs2 :
+    set_location loc wf1 x regs1 =( LocationSet.singleton loc )= set_location loc wf2 x regs2.
+  Proof.
+    unfold match_on, get_location, set_location. 
+    intros loc' Hloc'.
+    apply LocationSet.singleton_spec in Hloc'. unfold LocationSet.E.eq in Hloc'.
+    subst loc'.
+    rewrite ! set_reg_get_in.
+    rewrite ! XBV.set_bit_get_in.
+    reflexivity.
+  Qed.
+
+  Lemma match_on_set_location_elim2_in C loc wf1 wf2 x regs1 regs2 :
+    regs1 =( C )= regs2 ->
+    set_location loc wf1 x regs1 =( C )= set_location loc wf2 x regs2.
+  Proof.
+    unfold match_on, get_location, set_location.
+    intros Hmatch loc' Hloc'. specialize (Hmatch loc' Hloc').
+    destruct (dec (Location.var loc' = Location.var loc)) as [e|n].
+    - rewrite e in Hmatch. rewrite e, ! set_reg_get_in.
+      destruct (N.eq_dec (Location.idx loc) (Location.idx loc')) as [eidx|nidx].
+      + rewrite <- eidx. rewrite ! XBV.set_bit_get_in. reflexivity.
+      + rewrite ! XBV.set_bit_get_out by exact nidx. exact Hmatch.
+    - rewrite ! set_reg_get_out by congruence. exact Hmatch.
+  Qed.
+
+  Lemma match_on_set_location_elim C loc wf x regs :
+    LocationSet.Disjoint (LocationSet.singleton loc) C ->
+    set_location loc wf x regs =( C )= regs.
+  Proof.
+    unfold match_on, get_location, set_location.
+    intros Hdisj loc' Hloc'.
+    destruct (dec (Location.var loc' = Location.var loc)) as [e|n].
+    - rewrite e, set_reg_get_in.
+      rewrite XBV.set_bit_get_out; [reflexivity|].
+      intro Hidx.
+      eapply Hdisj. apply LocationSet.inter_spec. split; [|exact Hloc'].
+      apply LocationSet.singleton_spec.
+      destruct loc, loc'. simpl in *. subst. reflexivity.
+    - rewrite set_reg_get_out by congruence. reflexivity.
+  Qed.
+
+  Lemma match_on_set_slice_elim2 {w} (slice : Slice.t w) x regs1 regs2 :
+    set_slice slice x regs1 =( LocationSet.of_slice slice )= set_slice slice x regs2.
+  Proof.
+    unfold match_on, get_location, set_slice.
+    intros loc Hloc.
+    apply LocationSet.of_slice_spec in Hloc.
+    unfold Slice.has_location in Hloc. destruct Hloc as [Hvar Hidx].
+    rewrite <- Hvar. rewrite ! set_reg_get_in.
+    replace (Location.idx loc) with
+      (Slice.get_lo slice + (Location.idx loc - Slice.get_lo slice))%N by lia.
+    rewrite ! XBV.set_slice_get_in by lia.
+    reflexivity.
+  Qed.
+
+  Lemma match_on_set_slice_elim2_in {w} C (slice : Slice.t w) x regs1 regs2 :
+    regs1 =( C )= regs2 ->
+    set_slice slice x regs1 =( C )= set_slice slice x regs2.
+  Proof.
+    unfold match_on, get_location, set_slice.
+    intros Hmatch loc Hloc. specialize (Hmatch loc Hloc).
+    destruct (dec (Location.var loc = Slice.get_var slice)) as [e|n].
+    - rewrite e in Hmatch. rewrite e, ! set_reg_get_in.
+      destruct (N.lt_ge_cases (Location.idx loc) (Slice.get_lo slice)).
+      + rewrite ! XBV.set_slice_get_out by (left; assumption). exact Hmatch.
+      + destruct (N.lt_ge_cases (Location.idx loc) (Slice.get_lo slice + w)).
+        * replace (Location.idx loc) with
+            (Slice.get_lo slice + (Location.idx loc - Slice.get_lo slice))%N by lia.
+          rewrite ! XBV.set_slice_get_in by lia. reflexivity.
+        * rewrite ! XBV.set_slice_get_out by (right; assumption). exact Hmatch.
+    - rewrite ! set_reg_get_out by congruence. exact Hmatch.
+  Qed.
+
+  Lemma match_on_set_slice_elim {w} C (slice : Slice.t w) x regs :
+    LocationSet.Disjoint (LocationSet.of_slice slice) C ->
+    set_slice slice x regs =( C )= regs.
+  Proof.
+    unfold match_on, get_location, set_slice.
+    intros Hdisj loc Hloc.
+    destruct (dec (Location.var loc = Slice.get_var slice)) as [e|n].
+    - assert (~ LocationSet.In loc (LocationSet.of_slice slice)) as Hnotin.
+      { intro Hin. eapply Hdisj. apply LocationSet.inter_spec. eauto. }
+      rewrite LocationSet.of_slice_spec in Hnotin.
+      unfold Slice.has_location in Hnotin.
+      rewrite e, set_reg_get_in.
+      rewrite XBV.set_slice_get_out; [reflexivity|].
+      destruct (N.lt_ge_cases (Location.idx loc) (Slice.get_lo slice)); [auto|].
+      right. apply N.nlt_ge. intro Hlt. apply Hnotin.
+      split; [symmetry; exact e|]. lia.
+    - rewrite set_reg_get_out by congruence. reflexivity.
+  Qed.
+
+  Lemma match_on_variable r1 r2 var :
+    r1 =( LocationSet.of_variable var )= r2 ->
+    r1 var = r2 var.
+  Proof.
+    unfold RegisterState.match_on, get_location.
+    intros H.
+    apply XBV.bitOf_ext.
+    intros idx Hidx.
+    specialize (H (Location.Mk var idx)). simpl in H.
+    apply H. clear H.
+    apply LocationSet.of_variable_spec.
+    auto.
+  Qed.
+
+  Lemma match_on_singleton r1 r2 loc :
+    r1 =( LocationSet.singleton loc )= r2 ->
+    XBV.bitOf (Location.idx loc) (r1 (Location.var loc)) 
+      = XBV.bitOf (Location.idx loc) (r2 (Location.var loc)).
+  Proof.
+    intros H. apply H.
+    apply LocationSet.singleton_spec.
+    reflexivity.
+  Qed.
+
   Ltac unpack_match_on :=
     repeat match goal with
       | [ H: _ =( _ ∪ _ )= _ |- _ ] =>
@@ -556,6 +682,10 @@ Module RegisterState.
           destruct H
       | [ |- _ =( _ ∪ _ )= _ ] =>
           apply match_on_split_union; split
+      | [ |- _ =( {} )= _ ] =>
+          solve [apply match_on_empty]
+      | [ H: _ =( {} )= _ |- _ ] =>
+          clear H
       end.
 End RegisterState.
 
@@ -1352,9 +1482,6 @@ Module CombinationalOnly.
   Next Obligation. crush. Qed.
   Next Obligation. crush. Qed.
 
-  Definition select_bit {w1} (vec : XBV.xbv w1) (idx : N) : XBV.xbv 1 :=
-    XBV.of_bits [XBV.bitOf idx vec].
-
   (* TODO: Check that ?: semantics match with standard *)
   Definition eval_conditional {w_cond w} (cond : XBV.xbv w_cond) (ifT : XBV.xbv w) (ifF : XBV.xbv w) : XBV.xbv w :=
       match XBV.to_bv cond with
@@ -1394,7 +1521,7 @@ Module CombinationalOnly.
       let vec_val := regs vec in
       let idx_val := eval_expr regs idx in
       match XBV.to_N idx_val with
-      | Some idx => select_bit vec_val idx
+      | Some idx => XBV.extr vec_val idx 1
       | None => XBV.exes 1
       end;
     eval_expr regs (Verilog.Resize t expr _) :=
@@ -1424,7 +1551,7 @@ Module CombinationalOnly.
 
   Equations
     exec_statement (regs : RegisterState.t) (stmt : Verilog.statement) : RegisterState.t by struct :=
-    exec_statement regs (Verilog.BlockingAssign target rhs) :=
+    exec_statement regs (Verilog.BlockingAssign target _ rhs) :=
       let rhs_val := eval_expr regs rhs in
       set_target regs target rhs_val ;
   .
@@ -1628,25 +1755,6 @@ Section ExpressionFacts.
     bitwise_xor_no_exes
     : xbv.
 
-  Definition select_bit_bv {w1} (vec : BV.bitvector w1) (idx : N) : BV.bitvector 1 :=
-    BV.of_bits [BV.bitOf (N.to_nat idx) vec].
-  
-  Lemma select_bit_to_bv w_vec (vec : BV.bitvector w_vec) idx :
-    (idx < w_vec)%N ->
-    XBV.to_bv (select_bit (XBV.from_bv vec) idx) =
-      Some (select_bit_bv vec idx).
-  Proof.
-    intros H.
-    unfold select_bit, select_bit_bv.
-    rewrite XBV.bit_of_as_bv by lia.
-    generalize (BV.bitOf (n:=w_vec) (N.to_nat idx) vec). intro b.
-    apply XBV.to_bv_some_raw_iff.
-    simpl.
-    unfold RawXBV.to_bv. simpl.
-    rewrite RawXBV.bit_to_bool_inverse.
-    reflexivity.
-  Qed.
-  
   Lemma eval_arithmeticop_to_bv op w (lhs rhs : BV.bitvector w) :
     exists bv, XBV.to_bv (eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
   Proof.
@@ -1727,17 +1835,6 @@ Section ExpressionFacts.
     crush.
   Qed.
 
-  Lemma select_bit_no_exes (w_val : N) (vec : BV.bitvector w_val) (idx : N) :
-      (idx < w_val)%N ->
-      select_bit (XBV.from_bv vec) idx = XBV.from_bv (select_bit_bv vec idx).
-  Proof.
-    intros.
-    eapply XBV.to_bv_injective.
-    - apply select_bit_to_bv.
-      assumption.
-    - apply XBV.xbv_bv_inverse.
-  Qed.
-
   Import EqNotations. 
 
   Equations convert_bv {from} (to : N) (value : BV.bitvector from) : BV.bitvector to :=
@@ -1814,7 +1911,6 @@ Hint Rewrite
 
 #[global]
 Hint Rewrite
-  select_bit_no_exes
   convert_no_exes
   using lia
   : xbv.
@@ -1855,30 +1951,100 @@ Module Facts.
     all: repeat match goal with [ IH : forall _, _ -> eval_expr _ _ = eval_expr _ _ |- _ ] =>
            erewrite IH by eassumption; clear IH
 	 end.
-    all: simpl; try reflexivity.
+    all: simp eval_expr; simpl; try reflexivity.
     all: expect 3.
-    - admit.
-    - admit.
-    - simp eval_expr.
+    - simp eval_expr. simpl.
       apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
-      apply (H (Location.Mk var bit_idx)).
-      apply LocationSet.of_variable_spec. auto.
-  Admitted.
+      rewrite ! XBV.extr_bitOf by lia.
+      apply (H (Location.Mk vec (lo + bit_idx)%N)).
+      apply LocationSet.of_slice_spec.
+      unfold Slice.has_location. simpl. split; [reflexivity | lia].
+    - (* Literal indices read one bit; dynamic indices read the whole vector. *)
+      simp eval_expr. cbv zeta.
+      rewrite <- H with (regs' := regs'); cycle 1. {
+        destruct idx.
+        all: simpl in *.
+        all: RegisterState.unpack_match_on.
+        all: try assumption.
+      }
+      destruct (XBV.to_N (eval_expr regs idx)) eqn:Eidx; [|reflexivity].
+      rename_match (regs =( _ )= regs') into Hmatch.
+      destruct idx.
+      all: simpl in Hmatch.
+      all: RegisterState.unpack_match_on.
+      all: repeat apply_somewhere RegisterState.match_on_variable.
+      all: try replace (regs' vec).
+      all: try reflexivity.
+      all: expect 1.
+      simp eval_expr in Eidx.
+      rewrite Eidx in Hmatch.
+      apply XBV.extr_one_ext.
+      destruct (N.ltb_spec n (Var.varType vec)).
+      + apply RegisterState.match_on_singleton in Hmatch.
+        simpl in Hmatch.
+        exact Hmatch.
+      + rewrite ! XBV.bitOf_overflow by lia. reflexivity.
+    - apply RegisterState.match_on_variable.
+      assumption.
+  Qed.
 
   (***** Statements ***********)
 
+  Lemma set_target_preserve {w} target value regs l :
+    LocationSet.Disjoint (Verilog.assign_target_writes target) l ->
+    set_target (w:=w) regs target value =( l )= regs.
+  Proof.
+    revert value regs l.
+    induction target.
+    all: intros.
+    all: simpl; simp set_target.
+    all: simpl in H.
+    - apply RegisterState.match_on_set_reg_elim.
+      exact H.
+    - apply RegisterState.match_on_set_location_elim.
+      exact H.
+    - apply RegisterState.match_on_set_slice_elim.
+      exact H.
+    - rewrite IHtarget1, IHtarget2 by LocationSet.setdec.
+      reflexivity.
+  Qed.
+
   Lemma set_target_change_regs {w} target value regs1 regs2 :
+    assign_target_wf target ->
     set_target (w:=w) regs1 target value
       =( Verilog.assign_target_writes target )=
     set_target regs2 target value.
   Proof.
-    destruct target.
+    intros target_wf.
+    revert value regs1 regs2.
+    induction target_wf.
+    all: intros.
     all: simp set_target; simpl.
-    - eapply RegisterState.match_on_set_reg_elim2.
-    - admit.
-    - admit.
-    - admit. (* TODO: Concat correct. Needs separation of locations. *)
-  Admitted.
+    - apply RegisterState.match_on_set_reg_elim2.
+    - apply RegisterState.match_on_set_location_elim2.
+    - apply RegisterState.match_on_set_slice_elim2.
+    - RegisterState.unpack_match_on.
+      + apply IHtarget_wf1.
+      + rewrite set_target_preserve by assumption.
+        rewrite set_target_preserve with (target:=lhs) by assumption.
+        apply IHtarget_wf2.
+  Qed.
+
+  Lemma set_target_change_preserve {w} l target value regs1 regs2 :
+    regs1 =( l )= regs2 ->
+    set_target (w:=w) regs1 target value =( l )= set_target (w:=w) regs2 target value.
+  Proof.
+    revert value l regs1 regs2.
+    induction target.
+    all: intros.
+    all: simp set_target.
+    - apply RegisterState.match_on_set_reg_elim2_in.
+      exact H.
+    - apply RegisterState.match_on_set_location_elim2_in.
+      exact H.
+    - apply RegisterState.match_on_set_slice_elim2_in.
+      exact H.
+  Qed.
 
   Lemma exec_statement_change_regs stmt regs1 regs2 :
     regs1 =(Verilog.statement_reads stmt)= regs2 ->
@@ -1893,12 +2059,8 @@ Module Facts.
     simp exec_statement statement_reads statement_writes in *.
     erewrite eval_expr_change_regs by eassumption.
     apply set_target_change_regs.
+    assumption.
   Qed.
-
-  Lemma set_target_change_preserve {w} l target value regs1 regs2 :
-    regs1 =( l )= regs2 ->
-    set_target (w:=w) regs1 target value =( l )= set_target (w:=w) regs2 target value.
-  Proof. Admitted.
 
   Lemma exec_statement_change_preserve l stmt regs1 regs2 :
     regs1 =( Verilog.statement_reads stmt )= regs2 ->
@@ -1918,11 +2080,6 @@ Module Facts.
     exec_statement regs1 stmt =( Verilog.statement_reads stmt )= exec_statement regs2 stmt.
   Proof. auto using exec_statement_change_preserve. Qed.
 
-  Lemma set_target_preserve {w} target value regs l :
-    LocationSet.Disjoint l (Verilog.assign_target_writes target) ->
-    regs =( l )= set_target (w:=w) regs target value.
-  Proof. Admitted.
-
   Lemma exec_statement_preserve stmt regs  l :
     LocationSet.Disjoint l (Verilog.statement_writes stmt) ->
     regs =( l )= exec_statement regs stmt.
@@ -1931,7 +2088,8 @@ Module Facts.
     funelim (exec_statement regs stmt);
       try rewrite <- Heqcall in *; clear Heqcall.
     simpl in *.
-    apply set_target_preserve. exact Hdisjoint.
+    symmetry.
+    apply set_target_preserve. symmetry. exact Hdisjoint.
   Qed.
 
   (***** / statements ***********)

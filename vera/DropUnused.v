@@ -35,16 +35,16 @@ Equations module_body_keep_assigns :
     list module_item ->
     (LocationSet.t * list module_item) := {
   | keep, [] => (LocationSet.empty, []);
-  | keep, (AlwaysComb (BlockingAssign lhs rhs) :: body)
+  | keep, (AlwaysComb (BlockingAssign lhs _ rhs) :: body)
     with (LocationSet.disjoint (assign_target_writes lhs) keep) => {
     | true =>
       trace
-        ("Dropping " ++ to_string (BlockingAssign lhs rhs))%string
+        ("Dropping " ++ to_string (BlockingAssign lhs _ rhs))%string
         ( let (dropped', body') := module_body_keep_assigns keep body in
           (dropped' ∪ assign_target_writes lhs, body'))
     | false =>
       let (dropped', body') := module_body_keep_assigns keep body in
-      (dropped', AlwaysComb (BlockingAssign lhs rhs) :: body')
+      (dropped', AlwaysComb (BlockingAssign lhs _ rhs) :: body')
   }
 }.
 

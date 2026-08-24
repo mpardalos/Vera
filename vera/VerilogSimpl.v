@@ -76,7 +76,7 @@ Equations simpl_expr {w} (e : expression w) : expression w := {
   }.
 
 Definition simpl_module_body : list module_item -> list module_item :=
-    map (fun '(AlwaysComb (BlockingAssign lhs rhs)) => AlwaysComb (BlockingAssign lhs (simpl_expr rhs))).
+    map (fun '(AlwaysComb (BlockingAssign lhs wf rhs)) => AlwaysComb (BlockingAssign lhs wf (simpl_expr rhs))).
 
 Lemma simpl_module_body_writes mis :
   LocationSet.Equal

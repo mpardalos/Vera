@@ -925,6 +925,19 @@ Module RawXBV.
 
   Definition bitOf (n : nat) (v: xbv): bit := nth n v X.
 
+  Lemma extract_bitOf x i j k :
+    (k < j)%nat ->
+    bitOf k (extract x i j) = bitOf (i + k) x.
+  Proof.
+    revert k. funelim (extract x i j); intros.
+    - simp extract. unfold bitOf. now rewrite ! List.nth_overflow by (simpl; lia).
+    - lia.
+    - simp extract. destruct k; simpl in *; [reflexivity|].
+      unfold bitOf in *. simpl. rewrite H by lia. reflexivity.
+    - simp extract. rewrite H by lia. unfold bitOf. simpl. reflexivity.
+  Qed.
+
+
   Lemma xbv_bv_inverse : forall bv,
       to_bv (from_bv bv) = Some bv.
   Proof.
@@ -1370,6 +1383,52 @@ Module RawXBV.
     then set_bit_list bv (N.to_nat idx) val
     else [].
 
+  Lemma set_bit_list_get_in bv idx val :
+    idx < length bv ->
+    bitOf idx (set_bit_list bv idx val) = val.
+  Proof.
+    revert bv.
+    induction idx; intros bv Hidx; destruct bv; simpl in Hidx; try lia.
+    - simp set_bit_list. reflexivity.
+    - simp set_bit_list. unfold bitOf. simpl.
+      apply IHidx. lia.
+  Qed.
+
+  Lemma set_bit_get_in bv idx val :
+    (idx < size bv)%N ->
+    bitOf (N.to_nat idx) (set_bit bv idx val) = val.
+  Proof.
+    intros Hidx. unfold set_bit.
+    replace (idx <? size bv)%N with true
+      by (symmetry; apply N.ltb_lt; exact Hidx).
+    apply set_bit_list_get_in.
+    unfold size in Hidx. lia.
+  Qed.
+
+  Lemma set_bit_list_get_out bv idx val idx' :
+    idx <> idx' ->
+    bitOf idx' (set_bit_list bv idx val) = bitOf idx' bv.
+  Proof.
+    revert bv idx'.
+    induction idx; intros bv idx' Hneq; destruct bv; simp set_bit_list.
+    - reflexivity.
+    - destruct idx'; [contradiction|reflexivity].
+    - reflexivity.
+    - destruct idx'; [reflexivity|].
+      unfold bitOf in *. simpl. apply IHidx. congruence.
+  Qed.
+
+  Lemma set_bit_get_out bv idx val idx' :
+    (idx < size bv)%N ->
+    idx <> idx' ->
+    bitOf (N.to_nat idx') (set_bit bv idx val) = bitOf (N.to_nat idx') bv.
+  Proof.
+    intros Hwf Hneq. unfold set_bit.
+    replace (idx <? size bv)%N with true
+      by (symmetry; apply N.ltb_lt; exact Hwf).
+    apply set_bit_list_get_out. lia.
+  Qed.
+
   Lemma set_bit_list_size bv idx val :
     (idx < length bv) ->
     length (set_bit_list bv idx val) = length bv.
@@ -1406,6 +1465,58 @@ Module RawXBV.
     if (start + size bits <=? size bv)%N
     then set_slice_list bv (N.to_nat start) bits
     else [].
+
+  Lemma set_slice_list_get_in bv start bits idx :
+    start + length bits <= length bv ->
+    idx < length bits ->
+    bitOf (start + idx) (set_slice_list bv start bits) = bitOf idx bits.
+  Proof.
+    intros Hwf Hidx.
+    funelim (set_slice_list bv start bits); simpl in Hidx; try lia.
+    all: simpl in Hwf; try lia.
+    - destruct idx; unfold bitOf; simpl; [reflexivity|].
+      apply H; lia.
+    - unfold bitOf; simpl.
+      apply H; lia.
+  Qed.
+
+  Lemma set_slice_get_in bv start bits idx :
+    (start + size bits <= size bv)%N ->
+    (idx < size bits)%N ->
+    bitOf (N.to_nat (start + idx)) (set_slice bv start bits) =
+      bitOf (N.to_nat idx) bits.
+  Proof.
+    intros Hwf Hidx. unfold set_slice.
+    replace (start + size bits <=? size bv)%N with true
+      by (symmetry; apply N.leb_le; exact Hwf).
+    rewrite N2Nat.inj_add.
+    apply set_slice_list_get_in; unfold size in *; lia.
+  Qed.
+
+  Lemma set_slice_list_get_out bv start bits idx :
+    start + length bits <= length bv ->
+    (idx < start \/ start + length bits <= idx) ->
+    bitOf idx (set_slice_list bv start bits) = bitOf idx bv.
+  Proof.
+    intros Hwf Hout.
+    funelim (set_slice_list bv start bits); simpl in Hwf; try lia.
+    - reflexivity.
+    - destruct idx; unfold bitOf in *; simpl in *; try lia.
+      apply H; lia.
+    - destruct idx; unfold bitOf in *; simpl in *; [reflexivity|].
+      apply H; lia.
+  Qed.
+
+  Lemma set_slice_get_out bv start bits idx :
+    (start + size bits <= size bv)%N ->
+    (idx < start \/ start + size bits <= idx)%N ->
+    bitOf (N.to_nat idx) (set_slice bv start bits) = bitOf (N.to_nat idx) bv.
+  Proof.
+    intros Hwf Hout. unfold set_slice.
+    replace (start + size bits <=? size bv)%N with true
+      by (symmetry; apply N.leb_le; exact Hwf).
+    apply set_slice_list_get_out; unfold size in *; lia.
+  Qed.
 
   Lemma set_slice_list_size bv start bits :
     (start + length bits <= length bv) ->
@@ -1701,6 +1812,40 @@ Module XBV.
       bv := RawXBV.extr (bits x) i j;
       wf := RawXBV.extr_width _ _ _
     |}.
+
+  Lemma extr_bitOf {n} (x : xbv n) (lo w i : N) :
+    (i < w)%N ->
+    (lo + w <= n)%N ->
+    bitOf i (extr x lo w) = bitOf (lo + i) x.
+  Proof.
+    intros Hi Hlo.
+    unfold bitOf, extr, bits, RawXBV.extr. simpl.
+    destruct x as [bx wfx]. simpl in *.
+    unfold RawXBV.size in *.
+    replace (w + lo <=? N.of_nat (Datatypes.length bx))%N with true
+      by (symmetry; apply N.leb_le; lia).
+    rewrite RawXBV.extract_bitOf by lia.
+    f_equal. lia.
+  Qed.
+
+  Lemma extr_one_ext {n} (x y : xbv n) i :
+    bitOf i x = bitOf i y ->
+    extr x i 1 = extr y i 1.
+  Proof.
+    intros Hbit.
+    destruct (N.ltb_spec i n).
+    - apply bitOf_ext. intros bit_idx Hbit_idx.
+      rewrite ! extr_bitOf by lia.
+      replace (i + bit_idx)%N with i by lia.
+      exact Hbit.
+    - unfold extr. apply of_bits_equal. simpl.
+      unfold RawXBV.extr.
+      rewrite ! wf.
+      replace (1 + i <=? n)%N with false
+        by (symmetry; apply N.leb_gt; lia).
+      reflexivity.
+  Qed.
+
 
   Lemma extr_no_exes (n i j : N) (bv : BV.bitvector n) :
     (i + j <= n)%N ->
@@ -2248,11 +2393,49 @@ Module XBV.
     {| bv := RawXBV.set_bit (bits bv) idx val |}.
   Next Obligation. rewrite RawXBV.set_bit_size; now rewrite wf. Qed.
 
+  Lemma set_bit_get_in {w} (bv : xbv w) idx val wf :
+    bitOf idx (set_bit bv idx val wf) = val.
+  Proof.
+    unfold bitOf, set_bit, bits. simpl.
+    apply RawXBV.set_bit_get_in.
+    rewrite XBV.wf. exact wf.
+  Qed.
+
+  Lemma set_bit_get_out {w} (bv : xbv w) idx val wf idx' :
+    idx <> idx' ->
+    bitOf idx' (set_bit bv idx val wf) = bitOf idx' bv.
+  Proof.
+    intros Hneq. unfold bitOf, set_bit, bits. simpl.
+    apply RawXBV.set_bit_get_out.
+    - rewrite XBV.wf. exact wf.
+    - exact Hneq.
+  Qed.
+
   #[program]
   Definition set_slice {w n} (bv : xbv w) (start : N) (bits : xbv n)
     (wf : (start + n <= w)%N) : xbv w :=
     {| bv := RawXBV.set_slice (XBV.bits bv) start (XBV.bits bits) |}.
   Next Obligation. rewrite RawXBV.set_slice_size; now rewrite ! wf. Qed.
+
+  Lemma set_slice_get_in {w n} (bv : xbv w) start (bits : xbv n) wf idx :
+    (idx < n)%N ->
+    bitOf (start + idx) (set_slice bv start bits wf) = bitOf idx bits.
+  Proof.
+    intros Hidx. unfold bitOf, set_slice, XBV.bits. simpl.
+    apply RawXBV.set_slice_get_in.
+    - rewrite ! XBV.wf. exact wf.
+    - rewrite XBV.wf. exact Hidx.
+  Qed.
+
+  Lemma set_slice_get_out {w n} (bv : xbv w) start (bits : xbv n) wf idx :
+    (idx < start \/ start + n <= idx)%N ->
+    bitOf idx (set_slice bv start bits wf) = bitOf idx bv.
+  Proof.
+    intros Hout. unfold bitOf, set_slice, XBV.bits. simpl.
+    apply RawXBV.set_slice_get_out.
+    - rewrite ! XBV.wf. exact wf.
+    - rewrite XBV.wf. exact Hout.
+  Qed.
 
   Definition fold {A w} (acc : A) (f : A -> bit -> A) (x : xbv w) : A :=
     RawXBV.fold acc f (bits x).

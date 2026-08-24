@@ -29,19 +29,20 @@ Import EqNotations.
 Import SigTNotations.
 Opaque N.add N.sub.
 
-Equations break_const_assign {w} : assign_target w -> XBV.xbv w -> list { w' & (assign_target w' * XBV.xbv w') } := {
-  | (@AssignConcat w_hi w_lo target_hi target_lo), val :=
-    break_const_assign target_hi (XBV.extr val w_lo w_hi)
-    ++ break_const_assign target_lo (XBV.extr val 0 w_lo)
-  | target, val := [(_; (target, val))]
+Equations break_const_assign {w} (t : assign_target w) : assign_target_wf t -> XBV.xbv w -> list module_item := {
+  | (@AssignConcat w_hi w_lo target_hi target_lo), wf, val :=
+    break_const_assign target_hi _ (XBV.extr val w_lo w_hi)
+    ++ break_const_assign target_lo _ (XBV.extr val 0 w_lo)
+  | target, t_wf, val := [AlwaysComb (BlockingAssign target t_wf (IntegerLiteral _ val))]
 }.
+Next Obligation. inv wf. assumption. Qed.
+Next Obligation. inv wf. assumption. Qed.
 
 Equations break_const_assigns_module_item : module_item -> list module_item := {
-  | AlwaysComb (BlockingAssign target (IntegerLiteral _ val)) :=
-    trace ("Break const assign to " ++ to_string target)
-    (map
-      (fun '(w; (target, val)) => AlwaysComb (BlockingAssign target (IntegerLiteral _ val)))
-      (break_const_assign target val))
+  | AlwaysComb (BlockingAssign target wf (IntegerLiteral _ val)) :=
+    trace
+      ("Break const assign to " ++ to_string target)
+      (break_const_assign target wf val)
   | mi := [ mi ]
 }.
 
@@ -56,10 +57,9 @@ Proof.
   funelim (break_const_assigns_module_item mi).
   all: clear Heqcall; simpl.
   all: try LocationSet.setdec; expect 1.
-  funelim (break_const_assign target val).
+  funelim (break_const_assign target wf val).
   all: simpl.
   all: try LocationSet.setdec; expect 1.
-  rewrite map_app.
   rewrite module_body_writes_app.
   rewrite H.
   rewrite H0.
@@ -77,10 +77,10 @@ Proof. all: destruct v. all: assumption. Qed.
 From vera Require Import VerilogSemantics.
 Import ExactEquivalence.
 
-Lemma break_const_assign_width {w} (target : assign_target w) (val : XBV.xbv w) :
-  N_sum (map (fun '(w'; _) => w') (break_const_assign target val)) = w.
+Lemma break_const_assign_width {w} (target : assign_target w) wf (val : XBV.xbv w) :
+  N_sum (map (fun '(AlwaysComb (@BlockingAssign w' _ _ _)) => w') (break_const_assign target wf val)) = w.
 Proof.
-  funelim (break_const_assign target val).
+  funelim (break_const_assign target wf val).
   all: simpl; try apply N.add_0_r; expect 1.
   rewrite map_app.
   rewrite N_sum_app.
@@ -89,10 +89,14 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma break_const_assign_exes {w} (target : assign_target w) (val : BV.bitvector w) :
+Lemma break_const_assign_exes {w} (target : assign_target w) wf (val : BV.bitvector w) :
   Forall
-    (fun '(w'; (_, val')) => exists bv_val', val' = XBV.from_bv bv_val')
-    (break_const_assign target (XBV.from_bv val)).
+    (fun mi =>
+      match mi with
+      | AlwaysComb (BlockingAssign lhs _ (IntegerLiteral _ val')) => exists bv_val', val' = XBV.from_bv bv_val'
+      | AlwaysComb (BlockingAssign lhs _ _) => True
+      end)
+    (break_const_assign target wf (XBV.from_bv val)).
 Proof.
   revert val.
   induction target.

@@ -314,8 +314,31 @@ Module Verilog.
     : assign_target (w1 + w2)
   .
 
+  Fixpoint assign_target_writes {w} (a : assign_target w) : LocationSet.t :=
+    match a with
+    | AssignVar v => LocationSet.of_variable v
+    | AssignBit loc _ => LocationSet.singleton loc
+    | AssignSlice slice => LocationSet.of_slice slice
+    | AssignConcat t1 t2 => assign_target_writes t1 ∪ assign_target_writes t2
+    end.
+
+  Inductive assign_target_wf : forall {w}, assign_target w -> Prop :=
+  | AssignVar_wf {var}
+    : assign_target_wf (AssignVar var)
+  | AssignBit_wf {loc wf}
+    : assign_target_wf (AssignBit loc wf)
+  | AssignSlice_wf {w} {slice : Slice.t w}
+    : assign_target_wf (AssignSlice slice)
+  | AssignConcat_wf {w1 w2}
+    {lhs : assign_target w1} {rhs : assign_target w2}
+    (Hlhs_wf : assign_target_wf lhs)
+    (Hrhs_wf : assign_target_wf rhs)
+    (Hno_overlap : LocationSet.Disjoint (assign_target_writes lhs) (assign_target_writes rhs))
+    : assign_target_wf (AssignConcat lhs rhs)
+  .
+
   Inductive statement :=
-  | BlockingAssign {w} (lhs : assign_target w) (rhs : expression w)
+  | BlockingAssign {w} (lhs : assign_target w) (lhs_wf : assign_target_wf lhs) (rhs : expression w)
   .
 
   Inductive module_item :=
@@ -393,14 +416,6 @@ Module Verilog.
       rewrite LocationSet.singleton_in_var. simpl. LocationSet.setdec.
   Qed.
 
-  Fixpoint assign_target_writes {w} (a : assign_target w) : LocationSet.t :=
-    match a with
-    | Verilog.AssignVar v => LocationSet.of_variable v
-    | Verilog.AssignBit loc _ => LocationSet.singleton loc
-    | Verilog.AssignSlice slice => LocationSet.of_slice slice
-    | Verilog.AssignConcat t1 t2 => assign_target_writes t1 ∪ assign_target_writes t2
-    end.
-
   Fixpoint assign_target_writes_vars {w} (a : assign_target w) : VarSet.t :=
     match a with
     | Verilog.AssignVar v => VarSet.singleton v
@@ -424,12 +439,12 @@ Module Verilog.
 
   Definition statement_reads (s : Verilog.statement) : LocationSet.t :=
     match s with
-    | Verilog.BlockingAssign lhs rhs => expr_reads rhs  (* ONLY looking at rhs here *)
+    | Verilog.BlockingAssign lhs _ rhs => expr_reads rhs  (* ONLY looking at rhs here *)
     end.
 
   Definition statement_reads_vars (s : Verilog.statement) : VarSet.t :=
     match s with
-    | Verilog.BlockingAssign lhs rhs => expr_reads_vars rhs
+    | Verilog.BlockingAssign lhs _ rhs => expr_reads_vars rhs
     end.
 
   Lemma statement_reads_vars_spec s :
@@ -438,12 +453,12 @@ Module Verilog.
 
   Definition statement_writes (s : Verilog.statement) : LocationSet.t :=
     match s with
-    | (Verilog.BlockingAssign lhs rhs) => assign_target_writes lhs (* ONLY looking at lhs here *)
+    | (Verilog.BlockingAssign lhs _ rhs) => assign_target_writes lhs (* ONLY looking at lhs here *)
     end.
 
   Definition statement_writes_vars (s : Verilog.statement) : VarSet.t :=
     match s with
-    | Verilog.BlockingAssign lhs rhs => assign_target_writes_vars lhs
+    | Verilog.BlockingAssign lhs _ rhs => assign_target_writes_vars lhs
     end.
 
   Lemma statement_writes_vars_spec s :
@@ -685,7 +700,7 @@ Module Verilog.
     Global Instance statement_Show : Show statement :=
       { show u :=
           match u with
-          | Verilog.BlockingAssign lhs rhs =>
+          | Verilog.BlockingAssign lhs _ rhs =>
             show lhs << " = " << show rhs
           end
       }.
@@ -838,12 +853,26 @@ Equations tc_assign_target : RawVerilog.expression -> transf { w & Verilog.assig
 | _ => inl "Invalid assignment LHS"%string
 }.
 
+Equations check_assign_target_wf {w} (t : Verilog.assign_target w) : transf (Verilog.assign_target_wf t) := {
+| Verilog.AssignVar var => inr Verilog.AssignVar_wf
+| Verilog.AssignBit loc wf => inr Verilog.AssignBit_wf
+| Verilog.AssignSlice slice => inr Verilog.AssignSlice_wf
+| Verilog.AssignConcat lhs rhs =>
+  let* lhs_wf := check_assign_target_wf lhs in
+  let* rhs_wf := check_assign_target_wf rhs in
+  let* writes_disjoint := assert_dec
+    (LocationSet.Disjoint (Verilog.assign_target_writes lhs) (Verilog.assign_target_writes rhs))
+    "Overlapping writes in single assign target"%string in
+  inr (Verilog.AssignConcat_wf lhs_wf rhs_wf writes_disjoint)
+}.
+
 Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
 | RawVerilog.BlockingAssign lhs rhs =>
   let* (w_lhs; t_lhs) := tc_assign_target lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
   let* t_rhs' := cast_width "Different widths in blocking assign" w_lhs t_rhs in
-  inr (Verilog.BlockingAssign t_lhs t_rhs')
+  let* lhs_wf := check_assign_target_wf t_lhs in
+  inr (Verilog.BlockingAssign t_lhs _ t_rhs')
 }
 .
 
