@@ -91,6 +91,128 @@ Proof.
   simpl. apply SMTLib.value_eqb_eq.
 Qed.
 
+Lemma convert_bv_concat_low {w1 w2} (high : BV.bitvector w1) (low : BV.bitvector w2) :
+  convert w2 (XBV.from_bv (BV.bv_concat high low)) = XBV.from_bv low.
+Proof.
+  rewrite <- XBV.concat_no_exes.
+  funelim (convert w2 (XBV.concat (XBV.from_bv high) (XBV.from_bv low))); clear Heqcall.
+  - lia.
+  - XBV.bitvector_erase.
+    rewrite RawXBV.extr_of_concat_lo.
+    2: { rewrite RawXBV.from_bv_size. lia. }
+    2: { rewrite RawXBV.from_bv_size, wf. lia. }
+    unfold RawXBV.extr.
+    rewrite RawXBV.from_bv_size, wf.
+    replace (w2 + 0)%N with w2 by lia.
+    rewrite N.leb_refl. cbn.
+    apply RawXBV.extract_full.
+    rewrite RawXBV.from_bv_size, wf. reflexivity.
+  - XBV.bitvector_erase.
+    apply RawXBV.concat_empty1.
+    rewrite RawXBV.from_bv_size, wf0. lia.
+Qed.
+
+Lemma convert_bv_concat_high {w1 w2} (high : BV.bitvector w1) (low : BV.bitvector w2) :
+  convert w1 (XBV.shr (XBV.from_bv (BV.bv_concat high low)) w2) = XBV.from_bv high.
+Proof.
+  rewrite <- XBV.concat_no_exes.
+  funelim (convert w1
+    (XBV.shr (XBV.concat (XBV.from_bv high) (XBV.from_bv low)) w2)); clear Heqcall.
+  - lia.
+  - XBV.bitvector_erase.
+    rewrite RawXBV.shr_as_concat.
+    rewrite N2Nat.id.
+    rewrite RawXBV.concat_size.
+    rewrite ! RawXBV.from_bv_size, wf0, wf.
+    replace (w1 + w2 - w2)%N with w1 by lia.
+    rewrite RawXBV.extr_of_concat_lo; expect 3.
+    2: { autorewrite with xbv_size. lia. }
+    2: { autorewrite with xbv_size. lia. }
+    rewrite RawXBV.extr_of_extr by (autorewrite with xbv_size; lia).
+    replace (w2 + 0)%N with w2 by lia.
+    rewrite RawXBV.extr_of_concat_hi; expect 3.
+    2: { rewrite RawXBV.from_bv_size, wf. lia. }
+    2: { rewrite ! RawXBV.from_bv_size, wf0, wf. lia. }
+    rewrite RawXBV.from_bv_size, wf.
+    replace (w2 - w2)%N with 0%N by lia.
+    unfold RawXBV.extr.
+    rewrite RawXBV.from_bv_size, wf0.
+    replace (w1 + 0)%N with w1 by lia.
+    rewrite N.leb_refl. cbn.
+    apply RawXBV.extract_full.
+    rewrite RawXBV.from_bv_size, wf0. reflexivity.
+  - XBV.bitvector_erase.
+    assert (Hw2 : w2 = 0%N) by lia. subst w2. cbn.
+    rewrite RawXBV.concat_empty2.
+    + rewrite Hw2. cbn. rewrite RawXBV.shr_equation_1. reflexivity.
+    + rewrite RawXBV.from_bv_size, Hw2. reflexivity.
+Qed.
+
+Lemma assign_target_to_smt_valid {w} tag (target : Verilog.assign_target w) :
+  Verilog.assign_target_wf target ->
+  forall regs ρ target_smt,
+    assign_target_to_smt tag target = inr target_smt ->
+    verilog_smt_match_states_partial
+      (Verilog.assign_target_writes target)
+      tag
+      (set_target regs target (XBV.from_bv (SMTLib.interp_term ρ target_smt)))
+      ρ.
+Proof.
+  intros Hwf.
+  induction Hwf; intros * Htarget_smt;
+    simp assign_target_to_smt in Htarget_smt; monad_inv;
+    simp set_target; simpl.
+  - intros [v bit_idx] Hloc.
+    apply LocationSet.of_variable_spec in Hloc. cbn in Hloc.
+    destruct Hloc as [Hv _]. subst v.
+    unfold RegisterState.get_location, execution_of_valuation.
+    rewrite RegisterState.set_reg_get_in. reflexivity.
+  - destruct loc as [vec idx]. cbn in *.
+    simp assign_target_to_smt in Htarget_smt. inv Htarget_smt.
+    intros loc' Hloc'.
+    apply LocationSet.singleton_spec in Hloc'. unfold LocationSet.E.eq in Hloc'. subst loc'.
+    unfold RegisterState.get_location, RegisterState.set_location, execution_of_valuation.
+    rewrite RegisterState.set_reg_get_in, XBV.set_bit_get_in.
+    pose proof (smt_select_bit_value ρ (Var.varType vec) (var_to_smt tag vec) idx wf) as Hselect.
+    apply (f_equal (XBV.bitOf 0)) in Hselect.
+    simpl in Hselect.
+    change (XBV.bitOf 0
+      (XBV.from_bv (SMTLib.interp_term ρ (smt_select_bit (var_to_smt tag vec) idx)))
+      = XBV.bitOf idx (XBV.from_bv (ρ (verilog_to_smt_var tag vec)))).
+    rewrite <- Hselect. reflexivity.
+  - dependent elimination slice.
+    simp assign_target_to_smt in Htarget_smt. inv Htarget_smt.
+    intros loc Hloc.
+    apply LocationSet.of_slice_spec in Hloc.
+    unfold Slice.has_location in Hloc. cbn in Hloc.
+    destruct Hloc as [Hvar Hidx].
+    unfold RegisterState.get_location, RegisterState.set_slice, execution_of_valuation.
+    cbn [Slice.get_var Slice.get_lo].
+    rewrite <- Hvar, RegisterState.set_reg_get_in.
+    replace (Location.idx loc) with (lo + (Location.idx loc - lo))%N by lia.
+    change (lo <= Location.idx loc < lo + (1 + hi - lo))%N in Hidx.
+    assert (Hoff : (Location.idx loc - lo < 1 + hi - lo)%N) by lia.
+    rewrite XBV.set_slice_get_in by exact Hoff.
+    simpl.
+    change (XBV.bitOf (Location.idx loc - lo)
+      (XBV.from_bv (BV.bv_extr lo (1 + hi - lo) (ρ (verilog_to_smt_var tag var)))) =
+      XBV.bitOf (lo + (Location.idx loc - lo))
+        (XBV.from_bv (ρ (verilog_to_smt_var tag var)))).
+    rewrite <- XBV.extr_no_exes by lia.
+    rewrite XBV.extr_bitOf by lia.
+    f_equal.
+  - apply verilog_smt_match_states_partial_split_iff. split.
+    + rewrite convert_bv_concat_high.
+      apply IHHwf1. reflexivity.
+    + rewrite convert_bv_concat_low.
+      pose proof (IHHwf2 regs ρ t0 eq_refl) as IHrhs.
+      intros loc Hloc.
+      transitivity (RegisterState.get_location
+        (set_target regs rhs (XBV.from_bv (SMTLib.interp_term ρ t0))) loc).
+      * exact (set_target_preserve lhs _ _ _ Hno_overlap loc Hloc).
+      * apply IHrhs. exact Hloc.
+Qed.
+
 Lemma module_item_to_smt_valid tag  (mi : Verilog.module_item) :
   LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
   forall ρ t,
@@ -110,19 +232,10 @@ Proof.
   simp exec_module_item exec_statement in *.
   monad_inv.
   rewrite smt_eq_sat_iff in Hsat.
-  pose proof expr_to_smt_valid as Hvalue_match. insterU Hvalue_match.
-  simpl.
-  intros loc Hloc.
-  (* apply LocationSet.of_variable_spec in Hloc.
-   * destruct loc as [v bit_idx]. cbn in Hloc.
-   * destruct Hloc as [Hv _]. subst v.
-   * unfold RegisterState.get_location, execution_of_valuation. cbn.
-   * simp set_target. simpl.
-   * rewrite RegisterState.set_reg_get_in.
-   * rewrite Hvalue_match.
-   * rewrite <- Hsat.
-   * reflexivity. *)
-Admitted.
+  pose proof expr_to_smt_value as Hvalue_match. insterU Hvalue_match.
+  rewrite Hvalue_match, <- Hsat.
+  eapply assign_target_to_smt_valid; eassumption.
+Qed.
 
 Lemma mapT_list_eq_nil A B (f : A -> option B) l :
   List.mapT_list f l = Some []%list ->
