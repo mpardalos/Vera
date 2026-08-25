@@ -1828,6 +1828,14 @@ Module XBV.
     f_equal. lia.
   Qed.
 
+  Lemma extr_full {w} (x : xbv w) :
+    extr x 0 w = x.
+  Proof.
+    apply bitOf_ext. intros i Hi.
+    rewrite extr_bitOf by lia.
+    f_equal.
+  Qed.
+
   Lemma extr_one_ext {n} (x y : xbv n) i :
     bitOf i x = bitOf i y ->
     extr x i 1 = extr y i 1.
@@ -1886,6 +1894,27 @@ Module XBV.
   Program Definition concat {n m : N} (l : xbv n) (r : xbv m) : xbv (n + m) :=
     {| bv := RawXBV.concat (bits l) (bits r) |}.
   Next Obligation. now rewrite RawXBV.concat_size, ! wf. Qed.
+
+  Lemma extr_concat_low {w1 w2} (high : xbv w1) (low : xbv w2) :
+    extr (concat high low) 0 w2 = low.
+  Proof.
+    apply of_bits_equal. simpl.
+    rewrite RawXBV.extr_of_concat_lo.
+    - exact (f_equal bits (extr_full low)).
+    - lia.
+    - rewrite wf. lia.
+  Qed.
+
+  Lemma extr_concat_high {w1 w2} (high : xbv w1) (low : xbv w2) :
+    extr (concat high low) w2 w1 = high.
+  Proof.
+    apply of_bits_equal. simpl.
+    rewrite RawXBV.extr_of_concat_hi.
+    - rewrite wf. replace (w2 - w2)%N with 0%N by lia.
+      exact (f_equal bits (extr_full high)).
+    - rewrite wf. lia.
+    - rewrite ! wf. lia.
+  Qed.
 
   Lemma concat_to_bv n1 n2 (bv1 : BV.bitvector n1) (bv2 : BV.bitvector n2) :
     to_bv (concat (from_bv bv1) (from_bv bv2)) = Some (BV.bv_concat bv1 bv2).

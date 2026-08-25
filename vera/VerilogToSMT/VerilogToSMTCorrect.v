@@ -91,63 +91,6 @@ Proof.
   simpl. apply SMTLib.value_eqb_eq.
 Qed.
 
-Lemma convert_bv_concat_low {w1 w2} (high : BV.bitvector w1) (low : BV.bitvector w2) :
-  convert w2 (XBV.from_bv (BV.bv_concat high low)) = XBV.from_bv low.
-Proof.
-  rewrite <- XBV.concat_no_exes.
-  funelim (convert w2 (XBV.concat (XBV.from_bv high) (XBV.from_bv low))); clear Heqcall.
-  - lia.
-  - XBV.bitvector_erase.
-    rewrite RawXBV.extr_of_concat_lo.
-    2: { rewrite RawXBV.from_bv_size. lia. }
-    2: { rewrite RawXBV.from_bv_size, wf. lia. }
-    unfold RawXBV.extr.
-    rewrite RawXBV.from_bv_size, wf.
-    replace (w2 + 0)%N with w2 by lia.
-    rewrite N.leb_refl. cbn.
-    apply RawXBV.extract_full.
-    rewrite RawXBV.from_bv_size, wf. reflexivity.
-  - XBV.bitvector_erase.
-    apply RawXBV.concat_empty1.
-    rewrite RawXBV.from_bv_size, wf0. lia.
-Qed.
-
-Lemma convert_bv_concat_high {w1 w2} (high : BV.bitvector w1) (low : BV.bitvector w2) :
-  convert w1 (XBV.shr (XBV.from_bv (BV.bv_concat high low)) w2) = XBV.from_bv high.
-Proof.
-  rewrite <- XBV.concat_no_exes.
-  funelim (convert w1
-    (XBV.shr (XBV.concat (XBV.from_bv high) (XBV.from_bv low)) w2)); clear Heqcall.
-  - lia.
-  - XBV.bitvector_erase.
-    rewrite RawXBV.shr_as_concat.
-    rewrite N2Nat.id.
-    rewrite RawXBV.concat_size.
-    rewrite ! RawXBV.from_bv_size, wf0, wf.
-    replace (w1 + w2 - w2)%N with w1 by lia.
-    rewrite RawXBV.extr_of_concat_lo; expect 3.
-    2: { autorewrite with xbv_size. lia. }
-    2: { autorewrite with xbv_size. lia. }
-    rewrite RawXBV.extr_of_extr by (autorewrite with xbv_size; lia).
-    replace (w2 + 0)%N with w2 by lia.
-    rewrite RawXBV.extr_of_concat_hi; expect 3.
-    2: { rewrite RawXBV.from_bv_size, wf. lia. }
-    2: { rewrite ! RawXBV.from_bv_size, wf0, wf. lia. }
-    rewrite RawXBV.from_bv_size, wf.
-    replace (w2 - w2)%N with 0%N by lia.
-    unfold RawXBV.extr.
-    rewrite RawXBV.from_bv_size, wf0.
-    replace (w1 + 0)%N with w1 by lia.
-    rewrite N.leb_refl. cbn.
-    apply RawXBV.extract_full.
-    rewrite RawXBV.from_bv_size, wf0. reflexivity.
-  - XBV.bitvector_erase.
-    assert (Hw2 : w2 = 0%N) by lia. subst w2. cbn.
-    rewrite RawXBV.concat_empty2.
-    + rewrite Hw2. cbn. rewrite RawXBV.shr_equation_1. reflexivity.
-    + rewrite RawXBV.from_bv_size, Hw2. reflexivity.
-Qed.
-
 Lemma assign_target_to_smt_valid {w} tag (target : Verilog.assign_target w) :
   Verilog.assign_target_wf target ->
   forall regs ρ target_smt,
@@ -201,10 +144,11 @@ Proof.
     rewrite <- XBV.extr_no_exes by lia.
     rewrite XBV.extr_bitOf by lia.
     f_equal.
-  - apply verilog_smt_match_states_partial_split_iff. split.
-    + rewrite convert_bv_concat_high.
+  - rewrite <- XBV.concat_no_exes.
+    apply verilog_smt_match_states_partial_split_iff. split.
+    + rewrite XBV.extr_concat_high.
       apply IHHwf1. reflexivity.
-    + rewrite convert_bv_concat_low.
+    + rewrite XBV.extr_concat_low.
       pose proof (IHHwf2 regs ρ t0 eq_refl) as IHrhs.
       intros loc Hloc.
       transitivity (RegisterState.get_location
