@@ -104,18 +104,16 @@ Module Var <: UsualOrderedType.
     unfold compare. simpl.
     unfold CompSpec.
 
-    (* TODO: Broken by switching to String.compare from
-    String_as_OT.compare for performance reasons (extracts
-    differently). We must use String.compare, but update this proof. *)
-
-    (* destruct (String_as_OT.compare_spec n1 n2) as [cmp_n|cmp_n|cmp_n];
-     *   [|crush|crush].
-     * unfold String_as_OT.eq in cmp_n. subst.
-     * destruct (N_as_OT.compare_spec t1 t2); [|crush|crush].
-     * subst.
-     * constructor. cbv. f_equal.
-     * apply proof_irrelevance. *)
-  Admitted.
+    destruct (String.compare n1 n2) eqn:cmp_n.
+    - apply String.compare_eq_iff in cmp_n. subst.
+      destruct (N.compare_spec t1 t2) as [cmp_t|cmp_t|cmp_t].
+      + subst. constructor. cbv. f_equal. apply proof_irrelevance.
+      + constructor. right. split; [reflexivity|exact cmp_t].
+      + constructor. right. split; [reflexivity|exact cmp_t].
+    - constructor. left. exact cmp_n.
+    - constructor. left. unfold String_as_OT.lt, RelCompFun.
+      rewrite String.compare_antisym. simpl. rewrite cmp_n. reflexivity.
+  Qed.
 End Var.
 
 Module Location <: UsualOrderedType.
