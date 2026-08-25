@@ -1545,8 +1545,7 @@ Module CombinationalOnly.
     set_target regs (Verilog.AssignSlice slice) value :=
       RegisterState.set_slice slice value regs ;
     set_target regs (@Verilog.AssignConcat w1 w2 t1 t2) value :=
-      (* TODO: Check endianness *)
-      set_target (set_target regs t2 (convert w2 value)) t1 (convert w1 (XBV.shl value w2))
+      set_target (set_target regs t2 (convert w2 value)) t1 (convert w1 (XBV.shr value w2))
     .
 
   Equations
