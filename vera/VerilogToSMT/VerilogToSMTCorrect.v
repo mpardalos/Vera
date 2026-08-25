@@ -314,6 +314,15 @@ Admitted.
 
 Import EqNotations.
 
+Lemma sorted_reads_driven inputs body :
+  module_items_sorted inputs body ->
+  Verilog.module_body_reads body ⊆ Verilog.module_body_writes body ∪ inputs.
+Proof.
+  induction 1.
+  all: simpl.
+  all: LocationSet.setdec.
+Qed.
+
 Theorem verilog_to_smt_correct {i o} tag (v : Verilog.vmodule i o) smt :
   verilog_to_smt tag v = inr smt ->
   SMTQueries.smt_reflect
@@ -327,7 +336,10 @@ Proof.
   all: intros H.
   - eapply transfer_module_body_valid.
     all: try eassumption.
-    admit.
+    unfold Verilog.module_locations.
+    assert (Verilog.module_reads v ⊆ Verilog.module_writes v ∪ LocationSet.of_varset (VarSet.of_list i))
+      by now apply sorted_reads_driven.
+    LocationSet.setdec.
   - eapply transfer_module_body_satisfiable.
     all: try eassumption.
-Admitted.
+Qed.
