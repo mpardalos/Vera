@@ -24,7 +24,6 @@ Local Open Scope string.
 Local Open Scope list.
 Local Open Scope verilog_scope.
 
-Import EqNotations.
 Opaque N.add N.sub.
 
 (* Program Definition simpl_resize {from : N} (to : N) (expr : expression from) (wf : (to > 0)%N) : expression to :=
@@ -101,73 +100,11 @@ From vera Require Import VerilogSemantics.
 Import (notations) RegisterState.
 From vera Require Import Tactics.
 
-From Stdlib Require Import Logic.ProofIrrelevance.
 From Stdlib Require Import Sorting.Permutation.
 From Stdlib Require Import NArith.
 
 Import CombinationalOnly.
-Import EqNotations.
 Local Open Scope verilog.
-
-Lemma convert_extend_to_N from to (xbv : XBV.xbv from) val :
-  (to >= from)%N ->
-  XBV.to_N xbv = Some val ->
-  XBV.to_N (convert to xbv) = Some val.
-Proof.
-  intros.
-  funelim (convert to xbv); [idtac|lia|idtac].
-  - destruct_rew. simpl. apply XBV.extend_to_N. assumption.
-  - destruct_rew. simpl. assumption.
-Qed.
-
-Lemma convert_extend_to_N_none from to (xbv : XBV.xbv from) :
-  (to >= from)%N ->
-  XBV.to_N xbv = None ->
-  XBV.to_N (convert to xbv) = None.
-Proof.
-  intros.
-  funelim (convert to xbv).
-  - destruct_rew. simpl. apply XBV.extend_to_N_none2. assumption.
-  - lia.
-  - destruct_rew. simpl. assumption.
-Qed.
-
-Lemma convert_shr_convert n1 n2 (xbv : XBV.xbv n1) shamt :
-  (n2 >= n1)%N ->
-  convert n1 (XBV.shr (convert n2 xbv) shamt) = XBV.shr xbv shamt.
-Proof.
-  intros.
-  funelim (convert n2 xbv); [idtac|lia|idtac].
-  all: destruct_rew; simpl.
-  - funelim (convert from (XBV.shr (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
-    apply XBV.extr_shr_extend.
-  - funelim (convert from (XBV.shr value shamt)); [lia|lia|idtac].
-    rewrite <- eq_rect_eq. reflexivity.
-Qed.
-
-Lemma convert_shl_convert n1 n2 (xbv : XBV.xbv n1) shamt :
-  (n2 >= n1)%N ->
-  convert n1 (XBV.shl (convert n2 xbv) shamt) = XBV.shl xbv shamt.
-Proof.
-  intros.
-  funelim (convert n2 xbv); [idtac|lia|idtac].
-  all: destruct_rew; simpl.
-  - funelim (convert from (XBV.shl (XBV.concat (XBV.zeros (to - from)) value) shamt)); [lia|idtac|lia].
-    apply XBV.extr_shl_extend.
-  - funelim (convert from (XBV.shl value shamt)); [lia|lia|idtac].
-    rewrite <- eq_rect_eq. reflexivity.
-Qed.
-
-Lemma convert_exes n1 n2 :
-  (n2 <= n1)%N ->
-  convert n2 (XBV.exes n1) = XBV.exes n2.
-Proof.
-  intros.
-  funelim (convert n2 (XBV.exes n1)).
-  - lia.
-  - apply XBV.extr_exes.
-  - destruct_rew. reflexivity.
-Qed.
 
 (* (\* TODO: Move me to bitvectors *\)
  * Lemma bitOf_exes i n : XBV.bitOf i (XBV.exes n) = RawXBV.X.
@@ -226,16 +163,16 @@ Proof.
   funelim (eval_shiftop op lhs rhs).
   all: simp eval_shiftop.
   all: match type of Heq with
-       | (_ = Some _) => apply convert_extend_to_N with (to := N.max n1 n2) in Heq
-       | (_ = None) => apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq
+       | (_ = Some _) => apply XBV.resize_extend_to_N with (to := N.max n1 n2) in Heq
+       | (_ = None) => apply XBV.resize_extend_to_N_none with (to := N.max n1 n2) in Heq
        end; [|lia].
   all: rewrite Heq; simpl.
-  - apply convert_shr_convert. lia.
-  - apply convert_exes. lia.
-  - apply convert_shl_convert. lia.
-  - apply convert_exes. lia.
-  - apply convert_shl_convert. lia.
-  - apply convert_exes. lia.
+  - apply XBV.resize_shr_resize. lia.
+  - apply XBV.resize_exes. lia.
+  - apply XBV.resize_shl_resize. lia.
+  - apply XBV.resize_exes. lia.
+  - apply XBV.resize_shl_resize. lia.
+  - apply XBV.resize_exes. lia.
 Qed.
 
 (* Lemma select_bit_extr {w} (x : XBV.xbv w) n :

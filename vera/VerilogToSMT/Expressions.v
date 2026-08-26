@@ -81,11 +81,11 @@ Inductive and_reduce_bv_cases {w} : BV.bitvector w -> RawXBV.bit -> Prop :=
   | and_reduce_other x : x <> BV.ones w -> and_reduce_bv_cases x RawXBV.O
   .
 
-Lemma and_reduce_rec_false xbv : RawXBV.fold O and_bit xbv = O.
+Lemma and_reduce_rec_false xbv : RawXBV.fold O RawXBV.and_bit xbv = O.
 Proof. induction xbv; simp and_bit; auto. Qed.
 
 Lemma and_reduce_bv_spec {w} (bv : BV.bitvector w) :
-  and_reduce_bv_cases bv (XBV.fold I and_bit (XBV.from_bv bv)).
+  and_reduce_bv_cases bv (XBV.fold I RawXBV.and_bit (XBV.from_bv bv)).
 Proof.
   unfold XBV.fold. XBV.bitvector_erase. subst.
   induction bv.
@@ -160,27 +160,13 @@ Qed.
 
 Opaque N.sub N.add.
 
-Lemma bv_extr_full n bv :
-  n = RawBV.size bv ->
-  RawBV.bv_extr 0 n n bv = bv.
-Proof.
-  intros ->.
-  unfold RawBV.bv_extr, RawBV.size.
-  rewrite N.add_0_r.
-  rewrite N.ltb_irrefl.
-  rewrite Nat2N.id.
-  induction bv; simpl in *.
-  - reflexivity.
-  - f_equal. apply IHbv.
-Qed.
-
 Lemma cast_from_to_value ρ w_from w_to smt_from :
     (w_to > 0)%N ->
-    SMTLib.interp_term ρ (cast_from_to w_from w_to smt_from) = convert_bv w_to (SMTLib.interp_term ρ smt_from).
+    SMTLib.interp_term ρ (cast_from_to w_from w_to smt_from) = BV.resize w_to (SMTLib.interp_term ρ smt_from).
 Proof.
   intros Hnot_zero.
   remember (SMTLib.interp_term ρ smt_from) as val_from eqn:Hinterp_from.
-  funelim (convert_bv w_to val_from); expect 3.
+  funelim (BV.resize w_to val_from); expect 3.
   all: funelim (cast_from_to from to smt_from); expect 9.
   all: autorewrite with bool_to_prop in *; try lia; expect 3.
   all: clear Heqcall Heqcall0 Heq Heq0.
@@ -189,7 +175,7 @@ Proof.
   - f_equal. f_equal. lia.
   - reflexivity.
   - replace (1 + (from - 1) - 0)%N with from by lia.
-    apply bv_extr_full.
+    apply RawBV.bv_extr_full.
     symmetry. apply BV.wf.
 Qed.
 
@@ -302,7 +288,7 @@ Proof.
     apply (Hmatch (Location.Mk var bit_idx)).
     apply LocationSet.of_variable_spec. auto.
   - rewrite cast_from_to_value by lia.
-    apply convert_no_exes.
+    apply XBV.resize_no_exes.
 Qed.
 
 (* DELETEME: Duplicate *)

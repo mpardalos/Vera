@@ -183,25 +183,6 @@ Equations valuation_of_executions : execution -> execution -> SMTLib.valuation :
   | e1, e2, {| SMTLib.symSort := s |} => default s
 }.
 
-Remark to_from_smt_value_inversion {n} idx (xbv : XBV.xbv n) :
-  XBV.bitOf idx xbv <> RawXBV.X ->
-  XBV.bitOf idx (XBV.from_bv (XBV.to_bv_def false xbv)) = XBV.bitOf idx xbv.
-Proof.
-  unfold XBV.bitOf, RawXBV.bitOf.
-  XBV.bitvector_erase.
-  subst.
-  generalize dependent (N.to_nat idx). clear idx. 
-  induction bv0; intros idx H; [reflexivity|].
-  destruct idx; simpl.
-  - destruct a; simpl in *.
-    + contradiction.
-    + reflexivity.
-    + reflexivity.
-  - simpl in H.
-    apply IHbv0.
-    exact H.
-Qed.
-
 Lemma execution_of_valuation_left_match_on e1 e2 ls :
   RegisterState.defined_value_for ls e1 ->
   execution_of_valuation VerilogLeft
@@ -216,7 +197,7 @@ Proof.
   rewrite untag_tag_name.
   simpl.
   rewrite (dec_yes varTypeWf).
-  apply to_from_smt_value_inversion.
+  apply XBV.bitOf_from_bv_to_bv_def.
   apply Hnot_x.
 Qed.
 
@@ -234,7 +215,7 @@ Proof.
   rewrite untag_tag_name.
   simpl.
   rewrite (dec_yes varTypeWf).
-  apply to_from_smt_value_inversion.
+  apply XBV.bitOf_from_bv_to_bv_def.
   apply Hnot_x.
 Qed.
 

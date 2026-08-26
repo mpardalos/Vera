@@ -68,6 +68,18 @@ Module RawBV.
 
   Definition to_N (val : bitvector) : N := N.of_nat (list2nat_be val).
 
+  Lemma bv_extr_full n bv :
+    n = size bv ->
+    bv_extr 0 n n bv = bv.
+  Proof.
+    intros ->.
+    unfold bv_extr, size.
+    rewrite N.add_0_r, N.ltb_irrefl, Nat2N.id.
+    induction bv; simpl.
+    - reflexivity.
+    - f_equal. apply IHbv.
+  Qed.
+
   (* Presentation. *)
   Fixpoint to_string (val : bitvector) : string :=
     match val with
@@ -457,6 +469,17 @@ Module BV.
     induction (N.to_nat w); crush.
   Qed.
 
+  Equations resize {from} (to : N) (value : bitvector from) : bitvector to :=
+    resize to value with Decidable.dec (from < to)%N := {
+      | left Hlt => rew _ in bv_concat (zeros (to - from)%N) value
+      | right Hge with Decidable.dec (from > to)%N => {
+        | left Hgr => bv_extr 0 to value;
+        | right Hle => rew _ in value
+        }
+      }.
+  Next Obligation. lia. Defined.
+  Next Obligation. lia. Defined.
+
   #[program]
   Definition shl {n} (bv : bitvector n) (shamt : N) : bitvector n :=
     {| bv := RawBV.shl (bits bv) (N.to_nat shamt) |}.
@@ -803,6 +826,41 @@ Module RawXBV.
         else nil
     end
   .
+
+  Definition bitwise_binop (f : bit -> bit -> bit) (l r : xbv) : xbv :=
+    Common.map2 f l r.
+
+  Lemma bitwise_binop_size f l r :
+    size l = size r ->
+    size (bitwise_binop f l r) = size l.
+  Proof.
+    intros Hsize.
+    unfold size, bitwise_binop in *.
+    rewrite Common.map2_length.
+    lia.
+  Qed.
+
+  Equations and_bit : bit -> bit -> bit :=
+    and_bit I I := I;
+    and_bit O _ := O;
+    and_bit _ O := O;
+    and_bit X _ := X;
+    and_bit _ X := X.
+
+  Equations or_bit : bit -> bit -> bit :=
+    or_bit O O := O;
+    or_bit I _ := I;
+    or_bit _ I := I;
+    or_bit X _ := X;
+    or_bit _ X := X.
+
+  Equations xor_bit : bit -> bit -> bit :=
+    xor_bit O O := O;
+    xor_bit I I := O;
+    xor_bit I O := I;
+    xor_bit O I := I;
+    xor_bit X _ := X;
+    xor_bit _ X := X.
 
   Equations to_bv_same_width (l r : xbv) : option (RawBV.t * RawBV.t) :=
     to_bv_same_width l r with dec (size r = size l), to_bv l, to_bv r => {
@@ -1759,6 +1817,92 @@ Module XBV.
   	 end;
     unfold has_x, BV.to_N in *; simpl in *.
 
+  Lemma bitOf_from_bv_to_bv_def {n} idx (x : xbv n) :
+    bitOf idx x <> X ->
+    bitOf idx (from_bv (to_bv_def false x)) = bitOf idx x.
+  Proof.
+    unfold bitOf, RawXBV.bitOf.
+    bitvector_erase. subst.
+    generalize dependent (N.to_nat idx). clear idx.
+    induction bv0; intros idx H; [reflexivity|].
+    destruct idx; simpl.
+    - destruct a; simpl in *; congruence.
+    - apply IHbv0. exact H.
+  Qed.
+
+  Program Definition bitwise_binop {n} (f : bit -> bit -> bit)
+      (l r : xbv n) : xbv n :=
+    {| bv := RawXBV.bitwise_binop f (bits l) (bits r) |}.
+  Next Obligation.
+    pose proof (RawXBV.bitwise_binop_size f (bits l) (bits r)
+      ltac:(now rewrite ! wf)) as Hsize.
+    unfold RawXBV.size in Hsize.
+    rewrite Hsize.
+    apply wf.
+  Qed.
+
+  Lemma bitwise_binop_no_exes
+      (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
+    (forall lb rb,
+      RawXBV.bool_to_bit (f_bool lb rb) =
+      f_bit (RawXBV.bool_to_bit lb) (RawXBV.bool_to_bit rb)) ->
+    forall n (l_bv r_bv : BV.bitvector n),
+      bitwise_binop f_bit (from_bv l_bv) (from_bv r_bv) =
+      from_bv (BV.map2 f_bool l_bv r_bv).
+  Proof.
+    intros * Hf *.
+    apply of_bits_equal; simpl.
+    destruct l_bv as [l_bv l_bv_wf].
+    destruct r_bv as [r_bv r_bv_wf].
+    simpl in *.
+    unfold RawXBV.bitwise_binop.
+    generalize dependent n.
+    generalize dependent r_bv.
+    induction l_bv; simpl; simp map2; try easy.
+    destruct r_bv; simpl; simp map2; try easy.
+    specialize (IHl_bv r_bv).
+    intros. simpl in *. f_equal.
+    - auto.
+    - unfold BVList.RAWBITVECTOR_LIST.size in *.
+      eapply IHl_bv; crush.
+  Qed.
+
+  Lemma bitwise_and_no_exes w (l_bv r_bv : BV.bitvector w) :
+    bitwise_binop RawXBV.and_bit (from_bv l_bv) (from_bv r_bv) =
+    from_bv (BV.bv_and l_bv r_bv).
+  Proof.
+    rewrite bitwise_binop_no_exes with (f_bool := andb).
+    - bitvector_erase. f_equal.
+      unfold RawBV.bv_and.
+      rewrite wf1, wf0, N.eqb_refl.
+      reflexivity.
+    - intros [] []; reflexivity.
+  Qed.
+
+  Lemma bitwise_or_no_exes w (l_bv r_bv : BV.bitvector w) :
+    bitwise_binop RawXBV.or_bit (from_bv l_bv) (from_bv r_bv) =
+    from_bv (BV.bv_or l_bv r_bv).
+  Proof.
+    rewrite bitwise_binop_no_exes with (f_bool := orb).
+    - bitvector_erase. f_equal.
+      unfold RawBV.bv_or.
+      rewrite wf1, wf0, N.eqb_refl.
+      reflexivity.
+    - intros [] []; reflexivity.
+  Qed.
+
+  Lemma bitwise_xor_no_exes w (l_bv r_bv : BV.bitvector w) :
+    bitwise_binop RawXBV.xor_bit (from_bv l_bv) (from_bv r_bv) =
+    from_bv (BV.bv_xor l_bv r_bv).
+  Proof.
+    rewrite bitwise_binop_no_exes with (f_bool := xorb).
+    - bitvector_erase. f_equal.
+      unfold RawBV.bv_xor.
+      rewrite wf1, wf0, N.eqb_refl.
+      reflexivity.
+    - intros [] []; reflexivity.
+  Qed.
+
   Definition extr {n} (x: xbv n) (i j: N) : xbv j :=
     {|
       bv := RawXBV.extr (bits x) i j;
@@ -2018,6 +2162,44 @@ Module XBV.
     apply zeros_to_bv.
   Qed.
 
+  Equations resize {from} (to : N) (value : xbv from) : xbv to :=
+    resize to value with Decidable.dec (from < to)%N := {
+      | left Hlt => rew _ in concat (zeros (to - from)%N) value
+      | right Hge with Decidable.dec (from > to)%N => {
+        | left Hgr => extr value 0 to;
+        | right Hle => rew _ in value
+        }
+      }.
+  Next Obligation. crush. Qed.
+  Next Obligation. crush. Qed.
+
+  Lemma resize_no_exes w_from w_to (from : BV.bitvector w_from) :
+    resize w_to (from_bv from) = from_bv (BV.resize w_to from).
+  Proof.
+    funelim (resize w_to (from_bv from)); clear Heqcall.
+    all: try destruct_rew.
+    - rewrite zeros_from_bv, concat_no_exes.
+      funelim (BV.resize (to - from + from) from0); [|lia|lia];
+        clear Heqcall.
+      apply of_bits_equal.
+      destruct_rew.
+      repeat f_equal.
+      crush.
+    - rewrite extr_no_exes by lia.
+      funelim (BV.resize to from0); [lia| |lia].
+      reflexivity.
+    - funelim (BV.resize from from0); [lia|lia|].
+      now rewrite <- eq_rect_eq.
+  Qed.
+
+  Lemma resize_from_bv w_from w_to (from : BV.bitvector w_from) :
+    exists bv : BV.bitvector w_to,
+      to_bv (resize w_to (from_bv from)) = Some bv.
+  Proof.
+    rewrite resize_no_exes, xbv_bv_inverse.
+    eauto.
+  Qed.
+
   #[program]
   Definition replicate {n} (c : N) (bv : xbv n) : xbv (c * n) :=
     {| bv := RawXBV.replicate c (bits bv) |}.
@@ -2241,6 +2423,29 @@ Module XBV.
     destruct (to_bv xbv2) eqn:E; simpl in *; [discriminate|].
     rewrite concat_to_bv_none2; crush.
   Qed.
+
+  Lemma resize_extend_to_N from to (xbv : xbv from) val :
+    (to >= from)%N ->
+    to_N xbv = Some val ->
+    to_N (resize to xbv) = Some val.
+  Proof.
+    intros Hwidth Hvalue.
+    funelim (resize to xbv); [idtac|lia|idtac].
+    - destruct_rew. simpl. now apply extend_to_N.
+    - destruct_rew. simpl. exact Hvalue.
+  Qed.
+
+  Lemma resize_extend_to_N_none from to (xbv : xbv from) :
+    (to >= from)%N ->
+    to_N xbv = None ->
+    to_N (resize to xbv) = None.
+  Proof.
+    intros Hwidth Hvalue.
+    funelim (resize to xbv).
+    - destruct_rew. simpl. now apply extend_to_N_none2.
+    - lia.
+    - destruct_rew. simpl. exact Hvalue.
+  Qed.
   
   Lemma extr_shr_extend_overshift w1 w2 (xbv : xbv w1) shamt  :
     (shamt > w1)%N ->
@@ -2351,6 +2556,34 @@ Module XBV.
     - eapply extr_shl_extend_no_overshift. eassumption.
     - eapply extr_shl_extend_overshift. lia.
   Qed.
+
+  Lemma resize_shr_resize n1 n2 (xbv : xbv n1) shamt :
+    (n2 >= n1)%N ->
+    resize n1 (shr (resize n2 xbv) shamt) = shr xbv shamt.
+  Proof.
+    intros Hwidth.
+    funelim (resize n2 xbv); [idtac|lia|idtac].
+    all: destruct_rew; simpl.
+    - funelim (resize from (shr (concat (zeros (to - from)) value) shamt));
+        [lia|idtac|lia].
+      apply extr_shr_extend.
+    - funelim (resize from (shr value shamt)); [lia|lia|idtac].
+      rewrite <- eq_rect_eq. reflexivity.
+  Qed.
+
+  Lemma resize_shl_resize n1 n2 (xbv : xbv n1) shamt :
+    (n2 >= n1)%N ->
+    resize n1 (shl (resize n2 xbv) shamt) = shl xbv shamt.
+  Proof.
+    intros Hwidth.
+    funelim (resize n2 xbv); [idtac|lia|idtac].
+    all: destruct_rew; simpl.
+    - funelim (resize from (shl (concat (zeros (to - from)) value) shamt));
+        [lia|idtac|lia].
+      apply extr_shl_extend.
+    - funelim (resize from (shl value shamt)); [lia|lia|idtac].
+      rewrite <- eq_rect_eq. reflexivity.
+  Qed.
   
   Lemma extr_exes n1 n2 lo :
     extr (exes n1) lo n2 = exes n2.
@@ -2372,6 +2605,17 @@ Module XBV.
     - destruct n1; [crush|].
       simpl in *. specialize (H n1). insterU H.
       crush.
+  Qed.
+
+  Lemma resize_exes n1 n2 :
+    (n2 <= n1)%N ->
+    resize n2 (exes n1) = exes n2.
+  Proof.
+    intros Hwidth.
+    funelim (resize n2 (exes n1)).
+    - lia.
+    - apply extr_exes.
+    - destruct_rew. reflexivity.
   Qed.
 
   Definition bit_of_as_bv i w (bv : BV.bitvector w) :
@@ -2457,8 +2701,12 @@ Hint Rewrite
   XBV.shr_no_exes
   XBV.shl_no_exes
   XBV.not_no_exes
+  XBV.bitwise_and_no_exes
+  XBV.bitwise_or_no_exes
+  XBV.bitwise_xor_no_exes
   XBV.concat_no_exes
   XBV.replicate_no_exes
+  XBV.resize_no_exes
   XBV.to_N_from_bv
   XBV.zeros_from_bv
   XBV.ones_from_bv

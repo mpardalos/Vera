@@ -1459,55 +1459,6 @@ Module CombinationalOnly.
       | _, _ => XBV.exes (XBV.size l)
       }.
 
-  Definition bitwise_binop_raw (f : bit -> bit -> bit) (l r : RawXBV.xbv) : RawXBV.xbv :=
-    map2 f l r.
-
-  Lemma map2_size {A B C} (f : A -> B -> C) (l : list A) (r : list B) :
-    length (map2 f l r) = min (length l) (length r).
-  Proof.
-    funelim (map2 f l r); simp map2; simpl; try crush.
-  Qed.
-
-  Definition bitwise_binop_raw_size f l r :
-    RawXBV.size l = RawXBV.size r ->
-    RawXBV.size (bitwise_binop_raw f l r) = RawXBV.size l.
-  Proof.
-    intros.
-    unfold RawXBV.size, bitwise_binop_raw in *.
-    rewrite map2_size.
-    lia.
-  Qed.
-
-  Local Obligation Tactic := intros.
-
-  Program Definition bitwise_binop {n} (f : bit -> bit -> bit) (l r : XBV.xbv n) : XBV.xbv n :=
-    {| XBV.bv := bitwise_binop_raw f (XBV.bits l) (XBV.bits r) |}.
-  Next Obligation.
-    rewrite bitwise_binop_raw_size; now rewrite ! XBV.wf.
-  Qed.
-
-  Equations and_bit : bit -> bit -> bit :=
-    and_bit I I := I;
-    and_bit O _ := O;
-    and_bit _ O := O;
-    and_bit X _ := X;
-    and_bit _ X := X.
-
-  Equations or_bit : bit -> bit -> bit :=
-    or_bit O O := O;
-    or_bit I _ := I;
-    or_bit _ I := I;
-    or_bit X _ := X;
-    or_bit _ X := X.
-
-  Equations xor_bit : bit -> bit -> bit :=
-    xor_bit O O := O;
-    xor_bit I I := O;
-    xor_bit I O := I;
-    xor_bit O I := I;
-    xor_bit X _ := X;
-    xor_bit _ X := X.
-
   Equations eval_arithmeticop {n} (op : Verilog.arithmeticop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv n :=
     eval_arithmeticop Verilog.ArithmeticPlus l r := bv_binop (@BV.bv_add _) l r;
     eval_arithmeticop Verilog.ArithmeticMinus l r := bv_binop (fun bvl bvr => BV.bv_add bvl (BV.bv_neg bvr)) l r;
@@ -1515,9 +1466,9 @@ Module CombinationalOnly.
   .
 
   Equations eval_bitwiseop {n} (op : Verilog.bitwiseop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv n :=
-    eval_bitwiseop Verilog.BinaryBitwiseAnd l r := bitwise_binop and_bit l r;
-    eval_bitwiseop Verilog.BinaryBitwiseOr l r := bitwise_binop or_bit l r;
-    eval_bitwiseop Verilog.BinaryBitwiseXor l r := bitwise_binop xor_bit l r;
+    eval_bitwiseop Verilog.BinaryBitwiseAnd l r := XBV.bitwise_binop RawXBV.and_bit l r;
+    eval_bitwiseop Verilog.BinaryBitwiseOr l r := XBV.bitwise_binop RawXBV.or_bit l r;
+    eval_bitwiseop Verilog.BinaryBitwiseXor l r := XBV.bitwise_binop RawXBV.xor_bit l r;
   .
 
   Equations eval_shiftop {n1 n2} (op : Verilog.shiftop) : XBV.xbv n1 -> XBV.xbv n2 -> XBV.xbv n1 :=
@@ -1538,7 +1489,7 @@ Module CombinationalOnly.
   Equations eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv (Verilog.unaryop_result op n) :=
     eval_unaryop Verilog.UnaryPlus x := x;
     eval_unaryop Verilog.UnaryNot x := XBV.not x;
-    eval_unaryop Verilog.UnaryReduceAnd x := XBV.of_bits [ XBV.fold I and_bit x ] ;
+    eval_unaryop Verilog.UnaryReduceAnd x := XBV.of_bits [ XBV.fold I RawXBV.and_bit x ] ;
     eval_unaryop Verilog.UnaryLogicalNot x with XBV.to_bv x => {
       | Some bv with BV.is_zero bv => {
         | true => XBV.ones 1
@@ -1550,19 +1501,6 @@ Module CombinationalOnly.
 
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
   (* Notation with_rewrite e := (eq_rect_r _ e _). *)
-
-  Import EqNotations.
-
-  Equations convert {from} (to : N) (value : XBV.xbv from) : XBV.xbv to :=
-    convert to value with dec (from < to)%N := {
-      | left Hlt => rew _ in XBV.concat (XBV.zeros (to - from)%N) value
-      | right Hge with dec (from > to)%N => {
-        | left Hgr => XBV.extr value 0 to;
-        | right Hle => rew _ in value
-        }
-      }.
-  Next Obligation. crush. Qed.
-  Next Obligation. crush. Qed.
 
   (* TODO: Check that ?: semantics match with standard *)
   Definition eval_conditional {w_cond w} (cond : XBV.xbv w_cond) (ifT : XBV.xbv w) (ifF : XBV.xbv w) : XBV.xbv w :=
@@ -1608,7 +1546,7 @@ Module CombinationalOnly.
       end;
     eval_expr regs (Verilog.Resize t expr _) :=
       let val := eval_expr regs expr in
-      (convert t val);
+      (XBV.resize t val);
     eval_expr regs (Verilog.Concatenation e1 e2) :=
       let val1 := eval_expr regs e1 in
       let val2 := eval_expr regs e2 in
@@ -1735,7 +1673,7 @@ Module CombinationalOnly.
       None; (* bit select is always on a variable *)
     eval_expr_static (Verilog.Resize t expr _) :=
       let* val := eval_expr_static expr in
-      Some (convert t val);
+      Some (XBV.resize t val);
     eval_expr_static (Verilog.Concatenation e1 e2) :=
       let* val1 := eval_expr_static e1 in
       let* val2 := eval_expr_static e2 in
@@ -1765,76 +1703,6 @@ End CombinationalOnly.
 
 Section ExpressionFacts.
   Import CombinationalOnly.
-
-  Lemma bitwise_binop_no_exes (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
-    (forall (lb rb : bool), RawXBV.bool_to_bit (f_bool lb rb) = f_bit (RawXBV.bool_to_bit lb) (RawXBV.bool_to_bit rb)) ->
-    forall n (l_bv r_bv : BV.bitvector n),
-      bitwise_binop f_bit (XBV.from_bv l_bv) (XBV.from_bv r_bv) = XBV.from_bv (BV.map2 f_bool l_bv r_bv).
-  Proof.
-    intros * Hf *.
-    apply XBV.of_bits_equal; simpl.
-    destruct l_bv as [l_bv l_bv_wf].
-    destruct r_bv as [r_bv r_bv_wf].
-    simpl in *.
-    unfold bitwise_binop_raw.
-    generalize dependent n.
-    generalize dependent r_bv.
-    induction l_bv; simpl; simp map2; try easy.
-    destruct r_bv; simpl; simp map2; try easy.
-    specialize (IHl_bv r_bv).
-    intros.
-    simpl in *. f_equal.
-    - auto.
-    - unfold BVList.RAWBITVECTOR_LIST.size in *.
-      eapply IHl_bv; crush.
-  Qed.
-  
-  Lemma bitwise_and_no_exes w (l_bv r_bv : BV.bitvector w) :
-      bitwise_binop and_bit (XBV.from_bv l_bv) (XBV.from_bv r_bv) =
-        XBV.from_bv (BV.bv_and l_bv r_bv).
-  Proof.
-    rewrite bitwise_binop_no_exes with (f_bool := andb).
-    - XBV.bitvector_erase. 
-      f_equal.
-      unfold RawBV.bv_and.
-      rewrite wf0, wf, N.eqb_refl.
-      reflexivity.
-    - intros [] []; reflexivity.
-  Qed.
-  
-  Lemma bitwise_or_no_exes w (l_bv r_bv : BV.bitvector w) :
-      bitwise_binop or_bit (XBV.from_bv l_bv) (XBV.from_bv r_bv) =
-        XBV.from_bv (BV.bv_or l_bv r_bv).
-  Proof.
-    rewrite bitwise_binop_no_exes with (f_bool := orb).
-    - XBV.bitvector_erase. 
-      f_equal.
-      unfold RawBV.bv_or.
-      rewrite wf0, wf, N.eqb_refl.
-      reflexivity.
-    - intros [] []; reflexivity.
-  Qed.
-
-  Lemma bitwise_xor_no_exes w (l_bv r_bv : BV.bitvector w) :
-      bitwise_binop xor_bit (XBV.from_bv l_bv) (XBV.from_bv r_bv) =
-        XBV.from_bv (BV.bv_xor l_bv r_bv).
-  Proof.
-    rewrite bitwise_binop_no_exes with (f_bool := xorb).
-    - XBV.bitvector_erase. 
-      f_equal.
-      unfold RawBV.bv_xor.
-      rewrite wf0, wf, N.eqb_refl.
-      reflexivity.
-    - intros [] []; reflexivity.
-  Qed.
-  
-  (* These lemmas are defined here so this has to stay, but maybe the
-     lemmas should also be in Bitvector.v *)
-  Hint Rewrite
-    bitwise_and_no_exes
-    bitwise_or_no_exes
-    bitwise_xor_no_exes
-    : xbv.
 
   Lemma eval_arithmeticop_to_bv op w (lhs rhs : BV.bitvector w) :
     exists bv, XBV.to_bv (eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
@@ -1916,47 +1784,6 @@ Section ExpressionFacts.
     crush.
   Qed.
 
-  Import EqNotations. 
-
-  Equations convert_bv {from} (to : N) (value : BV.bitvector from) : BV.bitvector to :=
-    convert_bv to value with dec (from < to)%N := {
-      | left Hlt => rew _ in BV.bv_concat (BV.zeros (to - from)%N) value
-      | right Hge with dec (from > to)%N => {
-        | left Hgr => BV.bv_extr 0 to value;
-        | right Hle => rew _ in value
-        }
-      }.
-  Next Obligation. lia. Defined.
-  Next Obligation. lia. Defined.
-  
-  Lemma convert_no_exes w_from w_to (from : BV.bitvector w_from) :
-    convert w_to (XBV.from_bv from) = XBV.from_bv (convert_bv w_to from).
-  Proof.
-    funelim (convert w_to (XBV.from_bv from)); clear Heqcall.
-    all: try destruct_rew.
-    - autorewrite with xbv.
-      funelim (convert_bv (to - from + from) from0); [|lia|lia];
-        clear Heqcall.
-      apply XBV.of_bits_equal.
-      destruct_rew.
-      repeat f_equal.
-      crush.
-    - autorewrite with xbv.
-      funelim (convert_bv to from0); [lia| |lia].
-      reflexivity.
-    - funelim (convert_bv from from0); [lia|lia|].
-      now rewrite <- eq_rect_eq.
-  Qed.
-
-  Lemma convert_from_bv w_from w_to (from : BV.bitvector w_from) :
-    exists bv : BV.bitvector w_to, XBV.to_bv (convert w_to (XBV.from_bv from)) = Some bv.
-  Proof.
-    funelim (convert w_to (XBV.from_bv from)).
-    all: try destruct_rew; simpl.
-    all: autorewrite with xbv.
-    all: eauto.
-  Qed.
-
   Inductive upper_bound_static {w} (e : expression w) (bound : N) : Prop :=
   | upper_bound_static_eval xbv val
     (Heval : eval_expr_static e = Some xbv)
@@ -1980,21 +1807,6 @@ Section ExpressionFacts.
       + exact Hwidth.
   Qed.
 End ExpressionFacts.
-
-(* We duplicate the hints from above because we can't use #[global]
-   inside Module *)
-#[global]
-Hint Rewrite
-  bitwise_and_no_exes
-  bitwise_or_no_exes
-  bitwise_xor_no_exes
-  : xbv.
-
-#[global]
-Hint Rewrite
-  convert_no_exes
-  using lia
-  : xbv.
 
 Module Facts.
   Import CombinationalOnly.
