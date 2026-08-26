@@ -83,29 +83,23 @@ Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
       (exec_module_item regs mi) ρ ->
     SMTQueries.term_satisfied_by ρ t.
 Proof.
-  funelim (transfer_module_item tag mi);
-    intros * Hdisjoint * Htransfer Hmatch; monad_inv; [idtac].
+  unfold verilog_smt_match_states_partial in *.
+  funelim (transfer_module_item tag mi).
+  all: intros * Hdisjoint * Htransfer Hmatch.
+  all: monad_inv; expect 1.
   simp exec_module_item exec_statement in Hmatch.
-  monad_inv.
-  simpl in Hdisjoint.
   rewrite smt_eq_sat_iff.
-  unpack_verilog_smt_match_states_partial.
-  rename_match
-    (verilog_smt_match_states_partial (Verilog.expr_reads _) _ _ _)
-    into Hreads.
-  rename_match
-    (verilog_smt_match_states_partial (Verilog.assign_target_writes _) _ _ _)
-    into Hwrites.
-  assert (LocationSet.Disjoint
-    (Verilog.assign_target_writes lhs) (Verilog.expr_reads rhs)) as Hdisjoint' by
-    (symmetry; exact Hdisjoint).
-  assert (verilog_smt_match_states_partial (Verilog.expr_reads rhs) tag regs ρ) as Hregs by
-    (eapply Facts.set_target_match_before; eassumption).
+  RegisterState.unpack_match_on.
+  rename_match (_ =( Verilog.expr_reads _ )= _) into Hreads.
+  rename_match (_ =( Verilog.assign_target_writes _ )= _) into Hwrites.
+  cbn in *.
+  apply Facts.set_target_match_before in Hreads; [|LocationSet.setdec].
   apply XBV.from_bv_injective.
   erewrite <- assign_target_to_smt_value by eassumption.
-  erewrite <- expr_to_smt_value by eassumption.
-  rewrite <- (Facts.read_target_change_regs lhs _ _ Hwrites).
-  apply Facts.read_target_set_target. exact lhs_wf.
+  erewrite <- Facts.read_target_change_regs by eassumption.
+  rewrite Facts.read_target_set_target by assumption.
+  eapply expr_to_smt_value.
+  all: eassumption.
 Qed.
 
 Lemma assign_target_to_smt_valid {w} tag (target : Verilog.assign_target w) :
