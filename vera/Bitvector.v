@@ -34,7 +34,8 @@ Hint Rewrite Nat2N.inj_add Nat2N.inj_mul Nat2N.inj_sub Nat2N.inj_min Nat2N.inj_m
 Module RawBV.
   Include RAWBITVECTOR_LIST.
   Notation t := bitvector.
-  (* Definition some_bitvector := {n : _ & bitvector n}. *)
+
+  (* Construction and conversion. *)
   Definition is_zero (a : bitvector) :=
     bv_eq a (zeros (size a)).
 
@@ -67,6 +68,7 @@ Module RawBV.
 
   Definition to_N (val : bitvector) : N := N.of_nat (list2nat_be val).
 
+  (* Presentation. *)
   Fixpoint to_string (val : bitvector) : string :=
     match val with
     | [] => ""
@@ -87,6 +89,7 @@ Module RawBV.
     induction bv1; destruct bv2; intros; simp map2; try crush.
   Qed.
 
+  (* Shifts. *)
   Equations nice_nshl_be : list bool -> nat -> list bool :=
     nice_nshl_be bs 0 := bs;
     nice_nshl_be [] _ := [];
@@ -160,6 +163,7 @@ Module RawBV.
 
   #[global] Hint Rewrite shr_size : xbv_size.
 
+  (* Numeric interpretation. *)
   Lemma pow2_pow i : pow2 i = 2 ^ i.
   Proof.
     induction i; simpl.
@@ -237,37 +241,19 @@ Module RawBV.
   Lemma _list2nat_be_of_N_full v : forall n i,
     _list2nat_be (of_N_full v) n i = (pow2 i * N.to_nat v) + n.
   Proof.
-    unfold of_N_full.
-    destruct v; simpl; intros.
-    { intros. lia. }
-    remember (of_pos_full p) as bv.
-    revert n i. generalize dependent p.
-    induction bv; intros; destruct p; simpl in *; try discriminate.
-    - inv Heqbv.
-      rewrite Pos2Nat.inj_xI.
-      erewrite IHbv; try reflexivity.
-      rewrite ! pow2_pow in *.
-      replace (i + 1) with (S i) by lia.
-      rewrite Nat.pow_succ_r'.
-      lia.
-    - inv Heqbv.
-      rewrite Pos2Nat.inj_xO.
-      erewrite IHbv; try reflexivity.
-      rewrite ! pow2_pow in *.
-      replace (i + 1) with (S i) by lia.
-      rewrite Nat.pow_succ_r'.
-      lia.
-    - destruct bv; try discriminate. inv Heqbv.
-      simpl. lia.
+    intros.
+    rewrite _list2nat_be_arith, list2nat_be_of_N_full, pow2_pow.
+    lia.
   Qed.
 
   Lemma to_N_of_N_full n : to_N (of_N_full n) = n.
   Proof.
-    unfold to_N, list2nat_be.
-    rewrite _list2nat_be_of_N_full.
-    simpl. lia.
+    unfold to_N.
+    rewrite list2nat_be_of_N_full.
+    apply N2Nat.id.
   Qed.
 
+  (* Replication and updates. *)
   Definition replicate (n : N) (bv : bitvector) : bitvector :=
     List.concat (List.repeat bv (N.to_nat n)).
 
@@ -583,6 +569,7 @@ Module BV.
 End BV.
 
 Module RawXBV.
+  (* Bits and Boolean conversion. *)
   Variant bit := X | I | O.
 
   Definition bit_to_bool b :=
@@ -634,40 +621,36 @@ Module RawXBV.
   
   #[global] Hint Rewrite fold_size removelast_cons_size : xbv_size.
 
-  Definition exes (count : N) : xbv := List.repeat X (nat_of_N count).
-  Definition zeros (count : N) : xbv := List.repeat O (nat_of_N count).
-  Definition ones (count : N) : xbv := List.repeat I (nat_of_N count).
+  (* Constants are special cases of bit replication. *)
+  Definition replicate_bit (n : N) (b : bit) :=
+    List.repeat b (N.to_nat n).
+
+  Lemma replicate_bit_size n b :
+    size (replicate_bit n b) = n.
+  Proof.
+    unfold replicate_bit, size.
+    rewrite List.repeat_length.
+    apply N2Nat.id.
+  Qed.
+
+  #[global] Hint Rewrite @replicate_bit_size : xbv_size.
+
+  Definition exes (count : N) : xbv := replicate_bit count X.
+  Definition zeros (count : N) : xbv := replicate_bit count O.
+  Definition ones (count : N) : xbv := replicate_bit count I.
 
   Lemma exes_size {n} : size (exes n) = n.
-  Proof.
-    unfold exes.
-    induction n using N.peano_rect; simpl.
-    - reflexivity.
-    - rewrite Nnat.N2Nat.inj_succ. simpl in *.
-      lia.
-  Qed.
+  Proof. apply replicate_bit_size. Qed.
 
   #[global] Hint Rewrite @exes_size : xbv_size.
 
   Lemma ones_size {n} : size (ones n) = n.
-  Proof.
-    unfold ones.
-    induction n using N.peano_rect; simpl.
-    - reflexivity.
-    - rewrite Nnat.N2Nat.inj_succ. simpl in *.
-      lia.
-  Qed.
+  Proof. apply replicate_bit_size. Qed.
 
   #[global] Hint Rewrite @ones_size : xbv_size.
 
   Lemma zeros_size {n} : size (zeros n) = n.
-  Proof.
-    unfold zeros.
-    induction n using N.peano_rect; simpl.
-    - reflexivity.
-    - rewrite Nnat.N2Nat.inj_succ. simpl in *.
-      lia.
-  Qed.
+  Proof. apply replicate_bit_size. Qed.
 
   #[global] Hint Rewrite @zeros_size : xbv_size.
 
@@ -677,6 +660,7 @@ Module RawXBV.
   Definition eq_dec (bv1 bv2: xbv) : { bv1 = bv2 } + { bv1 <> bv2 }.
   Proof. decide equality. apply bit_eq_dec. Qed.
 
+  (* Bitvector conversion. *)
   Definition from_bv (bv : RawBV.t) : xbv :=
     List.map bool_to_bit bv
   .
@@ -725,19 +709,6 @@ Module RawXBV.
     reflexivity.
   Qed.
   
-  Definition replicate_bit (n : N) (b : bit) :=
-    List.repeat b (N.to_nat n).
-
-  Lemma replicate_bit_size n b :
-    size (replicate_bit n b) = n.
-  Proof.
-    unfold replicate_bit, size.
-    rewrite List.repeat_length.
-    apply N2Nat.id.
-  Qed.
-
-  #[global] Hint Rewrite @replicate_bit_size : xbv_size.
-
   Definition replicate (n : N) (bv : xbv) : xbv :=
     List.concat (List.repeat bv (N.to_nat n)).
 
@@ -848,6 +819,7 @@ Module RawXBV.
 
   #[global] Hint Rewrite @not_size : xbv_size.
 
+  (* Concatenation and extraction. *)
   Definition concat (l r : xbv) : xbv := r ++ l.
 
   Lemma concat_size {l r} : size (concat l r) = (size l + size r)%N.
@@ -879,7 +851,7 @@ Module RawXBV.
   Lemma concat_zeros (w1 w2 : N) :
     concat (zeros w1) (zeros w2) = zeros (w1 + w2).
   Proof.
-    unfold zeros, concat.
+    unfold zeros, replicate_bit, concat.
     rewrite <- List.repeat_app. f_equal. lia.
   Qed.
 
@@ -943,13 +915,8 @@ Module RawXBV.
   Proof.
     intros bv. induction bv.
     - reflexivity.
-    - simpl in *.
-      destruct a.
-      + unfold to_bv in *. simpl.
-        replace (List.mapT_list bit_to_bool (from_bv bv)) with (Some bv).
-        reflexivity.
-      + unfold to_bv in *. simpl.
-        replace (List.mapT_list bit_to_bool (from_bv bv)) with (Some bv).
+    - simpl in *. destruct a; unfold to_bv in *; simpl;
+        replace (List.mapT_list bit_to_bool (from_bv bv)) with (Some bv);
         reflexivity.
   Qed.
 
@@ -969,7 +936,7 @@ Module RawXBV.
       + assumption.
   Qed.
 
-  (* bitvectors are little-endian, so shifts are inverted *)
+  (* Shifts. Bitvectors are little-endian, so shifts are inverted. *)
   Equations shl (bv : xbv) (shamt : nat) : xbv :=
     shl bv 0 := bv;
     shl [] n := [];
@@ -993,7 +960,7 @@ Module RawXBV.
     shl xbv shamt = zeros (size xbv).
   Proof.
     intros.
-    unfold size, zeros in *.
+    unfold size, zeros, replicate_bit in *.
     N_to_nat.
     funelim (shl xbv shamt).
     - destruct bv; crush.
@@ -1026,7 +993,7 @@ Module RawXBV.
     shr xbv shamt = zeros (size xbv).
   Proof.
     intros.
-    unfold size, zeros in *.
+    unfold size, zeros, replicate_bit in *.
     N_to_nat.
     funelim (shr xbv shamt).
     - destruct bv; crush.
@@ -1087,16 +1054,9 @@ Module RawXBV.
     (List.length xbv < n) ->
     shr xbv n = zeros (size xbv).
   Proof.
-    funelim (shr xbv n); intros; unfold zeros; simpl in *.
-    - destruct bv; crush.
-    - reflexivity.
-    - insterU H.
-      unfold zeros in *.
-      rewrite Pnat.SuccNat2Pos.id_succ.
-      rewrite Nat2N.id in *.
-      simpl. rewrite H.
-      clear Heqcall H0 H.
-      induction (List.length bs); crush.
+    intros H.
+    apply shr_overshift.
+    unfold size. lia.
   Qed.
   
   Lemma shr_as_concat_le (n : nat) (xbv : xbv) :
@@ -1106,7 +1066,7 @@ Module RawXBV.
         (zeros (N.of_nat n))
         (extr xbv (N.of_nat n) (size xbv - N.of_nat n)).
   Proof.
-    unfold zeros, concat, extr, size.
+    unfold zeros, replicate_bit, concat, extr, size.
     simpl. rewrite Nat2N.id.
     intros.
     autodestruct_eqn E; kill_bools; try lia.
@@ -1144,15 +1104,9 @@ Module RawXBV.
     (List.length xbv < n) ->
     shl xbv n = zeros (size xbv).
   Proof.
-    funelim (shl xbv n); intros.
-    - destruct bv; crush.
-    - reflexivity.
-    - insterU H.
-      autorewrite with xbv_size in *.
-      unfold size, zeros in *.
-      cbn [List.length] in *. 
-      erewrite H by lia.
-      rewrite ! Nat2N.id. reflexivity.
+    intros H.
+    apply shl_overshift.
+    unfold size. lia.
   Qed.
   
   Lemma extract_remove_last n l:
@@ -1176,7 +1130,7 @@ Module RawXBV.
         (extr xbv 0 (size xbv - N.of_nat n))
         (zeros (N.of_nat n)).
   Proof.
-    unfold zeros, concat, extr, size.
+    unfold zeros, replicate_bit, concat, extr, size.
     simpl. rewrite Nat2N.id.
     intros.
     autodestruct_eqn E; kill_bools; N_to_nat; try lia.
@@ -1324,7 +1278,7 @@ Module RawXBV.
     intros. unfold extr.
     autorewrite with xbv_size.
     autodestruct_eqn E; kill_bools; [clear E|crush].
-    unfold zeros.
+    unfold zeros, replicate_bit.
     N_to_nat.
     revert lo sz H.
     induction w; intros; simpl; simp extract.
@@ -1372,6 +1326,7 @@ Module RawXBV.
     from_bv (b1 ++ b2)%list = (from_bv b1 ++ from_bv b2)%list.
   Proof. unfold from_bv. apply List.map_app. Qed.
 
+  (* Updates. *)
   Equations set_bit_list (bv : xbv) (idx : nat) (val : bit) : xbv := {
     | (_ :: tl), 0, val => val :: tl
     | (b :: tl), (S idx'), val => b :: set_bit_list tl idx' val
@@ -1701,14 +1656,9 @@ Module XBV.
     to_bv x = Some bv ->
     x = from_bv bv.
   Proof.
-    intros.
-    apply to_bv_bits in H.
-    unfold from_bv.
-    destruct x as [x_bits x_wf].
-    simpl in H.
-    apply RawXBV.bv_xbv_inverse in H.
-    apply of_bits_equal. simpl.
-    auto.
+    intros H.
+    symmetry.
+    now apply bv_xbv_inverse.
   Qed.
 
   Definition has_x {n} (v : xbv n) : Prop :=
@@ -1751,16 +1701,10 @@ Module XBV.
     from_bv bv1 = from_bv bv2 ->
     bv1 = bv2.
   Proof.
-    unfold from_bv.
     intros n bv1 bv2 H.
-    inv H.
-    apply RawXBV.from_bv_injective in H1.
-    apply BV.bv_eq_reflect.
-    destruct bv1, bv2; simpl in *.
-    unfold BV.bv_eq, RAWBITVECTOR_LIST.bv_eq.
-    simpl. clear wf0 wf1. subst.
-    rewrite N.eqb_refl.
-    apply RAWBITVECTOR_LIST.List_eq_refl.
+    apply (f_equal to_bv) in H.
+    rewrite ! xbv_bv_inverse in H.
+    now inversion H.
   Qed.
 
   Lemma to_bv_injective : forall n (xbv1 xbv2 : xbv n) (bv : BV.bitvector n),
@@ -1976,11 +1920,9 @@ Module XBV.
   Lemma concat_no_exes n1 n2 (bv1 : BV.bitvector n1) (bv2 : BV.bitvector n2) :
     concat (from_bv bv1) (from_bv bv2) = from_bv (BV.bv_concat bv1 bv2).
   Proof.
-    destruct bv1 as [bv1 wf1], bv2 as [bv2 wf2].
-    apply of_bits_equal. simpl.
-    unfold RawBV.bv_concat, RawXBV.from_bv.
-    rewrite List.map_app.
-    reflexivity.
+    symmetry.
+    apply bv_xbv_inverse.
+    apply concat_to_bv.
   Qed.
 
   Lemma concat_empty1 {w} E (x1 : xbv 0) (x2 : xbv w) :
@@ -2013,9 +1955,9 @@ Module XBV.
   Lemma not_no_exes n (bv : BV.bitvector n) :
     not (from_bv bv) = from_bv (BV.bv_not bv).
   Proof.
-    eapply to_bv_injective.
-    - apply not_to_bv.
-    - apply XBV.xbv_bv_inverse.
+    symmetry.
+    apply bv_xbv_inverse.
+    apply not_to_bv.
   Qed.
 
   Program Definition replicate_bit (n : N) (b : bit) : xbv n :=
@@ -2036,7 +1978,7 @@ Module XBV.
     to_bv (exes n) = None.
   Proof.
     intros.
-    unfold exes, RawXBV.exes, replicate_bit.
+    unfold exes, RawXBV.exes, RawXBV.replicate_bit, replicate_bit.
     apply has_x_to_bv. unfold has_x. simpl.
     unfold RawXBV.has_x.
     induction (N.to_nat n) eqn:E; crush.
@@ -2045,7 +1987,7 @@ Module XBV.
   Lemma ones_to_bv n :
     to_bv (ones n) = Some (BV.ones n).
   Proof.
-    unfold ones, RawXBV.ones, BV.ones, replicate_bit, RawBV.ones.
+    unfold ones, RawXBV.ones, RawXBV.replicate_bit, BV.ones, replicate_bit, RawBV.ones.
     rewrite <- xbv_bv_inverse. f_equal.
     apply of_bits_equal; simpl.
     induction (N.to_nat n); crush.
@@ -2054,15 +1996,15 @@ Module XBV.
   Lemma ones_from_bv n :
     ones n = from_bv (BV.ones n).
   Proof.
-    eapply to_bv_injective.
-    - apply ones_to_bv.
-    - eapply xbv_bv_inverse.
+    symmetry.
+    apply bv_xbv_inverse.
+    apply ones_to_bv.
   Qed.
 
   Lemma zeros_to_bv n :
     to_bv (zeros n) = Some (BV.zeros n).
   Proof.
-    unfold zeros, RawXBV.zeros, BV.zeros, replicate_bit, RawBV.zeros.
+    unfold zeros, RawXBV.zeros, RawXBV.replicate_bit, BV.zeros, replicate_bit, RawBV.zeros.
     rewrite <- xbv_bv_inverse. f_equal.
     apply of_bits_equal; simpl.
     induction (N.to_nat n); crush.
@@ -2071,9 +2013,9 @@ Module XBV.
   Lemma zeros_from_bv n :
     zeros n = from_bv (BV.zeros n).
   Proof.
-    eapply to_bv_injective.
-    - apply zeros_to_bv.
-    - eapply xbv_bv_inverse.
+    symmetry.
+    apply bv_xbv_inverse.
+    apply zeros_to_bv.
   Qed.
 
   #[program]
@@ -2096,9 +2038,9 @@ Module XBV.
   Lemma replicate_no_exes c n (bv : BV.bitvector n) :
     replicate c (from_bv bv) = from_bv (BV.replicate c bv).
   Proof.
-    eapply to_bv_injective.
-    - apply replicate_to_bv.
-    - apply XBV.xbv_bv_inverse.
+    symmetry.
+    apply bv_xbv_inverse.
+    apply replicate_to_bv.
   Qed.
 
   #[program]
@@ -2210,30 +2152,13 @@ Module XBV.
   Lemma to_bv_some_raw_iff w (xbv : xbv w) (bv : BV.bitvector w) :
     to_bv xbv = Some bv <-> RawXBV.to_bv (bits xbv) = Some (BV.bits bv).
   Proof.
-    (* This is disgusting (written while half asleep) plzfix *)
-    split; intros; simpl in *.
-    - apply bv_xbv_inverse in H. subst.
-      destruct bv as [bv bv_wf].
-      simpl. apply RawXBV.xbv_bv_inverse.
-    - apply RawXBV.bv_xbv_inverse in H.
-      destruct bv as [bv bv_wf].
-      simpl in *.
-      funelim (to_bv xbv).
-      + unfold raw_to_bv_with_proof in *.
-        rewrite e in Heq. inv Heq.
-        f_equal.
-        apply BV.of_bits_equal.
-        simpl. destruct_rew.
-        destruct v as [v v_wf].
-        unfold bits, bv, RawBV.of_bits in *. simpl in *. subst.
-        rewrite RawXBV.xbv_bv_inverse in e.
-        inv e.
-        reflexivity.
-      + destruct v as [v v_wf].
-        simpl in *. subst.
-        clear Heq.
-        rewrite RawXBV.xbv_bv_inverse in prf.
-        discriminate.
+    split.
+    - apply to_bv_bits.
+    - intros H.
+      apply RawXBV.bv_xbv_inverse in H.
+      assert (xbv = from_bv bv) as ->.
+      { apply of_bits_equal. simpl. symmetry. exact H. }
+      apply xbv_bv_inverse.
   Qed.
 
   Lemma concat_from_bv_inv1 n1 n2 (xbv1 : xbv n1) (xbv2 : xbv n2) bv :
@@ -2433,7 +2358,7 @@ Module XBV.
     bitvector_erase. repeat unfold RawXBV.extr.
     rewrite RawXBV.exes_size.
     autodestruct_eqn E; kill_bools; [|reflexivity].
-    unfold RawXBV.exes.
+    unfold RawXBV.exes, RawXBV.replicate_bit.
   
     N_to_nat.
     remember (List.repeat X n1) as xs.	 
