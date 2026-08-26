@@ -63,6 +63,8 @@ Proof.
   - destruct loc as [vec idx].
     simp assign_target_to_smt in Htarget_smt. inv Htarget_smt.
     rewrite <- smt_select_bit_value by (simpl in wf; lia).
+    unfold RegisterState.get_location.
+    rewrite <- XBV.extr_one_bit by exact wf.
     reflexivity.
   - destruct slice.
     simp assign_target_to_smt in Htarget_smt. inv Htarget_smt.

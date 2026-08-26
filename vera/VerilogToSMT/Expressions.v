@@ -76,6 +76,48 @@ Proof.
   all: now autorewrite with xbv bv_binop in *.
 Qed.
 
+Inductive and_reduce_bv_cases {w} : BV.bitvector w -> RawXBV.bit -> Prop :=
+  | and_reduce_ones x : x = BV.ones w -> and_reduce_bv_cases x RawXBV.I
+  | and_reduce_other x : x <> BV.ones w -> and_reduce_bv_cases x RawXBV.O
+  .
+
+Lemma and_reduce_rec_false xbv : RawXBV.fold O and_bit xbv = O.
+Proof. induction xbv; simp and_bit; auto. Qed.
+
+Lemma and_reduce_bv_spec {w} (bv : BV.bitvector w) :
+  and_reduce_bv_cases bv (XBV.fold I and_bit (XBV.from_bv bv)).
+Proof.
+  unfold XBV.fold. XBV.bitvector_erase. subst.
+  induction bv.
+  all: simpl.
+  - replace ({| BV.bv := []; BV.wf := eq_refl |}) with (BV.ones 0)
+      by now XBV.bitvector_erase.
+    apply and_reduce_ones.
+    reflexivity.
+  - inv IHbv; destruct a; simpl; simp and_bit.
+    + rewrite <- H. constructor.
+      (* TODO: Most of what happens in these cases should really be part of XBV.bitvector_erase *)
+      apply BV.of_bits_equal. simpl.
+      apply (f_equal (@BV.bits _)) in H1. simpl in H1.
+      unfold RawBV.ones, RawBV.size in *.
+      rewrite !Nat2N.id in *. simpl. now f_equal.
+    + rewrite and_reduce_rec_false. constructor.
+      intros contra. apply (f_equal (@BV.bits _)) in contra. simpl in contra.
+      unfold RawBV.ones, RawBV.size in contra.
+      rewrite Nat2N.id in contra. discriminate.
+    + rewrite <- H. constructor.
+      intros contra. apply H1, BV.of_bits_equal.
+      apply (f_equal (@BV.bits _)) in contra. simpl in contra.
+      unfold RawBV.ones, RawBV.size in *. rewrite !Nat2N.id in *.
+      simpl in contra. simpl.
+      unfold RawBV.ones, RawBV.size. rewrite Nat2N.id.
+      now injection contra.
+    + rewrite and_reduce_rec_false. constructor.
+      intros contra. apply (f_equal (@BV.bits _)) in contra. simpl in contra.
+      unfold RawBV.ones, RawBV.size in contra.
+      rewrite Nat2N.id in contra. discriminate.
+Qed.
+
 Lemma unaryop_to_smt_value ρ op w (smt_expr : SMTLib.term (SMTLib.Sort_BitVec w)) :
     eval_unaryop op (XBV.from_bv (SMTLib.interp_term ρ smt_expr))
       = XBV.from_bv (SMTLib.interp_term ρ (unaryop_to_smt op smt_expr)).
@@ -89,8 +131,16 @@ Proof.
     destruct (BV.bv_eq (n:=w) (SMTLib.interp_term ρ smt_expr) (BV.zeros w)).
     + apply XBV.ones_from_bv.
     + apply XBV.zeros_from_bv.
-  - admit. (* And-reduce *)
-Admitted.
+  - destruct (and_reduce_bv_spec (SMTLib.interp_term ρ smt_expr)).
+    + subst x. replace (SMTLib.value_eqb _ _) with true
+        by (symmetry; now apply SMTLib.value_eqb_refl).
+      rewrite <- XBV.ones_from_bv.
+      XBV.bitvector_erase. reflexivity.
+    + replace (SMTLib.value_eqb _ _) with false
+        by (symmetry; now apply SMTLib.value_eqb_neq).
+      rewrite <- XBV.zeros_from_bv.
+      XBV.bitvector_erase. reflexivity.
+Qed.
 
 Lemma conditional_to_smt_value ρ w_cond w
       (smt_cond : SMTLib.term (SMTLib.Sort_BitVec w_cond))
@@ -150,16 +200,15 @@ Proof. subst. reflexivity. Qed.
 
 Lemma smt_select_bit_value ρ w (smt_vec : SMTLib.term (SMTLib.Sort_BitVec w)) (idx : N) :
     (idx < w)%N ->
-    XBV.of_bits [XBV.bitOf idx (XBV.from_bv (SMTLib.interp_term ρ smt_vec))]
+    XBV.extr (XBV.from_bv (SMTLib.interp_term ρ smt_vec)) idx 1
       = XBV.from_bv (SMTLib.interp_term ρ (smt_select_bit smt_vec idx)).
 Proof.
   intros Hbound.
   unfold smt_select_bit in *. simpl.
   rewrite smtlib_interp_rewrite.
   simpl. rewrite N.add_sub. simpl.
-  rewrite BV.bv_extr_one_bit by lia.
-  rewrite XBV.bit_of_as_bv by lia.
-  XBV.bitvector_erase. reflexivity.
+  apply XBV.extr_no_exes.
+  lia.
 Qed.
 
 Lemma expr_to_smt_value w expr : forall tag regs ρ t,
@@ -169,6 +218,7 @@ Lemma expr_to_smt_value w expr : forall tag regs ρ t,
 Proof.
   induction expr.
   all: intros * Hexpr_to_smt Hmatch.
+  all: try match goal with [slice : Slice.t _ |- _] => destruct slice end.
   all: simpl in *; simp expr_to_smt eval_expr in *.
   all: unpack_verilog_smt_match_states_partial.
   all: expect 12.
@@ -210,17 +260,37 @@ Proof.
   - (* conditional *)
     eapply conditional_to_smt_value.
   - (* Range select *)
-    (* TODO: Proof previously assumed all of the vec was defined, we now only have the slice *)
-    (* apply XBV.extr_no_exes.
-     * lia. *)
-    admit.
+    unfold verilog_smt_match_states_partial in Hmatch.
+    simpl.
+    rewrite <- XBV.extr_no_exes by lia.
+    change (XBV.extr (regs var) lo (1 + hi - lo))
+      with (RegisterState.get_slice regs (Slice.Mk var hi lo wf)).
+    erewrite RegisterState.get_slice_match by exact Hmatch.
+    reflexivity.
   - (* Bitselect (literal) *)
-    (* TODO: Proof previously assumed all of the vec was defined, we now only have the location *)
-    admit.
-    (* unfold select_bit.
-     * autorewrite with xbv.
-     * apply smt_select_bit_value.
-     * lia. *)
+    destruct expr.
+    all: simp expr_to_smt in Hexpr_to_smt.
+    all: inv Hexpr_to_smt.
+    all: rename_match (_ = inr t) into Hexpr_to_smt.
+    all: expect 1.
+    simp eval_expr.
+    destruct (XBV.to_N x) as [idx|] eqn:Ex.
+    all: simpl in Hexpr_to_smt; inv Hexpr_to_smt.
+    all: rename_match (_ = inr t) into Hexpr_to_smt.
+    all: expect 1.
+    destruct (assert_dec (idx < Var.varType vec)%N _).
+    all: inv Hexpr_to_smt.
+    replace (idx <? Var.varType vec)%N with true in Hmatch by lia.
+    (* TODO: Simplify, it shouldn't by unfolding/specializing match_on. *)
+    rewrite <- smt_select_bit_value by lia.
+    unfold verilog_smt_match_states_partial in Hmatch.
+    apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
+    rewrite !XBV.extr_bitOf by lia.
+    replace (idx + bit_idx)%N with idx by lia.
+    specialize (Hmatch (Location.Mk vec idx)).
+    unfold RegisterState.get_location in Hmatch.
+    apply Hmatch.
+    apply LocationSet.singleton_spec. reflexivity.
   - (* concat *)
     apply XBV.concat_no_exes.
   - (* literal *)
@@ -233,7 +303,7 @@ Proof.
     apply LocationSet.of_variable_spec. auto.
   - rewrite cast_from_to_value by lia.
     apply convert_no_exes.
-Admitted.
+Qed.
 
 (* DELETEME: Duplicate *)
 Lemma expr_to_smt_valid w tag expr t regs ρ :

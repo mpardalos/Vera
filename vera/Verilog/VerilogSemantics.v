@@ -691,6 +691,11 @@ Module RegisterState.
     - apply Slice.wf_width.
   Qed.
 
+  Global Instance Proper_get_slice {w} (slice : Slice.t w) :
+    Proper (match_on (LocationSet.of_slice slice) ==> eq)
+      (fun regs => get_slice regs slice).
+  Proof. exact (get_slice_match slice). Qed.
+
   Lemma match_on_set_slice_elim2_in {w} C (slice : Slice.t w) x regs1 regs2 :
     regs1 =( C )= regs2 ->
     set_slice slice x regs1 =( C )= set_slice slice x regs2.

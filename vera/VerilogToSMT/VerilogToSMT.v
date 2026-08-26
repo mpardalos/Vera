@@ -178,6 +178,7 @@ Section expr_to_smt.
     expr_to_smt (Verilog.BitSelect vec (Verilog.IntegerLiteral w xbv_idx)) :=
       let vec_smt := var_to_smt vec in
       let* idx := opt_to_sum "Xs in BitSelect index"%string (XBV.to_N xbv_idx) in
+      assert_dec (idx < Var.varType vec)%N "Out-of-bounds bit-select"%string ;;
       ret (smt_select_bit vec_smt idx);
     expr_to_smt (Verilog.BitSelect vec _) :=
       raise "Unexpected variable bit-select in VerilogToSMT stage"%string;

@@ -1862,6 +1862,22 @@ Module XBV.
       reflexivity.
   Qed.
 
+  Lemma extr_one_bit (n : N) w (bv : xbv w) :
+    (n < w)%N ->
+    extr bv n 1 = of_bits [bitOf n bv].
+  Proof.
+    intros H.
+    bitvector_erase. subst.
+    unfold RawXBV.extr.
+    replace (1 + n <=? RawXBV.size bv0)%N with true.
+    2: { unfold RawXBV.size. symmetry. apply N.leb_le. lia. }
+    cbn. N_to_nat. change (Pos.to_nat 1) with 1.
+    funelim (RawXBV.extract bv0 n 1).
+    all: simpl in *.
+    - lia.
+    - destruct x'; simp extract; reflexivity.
+    - apply H. lia.
+  Qed.
 
   Lemma extr_no_exes (n i j : N) (bv : BV.bitvector n) :
     (i + j <= n)%N ->
