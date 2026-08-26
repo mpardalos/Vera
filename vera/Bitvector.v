@@ -1648,6 +1648,14 @@ Module XBV.
     exact H.
   Qed.
 
+  Lemma of_bits_bitOf (x : xbv 1) :
+    of_bits [bitOf 0 x] = x.
+  Proof.
+    apply bitOf_ext. intros i Hi.
+    change (i < 1)%N in Hi.
+    replace i with 0%N by lia. reflexivity.
+  Qed.
+
   Lemma xbv_bv_inverse n (bv : BV.bitvector n) :
       to_bv (from_bv bv) = Some bv.
   Proof.
@@ -1914,6 +1922,29 @@ Module XBV.
       exact (f_equal bits (extr_full high)).
     - rewrite wf. lia.
     - rewrite ! wf. lia.
+  Qed.
+
+  Lemma concat_extr {w1 w2} (x : xbv (w1 + w2)) :
+    concat (extr x w2 w1) (extr x 0 w2) = x.
+  Proof.
+    destruct x as [bits_x bits_wf]. apply of_bits_equal. simpl.
+    unfold RawXBV.concat, RawXBV.extr, RawXBV.size in *.
+    replace (w2 + 0 <=? N.of_nat (Datatypes.length bits_x))%N with true
+      by (symmetry; apply N.leb_le; lia).
+    replace (w1 + w2 <=? N.of_nat (Datatypes.length bits_x))%N with true
+      by (symmetry; apply N.leb_le; lia).
+    cbn.
+    remember (N.to_nat w2) as n2.
+    remember (N.to_nat w1) as n1.
+    assert (Hlen : Datatypes.length bits_x = n2 + n1) by lia.
+    clear bits_wf w1 w2 Heqn1 Heqn2.
+    revert bits_x n1 Hlen.
+    induction n2; intros.
+    - rewrite RawXBV.extract_empty by reflexivity. simpl.
+      apply RawXBV.extract_full. unfold RawXBV.size. lia.
+    - destruct bits_x as [|b bs]; [discriminate|].
+      rewrite RawXBV.extract_equation_3, RawXBV.extract_equation_4.
+      simpl. f_equal. apply IHn2. simpl in Hlen. lia.
   Qed.
 
   Lemma concat_to_bv n1 n2 (bv1 : BV.bitvector n1) (bv2 : BV.bitvector n2) :

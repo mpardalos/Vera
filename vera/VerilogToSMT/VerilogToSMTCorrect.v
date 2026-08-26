@@ -41,50 +41,6 @@ Local Open Scope verilog_scope.
 
 Opaque N.add N.sub.
 
-Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
-  forall t regs ρ,
-    LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
-    transfer_module_item tag mi = inr t ->
-    verilog_smt_match_states_partial
-      (Verilog.module_item_reads mi ∪ Verilog.module_item_writes mi)
-      tag
-      (exec_module_item regs mi) ρ ->
-    SMTQueries.term_satisfied_by ρ t.
-Proof.
-  funelim (transfer_module_item tag mi).
-  all: intros * Hdisjoint * Hexec Hmatch.
-  all: monad_inv; expect 1.
-  simp exec_module_item exec_statement in *.
-  monad_inv.
-  unfold SMTQueries.satisfied_by, SMTQueries.term_satisfied_by. repeat constructor.
-  simpl.
-  apply BV.bv_eq_reflect.
-
-  simpl in Hmatch, Hdisjoint.
-  disjoint_saturate.
-  unpack_verilog_smt_match_states_partial.
-  rename_match
-    (verilog_smt_match_states_partial (Verilog.expr_reads _) _ _ _)
-    into Hbefore.
-  rename_match
-    (verilog_smt_match_states_partial (Verilog.assign_target_writes _) _ _ _)
-    into Hafter.
-  simp set_target in Hbefore, Hafter.
-  (* apply verilog_smt_match_states_partial_set_reg_out in Hbefore;
-   *   [|LocationSet.setdec].
-   * assert (RegisterState.set_reg var (eval_expr regs rhs) regs var
-   *         = execution_of_valuation tag ρ var) as Hafter_var. {
-   *   apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
-   *   apply (Hafter (Location.Mk var bit_idx)).
-   *   apply LocationSet.of_variable_spec. auto.
-   * }
-   * rewrite RegisterState.set_reg_get_in in Hafter_var.
-   * unfold execution_of_valuation in Hafter_var.
-   * apply XBV.from_bv_injective.
-   * erewrite <- expr_to_smt_value by eassumption.
-   * symmetry. apply Hafter_var. *)
-Admitted.
-
 Lemma smt_eq_sat_iff s ρ (l r : SMTLib.term s) :
   SMTQueries.term_satisfied_by ρ (SMTLib.Term_Eq l r) <->
     (SMTLib.interp_term ρ l = SMTLib.interp_term ρ r).
@@ -115,6 +71,41 @@ Proof.
   - erewrite IHtarget1 by reflexivity.
     erewrite IHtarget2 by reflexivity.
     apply XBV.concat_no_exes.
+Qed.
+
+Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
+  forall t regs ρ,
+    LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
+    transfer_module_item tag mi = inr t ->
+    verilog_smt_match_states_partial
+      (Verilog.module_item_reads mi ∪ Verilog.module_item_writes mi)
+      tag
+      (exec_module_item regs mi) ρ ->
+    SMTQueries.term_satisfied_by ρ t.
+Proof.
+  funelim (transfer_module_item tag mi);
+    intros * Hdisjoint * Htransfer Hmatch; monad_inv; [idtac].
+  simp exec_module_item exec_statement in Hmatch.
+  monad_inv.
+  simpl in Hdisjoint.
+  rewrite smt_eq_sat_iff.
+  unpack_verilog_smt_match_states_partial.
+  rename_match
+    (verilog_smt_match_states_partial (Verilog.expr_reads _) _ _ _)
+    into Hreads.
+  rename_match
+    (verilog_smt_match_states_partial (Verilog.assign_target_writes _) _ _ _)
+    into Hwrites.
+  assert (LocationSet.Disjoint
+    (Verilog.assign_target_writes lhs) (Verilog.expr_reads rhs)) as Hdisjoint' by
+    (symmetry; exact Hdisjoint).
+  assert (verilog_smt_match_states_partial (Verilog.expr_reads rhs) tag regs ρ) as Hregs by
+    (eapply Facts.set_target_match_before; eassumption).
+  apply XBV.from_bv_injective.
+  erewrite <- assign_target_to_smt_value by eassumption.
+  erewrite <- expr_to_smt_value by eassumption.
+  rewrite <- (Facts.read_target_change_regs lhs _ _ Hwrites).
+  apply Facts.read_target_set_target. exact lhs_wf.
 Qed.
 
 Lemma assign_target_to_smt_valid {w} tag (target : Verilog.assign_target w) :
@@ -154,20 +145,6 @@ Proof.
   pose proof expr_to_smt_value as Hvalue_match. insterU Hvalue_match.
   rewrite Hvalue_match, <- Hsat.
   eapply assign_target_to_smt_valid; eassumption.
-Qed.
-
-Lemma mapT_list_eq_nil A B (f : A -> option B) l :
-  List.mapT_list f l = Some []%list ->
-  l = []%list.
-Proof. destruct l; crush. Qed.
-
-Lemma mapT_list_eq_cons A B l : forall (f : A -> option B) l' b,
-  List.mapT_list f l = Some (b :: l')%list ->
-  exists (a : A) (tl : list A), l = (a :: tl)%list /\ f a = Some b /\ List.mapT_list f tl = Some l'.
-Proof.
-  destruct l; intros * H; [crush|].
-  inv H. autodestruct_eqn E.
-  some_inv. eauto.
 Qed.
 
 Global Instance verilog_smt_match_states_partial_match_on_proper C :

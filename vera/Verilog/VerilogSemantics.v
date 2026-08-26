@@ -101,6 +101,25 @@ Module RegisterState.
 
   #[global]
   Hint Rewrite RegisterState.set_reg_get_out using congruence : register_state.
+
+  Lemma get_location_set_location loc wf bit regs :
+    get_location (set_location loc wf bit regs) loc = bit.
+  Proof.
+    unfold get_location, set_location.
+    rewrite set_reg_get_in, XBV.set_bit_get_in. reflexivity.
+  Qed.
+
+  Lemma get_slice_set_slice {w} (slice : Slice.t w) value regs :
+    get_slice (set_slice slice value regs) slice = value.
+  Proof.
+    apply XBV.bitOf_ext. intros i Hi.
+    unfold get_slice, set_slice.
+    rewrite set_reg_get_in.
+    rewrite XBV.extr_bitOf.
+    - rewrite XBV.set_slice_get_in by exact Hi. reflexivity.
+    - exact Hi.
+    - apply Slice.wf_width.
+  Qed.
                           
   Definition defined_value_for (locs : LocationSet.t) (regs : RegisterState.t) :=
     forall loc, loc ∈ locs -> get_location regs loc <> X.
@@ -652,6 +671,23 @@ Module RegisterState.
     rewrite XBV.extr_bitOf.
     - reflexivity.
     - lia.
+    - apply Slice.wf_width.
+  Qed.
+
+  Lemma get_slice_match {w} (slice : Slice.t w) regs1 regs2 :
+    regs1 =( LocationSet.of_slice slice )= regs2 ->
+    get_slice regs1 slice = get_slice regs2 slice.
+  Proof.
+    intros Hmatch. apply XBV.bitOf_ext. intros i Hi.
+    unfold get_slice.
+    rewrite ! XBV.extr_bitOf.
+    - change (get_location regs1 (Location.Mk (Slice.get_var slice) (Slice.get_lo slice + i)) =
+        get_location regs2 (Location.Mk (Slice.get_var slice) (Slice.get_lo slice + i))).
+      apply Hmatch. apply LocationSet.of_slice_spec.
+      unfold Slice.has_location. simpl. split; [reflexivity|lia].
+    - exact Hi.
+    - apply Slice.wf_width.
+    - exact Hi.
     - apply Slice.wf_width.
   Qed.
 
@@ -1967,6 +2003,21 @@ Module Facts.
     read_target regs (Verilog.AssignConcat lhs rhs) :=
       XBV.concat (read_target regs lhs) (read_target regs rhs).
 
+  Lemma read_target_change_regs {w} (target : Verilog.assign_target w) regs1 regs2 :
+    regs1 =( Verilog.assign_target_writes target )= regs2 ->
+    read_target regs1 target = read_target regs2 target.
+  Proof.
+    induction target; intros Hmatch; simp read_target; simpl in Hmatch.
+    - apply RegisterState.match_on_variable. exact Hmatch.
+    - pose proof (RegisterState.match_on_singleton regs1 regs2 loc Hmatch) as Hbit.
+      unfold RegisterState.get_location.
+      rewrite Hbit. reflexivity.
+    - apply RegisterState.get_slice_match. exact Hmatch.
+    - RegisterState.unpack_match_on.
+      rewrite IHtarget1 by assumption.
+      rewrite IHtarget2 by assumption. reflexivity.
+  Qed.
+
   Add Parametric Morphism : module_body_reads
     with signature (@Permutation Verilog.module_item) ==> LocationSet.Equal
     as module_body_reads_permute.
@@ -2056,6 +2107,34 @@ Module Facts.
       exact H.
     - rewrite IHtarget1, IHtarget2 by LocationSet.setdec.
       reflexivity.
+  Qed.
+
+  Lemma set_target_match_before {w} target value regs reference l :
+    LocationSet.Disjoint (Verilog.assign_target_writes target) l ->
+    set_target (w:=w) regs target value =( l )= reference ->
+    regs =( l )= reference.
+  Proof.
+    intros Hdisjoint Hmatch loc Hloc.
+    rewrite <- (set_target_preserve target value regs l Hdisjoint loc Hloc).
+    apply Hmatch. exact Hloc.
+  Qed.
+
+  Lemma read_target_set_target {w} (target : Verilog.assign_target w) :
+    Verilog.assign_target_wf target ->
+    forall regs value,
+      read_target (set_target regs target value) target = value.
+  Proof.
+    intros Hwf.
+    induction Hwf; intros *; simp read_target set_target; simpl.
+    - apply RegisterState.set_reg_get_in.
+    - rewrite RegisterState.get_location_set_location.
+      apply XBV.of_bits_bitOf.
+    - apply RegisterState.get_slice_set_slice.
+    - rewrite IHHwf1.
+      erewrite read_target_change_regs.
+      2: { apply set_target_preserve. exact Hno_overlap. }
+      rewrite IHHwf2.
+      apply XBV.concat_extr.
   Qed.
 
   Lemma set_target_from_state {w} (target : Verilog.assign_target w) :
