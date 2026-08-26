@@ -39,6 +39,8 @@ Local Open Scope monad_scope.
 Local Open Scope list.
 Local Open Scope verilog_scope.
 
+Opaque N.add N.sub.
+
 Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
   forall t regs ρ,
     LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
@@ -60,7 +62,7 @@ Proof.
 
   simpl in Hmatch, Hdisjoint.
   disjoint_saturate.
-  unpack_verilog_smt_match_states_partial. 
+  unpack_verilog_smt_match_states_partial.
   rename_match
     (verilog_smt_match_states_partial (Verilog.expr_reads _) _ _ _)
     into Hbefore.
@@ -91,12 +93,15 @@ Proof.
   simpl. apply SMTLib.value_eqb_eq.
 Qed.
 
+Definition get_slice {w} (regs : RegisterState.t) (slice : Slice.t w) : XBV.xbv w :=
+  XBV.extr (regs (Slice.get_var slice)) (Slice.get_lo slice) w.
+
 Equations read_target {w} (regs : RegisterState.t) (target : Verilog.assign_target w) : XBV.xbv w :=
   read_target regs (Verilog.AssignVar var) := regs var;
   read_target regs (Verilog.AssignBit loc _) :=
-    XBV.extr (regs (Location.var loc)) (Location.idx loc) 1;
+    XBV.of_bits [RegisterState.get_location regs loc];
   read_target regs (Verilog.AssignSlice slice) :=
-    XBV.extr (regs (Slice.get_var slice)) (Slice.get_lo slice) w;
+    get_slice regs slice;
   read_target regs (Verilog.AssignConcat lhs rhs) :=
     XBV.concat (read_target regs lhs) (read_target regs rhs).
 
@@ -106,27 +111,64 @@ Lemma assign_target_to_smt_value {w} tag (target : Verilog.assign_target w) :
     read_target (execution_of_valuation tag ρ) target =
       XBV.from_bv (SMTLib.interp_term ρ target_smt).
 Proof.
-  induction target; intros * Htarget_smt;
-    simp assign_target_to_smt read_target in Htarget_smt |- *;
-    monad_inv; simpl.
+  induction target.
+  all: intros * Htarget_smt.
+  all: simp assign_target_to_smt read_target in *.
+  all: monad_inv; simpl.
   - reflexivity.
-  - destruct loc as [vec idx]. cbn in *.
+  - destruct loc as [vec idx].
     simp assign_target_to_smt in Htarget_smt. inv Htarget_smt.
-    unfold execution_of_valuation. simpl.
-    rewrite XBV.extr_no_exes by lia.
-    f_equal.
-    unfold smt_select_bit. simpl.
-    rewrite smtlib_interp_rewrite. simpl.
-    destruct_rew. reflexivity.
-  - dependent elimination slice.
+    rewrite <- smt_select_bit_value by (simpl in wf; lia).
+    reflexivity.
+  - destruct slice.
     simp assign_target_to_smt in Htarget_smt. inv Htarget_smt.
-    unfold execution_of_valuation. simpl.
-    change (XBV.extr (XBV.from_bv (ρ (verilog_to_smt_var tag var))) lo (1 + hi - lo) =
-      XBV.from_bv (BV.bv_extr lo (1 + hi - lo) (ρ (verilog_to_smt_var tag var)))).
-    apply XBV.extr_no_exes. lia.
-  - rewrite (IHtarget1 ρ t eq_refl).
-    rewrite (IHtarget2 ρ t0 eq_refl).
+    apply XBV.extr_no_exes.
+    simpl. lia.
+  - erewrite IHtarget1 by reflexivity.
+    erewrite IHtarget2 by reflexivity.
     apply XBV.concat_no_exes.
+Qed.
+
+Lemma match_on_set_reg_same var regs :
+  RegisterState.set_reg var (regs var) regs
+    =( LocationSet.of_variable var )=
+  regs.
+Proof.
+  intros [v bit_idx] Hloc.
+  apply LocationSet.of_variable_spec in Hloc. cbn in Hloc.
+  destruct Hloc as [Hv _]. subst v.
+  unfold RegisterState.get_location.
+  rewrite RegisterState.set_reg_get_in. reflexivity.
+Qed.
+
+Lemma match_on_set_location_same loc wf regs :
+  RegisterState.set_location loc wf (RegisterState.get_location regs loc) regs
+    =( LocationSet.singleton loc )=
+  regs.
+Proof.
+  intros loc' Hloc'.
+  apply LocationSet.singleton_spec in Hloc'. unfold LocationSet.E.eq in Hloc'. subst loc'.
+  unfold RegisterState.get_location, RegisterState.set_location.
+  rewrite RegisterState.set_reg_get_in, XBV.set_bit_get_in. reflexivity.
+Qed.
+
+Lemma match_on_set_slice_same {w} (slice : Slice.t w) regs :
+  RegisterState.set_slice slice (get_slice regs slice) regs
+    =( LocationSet.of_slice slice )=
+  regs.
+Proof.
+  intros loc Hloc.
+  apply LocationSet.of_slice_spec in Hloc.
+  unfold Slice.has_location in Hloc. destruct Hloc as [Hvar Hidx].
+  unfold RegisterState.get_location, RegisterState.set_slice, get_slice.
+  rewrite <- Hvar, RegisterState.set_reg_get_in.
+  replace (Location.idx loc) with
+    (Slice.get_lo slice + (Location.idx loc - Slice.get_lo slice))%N by lia.
+  rewrite XBV.set_slice_get_in by lia.
+  rewrite XBV.extr_bitOf.
+  - reflexivity.
+  - lia.
+  - apply Slice.wf_width.
 Qed.
 
 Lemma set_target_from_state {w} (target : Verilog.assign_target w) :
@@ -138,38 +180,17 @@ Lemma set_target_from_state {w} (target : Verilog.assign_target w) :
 Proof.
   intros Hwf.
   induction Hwf; intros *; simp read_target set_target; simpl.
-  - intros [v bit_idx] Hloc.
-    apply LocationSet.of_variable_spec in Hloc. cbn in Hloc.
-    destruct Hloc as [Hv _]. subst v.
-    unfold RegisterState.get_location.
-    rewrite RegisterState.set_reg_get_in. reflexivity.
-  - intros loc' Hloc'.
-    apply LocationSet.singleton_spec in Hloc'. unfold LocationSet.E.eq in Hloc'. subst loc'.
-    unfold RegisterState.get_location, RegisterState.set_location.
-    rewrite RegisterState.set_reg_get_in, XBV.set_bit_get_in.
-    rewrite XBV.extr_bitOf by lia.
-    f_equal. lia.
-  - intros loc Hloc.
-    apply LocationSet.of_slice_spec in Hloc.
-    unfold Slice.has_location in Hloc. destruct Hloc as [Hvar Hidx].
-    unfold RegisterState.get_location, RegisterState.set_slice.
-    rewrite <- Hvar, RegisterState.set_reg_get_in.
-    replace (Location.idx loc) with
-      (Slice.get_lo slice + (Location.idx loc - Slice.get_lo slice))%N by lia.
-    rewrite XBV.set_slice_get_in by lia.
-    rewrite XBV.extr_bitOf.
-    + reflexivity.
-    + lia.
-    + apply Slice.wf_width.
+  - rewrite RegisterState.match_on_set_reg_elim2.
+    apply match_on_set_reg_same.
+  - rewrite RegisterState.match_on_set_location_elim2 with (wf2:=wf).
+    apply match_on_set_location_same.
+  - rewrite RegisterState.match_on_set_slice_elim2.
+    apply match_on_set_slice_same.
   - rewrite XBV.extr_concat_high, XBV.extr_concat_low.
-    apply RegisterState.match_on_split_union. split.
+    RegisterState.unpack_match_on.
     + apply IHHwf1.
-    + pose proof (IHHwf2 regs reference) as IHrhs.
-      intros loc Hloc.
-      transitivity (RegisterState.get_location
-        (set_target regs rhs (read_target reference rhs)) loc).
-      * exact (set_target_preserve lhs _ _ _ Hno_overlap loc Hloc).
-      * apply IHrhs. exact Hloc.
+    + rewrite set_target_preserve by assumption.
+      apply IHHwf2.
 Qed.
 
 Lemma assign_target_to_smt_valid {w} tag (target : Verilog.assign_target w) :
