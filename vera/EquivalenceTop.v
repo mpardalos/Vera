@@ -137,7 +137,7 @@ Definition sort_vmodule_pass : Pass.t :=
 Definition simpl_vmodule_pass : Pass.t :=
   Pass.pure "Simpl" (@simpl_vmodule) (@simpl_vmodule_exact_equivalence).
 Definition break_const_assigns_pass : Pass.t :=
-  Pass.pure "BreakConstAssigns" (@break_const_assigns_vmodule) (@break_const_assigns_exact_equivalence).
+  Pass.Mk "BreakConstAssigns" (@break_const_assigns_vmodule) (@break_const_assigns_exact_equivalence).
 Definition drop_unused_pass : Pass.t :=
   Pass.Mk "DropUnused" (@drop_unused) (@drop_unused_exact_equivalence).
 
