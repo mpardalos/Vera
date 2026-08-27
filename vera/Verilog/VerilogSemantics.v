@@ -116,9 +116,24 @@ Module RegisterState.
     unfold get_slice, set_slice.
     rewrite set_reg_get_in.
     rewrite XBV.extr_bitOf.
-    - rewrite XBV.set_slice_get_in by exact Hi. reflexivity.
+    - rewrite XBV.set_slice_get_in.
+      + f_equal. lia.
+      + lia.
     - exact Hi.
     - apply Slice.wf_width.
+  Qed.
+
+  Lemma get_location_as_slice regs loc (wf : (Location.idx loc < Var.varType (Location.var loc))%N) :
+    RegisterState.get_location regs loc =
+      XBV.bitOf 0 (RegisterState.get_slice regs (Slice.of_location loc wf)).
+  Proof.
+    unfold RegisterState.get_location, RegisterState.get_slice.
+    rewrite XBV.extr_bitOf.
+    - unfold Slice.of_location. destruct_rew.
+      rewrite N.add_0_r. reflexivity.
+    - apply N.lt_0_1.
+    - unfold Slice.of_location. destruct_rew.
+      lia.
   Qed.
                           
   Definition defined_value_for (locs : LocationSet.t) (regs : RegisterState.t) :=
@@ -669,7 +684,7 @@ Module RegisterState.
       (Slice.get_lo slice + (Location.idx loc - Slice.get_lo slice))%N by lia.
     rewrite XBV.set_slice_get_in by lia.
     rewrite XBV.extr_bitOf.
-    - reflexivity.
+    - f_equal. lia.
     - lia.
     - apply Slice.wf_width.
   Qed.

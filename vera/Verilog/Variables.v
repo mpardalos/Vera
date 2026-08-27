@@ -22,6 +22,8 @@ From vera Require Import Tactics.
 From vera Require Import Decidable.
 From vera Require Import Common.
 
+Import EqNotations.
+
 Opaque N.add N.sub.
 
 Module Var <: UsualOrderedType.
@@ -212,6 +214,10 @@ Module Slice.
   Definition has_location {w} (slice : t w) (loc : Location.t) : Prop :=
     get_var slice = Location.var loc
     /\ (get_lo slice <= Location.idx loc < get_lo slice + w)%N.
+
+  (* TODO: the wf constraint should eventually be part of Location.t *)
+  Definition of_location (loc : Location.t) (wf : (Location.idx loc < Var.varType (Location.var loc))%N) : Slice.t 1 :=
+    rew (N.add_sub _ _) in Slice.Mk (Location.var loc) (Location.idx loc) (Location.idx loc) (conj (N.le_refl _) wf).
 End Slice.
 
 Module Type UsualWSets.

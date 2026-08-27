@@ -1468,28 +1468,31 @@ Module RawXBV.
 
   Lemma set_slice_list_get_in bv start bits idx :
     start + length bits <= length bv ->
-    idx < length bits ->
-    bitOf (start + idx) (set_slice_list bv start bits) = bitOf idx bits.
+    start <= idx < start + length bits ->
+    bitOf idx (set_slice_list bv start bits) = bitOf (idx - start) bits.
   Proof.
     intros Hwf Hidx.
     funelim (set_slice_list bv start bits); simpl in Hidx; try lia.
     all: simpl in Hwf; try lia.
     - destruct idx; unfold bitOf; simpl; [reflexivity|].
+      unfold bitOf in H.
+      setoid_rewrite Nat.sub_0_r in H.
       apply H; lia.
-    - unfold bitOf; simpl.
+    - destruct idx; [lia|].
+      unfold bitOf in *. simpl.
       apply H; lia.
   Qed.
 
   Lemma set_slice_get_in bv start bits idx :
     (start + size bits <= size bv)%N ->
-    (idx < size bits)%N ->
-    bitOf (N.to_nat (start + idx)) (set_slice bv start bits) =
-      bitOf (N.to_nat idx) bits.
+    (start <= idx < start + size bits)%N ->
+    bitOf (N.to_nat idx) (set_slice bv start bits) =
+      bitOf (N.to_nat (idx - start)) bits.
   Proof.
     intros Hwf Hidx. unfold set_slice.
     replace (start + size bits <=? size bv)%N with true
       by (symmetry; apply N.leb_le; exact Hwf).
-    rewrite N2Nat.inj_add.
+    rewrite N2Nat.inj_sub.
     apply set_slice_list_get_in; unfold size in *; lia.
   Qed.
 
@@ -2494,8 +2497,8 @@ Module XBV.
   Next Obligation. rewrite RawXBV.set_slice_size; now rewrite ! wf. Qed.
 
   Lemma set_slice_get_in {w n} (bv : xbv w) start (bits : xbv n) wf idx :
-    (idx < n)%N ->
-    bitOf (start + idx) (set_slice bv start bits wf) = bitOf idx bits.
+    (start <= idx < start + n)%N ->
+    bitOf idx (set_slice bv start bits wf) = bitOf (idx - start) bits.
   Proof.
     intros Hidx. unfold bitOf, set_slice, XBV.bits. simpl.
     apply RawXBV.set_slice_get_in.

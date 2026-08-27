@@ -35,6 +35,7 @@ Import MonadLetNotation.
 Import FunctorNotation.
 Import SigTNotations.
 Import Verilog.Notations.
+Import EqNotations.
 Local Open Scope monad_scope.
 Local Open Scope list.
 Local Open Scope verilog_scope.
@@ -307,18 +308,6 @@ Proof.
       apply Hsorted.
 Qed.
 
-Lemma verilog_to_smt_clean {i o} tag (v : Verilog.vmodule i o) smt :
-  verilog_to_smt tag v = inr smt ->
-  DefinedEquivalence.clean_module v.
-Proof.
-  unfold verilog_to_smt. simpl. intros Htransf. monad_inv.
-  constructor.
-  (* No Xs in vars *)
-  admit.
-Admitted.
-
-Import EqNotations.
-
 Lemma sorted_reads_driven inputs body :
   module_items_sorted inputs body ->
   Verilog.module_body_reads body ⊆ Verilog.module_body_writes body ∪ inputs.
@@ -327,6 +316,155 @@ Proof.
   all: simpl.
   all: LocationSet.setdec.
 Qed.
+
+Section Clean.
+  Variable tag : VarTag.
+
+  #[local]
+  Lemma set_target_defined {w} regs (target : Verilog.assign_target w) bv :
+    Verilog.assign_target_wf target ->
+    RegisterState.defined_value_for (Verilog.assign_target_writes target)
+      (set_target regs target (XBV.from_bv bv)).
+  Proof.
+    intros target_wf. revert regs bv.
+    induction target_wf.
+    all: intros.
+    all: simp set_target; simpl.
+    - unfold RegisterState.defined_value_for.
+      intros loc Hloc.
+      apply LocationSet.of_variable_spec in Hloc.
+      destruct Hloc as [<- Hloc_wf].
+      unfold RegisterState.get_location.
+      rewrite RegisterState.set_reg_get_in.
+      rewrite XBV.bit_of_as_bv by exact Hloc_wf.
+      destruct (BV.bitOf _ bv).
+      all: discriminate.
+    - unfold RegisterState.defined_value_for.
+      intros loc' Hloc'.
+      apply LocationSet.singleton_spec in Hloc'.
+      unfold LocationSet.E.eq in Hloc'. subst loc'.
+      rewrite RegisterState.get_location_set_location.
+      rewrite XBV.bit_of_as_bv by lia.
+      destruct (BV.bitOf _ bv).
+      all: discriminate.
+    - unfold RegisterState.defined_value_for.
+      intros loc Hloc.
+      apply LocationSet.of_slice_spec in Hloc.
+      unfold RegisterState.get_location, RegisterState.set_slice.
+      destruct loc, slice, Hloc. simpl in *. subst.
+      rewrite RegisterState.set_reg_get_in.
+      rewrite XBV.set_slice_get_in by lia.
+      rewrite XBV.bit_of_as_bv by lia.
+      destruct (BV.bitOf _ bv).
+      all: discriminate.
+    - rewrite ! XBV.extr_no_exes by lia.
+      RegisterState.unpack_defined_value_for.
+      + eapply IHtarget_wf1.
+      + rewrite set_target_preserve by exact Hno_overlap.
+        eapply IHtarget_wf2.
+  Qed.
+
+  #[local]
+  Lemma expr_to_smt_defined {w} (expr : Verilog.expression w) regs t :
+    expr_to_smt tag expr = inr t ->
+    RegisterState.defined_value_for (Verilog.expr_reads expr) regs ->
+    exists bv, eval_expr regs expr = XBV.from_bv bv.
+  Proof.
+    intros Hexpr_to_smt Hinputs_defined.
+    eexists.
+    eapply expr_to_smt_value with (ρ := valuation_of_executions regs regs).
+    - eassumption.
+    - unfold verilog_smt_match_states_partial.
+      symmetry.
+      destruct tag.
+      + apply execution_of_valuation_left_match_on. exact Hinputs_defined.
+      + apply execution_of_valuation_right_match_on. exact Hinputs_defined.
+  Qed.
+
+  #[local]
+  Lemma module_item_clean mi init smt :
+    transfer_module_item tag mi = inr smt ->
+    RegisterState.defined_value_for (Verilog.module_item_reads mi) init ->
+    RegisterState.defined_value_for (Verilog.module_item_writes mi) (exec_module_item init mi).
+  Proof.
+    destruct mi as [[? target target_wf expr]].
+    simp transfer_module_item exec_module_item exec_statement; simpl.
+    intros Htransf Hinputs_defined.
+    monad_inv.
+    edestruct (expr_to_smt_defined expr) as [bv Heval]; [eassumption|eassumption|].
+    rewrite Heval.
+    apply set_target_defined.
+    exact target_wf.
+  Qed.
+
+  #[local]
+  Lemma module_body_clean inputs body init smt :
+    module_items_sorted inputs body ->
+    transfer_module_body tag body = inr smt ->
+    RegisterState.defined_value_for inputs init ->
+    RegisterState.defined_value_for (Verilog.module_body_writes body) (exec_module_body init body).
+  Proof.
+    intros Hsorted Htransf Hinputs_defined.
+    funelim (transfer_module_body tag body).
+    all: clear Heqcall.
+    - apply RegisterState.defined_value_for_empty.
+    - simp transfer_module_body in Htransf. monad_inv.
+      simp exec_module_body. simpl.
+      inv Hsorted.
+      rename_match (Verilog.module_item_reads hd ⊆ inputs) into Hitem_reads_in_inputs.
+      rename_match (module_items_sorted (Verilog.module_item_writes hd ∪ inputs) tl) into Htl_sorted.
+      RegisterState.unpack_defined_value_for.
+      + rewrite <- Facts.exec_module_body_preserve
+          by (apply module_items_sorted_no_overwrite in Htl_sorted; LocationSet.setdec).
+        eapply module_item_clean; try eassumption.
+        rewrite Hitem_reads_in_inputs. exact Hinputs_defined.
+      + eapply H; eauto; expect 1.
+        RegisterState.unpack_defined_value_for.
+        * eapply module_item_clean; try eassumption.
+          rewrite Hitem_reads_in_inputs. exact Hinputs_defined.
+        * rewrite <- Facts.exec_module_item_preserve by (symmetry; assumption).
+          exact Hinputs_defined.
+  Qed.
+
+  Theorem verilog_to_smt_clean {i o} (v : Verilog.vmodule i o) smt :
+    verilog_to_smt tag v = inr smt ->
+    DefinedEquivalence.clean_module v.
+  Proof.
+    unfold verilog_to_smt. simpl.
+    intros Htransf. monad_inv.
+    rename_match (module_items_sorted _ _) into Hsorted.
+    rename_match (LocationSet.of_varset (VarSet.of_list o) ⊆ Verilog.module_writes v) into Houtputs_driven.
+    constructor.
+    intros * Hinputs_defined.
+    unfold run_vmodule, mk_initial_state.
+    rewrite sort_module_items_stable by assumption.
+    unfold Verilog.module_locations.
+    assert (Hwrites_defined : RegisterState.defined_value_for (Verilog.module_writes v)
+        (exec_module_body (e // VarSet.of_list i) (Verilog.modBody v))). {
+      eapply module_body_clean.
+      all: try eassumption; expect 1.
+      apply RegisterState.defined_value_for_limit_to_regs.
+      exact Hinputs_defined.
+    }
+
+    assert (Hinputs_defined_after : RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list i))
+        (exec_module_body (e // VarSet.of_list i) (Verilog.modBody v))). {
+      rewrite <- Facts.exec_module_body_preserve
+        by (symmetry; eapply module_items_sorted_no_overwrite; exact Hsorted).
+      apply RegisterState.defined_value_for_limit_to_regs.
+      exact Hinputs_defined.
+    }
+
+    RegisterState.unpack_defined_value_for.
+    - exact Hinputs_defined_after.
+    - rewrite Houtputs_driven. exact Hwrites_defined.
+    - unfold Verilog.module_reads. rewrite sorted_reads_driven by eassumption.
+      RegisterState.unpack_defined_value_for.
+      + exact Hwrites_defined.
+      + exact Hinputs_defined_after.
+    - exact Hwrites_defined.
+  Qed.
+End Clean.
 
 Theorem verilog_to_smt_correct {i o} tag (v : Verilog.vmodule i o) smt :
   verilog_to_smt tag v = inr smt ->
