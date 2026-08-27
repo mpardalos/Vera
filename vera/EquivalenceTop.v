@@ -291,5 +291,6 @@ Proof.
   - exists e1'. exists e2'. exact Hcex.
 Qed.
 
-Print Assumptions equivalence_query_general_unsat_correct.
-Print Assumptions equivalence_query_general_sat_correct.
+#[local]
+Definition toplevel := (@equivalence_query_general_unsat_correct, @equivalence_query_general_sat_correct).
+Print Assumptions toplevel.
