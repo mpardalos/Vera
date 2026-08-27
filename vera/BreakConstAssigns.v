@@ -49,6 +49,15 @@ Equations break_const_assigns_module_item : module_item -> list module_item := {
 Definition break_const_assigns_module_body : list module_item -> list module_item :=
   flat_map break_const_assigns_module_item.
 
+Definition break_const_assigns_vmodule {i o} (v : vmodule i o) : vmodule i o :=
+  traceBracket ("Break const assigns " ++ Verilog.modName v) {|
+    modName := modName v;
+    modBody := break_const_assigns_module_body (modBody v);
+    modWfIODisjoint := modWfIODisjoint v;
+    modWfInputsNoDup := modWfInputsNoDup v;
+    modWfOutputsNoDup := modWfOutputsNoDup v;
+  |}.
+
 Lemma break_const_assigns_module_item_writes mi :
   LocationSet.Equal
     (module_body_writes (break_const_assigns_module_item mi))
@@ -65,14 +74,6 @@ Proof.
   rewrite H0.
   reflexivity.
 Qed.
-
-#[refine]
-Definition break_const_assigns_vmodule {i o} (v : vmodule i o) : vmodule i o :=
-  traceBracket ("Break const assigns " ++ Verilog.modName v) {|
-    Verilog.modName := Verilog.modName v;
-    Verilog.modBody := break_const_assigns_module_body (Verilog.modBody v);
-  |}.
-Proof. all: destruct v. all: assumption. Qed.
 
 From vera Require Import VerilogSemantics.
 Import ExactEquivalence.
