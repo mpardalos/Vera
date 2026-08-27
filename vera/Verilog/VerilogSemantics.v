@@ -1458,6 +1458,9 @@ Module Sort.
 
   (* Checking that typeclasses eauto can indeed find this instance *)
   Goal (forall i o (v : vmodule i o), DecProp (vmodule_sortable v)). typeclasses eauto. Qed.
+
+  Definition vmodule_sorted {i o} (v : vmodule i o) :=
+    module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (modBody v).
 End Sort.
 
 Module CombinationalOnly.

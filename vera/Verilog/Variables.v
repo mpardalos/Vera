@@ -242,6 +242,8 @@ Module MySet(Import S : UsualWSets).
     reflexivity.
   Qed.
 
+  Opaque disjoint.
+
   Global Instance Disjoint_m : Proper (Equal ==> Equal ==> iff) Disjoint.
   Proof.
     unfold Disjoint.
@@ -259,6 +261,30 @@ Module MySet(Import S : UsualWSets).
       apply disjoint_spec in Exa. congruence.
     - apply disjoint_spec in Eyb. rewrite <- Hxy, <- Hab in Eyb.
       apply disjoint_spec in Eyb. congruence.
+  Qed.
+
+  Global Instance Disjoint_subset_m :
+    Proper
+      (Subset ==> Subset ==> Basics.flip Basics.impl)
+      Disjoint.
+  Proof.
+    unfold Disjoint, Empty, Subset.
+    intros left left' Hleft right right' Hright Hdisjoint elt Helt.
+    apply inter_spec in Helt.
+    apply (Hdisjoint elt).
+    apply inter_spec.
+    destruct Helt as [Hinleft Hinright].
+    split; [apply Hleft | apply Hright]; assumption.
+  Qed.
+
+  Global Instance Disjoint_subset_m_flip :
+    Proper
+      (Subset --> Subset --> Basics.impl)
+      Disjoint.
+  Proof.
+    unfold Basics.flip.
+    intros left left' Hleft right right' Hright Hdisjoint.
+    eapply Disjoint_subset_m; eassumption.
   Qed.
 
   Lemma Disjoint_sym a b : Disjoint a b -> Disjoint b a.
