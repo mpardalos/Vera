@@ -233,7 +233,7 @@ Lemma transfer_execution {i o} (v v' : vmodule i o) e :
     /\ v' ⇓ e'.
 Proof.
   unfold "⇓", "~~~", module_locations.
-  intros Hequiv Hadmit.
+  intros Hequiv Hpermitted.
   exists (run_vmodule v' e).
   unpack_goal.
   - symmetry.
@@ -254,7 +254,7 @@ Lemma transfer_counterexample {i o} (v1 v1' v2 v2' : vmodule i o) e1 e2 :
     /\ counterexample_execution v1' v2' e1' e2'.
 Proof.
   unfold counterexample_execution.
-  intros Heq1 Heq2 [Hadmit1 [Hadmit2 [Hmatch_inputs Hmatch_outputs]]].
+  intros Heq1 Heq2 [Hpermitted1 [Hpermitted2 [Hmatch_inputs Hmatch_outputs]]].
   destruct (transfer_execution v1 v1' e1) as [e1' [? ?]]; try assumption; expect 1.
   destruct (transfer_execution v2 v2' e2) as [e2' [? ?]]; try assumption; expect 1.
   exists e1'. exists e2'.

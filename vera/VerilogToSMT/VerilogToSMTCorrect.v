@@ -287,7 +287,7 @@ Lemma transfer_module_body_valid {i o} tag (v : Verilog.vmodule i o) ρ q :
   v ⇓ execution_of_valuation tag ρ.
 Proof.
   intros * Hsorted Hall_driven Htransfer Hsat.
-  unfold valid_execution.
+  unfold "⇓".
   repeat unfold mk_initial_state, run_vmodule in *.
   rewrite sort_module_items_stable by assumption. simpl.
   eapply verilog_smt_match_states_partial_execution_match_on.

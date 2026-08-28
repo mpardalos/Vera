@@ -1710,10 +1710,13 @@ Module CombinationalOnly.
 
   Notation execution := RegisterState.t.
 
-  Definition valid_execution {i o} (v : vmodule i o) (e : execution) :=
+  (* This might often be called "ad-mitted", but we would like to
+     avoid that word because it shows up when grepping for
+     ad-mit. Permit is close enough. *)
+  Definition execution_permitted {i o} (v : vmodule i o) (e : execution) :=
     run_vmodule v e =( module_locations v )= e.
 
-  Infix "⇓" := valid_execution (at level 20) : verilog_scope.
+  Infix "⇓" := execution_permitted (at level 20) : verilog_scope.
 
   Definition execution_not_x (e : execution) name :=
     ~ XBV.has_x (e name).
@@ -2446,11 +2449,10 @@ Module Facts.
     - right. intros [? ?]. discriminate.
   Qed.
 
-  Lemma admit_run_vmodule {i o} (v : vmodule i o) e:
+  Lemma run_vmodule_permitted {i o} (v : vmodule i o) e:
     v ⇓ run_vmodule v e.
   Proof.
     unfold "⇓".
-    (* intros Hsortable. *)
     destruct (sortable_decidable v).
     - setoid_rewrite run_vmodule_preserve_inputs at 2.
       reflexivity.
@@ -2542,11 +2544,6 @@ Module ExactEquivalence.
     symmetry proved by exact_equivalence_sym
     transitivity proved by exact_equivalence_trans
     as exact_equivalence_rel.
-
-  (* FIXME: This might be needed. Delete if not *)
-  (* Global Instance Proper_valid_execution_exact_equivalence {i o} :
-   *   Proper (@exact_equivalence i o ==> eq ==> iff) valid_execution.
-   * Proof. unfold "~~~", "⇓". solve_proper. Qed. *)
 
   Lemma equal_exact_equivalence {i o} (v1 v2 : vmodule i o) :
     run_vmodule v1 = run_vmodule v2 ->

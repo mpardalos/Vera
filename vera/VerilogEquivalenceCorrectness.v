@@ -422,12 +422,12 @@ Global Instance match_on_eq_subrelation vars :
   subrelation eq (RegisterState.match_on vars).
 Proof. intros a b <-. reflexivity. Qed.
 
-Global Instance Proper_valid_execution {i o} (v : Verilog.vmodule i o) :
+Global Instance Proper_execution_permitted {i o} (v : Verilog.vmodule i o) :
   Proper
     (RegisterState.match_on (Verilog.module_locations v) ==> iff)
-    (valid_execution v).
+    (execution_permitted v).
 Proof.
-  unfold valid_execution.
+  unfold execution_permitted.
   repeat intro.
   setoid_replace x with y
     using relation (RegisterState.match_on (Verilog.module_locations v))
@@ -455,7 +455,7 @@ Lemma execution_congruent {i o} (v : Verilog.vmodule i o) e1 e2 :
   e1 =( LocationSet.of_varset (VarSet.of_list o) )= e2.
 Proof.
   unfold "⇓".
-  intros Hadmit1 Hadmit2 Hinput_match.
+  intros Hpermitted1 Hpermitted2 Hinput_match.
   unfold Verilog.module_locations in *.
   RegisterState.unpack_match_on.
   setoid_replace e1 with (run_vmodule v e1)
@@ -485,16 +485,16 @@ Proof.
       - rewrite Facts.run_vmodule_preserve_inputs by assumption.
         exact Hno_exes.
     }
-    assert (Hrun1 : v1 ⇓ run_vmodule v1 e) by apply Facts.admit_run_vmodule.
-    assert (Hrun2 : v2 ⇓ run_vmodule v2 e) by apply Facts.admit_run_vmodule.
+    assert (Hrun1 : v1 ⇓ run_vmodule v1 e) by apply Facts.run_vmodule_permitted.
+    assert (Hrun2 : v2 ⇓ run_vmodule v2 e) by apply Facts.run_vmodule_permitted.
     specialize (H (run_vmodule v1 e) (run_vmodule v2 e)).
     apply not_and_or in H. destruct H; [contradiction|].
     apply not_and_or in H. destruct H; [contradiction|].
     apply not_and_or in H. destruct H; [contradiction|].
     apply NNPP in H.
     assumption.
-  - intros H e1 e2 [Hadmit1 [Hadmit2 [[Hmatch_inputs Hinputs_defined] Hno_match_outputs]]].
-    unfold "⇓" in Hadmit1, Hadmit2.
+  - intros H e1 e2 [Hpermitted1 [Hpermitted2 [[Hmatch_inputs Hinputs_defined] Hno_match_outputs]]].
+    unfold "⇓" in Hpermitted1, Hpermitted2.
     contradict Hno_match_outputs.
     unfold Verilog.module_locations in *.
     RegisterState.unpack_match_on.
@@ -668,15 +668,15 @@ Proof.
 Qed.
 
 (* TODO: Move me to semantics *)
-Lemma valid_execution_all_vars_defined {i o} (v : Verilog.vmodule i o) e :
+Lemma permitted_execution_all_vars_defined {i o} (v : Verilog.vmodule i o) e :
   clean_module v ->
   v ⇓ e ->
   RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list i)) e ->
   RegisterState.defined_value_for (Verilog.module_locations v) e.
 Proof.
   unfold "⇓".
-  intros [Hvars_defined] Hadmit Hinputs_defined.
-  rewrite <- Hadmit.
+  intros [Hvars_defined] Hpermitted Hinputs_defined.
+  rewrite <- Hpermitted.
   apply Hvars_defined.
   apply Hinputs_defined.
 Qed.
@@ -701,7 +701,7 @@ Proof.
   2: eapply execution_of_valuation_left_match_on.
   all: unfold counterexample_execution in Hcounterexample.
   all: decompose record Hcounterexample.
-  all: eapply valid_execution_all_vars_defined.
+  all: eapply permitted_execution_all_vars_defined.
   - eapply VerilogToSMTCorrect.verilog_to_smt_clean. eassumption.
   - assumption.
   - eapply defined_match_on_defined_value_right. eassumption.
