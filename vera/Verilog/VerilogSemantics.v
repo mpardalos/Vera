@@ -1783,6 +1783,7 @@ End CombinationalOnly.
 
 Section ExpressionFacts.
   Import CombinationalOnly.
+  Import Nnat (Nat2N.id).
 
   Lemma bitwise_binop_no_exes (f_bit : bit -> bit -> bit) (f_bool : bool -> bool -> bool) :
     (forall (lb rb : bool), RawXBV.bool_to_bit (f_bool lb rb) = f_bit (RawXBV.bool_to_bit lb) (RawXBV.bool_to_bit rb)) ->
@@ -1905,26 +1906,71 @@ Section ExpressionFacts.
     eauto.
   Qed.
 
-  (* Lemma of_bits_to_bv bits :
-   *   XBV.of_bits (RawXBV.from_bv bits) = XBV.from_bv (BV.of_bits bits). *)
+  Section unaryop.
+    Inductive and_reduce_bv_cases {w} : BV.bitvector w -> RawXBV.bit -> Prop :=
+      | and_reduce_ones x : x = BV.ones w -> and_reduce_bv_cases x RawXBV.I
+      | and_reduce_other x : x <> BV.ones w -> and_reduce_bv_cases x RawXBV.O.
 
-  Lemma eval_unop_to_bv op w (e : BV.bitvector w) :
-    exists bv, XBV.to_bv (eval_unaryop op (XBV.from_bv e)) = Some bv.
-  Proof.
-    funelim (eval_unaryop op (XBV.from_bv e)).
-    all: autorewrite with eval_unaryop xbv in *.
-    all: try discriminate; eauto; expect 1.
-    - (* And-reduce *) 
-      admit.
-  Admitted.
-  
-  Lemma eval_unop_no_exes op w (e : BV.bitvector w) :
-    exists bv, eval_unaryop op (XBV.from_bv e) = XBV.from_bv bv.
-  Proof.
-    edestruct eval_unop_to_bv as [bv Hbv].
-    apply XBV.bv_xbv_inverse in Hbv.
-    eauto.
-  Qed.
+    Lemma and_reduce_rec_false xbv : RawXBV.fold O and_bit xbv = O.
+    Proof. induction xbv; simp and_bit; auto. Qed.
+
+    Lemma and_reduce_bv_spec {w} (bv : BV.bitvector w) :
+      and_reduce_bv_cases bv (XBV.fold I and_bit (XBV.from_bv bv)).
+    Proof.
+      unfold XBV.fold. XBV.bitvector_erase. subst.
+      induction bv.
+      all: simpl.
+      - replace ({| BV.bv := []; BV.wf := eq_refl |}) with (BV.ones 0)
+          by now XBV.bitvector_erase.
+        apply and_reduce_ones.
+        reflexivity.
+      - inv IHbv; destruct a; simpl; simp and_bit.
+        + rewrite <- H. constructor.
+          (* TODO: Most of what happens in these cases should really be part of XBV.bitvector_erase *)
+          apply BV.of_bits_equal. simpl.
+          apply (f_equal (@BV.bits _)) in H1. simpl in H1.
+          unfold RawBV.ones, RawBV.size in *.
+          rewrite !Nat2N.id in *. simpl. now f_equal.
+        + rewrite and_reduce_rec_false. constructor.
+          intros contra. apply (f_equal (@BV.bits _)) in contra. simpl in contra.
+          unfold RawBV.ones, RawBV.size in contra.
+          rewrite Nat2N.id in contra. discriminate.
+        + rewrite <- H. constructor.
+          intros contra. apply H1, BV.of_bits_equal.
+          apply (f_equal (@BV.bits _)) in contra. simpl in contra.
+          unfold RawBV.ones, RawBV.size in *. rewrite !Nat2N.id in *.
+          simpl in contra. simpl.
+          unfold RawBV.ones, RawBV.size. rewrite Nat2N.id.
+          now injection contra.
+        + rewrite and_reduce_rec_false. constructor.
+          intros contra. apply (f_equal (@BV.bits _)) in contra. simpl in contra.
+          unfold RawBV.ones, RawBV.size in contra.
+          rewrite Nat2N.id in contra. discriminate.
+    Qed.
+
+    Lemma eval_unop_to_bv op w (e : BV.bitvector w) :
+      exists bv, XBV.to_bv (eval_unaryop op (XBV.from_bv e)) = Some bv.
+    Proof.
+      funelim (eval_unaryop op (XBV.from_bv e)).
+      all: autorewrite with eval_unaryop xbv in *.
+      all: try discriminate; eauto; expect 1.
+      - destruct (and_reduce_bv_spec e).
+        + replace (XBV.of_bits [I]) with (XBV.ones 1)
+            by now XBV.bitvector_erase.
+          rewrite XBV.ones_to_bv. eauto.
+        + replace (XBV.of_bits [O]) with (XBV.zeros 1)
+            by now XBV.bitvector_erase.
+          rewrite XBV.zeros_to_bv. eauto.
+    Qed.
+    
+    Lemma eval_unop_no_exes op w (e : BV.bitvector w) :
+      exists bv, eval_unaryop op (XBV.from_bv e) = XBV.from_bv bv.
+    Proof.
+      edestruct eval_unop_to_bv as [bv Hbv].
+      apply XBV.bv_xbv_inverse in Hbv.
+      eauto.
+    Qed.
+  End unaryop.
   
   Lemma eval_conditional_no_exes w_cond w (cond : BV.bitvector w_cond) (ifT ifF : BV.bitvector w) :
     exists bv, eval_conditional (XBV.from_bv cond) (XBV.from_bv ifT) (XBV.from_bv ifF) = XBV.from_bv bv.
@@ -2073,7 +2119,7 @@ Module Facts.
     all: RegisterState.unpack_match_on.
     all: repeat match goal with [ IH : forall _, _ -> eval_expr _ _ = eval_expr _ _ |- _ ] =>
            erewrite IH by eassumption; clear IH
-	 end.
+         end.
     all: simp eval_expr; simpl; try reflexivity.
     all: expect 3.
     - simp eval_expr. simpl.
@@ -2426,50 +2472,6 @@ Module Facts.
     destruct (dec (var = var1)), (dec (var = var2)); subst;
       autorewrite with register_state; trivial.
   Qed.
-
-  (* DELETEME: Broken from switch to VarSet. Doesn't seem to be used. *)
-  (* Lemma exec_module_body_permute : forall body1 body2 rs0,
-   *   Permutation body1 body2 ->
-   *   (\* NoDup (Verilog.module_body_writes body1) ->
-   *    * NoDup (Verilog.module_body_writes body2) -> *\)
-   *   LocationSet.Disjoint (module_body_writes body1) (module_body_reads body1) ->
-   *   LocationSet.Disjoint (module_body_writes body2) (module_body_reads body2) ->
-   *   exec_module_body rs0 body1 = exec_module_body rs0 body2.
-   * Proof.
-   *  intros * Hpermute. revert rs0.
-   *  induction Hpermute; intros * (\* Hnodup1 Hnodup2 *\) Hdisjoint1 Hdisjoint2.
-   *  - simp exec_module_body. reflexivity.
-   *  - simp exec_module_body in *. simpl in *.
-   *    eapply IHHpermute.
-   *    + LocationSet.setdec.
-   *    + LocationSet.setdec.
-   *  - simp module_body_writes module_body_reads in *.
-   *    simp exec_module_body.
-   *    simpl.
-   *    destruct x as [[x_var x_expr]].
-   *    destruct y as [[y_var y_expr]].
-   *    simp module_item_writes module_item_reads statement_writes statement_reads expr_reads in *.
-   *    simp exec_module_item exec_statement in *; simpl in *.
-   *    f_equal.
-   *    replace (eval_expr (RegisterState.set_reg _ _ rs0) x_expr) with (eval_expr rs0 x_expr); cycle 1. {
-   *      eapply eval_expr_change_regs. symmetry.
-   *      eapply RegisterState.match_on_set_reg_elim.
-   *      LocationSet.setdec.
-   *    }
-   *    replace (eval_expr (RegisterState.set_reg _ _ rs0) y_expr) with (eval_expr rs0 y_expr); cycle 1. {
-   *      eapply eval_expr_change_regs. symmetry.
-   *      eapply RegisterState.match_on_set_reg_elim.
-   *      LocationSet.setdec.
-   *    }
-   *    eapply set_reg_swap. admit. (\* duplicate write *\)
-   *  - transitivity (exec_module_body rs0 l').
-   *    + eapply IHHpermute1.
-   *      * assumption.
-   *      * rewrite <- Hpermute1. assumption.
-   *    + eapply IHHpermute2.
-   *      * erewrite <- Hpermute1. assumption.
-   *      * assumption.
-   * Admitted. *)
 End Facts.
 
 Module DefinedEquivalence.

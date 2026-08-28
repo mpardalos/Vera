@@ -76,48 +76,6 @@ Proof.
   all: now autorewrite with xbv bv_binop in *.
 Qed.
 
-Inductive and_reduce_bv_cases {w} : BV.bitvector w -> RawXBV.bit -> Prop :=
-  | and_reduce_ones x : x = BV.ones w -> and_reduce_bv_cases x RawXBV.I
-  | and_reduce_other x : x <> BV.ones w -> and_reduce_bv_cases x RawXBV.O
-  .
-
-Lemma and_reduce_rec_false xbv : RawXBV.fold O and_bit xbv = O.
-Proof. induction xbv; simp and_bit; auto. Qed.
-
-Lemma and_reduce_bv_spec {w} (bv : BV.bitvector w) :
-  and_reduce_bv_cases bv (XBV.fold I and_bit (XBV.from_bv bv)).
-Proof.
-  unfold XBV.fold. XBV.bitvector_erase. subst.
-  induction bv.
-  all: simpl.
-  - replace ({| BV.bv := []; BV.wf := eq_refl |}) with (BV.ones 0)
-      by now XBV.bitvector_erase.
-    apply and_reduce_ones.
-    reflexivity.
-  - inv IHbv; destruct a; simpl; simp and_bit.
-    + rewrite <- H. constructor.
-      (* TODO: Most of what happens in these cases should really be part of XBV.bitvector_erase *)
-      apply BV.of_bits_equal. simpl.
-      apply (f_equal (@BV.bits _)) in H1. simpl in H1.
-      unfold RawBV.ones, RawBV.size in *.
-      rewrite !Nat2N.id in *. simpl. now f_equal.
-    + rewrite and_reduce_rec_false. constructor.
-      intros contra. apply (f_equal (@BV.bits _)) in contra. simpl in contra.
-      unfold RawBV.ones, RawBV.size in contra.
-      rewrite Nat2N.id in contra. discriminate.
-    + rewrite <- H. constructor.
-      intros contra. apply H1, BV.of_bits_equal.
-      apply (f_equal (@BV.bits _)) in contra. simpl in contra.
-      unfold RawBV.ones, RawBV.size in *. rewrite !Nat2N.id in *.
-      simpl in contra. simpl.
-      unfold RawBV.ones, RawBV.size. rewrite Nat2N.id.
-      now injection contra.
-    + rewrite and_reduce_rec_false. constructor.
-      intros contra. apply (f_equal (@BV.bits _)) in contra. simpl in contra.
-      unfold RawBV.ones, RawBV.size in contra.
-      rewrite Nat2N.id in contra. discriminate.
-Qed.
-
 Lemma unaryop_to_smt_value ρ op w (smt_expr : SMTLib.term (SMTLib.Sort_BitVec w)) :
     eval_unaryop op (XBV.from_bv (SMTLib.interp_term ρ smt_expr))
       = XBV.from_bv (SMTLib.interp_term ρ (unaryop_to_smt op smt_expr)).

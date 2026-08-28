@@ -179,9 +179,6 @@ Module Location <: UsualOrderedType.
     subst.
     constructor. reflexivity.
   Qed.
-
-    (* Global Instance slice_Show {w} : Show (Slice.t w).
-     * Proof. Admitted. *)
 End Location.
 
 Module Slice.
@@ -1377,8 +1374,9 @@ Module LocationSet <: WSets.
     apply of_slice_spec in Hloc.
     unfold Slice.has_location in Hloc.
     destruct Hloc as [Hvar Hidx].
-    admit.
-  Admitted.
+    destruct loc, slice. simpl in *. subst.
+    lia.
+  Qed.
 
   Lemma union_in_bounds s1 s2 :
     InBounds s1 -> InBounds s2 -> InBounds (union s1 s2).

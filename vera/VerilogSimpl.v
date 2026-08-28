@@ -27,16 +27,6 @@ Local Open Scope verilog_scope.
 Import EqNotations.
 Opaque N.add N.sub.
 
-(* Program Definition simpl_resize {from : N} (to : N) (expr : expression from) (wf : (to > 0)%N) : expression to :=
- *   match dec (from < to)%N with
- *   | left _ => rew [expression] _ in Concatenation (IntegerLiteral _ (XBV.zeros (to - from))) expr
- *   | right _ => rew [expression] _ in RangeSelect expr (to - 1) 0 _ _
- *   end.
- * Next Obligation. lia. Qed.
- * Next Obligation. lia. Qed.
- * Next Obligation. apply N.compare_gt_iff in H. lia. Qed.
- * Next Obligation. lia. Qed. *)
-
 Program Definition equalized_shiftop {w1 w2}
     (wf : (w1 > 0)%N) op (lhs : expression w1) (rhs : expression w2)
     : expression w1 :=
@@ -46,10 +36,7 @@ Program Definition equalized_shiftop {w1 w2}
       (Resize (N.max w1 w2) rhs _)
       _ _)
     _.
-Next Obligation. lia. Qed.
-Next Obligation. lia. Qed.
-Next Obligation. lia. Qed.
-Next Obligation. lia. Qed.
+Solve All Obligations with lia.
 
 Equations simpl_expr {w} (e : expression w) : expression w := {
   | UnaryOp op e => UnaryOp op (simpl_expr e)
@@ -167,52 +154,6 @@ Proof.
   - destruct_rew. reflexivity.
 Qed.
 
-(* (\* TODO: Move me to bitvectors *\)
- * Lemma bitOf_exes i n : XBV.bitOf i (XBV.exes n) = RawXBV.X.
- * Proof. apply nth_repeat. Qed.
- * 
- * Hint Rewrite bitOf_exes : xbv.
- * 
- * (\* TODO: Move me to bitvectors *\)
- * Lemma shr_empty n : RawXBV.shr [] n = [].
- * Proof. destruct n. all: simp shr. all: reflexivity. Qed.
- * 
- * Hint Rewrite shr_empty : shr.
- * 
- * (\* TODO: Move me to bitvectors *\)
- * Lemma bitOf_shr w n (xbv : XBV.xbv w) :
- *   (n < w)%N ->
- *   XBV.bitOf 0 (XBV.shr xbv n) =
- *   XBV.bitOf n xbv.
- * Proof.
- *   intros Hin_bounds.
- *   unfold XBV.shr, XBV.bitOf.
- *   XBV.bitvector_erase. subst.
- *   N_to_nat.
- *   unfold RawXBV.bitOf.
- *   funelim (RawXBV.shr bv n); expect 3.
- *   1, 2: reflexivity.
- *   simpl in *.
- *   rewrite <- H by lia.
- *   apply app_nth1.
- *   pose proof (RawXBV.shr_size n bs).
- *   crush.
- * Qed.
- * 
- * Hint Rewrite bitOf_shr using lia : xbv.
- * 
- * Lemma extr_all w (xbv : XBV.xbv w) : XBV.extr xbv 0 w = xbv.
- * Proof.
- *   XBV.bitvector_erase. subst.
- *   unfold RawXBV.extr, RawXBV.size.
- *   autodestruct_eqn E; [|apply N.leb_gt in E; lia].
- *   clear E.
- *   induction bv.
- *   - reflexivity.
- *   - rewrite Nat2N.id in *. simpl in *. simp extract.
- *     f_equal. exact IHbv.
- * Qed. *)
-
 Lemma eval_equalized_shiftop {w1 w2} regs op wf (lhs : expression w1) (rhs : expression w2) :
   eval_expr regs (equalized_shiftop wf op lhs rhs)
     = eval_shiftop op (eval_expr regs lhs) (eval_expr regs rhs).
@@ -235,31 +176,6 @@ Proof.
   - apply convert_shl_convert. lia.
   - apply convert_exes. lia.
 Qed.
-
-(* Lemma select_bit_extr {w} (x : XBV.xbv w) n :
- *   select_bit x n = XBV.extr x n 1.
- * Proof.
- *   unfold select_bit, XBV.bitOf.
- *   XBV.bitvector_erase.
- *   unfold RawXBV.extr, RawXBV.bitOf.
- *   subst.
- *   funelim (RawXBV.extract bv (N.to_nat n) (N.to_nat 1)).
- *   (\* solve this *\)
- * Admitted.
- * 
- * Lemma convert_one {w} (x : XBV.xbv w) :
- *   (w > 0)%N ->
- *   convert 1 x = select_bit x 0.
- * Proof.
- *   intros Hwf.
- *   rewrite select_bit_extr.
- *   funelim (convert 1 x).
- *   - lia.
- *   - reflexivity.
- *   - assert (from = 1)%N by lia. subst.
- *     destruct_rew. simpl.
- *     rewrite extr_all. reflexivity.
- * Qed. *)
 
 Lemma simpl_expr_correct {w} regs (e : expression w) :
   eval_expr regs (simpl_expr e) = eval_expr regs e.
