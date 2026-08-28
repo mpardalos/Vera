@@ -51,8 +51,6 @@ Next Obligation. lia. Qed.
 Next Obligation. lia. Qed.
 Next Obligation. lia. Qed.
 
-Show Obligation Tactic.
-
 Equations simpl_expr {w} (e : expression w) : expression w := {
   | UnaryOp op e => UnaryOp op (simpl_expr e)
   | ArithmeticOp op lhs rhs => ArithmeticOp op (simpl_expr lhs) (simpl_expr rhs)
