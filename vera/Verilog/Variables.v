@@ -1387,45 +1387,6 @@ Module LocationSet <: WSets.
   Lemma subset_in_bounds s1 s2 :
     Subset s1 s2 -> InBounds s2 -> InBounds s1.
   Proof. intros Hsub H loc Hin. auto. Qed.
-
-  Section of_variables_spec.
-    Lemma of_varset_union (vs1 vs2 : VarSet.t) :
-      Equal
-        (of_varset (VarSet.union vs1 vs2))
-        (union (of_varset vs1) (of_varset vs2)).
-    Proof. Admitted.
-
-    Lemma of_varset_add (v : Var.t) (vs : VarSet.t) :
-      Equal
-        (of_varset (VarSet.add v vs))
-        (add_variable v (of_varset vs)).
-    Proof. Admitted.
-
-    Lemma of_varset_singleton (v : Var.t) :
-      Equal
-        (of_varset (VarSet.singleton v))
-        (of_variable v).
-    Proof. Admitted.
-
-    Lemma of_slice_subset {w} (s : Slice.t w) :
-      Subset
-        (of_slice s)
-        (of_variable (Slice.get_var s)).
-    Proof. Admitted.
-
-    Lemma add_variable_as_union (v : Var.t) s:
-      Equal
-        (add_variable v s) 
-        (union (of_variable v) s).
-    Proof. Admitted.
-
-    Lemma singleton_in_var s :
-      Subset
-        (LocationSet.singleton s)
-        (of_variable (Location.var s)).
-    Proof. Admitted.
-  End of_variables_spec.
-
 End LocationSet.
 Module LocationSetFacts := MSetFacts.Facts(LocationSet).
 

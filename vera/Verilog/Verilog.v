@@ -394,127 +394,31 @@ Module Verilog.
     | (Verilog.NamedExpression var) => VarSet.singleton var
     end.
 
-  Lemma expr_reads_vars_spec {w} (e : Verilog.expression w) :
-    expr_reads e ⊆ LocationSet.of_varset (expr_reads_vars e).
-  Proof.
-    induction e.
-    all: simpl.
-    all: repeat match goal with IH : _ ⊆ _ |- _ => rewrite IH; clear IH end.
-    all: repeat rewrite LocationSet.of_varset_union.
-    all: try reflexivity.
-    all: expect 2.
-    - destruct slice.
-      rewrite LocationSet.of_varset_singleton.
-      apply LocationSet.of_slice_subset.
-    - destruct e eqn:E.
-      all: rewrite <- E in *.
-      all: repeat match goal with IH : _ ⊆ _ |- _ => rewrite IH; clear IH end.
-      all: rewrite LocationSet.of_varset_add, LocationSet.add_variable_as_union.
-      all: try reflexivity.
-      all: expect 1.
-      autodestruct.
-      rewrite LocationSet.singleton_in_var. simpl. LocationSet.setdec.
-  Qed.
-
-  Fixpoint assign_target_writes_vars {w} (a : assign_target w) : VarSet.t :=
-    match a with
-    | Verilog.AssignVar v => VarSet.singleton v
-    | Verilog.AssignBit loc _ => VarSet.singleton (Location.var loc)
-    | Verilog.AssignSlice slice => VarSet.singleton (Slice.get_var slice)
-    | Verilog.AssignConcat t1 t2 => VarSet.union (assign_target_writes_vars t1) (assign_target_writes_vars t2)
-    end.
-
-  Lemma assign_target_writes_vars_spec {w} (a : assign_target w) :
-    assign_target_writes a ⊆ LocationSet.of_varset (assign_target_writes_vars a).
-  Proof.
-    induction a.
-    all: simpl.
-    all: repeat rewrite LocationSet.of_varset_singleton.
-    all: repeat rewrite LocationSet.of_varset_union.
-    all: try reflexivity.
-    - apply LocationSet.singleton_in_var.
-    - apply LocationSet.of_slice_subset.
-    - rewrite IHa1, IHa2. reflexivity.
-  Qed.
-
   Definition statement_reads (s : Verilog.statement) : LocationSet.t :=
     match s with
     | Verilog.BlockingAssign lhs _ rhs => expr_reads rhs  (* ONLY looking at rhs here *)
     end.
-
-  Definition statement_reads_vars (s : Verilog.statement) : VarSet.t :=
-    match s with
-    | Verilog.BlockingAssign lhs _ rhs => expr_reads_vars rhs
-    end.
-
-  Lemma statement_reads_vars_spec s :
-    statement_reads s ⊆ LocationSet.of_varset (statement_reads_vars s).
-  Proof. destruct s. apply expr_reads_vars_spec. Qed.
 
   Definition statement_writes (s : Verilog.statement) : LocationSet.t :=
     match s with
     | (Verilog.BlockingAssign lhs _ rhs) => assign_target_writes lhs (* ONLY looking at lhs here *)
     end.
 
-  Definition statement_writes_vars (s : Verilog.statement) : VarSet.t :=
-    match s with
-    | Verilog.BlockingAssign lhs _ rhs => assign_target_writes_vars lhs
-    end.
-
-  Lemma statement_writes_vars_spec s :
-    statement_writes s ⊆ LocationSet.of_varset (statement_writes_vars s).
-  Proof. destruct s. apply assign_target_writes_vars_spec. Qed.
-
   Definition module_item_reads (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
     | (Verilog.AlwaysComb stmt) => statement_reads stmt
     end.
-
-  Definition module_item_reads_vars (mi : Verilog.module_item) : VarSet.t :=
-    match mi with
-    | Verilog.AlwaysComb stmt => statement_reads_vars stmt
-    end.
-
-  Lemma module_item_reads_vars_spec mi :
-    module_item_reads mi ⊆ LocationSet.of_varset (module_item_reads_vars mi).
-  Proof. destruct mi. apply statement_reads_vars_spec. Qed.
 
   Definition module_item_writes (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
     | Verilog.AlwaysComb stmt => statement_writes stmt
     end.
 
-  Definition module_item_writes_vars (mi : Verilog.module_item) : VarSet.t :=
-    match mi with
-    | Verilog.AlwaysComb stmt => statement_writes_vars stmt
-    end.
-
-  Lemma module_item_writes_vars_spec mi :
-    module_item_writes mi ⊆ LocationSet.of_varset (module_item_writes_vars mi).
-  Proof. destruct mi. apply statement_writes_vars_spec. Qed.
-
   Fixpoint module_body_reads (mis : list Verilog.module_item) : LocationSet.t :=
     match mis with
     | [] => {}
     | hd :: tl => module_item_reads hd ∪ module_body_reads tl
     end.
-
-  Fixpoint module_body_reads_vars (mis : list Verilog.module_item) : VarSet.t :=
-    match mis with
-    | [] => VarSet.empty
-    | hd :: tl => VarSet.union (module_item_reads_vars hd) (module_body_reads_vars tl)
-    end.
-
-  Lemma module_body_reads_vars_spec mis :
-    module_body_reads mis ⊆ LocationSet.of_varset (module_body_reads_vars mis).
-  Proof.
-    induction mis; simpl.
-    - LocationSet.setdec.
-    - rewrite LocationSet.of_varset_union.
-      rewrite module_item_reads_vars_spec.
-      rewrite IHmis.
-      reflexivity.
-  Qed.
 
   Lemma module_body_reads_app b1 b2 :
     LocationSet.Equal
@@ -533,23 +437,6 @@ Module Verilog.
     | [] => {}
     | hd :: tl => module_item_writes hd ∪ module_body_writes tl
     end.
-
-  Fixpoint module_body_writes_vars (mis : list Verilog.module_item) : VarSet.t :=
-    match mis with
-    | [] => VarSet.empty
-    | hd :: tl => VarSet.union (module_item_writes_vars hd) (module_body_writes_vars tl)
-    end.
-
-  Lemma module_body_writes_vars_spec mis :
-    module_body_writes mis ⊆ LocationSet.of_varset (module_body_writes_vars mis).
-  Proof.
-    induction mis; simpl.
-    - LocationSet.setdec.
-    - rewrite LocationSet.of_varset_union.
-      rewrite module_item_writes_vars_spec.
-      rewrite IHmis.
-      reflexivity.
-  Qed.
 
   Lemma module_body_writes_app b1 b2 :
     LocationSet.Equal
@@ -713,7 +600,6 @@ Module Verilog.
           end
       }.
   End show.
-
 End Verilog.
 
 #[global] Hint Resolve
