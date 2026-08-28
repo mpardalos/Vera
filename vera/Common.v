@@ -164,8 +164,48 @@ Equations map2 {A B C} : (A -> B -> C) -> list A -> list B -> list C :=
 Lemma map2_length {A B C} (f : A -> B -> C) l1 l2 : List.length (map2 f l1 l2) = min (List.length l1) (List.length l2).
 Proof. funelim (map2 f l1 l2); simp map2; simpl; crush. Qed.
 
-Definition N_sum : list N -> N :=
-  fold_right N.add 0%N.
+Fixpoint N_sum_rec (acc : N) (l : list N) : N :=
+  match l with
+  | [] => acc
+  | (x :: xs) => N_sum_rec (x + acc) xs
+  end.
+
+Definition N_sum := N_sum_rec 0%N.
+
+Lemma N_sum_rec_order acc l : N_sum_rec acc l = (acc + N_sum_rec 0 l)%N.
+Proof.
+  revert acc.
+  induction l; intros acc; simpl.
+  all: rewrite ! N.add_0_r.
+  - reflexivity.
+  - rewrite IHl with (acc:=a).
+    rewrite IHl with (acc:=(a + acc)%N).
+    lia.
+Qed.
+
+Lemma N_sum_rec_app acc l1 l2 : N_sum_rec acc (l1 ++ l2) = N_sum_rec (N_sum_rec acc l1) l2.
+Proof.
+  revert acc l2.
+  induction l1.
+  all: intros acc l2.
+  all: simpl.
+  - reflexivity.
+  - apply IHl1.
+Qed.
+
+Lemma N_sum_app l1 l2 : N_sum (l1 ++ l2) = (N_sum l1 + N_sum l2)%N.
+Proof.
+  unfold N_sum. rewrite N_sum_rec_app.
+  revert l2.
+  induction l1.
+  all: intros l2.
+  all: simpl; simp N_sum; simpl.
+  - reflexivity.
+  - simp N_sum_rec.
+    rewrite N.add_0_r.
+    rewrite ! N_sum_rec_order with (acc:=a).
+    apply N_sum_rec_order.
+Qed.
 
 Definition disjoint {A} (l r : list A) : Prop :=
   Forall (fun x => ~ In x r) l.
@@ -524,10 +564,23 @@ Definition opt_to_sum {E A} (e: E) (o : option A) : E + A :=
   | Some a => inr a
   end.
 
+Global Instance N_Show : Show N := {
+  show n := show (N.to_nat n)
+}.
+
+Global Instance positive_Show : Show positive := {
+  show n := show (Pos.to_nat n)
+}.
+
 Definition newline : string := String "010" EmptyString.
 
 (* Debug tracing — computes to identity in proofs, extracts to Printf *)
-Definition traceThunk {A : Type} (_msg : string) (x : unit -> A) : A := x tt.
-Arguments traceThunk / _ _.
+Definition traceBracket_ {A : Type} (_msg : string) (x : unit -> A) : A := x tt.
+Arguments traceBracket_ / _ _.
 
-Notation trace msg x := (traceThunk msg (fun tt => x)).
+Notation traceBracket msg x := (traceBracket_ msg (fun tt => x)).
+
+Definition trace_ {A : Type} (_msg : string) (x : unit -> A) : A := x tt.
+Arguments trace_ / _ _.
+
+Notation trace msg x := (trace_ msg (fun tt => x)).

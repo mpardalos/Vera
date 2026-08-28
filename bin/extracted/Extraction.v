@@ -43,22 +43,23 @@ Extract Inlined Constant Pos.to_nat => "(fun x -> x)".
 Extract Inlined Constant List.flat_map => "List.concat_map".
 
 (* Debug tracing — override extraction to print *)
-Extract Inlined Constant Common.traceThunk => "ExtractionUtils.my_rocq_trace".
+Extract Inlined Constant Common.traceBracket_ => "ExtractionUtils.my_rocq_traceBracket".
+Extract Inlined Constant Common.trace_ => "ExtractionUtils.my_rocq_trace".
 
 Definition int_from_nat :=
   N.of_nat.
 Definition int_to_nat :=
   N.to_nat.
 
-Definition bits_from_int (w : N) (n : N) :=
-  Bitvector.RawBV.of_N_fixed w n.
+Definition bits_from_int (w : N) (n : N) : Bitvector.RawXBV.xbv :=
+  Bitvector.RawXBV.from_bv (Bitvector.RawBV.of_N_fixed w n).
 
 (** There is deliberately no bits_to_int. Bitvectors are unbounded where ints
 are 63-bit. We provide bits_to_binary_string as an alternative for
 pretty-printing *)
 
-Definition bits_to_binary_string (v: RAWBITVECTOR_LIST.bitvector) : string :=
-  Bitvector.RawBV.to_string (Bitvector.RawBV.of_bits v).
+Definition bits_to_binary_string (v: Bitvector.RawXBV.xbv) : string :=
+  Bitvector.RawXBV.to_string (Bitvector.RawXBV.of_bits v).
 
 Extraction "Vera.ml"
   bits_from_int
@@ -66,7 +67,10 @@ Extraction "Vera.ml"
   int_from_nat
   int_to_nat
   VerilogEquivalence.equivalence_query
+  EquivalenceTop.lower_verilog
+  EquivalenceTop.verilog_to_smt_general
   EquivalenceTop.equivalence_query_general
+  EquivalenceTop.verilog_pipeline
   Verilog.Typecheck.tc_vmodule
   VerilogToSMT.expr_to_smt
   VerilogSemantics.Sort.sort_module_items

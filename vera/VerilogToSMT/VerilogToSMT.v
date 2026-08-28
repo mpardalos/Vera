@@ -26,6 +26,7 @@ From vera Require SMTLib.
 Import SMTLib (Sort_BitVec, Sort_Bool).
 
 From vera Require Import Verilog.
+From vera Require Import Variables.
 From vera Require Import Common.
 From vera Require Import Bitvector.
 From vera Require Import VerilogSMT.
@@ -33,7 +34,6 @@ From vera Require Import SMTQueries.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require VerilogSemantics.
-Import VerilogSemantics.Clean.
 Import VerilogSemantics.Sort.
 
 Import ListNotations.
@@ -41,7 +41,7 @@ Import CommonNotations.
 Import MonadLetNotation.
 Import FunctorNotation.
 Import EqNotations.
-Import Verilog.VariableSet.Notations.
+Import Verilog.Notations.
 Local Open Scope monad_scope.
 
 Local Definition smtname := nat.
@@ -49,21 +49,33 @@ Local Definition width := N.
 
 Definition transf := sum string.
 
-Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=
+Local Obligation Tactic := intros.
+Equations cast_from_to (from to: N) (t : SMTLib.term (Sort_BitVec from)) : SMTLib.term (Sort_BitVec to) :=
+  cast_from_to from 0 t => SMTLib.Term_BVLit _ (BV.of_bits []);
+  cast_from_to from to t with dec (from < to)%N => {
+    | left lt => rew [fun n => SMTLib.term (Sort_BitVec n)] _ in SMTLib.Term_BVConcat (SMTLib.Term_BVLit _ (BV.zeros (to - from))) t
+    | right ge => rew [fun n => SMTLib.term (Sort_BitVec n)] _ in SMTLib.Term_BVExtract (to - 1) 0 _ t
+    }
+.
+Next Obligation. lia. Qed.
+Next Obligation. lia. Qed.
+Next Obligation. lia. Qed.
+
+Definition static_value {w} (expr : Verilog.expression w) : option N :=
   match expr with
-  | Verilog.IntegerLiteral _ val => Some val
+  | Verilog.IntegerLiteral _ val => XBV.to_N val
   | _ => None
   end.
 
 Definition statically_in_bounds {w} (max_val : N) (expr : Verilog.expression w) : Prop :=
-  opt_prop (fun v => (BV.to_N v) < max_val)%N (static_value expr) \/ ((2 ^ w) < max_val)%N.
+  opt_prop (fun v => v < max_val)%N (static_value expr) \/ ((2 ^ w) < max_val)%N.
 
 Definition smt_var_info : Type := (smtname * width).
 
 Section expr_to_smt.
   Variable tag : VarTag.
 
-  Definition var_to_smt (var : Verilog.variable): (SMTLib.term (Sort_BitVec (Verilog.varType var))) :=
+  Definition var_to_smt (var : Var.t): (SMTLib.term (Sort_BitVec (Var.varType var))) :=
     SMTLib.Term_Const (verilog_to_smt_var tag var).
 
   Definition smt_select_bit {w}
@@ -104,17 +116,27 @@ Section expr_to_smt.
       SMTLib.Term_BVBinOp SMTLib.BVAnd lhs rhs
   .
 
-  Equations unaryop_to_smt {w} : Verilog.unaryop -> SMTLib.term (Sort_BitVec w) -> (SMTLib.term (Sort_BitVec w)) :=
+  Equations unaryop_to_smt {w} (op : Verilog.unaryop) : SMTLib.term (Sort_BitVec w) -> (SMTLib.term (Sort_BitVec (Verilog.unaryop_result op w))) :=
     unaryop_to_smt Verilog.UnaryPlus operand :=
       operand ;
     (* unaryop_to_smt Verilog.UnaryMinus operand := *)
     (*   ret (SMTLib.Term_BVUnaryOp SMTLib.BVNeg operand); *)
     unaryop_to_smt Verilog.UnaryNot operand :=
-      (SMTLib.Term_BVUnaryOp SMTLib.BVNot operand)
+      (SMTLib.Term_BVUnaryOp SMTLib.BVNot operand) ;
+    unaryop_to_smt Verilog.UnaryReduceAnd operand :=
+      SMTLib.Term_ITE
+        (SMTLib.Term_Eq operand (SMTLib.Term_BVLit w (BV.ones w)))
+        (SMTLib.Term_BVLit 1 (BV.ones 1))
+        (SMTLib.Term_BVLit 1 (BV.zeros 1)) ;
+    unaryop_to_smt Verilog.UnaryLogicalNot operand :=
+      SMTLib.Term_ITE
+        (SMTLib.Term_Eq operand (SMTLib.Term_BVLit w (BV.zeros w)))
+        (SMTLib.Term_BVLit 1 (BV.ones 1))
+        (SMTLib.Term_BVLit 1 (BV.zeros 1))
   .
 
   Definition conditional_to_smt {w_val}
-    (cond_type : Verilog.vtype) (cond : SMTLib.term (Sort_BitVec cond_type)) (ifT ifF : SMTLib.term (Sort_BitVec w_val))
+    (cond_type : N) (cond : SMTLib.term (Sort_BitVec cond_type)) (ifT ifF : SMTLib.term (Sort_BitVec w_val))
     : SMTLib.term (Sort_BitVec w_val) :=
     SMTLib.Term_ITE
       (SMTLib.Term_Not (SMTLib.Term_Eq cond (SMTLib.Term_BVLit _ (BV.zeros cond_type))))
@@ -150,25 +172,46 @@ Section expr_to_smt.
       let* ifT_smt := expr_to_smt ifT in
       let* ifF_smt := expr_to_smt ifF in
       ret (conditional_to_smt cond_type cond_smt ifT_smt ifF_smt);
-    expr_to_smt (Verilog.RangeSelect vec hi lo _ wf) :=
-      let* vec_smt := expr_to_smt vec in
-      ret (SMTLib.Term_BVExtract hi lo wf vec_smt);
-    expr_to_smt (Verilog.BitSelect_width vec idx _ _) :=
-      raise "Unexpected variable bit select"%string;
-    expr_to_smt (Verilog.BitSelect_const vec idx _) :=
-      let* vec_smt := expr_to_smt vec in
+    expr_to_smt (Verilog.RangeSelect (Slice.Mk vec hi lo wf)) :=
+      let vec_smt := var_to_smt vec in
+      ret (SMTLib.Term_BVExtract hi lo (proj1 wf) vec_smt);
+    expr_to_smt (Verilog.BitSelect vec (Verilog.IntegerLiteral w xbv_idx)) :=
+      let vec_smt := var_to_smt vec in
+      let* idx := opt_to_sum "Xs in BitSelect index"%string (XBV.to_N xbv_idx) in
+      assert_dec (idx < Var.varType vec)%N "Out-of-bounds bit-select"%string ;;
       ret (smt_select_bit vec_smt idx);
+    expr_to_smt (Verilog.BitSelect vec _) :=
+      raise "Unexpected variable bit-select in VerilogToSMT stage"%string;
     expr_to_smt (Verilog.Resize to expr _) :=
-      raise "Unexpected resize in VerilogToSMT stage"%string;
+      let from := Verilog.expr_type expr in
+      let* expr_smt := expr_to_smt expr in
+      ret (cast_from_to from to expr_smt);
     expr_to_smt (Verilog.IntegerLiteral w val) :=
-      ret (SMTLib.Term_BVLit w val);
+      let* bv_val := opt_to_sum "Xs in VerilogToSMT stage"%string (XBV.to_bv val) in
+      ret (SMTLib.Term_BVLit w bv_val);
     expr_to_smt (Verilog.NamedExpression var) :=
       ret (var_to_smt var)
   .
 
+  Opaque N.sub N.add.
+
+  Equations assign_target_to_smt {w} : Verilog.assign_target w -> transf (SMTLib.term (Sort_BitVec w)) :=
+    assign_target_to_smt (Verilog.AssignSlice (Slice.Mk var hi lo wf)) :=
+      ret (SMTLib.Term_BVExtract hi lo (proj1 wf) (var_to_smt var));
+    assign_target_to_smt (Verilog.AssignBit (Location.Mk vec idx) wf) :=
+      let vec_smt := var_to_smt vec in
+      ret (smt_select_bit vec_smt idx);
+    assign_target_to_smt (Verilog.AssignVar var) :=
+      ret (var_to_smt var);
+    assign_target_to_smt (Verilog.AssignConcat e1 e2) :=
+      let* e1_smt := assign_target_to_smt e1 in
+      let* e2_smt := assign_target_to_smt e2 in
+      ret (SMTLib.Term_BVConcat e1_smt e2_smt);
+  .
+
   Equations transfer_module_item : Verilog.module_item -> transf (SMTLib.term Sort_Bool) :=
-    transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign var rhs)) :=
-      let lhs_smt := var_to_smt var in
+    transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign lhs _ rhs)) :=
+      let* lhs_smt := assign_target_to_smt lhs in
       let* rhs_smt := expr_to_smt rhs in
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
   .
@@ -182,8 +225,8 @@ Section expr_to_smt.
   .
 End expr_to_smt.
 
-Definition mk_declarations : list (Verilog.variable * smtname) -> list SMTQueries.declaration :=
-  map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Verilog.varType var))).
+Definition mk_declarations : list (Var.t * smtname) -> list SMTQueries.declaration :=
+  map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Var.varType var))).
 
 Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
   (l1 l2 : list A) (nodup1 : NoDup l1) : option (Permutation l1 l2) :=
@@ -192,25 +235,14 @@ Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
   | _, _ => None
   end.
 
-Definition verilog_to_smt (name_tag : VarTag) (vmodule : Verilog.vmodule) : transf SMTQueries.query :=
-  trace ("To SMT " ++ Verilog.modName vmodule) (
+Definition verilog_to_smt {i o} (name_tag : VarTag) (vmodule : Verilog.vmodule i o) : transf SMTQueries.query :=
+  traceBracket ("To SMT " ++ Verilog.modName vmodule) (
     assert_dec
-      (disjoint (Verilog.module_inputs vmodule) (Verilog.module_outputs vmodule))
-      "Overlapping inputs and outputs"%string ;;
-    let* nodup := assert_dec
-      (NoDup (Verilog.modVariables vmodule))
-      "Duplicate variables"%string in
-    trace "Check for undriven" (
-      assert_dec
-        (Verilog.VariableSet.Equal
-          (Verilog.VariableSet.of_list (Verilog.modVariables vmodule))
-          (Verilog.module_body_writes (Verilog.modBody vmodule)
-	    ∪ Verilog.VariableSet.of_list (Verilog.module_inputs vmodule))%verilog)
-        "Undriven variables"%string) ;;
-    trace "Check sort" 
-      (assert_dec
-        (module_items_sorted (Verilog.VariableSet.of_list (Verilog.module_inputs vmodule)) (Verilog.modBody vmodule))
-        "Module items unsorted"%string);;
-    trace "Convert to SMT" (transfer_module_body name_tag (Verilog.modBody vmodule))
+      (module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody vmodule))
+      "Module items unsorted"%string;;
+    assert_dec
+      (LocationSet.of_varset (VarSet.of_list o) ⊆ Verilog.module_writes vmodule)%verilog
+      "Undriven outputs"%string;;
+    transfer_module_body name_tag (Verilog.modBody vmodule)
   )
 .

@@ -133,33 +133,55 @@ let bool_as_bit fmt bool =
      then Format.fprintf fmt "1"
      else Format.fprintf fmt "0"
 
-let hex_to_bits width hex : bool list =
+let hex_to_bits width hex : Vera.RawXBV.bit list =
+  let open Vera.RawXBV in
   let raw_bits =
     hex |> String.to_seq |> List.of_seq
     |> List.concat_map (function
-      | '0' -> [ false; false; false; false ]
-      | '1' -> [ false; false; false; true ]
-      | '2' -> [ false; false; true; false ]
-      | '3' -> [ false; false; true; true ]
-      | '4' -> [ false; true; false; false ]
-      | '5' -> [ false; true; false; true ]
-      | '6' -> [ false; true; true; false ]
-      | '7' -> [ false; true; true; true ]
-      | '8' -> [ true; false; false; false ]
-      | '9' -> [ true; false; false; true ]
-      | 'a' | 'A' -> [ true; false; true; false ]
-      | 'b' | 'B' -> [ true; false; true; true ]
-      | 'c' | 'C' -> [ true; true; false; false ]
-      | 'd' | 'D' -> [ true; true; false; true ]
-      | 'e' | 'E' -> [ true; true; true; false ]
-      | 'f' | 'F' -> [ true; true; true; true ]
+      | '0' -> [ O; O; O; O ]
+      | '1' -> [ O; O; O; I ]
+      | '2' -> [ O; O; I; O ]
+      | '3' -> [ O; O; I; I ]
+      | '4' -> [ O; I; O; O ]
+      | '5' -> [ O; I; O; I ]
+      | '6' -> [ O; I; I; O ]
+      | '7' -> [ O; I; I; I ]
+      | '8' -> [ I; O; O; O ]
+      | '9' -> [ I; O; O; I ]
+      | 'a' | 'A' -> [ I; O; I; O ]
+      | 'b' | 'B' -> [ I; O; I; I ]
+      | 'c' | 'C' -> [ I; I; O; O ]
+      | 'd' | 'D' -> [ I; I; O; I ]
+      | 'e' | 'E' -> [ I; I; I; O ]
+      | 'f' | 'F' -> [ I; I; I; I ]
+      | 'x' | 'X' -> [ X; X; X; X ]
       | c -> failwith ("Invalid char in hex literal: " ^ String.make 1 c))
   in
   let padded_bits =
     if List.length raw_bits < width then
-      List.init (width - List.length raw_bits) (fun _ -> false) @ raw_bits
+      List.init (width - List.length raw_bits) (fun _ -> O) @ raw_bits
     else if List.length raw_bits > width then
       failwith "Too short width for hex literal"
+    else raw_bits
+  in
+  (* Bitvectors in the Rocq side are LITTLE-ENDIAN *)
+  List.rev padded_bits
+
+let binary_to_bits width str : Vera.RawXBV.bit list =
+  let open Vera.RawXBV in
+  let raw_bits =
+    str |> String.to_seq |> List.of_seq
+    |> List.map (function
+      | '0' -> O
+      | '1' -> I
+      | 'x' | 'X' -> X
+      | c -> failwith ("Invalid char in binary literal: " ^ String.make 1 c))
+  in
+  let padded_bits =
+    if List.length raw_bits < width then
+      List.init (width - List.length raw_bits) (fun _ -> O) @ raw_bits
+    else if List.length raw_bits > width then
+      failwith "Too short width for binary literal"
     else raw_bits
   in
   (* Bitvectors in the Rocq side are LITTLE-ENDIAN *)
@@ -170,12 +192,12 @@ let read_constant const_str =
 
   (* Regex patterns for different constant formats *)
   let sized_decimal_re = Str.regexp "^\\([0-9]+\\)'d\\([0-9]+\\)$" in
-  let sized_binary_re = Str.regexp "^\\([0-9]+\\)'b\\([01]+\\)$" in
-  let sized_hex_re = Str.regexp "^\\([0-9]+\\)'h\\([0-9a-fA-F]+\\)$" in
+  let sized_binary_re = Str.regexp "^\\([0-9]+\\)'b\\([01xX]+\\)$" in
+  let sized_hex_re = Str.regexp "^\\([0-9]+\\)'h\\([0-9a-fA-FxX]+\\)$" in
   let unsized_decimal_re = Str.regexp "^\\([0-9]+\\)$" in
   let unsized_prefixed_decimal_re = Str.regexp "^'d\\([0-9]+\\)$" in
-  let unsized_prefixed_binary_re = Str.regexp "^'b\\([01]+\\)$" in
-  let unsized_prefixed_hex_re = Str.regexp "^'h\\([0-9a-fA-F]+\\)$" in
+  let unsized_prefixed_binary_re = Str.regexp "^'b\\([01xX]+\\)$" in
+  let unsized_prefixed_hex_re = Str.regexp "^'h\\([0-9a-fA-FxX]+\\)$" in
 
   try
     (* Try matching sized and unsized formats *)
@@ -184,9 +206,15 @@ let read_constant const_str =
       let value = Z.of_string (Str.matched_group 2 const_str) in
       Vera.bits_from_int width value
     else if Str.string_match sized_binary_re const_str 0 then
-      let width = Z.of_string (Str.matched_group 1 const_str) in
-      let value = Z.of_string ("0b" ^ Str.matched_group 2 const_str) in
-      Vera.bits_from_int width value
+      let width_str = Str.matched_group 1 const_str in
+      let bits_str = Str.matched_group 2 const_str in
+      if String.exists (fun c -> c = 'x' || c = 'X') bits_str then
+        Vera.RawXBV.of_bits
+          (binary_to_bits (Z.to_int (Z.of_string width_str)) bits_str)
+      else
+        let width = Z.of_string width_str in
+        let value = Z.of_string ("0b" ^ bits_str) in
+        Vera.bits_from_int width value
     else if Str.string_match sized_hex_re const_str 0 then
       let width = int_of_string (Str.matched_group 1 const_str) in
       let hex = Str.matched_group 2 const_str in
@@ -198,8 +226,12 @@ let read_constant const_str =
       let value = Z.of_string (Str.matched_group 1 const_str) in
       Vera.bits_from_int (Z.of_int 32) value (* Default to 32-bit for unsized decimal *)
     else if Str.string_match unsized_prefixed_binary_re const_str 0 then
-      let value = Z.of_string ("0b" ^ Str.matched_group 1 const_str) in
-      Vera.bits_from_int (Z.of_int 32) value (* Default to 32-bit for unsized binary *)
+      let bits_str = Str.matched_group 1 const_str in
+      if String.exists (fun c -> c = 'x' || c = 'X') bits_str then
+        Vera.RawXBV.of_bits (binary_to_bits 32 bits_str)
+      else
+        let value = Z.of_string ("0b" ^ bits_str) in
+        Vera.bits_from_int (Z.of_int 32) value (* Default to 32-bit for unsized binary *)
     else if Str.string_match unsized_prefixed_hex_re const_str 0 then
       let hex = Str.matched_group 1 const_str in
       hex_to_bits 32 hex (* Default to 32-bit for unsized hex *)
@@ -226,6 +258,8 @@ let read_binary_op = function
 
 let read_unary_op = function
   | "BitwiseNot" -> Vera.RawVerilog.UnaryNot
+  | "BitwiseAnd" -> Vera.RawVerilog.UnaryReduceAnd
+  | "LogicalNot" -> Vera.RawVerilog.UnaryLogicalNot
   | str -> raise (SlangUnexpectedValueFor ("unary operator", str))
 
 let read_name str = Scanf.sscanf str "%d %s" (fun _ n -> n)
@@ -382,7 +416,7 @@ let parse_instance_body (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
   }
 
 let parse_slang (json : Yojson.Safe.t) : Vera.RawVerilog.vmodule =
-  ExtractionUtils.my_rocq_trace "JSON to vmodule" (fun () ->
+  ExtractionUtils.my_rocq_traceBracket "JSON to vmodule" (fun () ->
     expect_kind "Root" (member "design" json);
     parse_instance_body
       ((member "design" json) |> member "members" |> to_list
@@ -395,7 +429,7 @@ let parse_verilog_file (path : string) : Vera.RawVerilog.vmodule =
     Unix.open_process_in (Format.sprintf "slang --quiet --ast-json - %s" path)
   in
   let slang_json =
-    ExtractionUtils.my_rocq_trace "JSON parsing" (fun () ->
+    ExtractionUtils.my_rocq_traceBracket "JSON parsing" (fun () ->
         Yojson.Safe.from_channel slang_out)
   in
   let _ = Unix.close_process_in slang_out in

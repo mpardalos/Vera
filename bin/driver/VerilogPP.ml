@@ -40,6 +40,8 @@ let shiftop fmt = function
 let unaryop fmt = function
   | Verilog.UnaryPlus -> fprintf fmt "+"
   | Verilog.UnaryNot -> fprintf fmt "~"
+  | Verilog.UnaryLogicalNot -> fprintf fmt "!"
+  | Verilog.UnaryReduceAnd -> fprintf fmt "&"
 
 let direction fmt d =
   match d with PortIn -> fprintf fmt "In" | PortOut -> fprintf fmt "Out"
@@ -48,31 +50,31 @@ let vtype fmt t = fprintf fmt "<%a>" Zarith_Z.pp_print t
 
 let vector_declaration fmt t =
   match t with
-  | Verilog.Vector (high, low) -> fprintf fmt "[%a:%a]" Zarith_Z.pp_print high Zarith_Z.pp_print low
-  | Verilog.Scalar -> ()
+  | VerilogCommon.Vector (high, low) -> fprintf fmt "[%a:%a]" Zarith_Z.pp_print high Zarith_Z.pp_print low
+  | VerilogCommon.Scalar -> ()
 
 let port_declaration fmt = function
   | None -> ()
   | Some Vera.PortIn -> fprintf fmt "input"
   | Some Vera.PortOut -> fprintf fmt "output"
 
-let variable_declaration (fmt : formatter) (var : Verilog.variable_declaration) =
+let variable_declaration (fmt : formatter) (var : VerilogCommon.variable_declaration) =
   fprintf fmt "%s%a %a"
     (Util.lst_to_string var.varDeclName)
     vector_declaration var.varDeclVectorDeclaration
     port_declaration var.varDeclPort
 
-let net_type (fmt : formatter) (t : Verilog.coq_StorageType) =
+let net_type (fmt : formatter) (t : VerilogCommon.coq_StorageType) =
   match t with
-  | Verilog.Reg -> fprintf fmt "reg"
-  | Verilog.Wire -> fprintf fmt "wire"
+  | VerilogCommon.Reg -> fprintf fmt "reg"
+  | VerilogCommon.Wire -> fprintf fmt "wire"
 
 module Raw = struct
   let rec expression fmt e =
     Format.fprintf fmt "@[";
     (match e with
     | RawVerilog.IntegerLiteral v ->
-        fprintf fmt "%a'b%s" Zarith_Z.pp_print (Vera.RawBV.size v) (Util.lst_to_string (Vera.bits_to_binary_string v))
+        fprintf fmt "%a'b%s" Zarith_Z.pp_print (Vera.length v) (Util.lst_to_string (Vera.bits_to_binary_string v))
     | RawVerilog.RangeSelect (target, hi, lo) ->
         fprintf fmt "%a[%a:%a]" expression target expression hi expression lo
     | RawVerilog.BitSelect (target, index) ->
@@ -136,14 +138,14 @@ module Typed = struct
 
   let variable fmt var =
     fprintf fmt "%s%a"
-      (Util.lst_to_string var.Verilog.varName)
-      vtype var.Verilog.varType
+      (Util.lst_to_string var.Var.varName)
+      vtype var.Var.varType
 
   let rec expression fmt e =
     Format.fprintf fmt "@[";
     (match e with
     | Verilog.IntegerLiteral (_, v) ->
-        fprintf fmt "%a'b%s" Zarith_Z.pp_print (Vera.RawBV.size v)
+        fprintf fmt "%a'b%s" Zarith_Z.pp_print (Vera.length v)
           (Util.lst_to_string (Vera.bits_to_binary_string v))
     | Verilog.Resize (_, t, e) ->
         fprintf fmt "( %a@ as@ %a )" expression e vtype t
@@ -155,14 +157,12 @@ module Typed = struct
         fprintf fmt "( %a@ %a@ %a )" expression l shiftop op expression r
     | Verilog.UnaryOp (_, op, e) ->
         fprintf fmt "( %a@ %a )" unaryop op expression e
-    | Verilog.RangeSelect (_, target, hi, lo) ->
-        fprintf fmt "%a[%a:%a]" expression target Zarith_Z.pp_print hi Zarith_Z.pp_print lo
-    | Verilog.BitSelect_width (_, _, target, index) ->
-        fprintf fmt "%a[%a]" expression target expression index
-    | Verilog.BitSelect_const (w_index, target, index) ->
-        fprintf fmt "%a[%a'd%a]" expression target Zarith_Z.pp_print w_index Zarith_Z.pp_print index
+    | Verilog.RangeSelect (w, Slice.Mk (target, hi, lo)) ->
+        fprintf fmt "%a[%a:%a]" variable target Zarith_Z.pp_print hi Zarith_Z.pp_print lo
+    | Verilog.BitSelect (_, target, index) ->
+        fprintf fmt "%a[%a]" variable target expression index
     | Verilog.Concatenation (_, _, lhs, rhs) ->
-        fprintf fmt "{%a %a}" expression lhs expression rhs
+        fprintf fmt "{%a, %a}" expression lhs expression rhs
     | Verilog.Replication (_, count, expr) ->
         fprintf fmt "{%a{%a}}" Zarith_Z.pp_print count expression expr
     | Verilog.Conditional (_, _, cond, t, f) ->
@@ -171,10 +171,23 @@ module Typed = struct
     | Verilog.NamedExpression var -> variable fmt var);
     Format.fprintf fmt "@]"
 
+  let rec assign_target (fmt : formatter) (t : Verilog.assign_target) =
+    match t with
+    | Verilog.AssignVar var -> variable fmt var
+    | Verilog.AssignBit loc ->
+        fprintf fmt "%a[%a]" variable loc.Location.var Zarith_Z.pp_print
+          loc.Location.idx
+    | Verilog.AssignSlice (width, Slice.Mk (var, hi, lo)) ->
+       fprintf fmt "%a[%a:%a]" variable var
+         Zarith_Z.pp_print hi
+         Zarith_Z.pp_print lo
+    | Verilog.AssignConcat (_, _, lhs, rhs) ->
+        fprintf fmt "{%a, %a}" assign_target lhs assign_target rhs
+
   let statement (fmt : formatter) (s : Verilog.statement) =
     match s with
-    | Verilog.BlockingAssign (lhs, rhs) ->
-        fprintf fmt "%a = %a" variable lhs expression rhs
+    | Verilog.BlockingAssign (_, lhs, rhs) ->
+        fprintf fmt "%a = %a" assign_target lhs expression rhs
 
   let mod_item (fmt : formatter) (i : Verilog.module_item) =
     fprintf fmt "always_comb %a" statement i
@@ -182,10 +195,6 @@ module Typed = struct
   let vmodule (fmt : formatter) (m : Verilog.vmodule) =
     fprintf fmt "Verilog.module %s {@." (Util.lst_to_string m.modName);
     fprintf fmt "    @[<v>";
-    fprintf fmt "@,";
-    fprintf fmt "variables = [@,    @[<v>%a@]@,];"
-      (pp_print_list variable_declaration ~pp_sep:Util.colon_sep)
-      m.modVariableDecls;
     fprintf fmt "@,";
     fprintf fmt "body = [@,    @[<v>%a@]@,];"
       (pp_print_list mod_item ~pp_sep:Util.colon_sep)

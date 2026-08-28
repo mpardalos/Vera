@@ -10,31 +10,31 @@ let ( =<< ) a b = b >>= a
 
 let module_of_file = ParseSlang.parse_verilog_file
 
-let typed_module_of_file f =
+(* filename -> (inputs * outputs * module) *)
+let typed_module_of_file f : (Vera.Var.variable list * Vera.Var.variable list * Vera.Verilog.vmodule ) Vera.Typecheck.transf =
   let m = module_of_file f in
-  Vera.Typecheck.tc_vmodule m
+  let* (Vera.ExistT ((i, o), m)) = Vera.Typecheck.tc_vmodule m in
+  Vera.Inr (i, o, Obj.magic m)
 
-let sorted_module_of_file f =
-  let* m = typed_module_of_file f in
-  Vera.sort_vmodule m
-
-let simpl_module_of_file f =
-  let* m = typed_module_of_file f in
-  Inr (Vera.simpl_vmodule m)
+let lowered_module_of_file f =
+  let* (i, o, m) = typed_module_of_file f in
+  Vera.lower_verilog i o (Obj.magic m)
 
 let smt_of_file filename =
   (* Need to tag it as left or right, doesn't matter here because we only
       translate one module *)
-  Vera.verilog_to_smt VerilogLeft =<< simpl_module_of_file filename
+  let* (i, o, m) = typed_module_of_file filename in
+  Vera.verilog_to_smt_general i o VerilogLeft m
 
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =
-    let* m1 = typed_module_of_file filename1 in
-    let* m2 = typed_module_of_file filename2 in
-    Vera.equivalence_query_general m1 m2
+    let* (i1, o1, m1) = typed_module_of_file filename1 in
+    let* (i2, o2, m2) = typed_module_of_file filename2 in
+    Vera.equivalence_query_general i1 o1 i2 o2 m1 m2
   in
   match query_result with
-  | Vera.Inl err -> printf "Error: %s\n" (Util.lst_to_string err)
+  | Vera.Inl err ->
+      raise (Failure (sprintf "Error: %s\n" (Util.lst_to_string err)))
   | Vera.Inr query -> (
       (match dump_query with
       | Some "-" ->
@@ -47,17 +47,7 @@ let compare ~solver ~dump_query filename1 filename2 =
          eprintf "Query written to %s\n" fp;
          flush stderr; flush stdout
       | _ -> ());
-      match solver query with
-      | SMTLIB.UNSAT, out ->
-          printf "Equivalent (UNSAT)\n";
-          if out != "unsat" then printf "%s\n" out
-      | SMTLIB.SAT, out ->
-          printf "Non-equivalent (SAT)\n";
-          printf "%s\n" out
-      | SMTLIB.Error, out ->
-         (* TODO: This gets printed for the dummy solver. *)
-          printf "Error\n";
-          printf "%s\n" out)
+      printf "%s\n" (solver query))
 
 let rec lower level filename =
   let display_or_error pp result =
@@ -70,19 +60,10 @@ let rec lower level filename =
       display_or_error VerilogPP.Raw.vmodule
         (Vera.Inr (module_of_file filename))
   | `Typed ->
-      display_or_error VerilogPP.Typed.vmodule (typed_module_of_file filename)
-  | `Sorted ->
-      display_or_error VerilogPP.Typed.vmodule (sorted_module_of_file filename)
-  | `Simplified ->
-      display_or_error VerilogPP.Typed.vmodule (simpl_module_of_file filename)
+      display_or_error VerilogPP.Typed.vmodule (let* (_, _, m) = typed_module_of_file filename in Vera.Inr m)
+  | `PreSMT ->
+      display_or_error VerilogPP.Typed.vmodule (lowered_module_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
-  | `All ->
-      printf "\n-- parsed -- \n";
-      lower `Parsed filename;
-      printf "\n-- typed --\n";
-      lower `Typed filename;
-      printf "\n-- smt --\n";
-      lower `SMT filename
 
 let compare_cmd =
   let open Cmdliner.Term.Syntax in
@@ -128,10 +109,8 @@ let lower_cmd =
       [
         ("parsed", `Parsed);
         ("typed", `Typed);
-        ("sorted", `Sorted);
-        ("simplified", `Simplified);
+        ("pre-smt", `PreSMT);
         ("smt", `SMT);
-        ("all", `All);
       ]
   in
   Cmd.v (Cmd.info "lower")
@@ -154,7 +133,9 @@ let vera_cmd =
 
 let () =
   (match Sys.getenv_opt "VERA_TRACE" with
-  | Some ("1" | "true" | "yes") -> ExtractionUtils.trace_enabled := true
+   | Some ("1" | "true" | "yes") ->
+      Printf.eprintf "Enabling VERA_TRACE\n%!";
+      ExtractionUtils.trace_enabled := true
   | _ -> ());
   (match Sys.getenv_opt "VERA_MAX_MEMORY" with
   | Some s ->

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "rocq-mcp": {
+      "type": "local",
+      "command": ["rocq-mcp"],
+      "enabled": true
+    }
+  },
+  "permission": {
+    "rocq-mcp_*": "allow"
+  }
+}
