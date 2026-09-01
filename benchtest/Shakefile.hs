@@ -16,7 +16,7 @@
 {-# LANGUAGE NoFieldSelectors #-}
 
 import Control.DeepSeq (NFData)
-import Control.Monad (forM, forM_, guard, join, void, when)
+import Control.Monad (forM, forM_, guard, join, void, when, (>=>))
 import Data.Bifunctor (bimap)
 import Data.Binary (Binary)
 import Data.Bits (xor)
@@ -51,7 +51,8 @@ import Development.Shake.FilePath
 import Development.Shake.Util
 import GHC.Generics (Generic)
 import Language.Haskell.TH.Syntax (Exp (LitE), Lit (StringL), loc_filename, location)
-import Safe (fromJustNote, readMay)
+import Safe (findJustNote, fromJustNote, readMay)
+import System.Directory (listDirectory)
 import System.Directory qualified as SD
 import System.Exit (ExitCode (..))
 import System.Posix.Resource (Resource (ResourceOpenFiles), ResourceLimit (..), ResourceLimits (..), getResourceLimit, setResourceLimit)
@@ -99,31 +100,35 @@ data YosysGateCount = YosysGateCount FilePath
 type instance RuleResult YosysGateCount = Int
 
 data RunResult = RunResult
-    { time :: Text
+    { genTime :: Text
+    , smtTime :: Text
     , result :: Text
     }
     deriving (Show)
 
-{- | Named fields for one run, prefixed so that the several runs in a
-'BenchmarkResult' do not collide. E.g. @prefix = "Vera"@ gives the columns
-@Vera Result@ and @Vera Time@.
--}
-runResultFields :: ByteString -> (ByteString, ByteString)
-runResultFields prefix = (prefix <> BS8.pack " Result", prefix <> BS8.pack " Time")
+resultField, genTimeField, smtTimeField :: ByteString -> ByteString
+resultField = (<> BS8.pack " Result")
+genTimeField = (<> BS8.pack " Time")
+smtTimeField = (<> BS8.pack " SMT Time")
 
 runResultHeader :: ByteString -> Header
-runResultHeader (runResultFields -> (resultField, timeField)) =
-    header [resultField, timeField]
+runResultHeader prefix =
+    header [resultField prefix, genTimeField prefix, smtTimeField prefix]
 
 runResultToNamedRecord :: ByteString -> RunResult -> NamedRecord
-runResultToNamedRecord (runResultFields -> (resultField, timeField)) r =
-    namedRecord [resultField .= r.result, timeField .= r.time]
+runResultToNamedRecord prefix r =
+    namedRecord
+        [ resultField prefix .= r.result
+        , genTimeField prefix .= r.genTime
+        , smtTimeField prefix .= r.smtTime
+        ]
 
 parseRunResult :: ByteString -> NamedRecord -> Parser RunResult
-parseRunResult (runResultFields -> (resultField, timeField)) m = do
-    result <- m .: resultField
-    time <- m .: timeField
-    pure RunResult{time, result}
+parseRunResult prefix m = do
+    result <- m .: resultField prefix
+    genTime <- m .: genTimeField prefix
+    smtTime <- m .: smtTimeField prefix
+    pure RunResult{genTime, smtTime, result}
 
 gibiBytes :: Int -> Int
 gibiBytes = (1024 * 1024 * 1024 *)
@@ -176,7 +181,6 @@ data BenchmarkResult = MkBenchmarkResult
     { benchmark :: Benchmark
     , size :: Int
     , veraRun :: RunResult
-    , veraSMTRun :: RunResult
     , eqyRun :: RunResult
     }
     deriving (Show)
@@ -213,7 +217,6 @@ instance ToNamedRecord BenchmarkResult where
             [ toNamedRecord r.benchmark
             , namedRecord [sizeField .= r.size]
             , runResultToNamedRecord veraPrefix r.veraRun
-            , runResultToNamedRecord smtPrefix r.veraSMTRun
             , runResultToNamedRecord eqyPrefix r.eqyRun
             ]
 
@@ -222,9 +225,8 @@ instance FromNamedRecord BenchmarkResult where
         benchmark <- parseNamedRecord m
         size <- m .: sizeField
         veraRun <- parseRunResult veraPrefix m
-        veraSMTRun <- parseRunResult smtPrefix m
         eqyRun <- parseRunResult eqyPrefix m
-        pure MkBenchmarkResult{benchmark, size, veraRun, veraSMTRun, eqyRun}
+        pure MkBenchmarkResult{benchmark, size, veraRun, eqyRun}
 
 instance DefaultOrdered BenchmarkResult where
     headerOrder _ =
@@ -232,7 +234,6 @@ instance DefaultOrdered BenchmarkResult where
             [ headerOrder (undefined :: Benchmark)
             , header [sizeField]
             , runResultHeader veraPrefix
-            , runResultHeader smtPrefix
             , runResultHeader eqyPrefix
             ]
 
@@ -363,11 +364,10 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         liftIO $ appendFile out (printf "__time_vera: %.2f\n" veraTime)
         case veraExitCode of
             ExitFailure (-2) -> liftIO $ do
-                appendFile out "__result_vera: Timeout\n"
+                appendFile out "__result_vera: Vera Timeout\n"
             ExitFailure err -> liftIO $ do
-                appendFile out (printf "__result_vera: failed (%d)\n" err)
+                appendFile out (printf "__result_vera: Vera failed (%d)\n" err)
             ExitSuccess -> do
-                liftIO $ appendFile out "__result_vera: OK\n"
                 (Exit smtExitCode, CmdTime smtTime, Stdouterr output) <-
                     withResource memResource veraMemoryLimit $
                         cmd
@@ -379,16 +379,16 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                 liftIO $ appendFile out (printf "__time_smt: %.2f\n" smtTime)
                 case smtExitCode of
                     ExitFailure 130 ->
-                        liftIO $ appendFile out "__result_smt: Timeout\n"
+                        liftIO $ appendFile out "__result_vera: SMT Timeout\n"
                     ExitFailure err -> do
-                        liftIO $ appendFile out (printf "__result_smt: failed (%d)\n" err)
+                        liftIO $ appendFile out (printf "__result_vera: SMT failed (%d)\n" err)
                     ExitSuccess ->
                         let result =
                                 case output & T.pack & T.lines & last & T.strip & T.unpack of
                                     "unsat" -> "OK"
                                     "sat" -> "False negative"
-                                    _ -> "Error"
-                         in liftIO $ appendFile out ("__result_smt: " ++ result ++ "\n")
+                                    _ -> "SMT Error"
+                         in liftIO $ appendFile out ("__result_vera: " ++ result ++ "\n")
 
     phony "vera" $ need [vera]
     vera %> \out -> do
@@ -431,7 +431,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             right = dir </> mod2 <.> "sv"
         timeout <- askOracle ConfigVeraTimeout
         need [eqyFile, left, right]
-        (Exit exitCode, Stdout output, CmdTime eqyTime) <-
+        (Exit exitCode, Stdout output, CmdTime fullEqyTime) <-
             withResource memResource eqyMemory $
                 cmd
                     (Traced "eqy")
@@ -442,7 +442,28 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                     "eqy"
                     "-f"
                     "compare.eqy"
-        liftIO $ appendFile out (printf "__time_eqy: %.2f\n" eqyTime)
+
+        let strategiesDir = eqyDir </> "compare" </> "strategies"
+        [strategyName] <- liftIO $ listDirectory strategiesDir
+        let strategyLogFile = strategiesDir </> strategyName </> "sby" </> strategyName </> "logfile.txt"
+        strategyLog <- liftIO $ T.readFile strategyLogFile
+        -- Looking for a line like this:
+        --   SBY 18:11:11 [top.P] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:59 (59)
+        let smtTime :: Int =
+                T.lines strategyLog
+                    & findJustNote
+                        "Missing SMT time from strategy log"
+                        (T.pack "summary: Elapsed clock time [H:MM:SS (secs)]:" `T.isInfixOf`)
+                    & T.words
+                    & last
+                    & (T.stripPrefix (T.pack "(") >=> T.stripSuffix (T.pack ")"))
+                    & fromJustNote "Could not parse seconds in SMT time"
+                    & T.unpack
+                    & read
+        let eqyGenTime :: Double = fullEqyTime - fromIntegral smtTime
+
+        liftIO $ appendFile out (printf "__time_eqy: %.2f\n" eqyGenTime)
+        liftIO $ appendFile out (printf "__time_smt: %d\n" smtTime)
         case exitCode of
             ExitFailure 130 -> do
                 liftIO $ appendFile out "__result_eqy: Timeout\n"
@@ -517,22 +538,19 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                         ]
                     ]
 
-    let readVeraLog :: Text -> (RunResult, RunResult)
+    let readVeraLog :: Text -> RunResult
         readVeraLog log =
-            ( RunResult
-                { time = findPrefixedLine (T.pack "__time_vera: ") log
+            RunResult
+                { genTime = findPrefixedLine (T.pack "__time_vera: ") log
+                , smtTime = findPrefixedLine (T.pack "__time_smt: ") log
                 , result = findPrefixedLine (T.pack "__result_vera: ") log
                 }
-            , RunResult
-                { time = findPrefixedLine (T.pack "__time_smt: ") log
-                , result = findPrefixedLine (T.pack "__result_smt: ") log
-                }
-            )
 
     let readEqyLog :: Text -> RunResult
         readEqyLog log =
             RunResult
-                { time = findPrefixedLine (T.pack "__time_eqy: ") log
+                { genTime = findPrefixedLine (T.pack "__time_eqy: ") log
+                , smtTime = findPrefixedLine (T.pack "__time_smt: ") log
                 , result = findPrefixedLine (T.pack "__result_eqy: ") log
                 }
 
@@ -542,12 +560,12 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             let eqyLog b = b.baseDir </> printf "%s_vs_%s.eqy.log" b.modA b.modB
             need $ [veraLog, eqyLog] <*> benchmarks
             forM benchmarks $ \b -> do
-                (veraRun, veraSMTRun) <- readVeraLog <$> liftIO (T.readFile (veraLog b))
+                veraRun <- readVeraLog <$> liftIO (T.readFile (veraLog b))
                 eqyRun <- readEqyLog <$> liftIO (T.readFile (eqyLog b))
                 (sizeA, sizeB) <-
                     getDesignSize (b.baseDir </> b.modA <.> "sv")
                         `par` getDesignSize (b.baseDir </> b.modB <.> "sv")
-                pure MkBenchmarkResult{benchmark = b, size = sizeA + sizeB, veraRun, veraSMTRun, eqyRun}
+                pure MkBenchmarkResult{benchmark = b, size = sizeA + sizeB, veraRun, eqyRun}
 
     let benchmarksReport :: FilePath -> [Benchmark] -> Action ()
         benchmarksReport out benchmarks = do
@@ -712,17 +730,17 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                     [ (message, [name])
                     | MkBenchmarkResult{..} <- V.toList results
                     , let name = benchmarkName benchmark & dropDirectory1 & dropDirectory1
-                    , message <- case (T.unpack veraRun.result, T.unpack veraSMTRun.result, T.unpack eqyRun.result) of
-                        ("OK", "OK", "OK") -> ["Both OK"]
-                        ("OK", "OK", _) -> ["Only Vera"]
-                        ("OK", _, "OK") -> ["Only EQY (SMT timeout)"]
-                        (_, _, "OK") -> ["Only EQY (Failed to generate)"]
-                        (_, _, _) -> ["Both failed"]
+                    , message <- case (T.unpack veraRun.result, T.unpack eqyRun.result) of
+                        ("OK", "OK") -> ["Both OK"]
+                        ("OK", _) -> ["Only Vera"]
+                        (_, "OK") -> ["Only EQY"]
+                        (_, _) -> ["Both failed"]
                     ]
         forM_ groups $ \(message, benchmarks) -> do
-          putInfo (printf "%s (%d)" message (length benchmarks))
-          when (message /= "Both OK") $ 
-            forM_ benchmarks $ \name -> putInfo (printf "  - %s" name)
+            putInfo (printf "%s (%d)" message (length benchmarks))
+            when (message /= "Both OK") $
+                forM_ benchmarks $
+                    \name -> putInfo (printf "  - %s" name)
         putInfo (printf "\nFull details in %s" summaryFile)
 
     "out/pulp-elau/summary.csv" %> \out -> do
