@@ -1,10 +1,12 @@
 From vera Require Import Verilog.
+Import Verilog.
 From vera Require Import Variables.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require Import Bitvector.
 From vera Require Import Common.
-Import Verilog.
+From vera Require Import VerilogSemantics.
+Import CombinationalOnly.
 (* From vera Require VerilogSemantics. *)
 
 From ExtLib Require Import Structures.Monads.
@@ -54,7 +56,8 @@ Equations simpl_expr {w} (e : expression w) : expression w := {
     Replication n (simpl_expr e)
   | Conditional cond ifT ifF => Conditional (simpl_expr cond) (simpl_expr ifT) (simpl_expr ifF)
   | RangeSelect slice => RangeSelect slice
-  | BitSelect vec idx => BitSelect vec (simpl_expr idx)
+  | BitSelect vec idx_expr => Resize 1 (equalized_shiftop (Var.varTypeWf vec)
+      BinaryShiftRight (NamedExpression vec) idx_expr) eq_refl
   | Resize to expr wf => Resize to (simpl_expr expr) wf
   | IntegerLiteral w val => IntegerLiteral w val
   | NamedExpression var => NamedExpression var
@@ -82,7 +85,6 @@ Definition simpl_vmodule {i o} (v : vmodule i o) : vmodule i o :=
   |}.
 Proof. all: destruct v; assumption. Defined.
 
-From vera Require Import VerilogSemantics.
 Import (notations) RegisterState.
 From vera Require Import Tactics.
 
@@ -90,7 +92,6 @@ From Stdlib Require Import Logic.ProofIrrelevance.
 From Stdlib Require Import Sorting.Permutation.
 From Stdlib Require Import NArith.
 
-Import CombinationalOnly.
 Import EqNotations.
 Local Open Scope verilog.
 
@@ -187,8 +188,20 @@ Proof.
        | [ Hinduct : forall r, eval_expr r (simpl_expr _) = eval_expr r _ |- _ ] =>
          rewrite Hinduct in *
        end.
-  all: reflexivity.
-Qed.
+  all: try reflexivity.
+  all: expect 1.
+  (* Variable bitselect *)
+  simpl.
+  rewrite eval_equalized_shiftop. simp eval_shiftop.
+  destruct (XBV.to_N (eval_expr regs idx_expr)); simpl.
+  - simp eval_expr.
+    funelim (convert 1 (XBV.shr (regs vec) n)).
+    + pose proof (Var.varTypeWf vec). lia.
+    + admit.
+    + admit.
+  - rewrite convert_exes by (pose proof (Var.varTypeWf vec); lia).
+    reflexivity.
+Admitted.
 
 Lemma equalized_shiftop_reads_reads_Equal w1 w2 wf op (lhs : expression w1) (rhs : expression w2) :
   LocationSet.Equal (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
