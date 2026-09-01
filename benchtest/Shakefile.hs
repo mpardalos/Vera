@@ -51,7 +51,7 @@ import Development.Shake.FilePath
 import Development.Shake.Util
 import GHC.Generics (Generic)
 import Language.Haskell.TH.Syntax (Exp (LitE), Lit (StringL), loc_filename, location)
-import Safe (findJustNote, fromJustNote, readMay)
+import Safe (findJustNote, fromJustNote, lastMay, readMay)
 import System.Directory (listDirectory)
 import System.Directory qualified as SD
 import System.Exit (ExitCode (..))
@@ -100,35 +100,37 @@ data YosysGateCount = YosysGateCount FilePath
 type instance RuleResult YosysGateCount = Int
 
 data RunResult = RunResult
-    { genTime :: Text
+    { runTime :: Text
+    -- ^ Time for the whole run (gen + smt)
     , smtTime :: Text
+    -- ^ Time for the SMT solver (<= runTime)
     , result :: Text
     }
     deriving (Show)
 
-resultField, genTimeField, smtTimeField :: ByteString -> ByteString
+resultField, runTimeField, smtTimeField :: ByteString -> ByteString
 resultField = (<> BS8.pack " Result")
-genTimeField = (<> BS8.pack " Time")
+runTimeField = (<> BS8.pack " Time")
 smtTimeField = (<> BS8.pack " SMT Time")
 
 runResultHeader :: ByteString -> Header
 runResultHeader prefix =
-    header [resultField prefix, genTimeField prefix, smtTimeField prefix]
+    header [resultField prefix, runTimeField prefix, smtTimeField prefix]
 
 runResultToNamedRecord :: ByteString -> RunResult -> NamedRecord
 runResultToNamedRecord prefix r =
     namedRecord
         [ resultField prefix .= r.result
-        , genTimeField prefix .= r.genTime
+        , runTimeField prefix .= r.runTime
         , smtTimeField prefix .= r.smtTime
         ]
 
 parseRunResult :: ByteString -> NamedRecord -> Parser RunResult
 parseRunResult prefix m = do
     result <- m .: resultField prefix
-    genTime <- m .: genTimeField prefix
+    runTime <- m .: runTimeField prefix
     smtTime <- m .: smtTimeField prefix
-    pure RunResult{genTime, smtTime, result}
+    pure RunResult{runTime, smtTime, result}
 
 gibiBytes :: Int -> Int
 gibiBytes = (1024 * 1024 * 1024 *)
@@ -236,6 +238,27 @@ instance DefaultOrdered BenchmarkResult where
             , runResultHeader veraPrefix
             , runResultHeader eqyPrefix
             ]
+
+-- Writing and reading RunResults to/from logfiles
+
+resultLogPrefix :: String -> Text
+resultLogPrefix field = T.pack ("__RunResult_" ++ field ++ ": ")
+
+resultLines :: RunResult -> Text
+resultLines RunResult{runTime, smtTime, result} =
+    T.unlines
+        [ resultLogPrefix "runTime" <> runTime
+        , resultLogPrefix "smtTime" <> smtTime
+        , resultLogPrefix "result" <> result
+        ]
+
+findResult :: Text -> RunResult
+findResult t =
+    RunResult
+        { runTime = findPrefixedLine (resultLogPrefix "runTime") t
+        , smtTime = findPrefixedLine (resultLogPrefix "smtTime") t
+        , result = findPrefixedLine (resultLogPrefix "result") t
+        }
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeThreads = 0} $ do
@@ -361,34 +384,42 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                     ("--dump-query=" ++ smtFile)
                     left
                     right
-        liftIO $ appendFile out (printf "__time_vera: %.2f\n" veraTime)
         case veraExitCode of
-            ExitFailure (-2) -> liftIO $ do
-                appendFile out "__result_vera: Vera Timeout\n"
+            ExitFailure (-2) ->
+                liftIO . T.appendFile out . resultLines $
+                    RunResult
+                        { runTime = tShow veraTime
+                        , smtTime = T.pack "-"
+                        , result = T.pack "Vera timeout"
+                        }
             ExitFailure err -> liftIO $ do
-                appendFile out (printf "__result_vera: Vera failed (%d)\n" err)
+                liftIO . T.appendFile out . resultLines $
+                    RunResult
+                        { runTime = tShow veraTime
+                        , smtTime = T.pack "-"
+                        , result = T.pack (printf "Vera failed (%d)" err)
+                        }
             ExitSuccess -> do
-                (Exit smtExitCode, CmdTime smtTime, Stdouterr output) <-
+                (Exit smtExitCode, CmdTime smtTimeD, Stdouterr output) <-
                     withResource memResource veraMemoryLimit $
                         cmd
                             (Traced (veraSolver ++ " for vera"))
                             (Timeout timeout)
                             veraSolver
                             smtFile
-                liftIO $ appendFile out ("\n" ++ output)
-                liftIO $ appendFile out (printf "__time_smt: %.2f\n" smtTime)
-                case smtExitCode of
-                    ExitFailure 130 ->
-                        liftIO $ appendFile out "__result_vera: SMT Timeout\n"
-                    ExitFailure err -> do
-                        liftIO $ appendFile out (printf "__result_vera: SMT failed (%d)\n" err)
-                    ExitSuccess ->
-                        let result =
+                liftIO . T.appendFile out . resultLines $
+                    RunResult
+                        { runTime = tShow (veraTime + smtTimeD)
+                        , smtTime = tShow smtTimeD
+                        , result = T.pack $ case smtExitCode of
+                            ExitFailure 130 -> "SMT Timeout"
+                            ExitFailure err -> printf "SMT failed (%d)\n" err
+                            ExitSuccess ->
                                 case output & T.pack & T.lines & last & T.strip & T.unpack of
                                     "unsat" -> "OK"
                                     "sat" -> "False negative"
                                     _ -> "SMT Error"
-                         in liftIO $ appendFile out ("__result_vera: " ++ result ++ "\n")
+                        }
 
     phony "vera" $ need [vera]
     vera %> \out -> do
@@ -431,7 +462,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             right = dir </> mod2 <.> "sv"
         timeout <- askOracle ConfigVeraTimeout
         need [eqyFile, left, right]
-        (Exit exitCode, Stdout output, CmdTime fullEqyTime) <-
+        (Exit exitCode, Stdout output, CmdTime runTime) <-
             withResource memResource eqyMemory $
                 cmd
                     (Traced "eqy")
@@ -449,31 +480,24 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         strategyLog <- liftIO $ T.readFile strategyLogFile
         -- Looking for a line like this:
         --   SBY 18:11:11 [top.P] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:59 (59)
-        let smtTime :: Int =
-                T.lines strategyLog
-                    & findJustNote
-                        "Missing SMT time from strategy log"
-                        (T.pack "summary: Elapsed clock time [H:MM:SS (secs)]:" `T.isInfixOf`)
-                    & T.words
-                    & last
-                    & (T.stripPrefix (T.pack "(") >=> T.stripSuffix (T.pack ")"))
-                    & fromJustNote "Could not parse seconds in SMT time"
-                    & T.unpack
-                    & read
-        let eqyGenTime :: Double = fullEqyTime - fromIntegral smtTime
-
-        liftIO $ appendFile out (printf "__time_eqy: %.2f\n" eqyGenTime)
-        liftIO $ appendFile out (printf "__time_smt: %d\n" smtTime)
-        case exitCode of
-            ExitFailure 130 -> do
-                liftIO $ appendFile out "__result_eqy: Timeout\n"
-            ExitFailure err
-                | "EQY ---- Keyboard interrupt or external termination signal ----" `isInfixOf` output ->
-                    liftIO $ appendFile out "__result_eqy: Timeout\n"
-                | otherwise ->
-                    liftIO $ appendFile out (printf "__result_eqy: Failed (%d)\n" err)
-            ExitSuccess ->
-                liftIO $ appendFile out "__result_eqy: OK\n"
+        let smtTime :: Maybe Int =
+                find (T.pack "summary: Elapsed clock time [H:MM:SS (secs)]:" `T.isInfixOf`) (T.lines strategyLog)
+                    >>= lastMay . T.words
+                    >>= T.stripPrefix (T.pack "(")
+                    >>= T.stripSuffix (T.pack ")")
+                    >>= readMay . T.unpack
+        liftIO . T.appendFile out . resultLines $
+            RunResult
+                { runTime = tShow runTime
+                , smtTime = T.pack $ maybe "Unknown" show smtTime
+                , result = T.pack $ case exitCode of
+                    ExitFailure 130 -> "Timeout"
+                    ExitFailure err
+                        | "EQY ---- Keyboard interrupt or external termination signal ----" `isInfixOf` output ->
+                            "Timeout"
+                        | otherwise -> (printf "Failed (%d)" err)
+                    ExitSuccess -> "OK"
+                }
 
     phony "clean-run" $ do
         removeFilesAfter
@@ -538,30 +562,14 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                         ]
                     ]
 
-    let readVeraLog :: Text -> RunResult
-        readVeraLog log =
-            RunResult
-                { genTime = findPrefixedLine (T.pack "__time_vera: ") log
-                , smtTime = findPrefixedLine (T.pack "__time_smt: ") log
-                , result = findPrefixedLine (T.pack "__result_vera: ") log
-                }
-
-    let readEqyLog :: Text -> RunResult
-        readEqyLog log =
-            RunResult
-                { genTime = findPrefixedLine (T.pack "__time_eqy: ") log
-                , smtTime = findPrefixedLine (T.pack "__time_smt: ") log
-                , result = findPrefixedLine (T.pack "__result_eqy: ") log
-                }
-
     let runBenchmarks :: [Benchmark] -> Action [BenchmarkResult]
         runBenchmarks benchmarks = do
             let veraLog b = b.baseDir </> printf "%s_vs_%s.vera.log" b.modA b.modB
             let eqyLog b = b.baseDir </> printf "%s_vs_%s.eqy.log" b.modA b.modB
             need $ [veraLog, eqyLog] <*> benchmarks
             forM benchmarks $ \b -> do
-                veraRun <- readVeraLog <$> liftIO (T.readFile (veraLog b))
-                eqyRun <- readEqyLog <$> liftIO (T.readFile (eqyLog b))
+                veraRun <- findResult <$> liftIO (T.readFile (veraLog b))
+                eqyRun <- findResult <$> liftIO (T.readFile (eqyLog b))
                 (sizeA, sizeB) <-
                     getDesignSize (b.baseDir </> b.modA <.> "sv")
                         `par` getDesignSize (b.baseDir </> b.modB <.> "sv")
@@ -867,3 +875,6 @@ readFileT' fp = need [fp] >> liftIO (T.readFile fp)
 -- T.writeFile, lifted to actions
 writeFileT' :: FilePath -> Text -> Action ()
 writeFileT' fp txt = liftIO (T.writeFile fp txt) >> trackWrite [fp]
+
+tShow :: (Show a) => a -> Text
+tShow = T.pack . show
