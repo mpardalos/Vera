@@ -160,43 +160,68 @@ Qed.
 
 Opaque N.of_nat N.to_nat N.add N.sub reflexivity.
 
-Lemma term_reflect_eq_bitwise_rec w idx wf (t1 t2 : SMTLib.term (SMTLib.Sort_BitVec w)):
-  term_reflect
-    (eq_bitwise w t1 t2 idx wf)
-    (fun ρ => BV.bv_extr 0 (N.of_nat idx) (SMTLib.interp_term ρ t1)
-          = BV.bv_extr 0 (N.of_nat idx) (SMTLib.interp_term ρ t2)).
-Proof.
-  unfold term_reflect, term_satisfied_by.
-  intros.
-  funelim (eq_bitwise w t1 t2 idx wf).
-  all: clear Heqcall.
-  - simpl. split.
-    { intros. exact (BV.bv_zero_eq _ _). }
-    { intros. reflexivity. }
-  - specialize (H ρ). simpl. 
-    rewrite Bool.andb_true_iff.
-    rewrite BV.bv_eq_reflect.
-    replace (N.of_nat (S idx_pred)) with (1 + N.of_nat idx_pred)%N by lia.
-    rewrite ! BV.bv_extr_plus by lia. rewrite N.add_0_l.
-    rewrite BV.bv_concat_eq_iff.
-    rewrite H. clear H.
-    apply and_iff_compat_r.
-    replace (1 + N.of_nat idx_pred - N.of_nat idx_pred)%N with 1%N by lia.
-    reflexivity.
-Qed.
+(* Lemma term_reflect_eq_bitwise_rec w idx wf (t1 t2 : SMTLib.term (SMTLib.Sort_BitVec w)):
+ *   term_reflect
+ *     (eq_bitwise w t1 t2 idx wf)
+ *     (fun ρ => BV.bv_extr 0 (N.of_nat idx) (SMTLib.interp_term ρ t1)
+ *           = BV.bv_extr 0 (N.of_nat idx) (SMTLib.interp_term ρ t2)).
+ * Proof.
+ *   unfold term_reflect, term_satisfied_by.
+ *   intros.
+ *   funelim (eq_bitwise w t1 t2 idx wf).
+ *   all: clear Heqcall.
+ *   - simpl. split.
+ *     { intros. exact (BV.bv_zero_eq _ _). }
+ *     { intros. reflexivity. }
+ *   - specialize (H ρ). simpl. 
+ *     rewrite Bool.andb_true_iff.
+ *     rewrite BV.bv_eq_reflect.
+ *     replace (N.of_nat (S idx_pred)) with (1 + N.of_nat idx_pred)%N by lia.
+ *     rewrite ! BV.bv_extr_plus by lia. rewrite N.add_0_l.
+ *     rewrite BV.bv_concat_eq_iff.
+ *     rewrite H. clear H.
+ *     maybe rewrite and_comm; apply and_iff_compat_r.
+ *     replace (1 + N.of_nat idx_pred - N.of_nat idx_pred)%N with 1%N by lia.
+ *     reflexivity.
+ * Qed. *)
 
-Lemma term_reflect_eq_bitwise w wf (t1 t2 : SMTLib.term (SMTLib.Sort_BitVec w)):
+
+Lemma term_reflect_and_all_right_assoc terms props :
+  Forall2 term_reflect terms props ->
   term_reflect
-    (eq_bitwise w t1 t2 (N.to_nat w) wf)
-    (fun ρ => SMTLib.interp_term ρ t1 = SMTLib.interp_term ρ t2).
+    (and_all_right_assoc terms)
+    (fun ρ => Forall (fun P => P ρ) props).
 Proof.
-  replace (fun ρ : SMTLib.valuation => SMTLib.interp_term ρ t1 = SMTLib.interp_term ρ t2)
-    with  (fun ρ : SMTLib.valuation => BV.bv_extr 0 (N.of_nat (N.to_nat w)) (SMTLib.interp_term ρ t1)
-                                   = BV.bv_extr 0 (N.of_nat (N.to_nat w)) (SMTLib.interp_term ρ t2)).
-  - apply term_reflect_eq_bitwise_rec.
-  - apply functional_extensionality. intros ρ.
-    rewrite N2Nat.id. rewrite ! BV.bv_extr_full. reflexivity.
+  induction 1.
+  all: simp and_all_right_assoc.
+  - setoid_rewrite Forall_nil_iff. apply term_reflect_true. trivial.
+  - setoid_rewrite Forall_cons_iff. apply term_reflect_and. 
+    + assumption.
+    + assumption.
 Qed.
+  
+
+Import SMTLib.
+
+Lemma term_reflect_eq_bitwise w (t1 t2 : term (Sort_BitVec w)):
+  term_reflect
+    (eq_bitwise t1 t2)
+    (fun ρ => interp_term ρ t1 = interp_term ρ t2).
+Proof.
+  unfold eq_bitwise.
+  setoid_replace (fun ρ : valuation => interp_term ρ t1 = interp_term ρ t2)
+    with  (fun ρ : valuation =>
+      Forall (fun P => P ρ)
+        (map (fun idx_nat => fun ρ =>
+          let idx := N.of_nat idx_nat in
+            interp_term ρ (Term_BVExtract idx idx (reflexivity idx) t1) = interp_term ρ (Term_BVExtract idx idx (reflexivity idx) t2))
+          (seq 0 (N.to_nat w)))).
+  - apply term_reflect_and_all_right_assoc.
+    induction (seq 0 (N.to_nat w)). all: cbn. all: constructor.
+    + apply term_reflect_eq.
+    + apply IHl.
+  - admit.
+Admitted.
 
 Lemma mk_var_same_spec : forall name,
   term_reflect (mk_var_same name) (smt_same_value name).

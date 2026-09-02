@@ -49,31 +49,24 @@ Equations mk_inputs_same (inputs : list Var.t) : SMTLib.term SMTLib.Sort_Bool :=
   | (var :: vars) => SMTLib.Term_And (mk_var_same var) (mk_inputs_same vars)
 }.
 
-Section eq_bitwise.
-  Variable (w : N) (t1 t2 : SMTLib.term (SMTLib.Sort_BitVec w)).
+Equations and_all_right_assoc : list (SMTLib.term SMTLib.Sort_Bool) -> SMTLib.term SMTLib.Sort_Bool := {
+  | [] => SMTLib.Term_True
+  | t :: tl => SMTLib.Term_And t (and_all_right_assoc tl)
+}.
 
-  Equations eq_bitwise (idx : nat) (wf : (N.of_nat idx <= w)%N) : SMTLib.term SMTLib.Sort_Bool := {
-    | 0, wf => SMTLib.Term_True
-    | S idx_pred, wf =>
-      let idx := N.of_nat idx_pred in
-      SMTLib.Term_And
-        (SMTLib.Term_Eq (SMTLib.Term_BVExtract idx idx (reflexivity idx) t1) (SMTLib.Term_BVExtract idx idx (reflexivity idx) t2))
-        (eq_bitwise idx_pred _)
-  }.
-  Next Obligation. lia. Qed. 
-End eq_bitwise.
+Definition eq_bitwise {w} (t1 t2 : SMTLib.term (SMTLib.Sort_BitVec w)) : SMTLib.term SMTLib.Sort_Bool :=
+  and_all_right_assoc
+    (map
+      (fun idx_nat => let idx := N.of_nat idx_nat in
+        (SMTLib.Term_Eq
+          (SMTLib.Term_BVExtract idx idx (reflexivity idx) t1)
+          (SMTLib.Term_BVExtract idx idx (reflexivity idx) t2)))
+      (seq 0 (N.to_nat w))).
 
-(* Definition mk_var_distinct (var : Var.t) : SMTLib.term SMTLib.Sort_Bool :=
- *   SMTLib.Term_Not (SMTLib.Term_Eq (SMTLib.Term_Const (verilog_to_smt_var VerilogLeft var))
- *                                   (SMTLib.Term_Const (verilog_to_smt_var VerilogRight var)))
- *   . *)
 #[program]
 Definition mk_var_distinct (var : Var.t) : SMTLib.term SMTLib.Sort_Bool :=
-  SMTLib.Term_Not (eq_bitwise _ (SMTLib.Term_Const (verilog_to_smt_var VerilogLeft var))
-                                (SMTLib.Term_Const (verilog_to_smt_var VerilogRight var))
-                                (N.to_nat (Var.varType var)) _)
-  .
-Next Obligation. lia. Qed.
+  SMTLib.Term_Not (eq_bitwise (SMTLib.Term_Const (verilog_to_smt_var VerilogLeft var))
+                              (SMTLib.Term_Const (verilog_to_smt_var VerilogRight var))).
 
 Equations mk_outputs_distinct (inputs : list Var.t) : SMTLib.term SMTLib.Sort_Bool := {
   | [] => SMTLib.Term_False
