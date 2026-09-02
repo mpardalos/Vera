@@ -22,6 +22,7 @@ From Stdlib Require Import Lia.
 From Stdlib Require Import Morphisms.
 From Stdlib Require Import Classical.
 From Stdlib Require Import ZArith.
+From Stdlib Require Import Nnat.
 From Stdlib Require Import String.
 From Stdlib Require Import List.
 From Stdlib Require Import Setoid.
@@ -157,6 +158,81 @@ Proof.
   destruct (SMTLib.interp_term ρ t); crush.
 Qed.
 
+(***** Move me to bitvector ****)
+
+Lemma bv_zero_eq (bv1 bv2 : BV.bitvector 0) : bv1 = bv2.
+Proof.
+  destruct bv1 as [[] wf1], bv2 as [[] wf2].
+  2,3,4: crush.
+  f_equal. apply proof_irrelevance.
+Qed.
+
+(* Only keep this if it is can be used by the next three. *)
+Lemma bv_decompose {w} idx (bv : BV.bitvector w) (in_bounds : (idx <= w)%N) :
+  bv = rew [BV.bitvector] (N.sub_add idx w in_bounds) in BV.bv_concat (BV.bv_extr idx (w - idx) bv) (BV.bv_extr 0 idx bv).
+Proof.
+  destruct bv. unfold BV.bv_extr, BV.bv_concat. simpl.
+  apply BV.of_bits_equal. destruct_rew.
+  unfold RawBV.size in *. subst. N_to_nat.
+  revert idx in_bounds.
+  induction bv.
+  all: intros.
+  all: simpl.
+Admitted.
+
+Lemma bv_extr_plus {w} (bv: BV.bitvector w) idx a b : 
+  BV.bv_extr idx (a + b) bv = BV.bv_concat (BV.bv_extr (idx + b) a bv) (BV.bv_extr idx b bv).
+Proof. Admitted.
+
+Lemma bv_concat_eq_iff {w_hi w_lo} (hi1 hi2 : BV.bitvector w_hi) (lo1 lo2 : BV.bitvector w_lo) :
+  BV.bv_concat hi1 lo1 = BV.bv_concat hi2 lo2 <-> (hi1 = hi2 /\ lo1 = lo2).
+Proof. Admitted.
+
+Lemma bv_extr_full {w} (bv : BV.bitvector w) : BV.bv_extr 0 w bv = bv.
+Proof. Admitted.
+
+(*******************************)
+
+Opaque N.of_nat N.to_nat N.add N.sub reflexivity.
+
+Lemma term_reflect_eq_bitwise_rec w idx wf (t1 t2 : SMTLib.term (SMTLib.Sort_BitVec w)):
+  term_reflect
+    (eq_bitwise w t1 t2 idx wf)
+    (fun ρ => BV.bv_extr 0 (N.of_nat idx) (SMTLib.interp_term ρ t1)
+          = BV.bv_extr 0 (N.of_nat idx) (SMTLib.interp_term ρ t2)).
+Proof.
+  unfold term_reflect, term_satisfied_by.
+  intros.
+  funelim (eq_bitwise w t1 t2 idx wf).
+  all: clear Heqcall.
+  - simpl. split.
+    { intros. exact (bv_zero_eq _ _). }
+    { intros. reflexivity. }
+  - specialize (H ρ). simpl. 
+    rewrite Bool.andb_true_iff.
+    rewrite BV.bv_eq_reflect.
+    replace (N.of_nat (S idx_pred)) with (1 + N.of_nat idx_pred)%N by lia.
+    rewrite ! bv_extr_plus. rewrite N.add_0_l.
+    rewrite bv_concat_eq_iff.
+    rewrite H. clear H.
+    apply and_iff_compat_r.
+    replace (1 + N.of_nat idx_pred - N.of_nat idx_pred)%N with 1%N by lia.
+    reflexivity.
+Qed.
+
+Lemma term_reflect_eq_bitwise w wf (t1 t2 : SMTLib.term (SMTLib.Sort_BitVec w)):
+  term_reflect
+    (eq_bitwise w t1 t2 (N.to_nat w) wf)
+    (fun ρ => SMTLib.interp_term ρ t1 = SMTLib.interp_term ρ t2).
+Proof.
+  replace (fun ρ : SMTLib.valuation => SMTLib.interp_term ρ t1 = SMTLib.interp_term ρ t2)
+    with  (fun ρ : SMTLib.valuation => BV.bv_extr 0 (N.of_nat (N.to_nat w)) (SMTLib.interp_term ρ t1)
+                                   = BV.bv_extr 0 (N.of_nat (N.to_nat w)) (SMTLib.interp_term ρ t2)).
+  - apply term_reflect_eq_bitwise_rec.
+  - apply functional_extensionality. intros ρ.
+    rewrite N2Nat.id. rewrite ! bv_extr_full. reflexivity.
+Qed.
+
 Lemma mk_var_same_spec : forall name,
   term_reflect (mk_var_same name) (smt_same_value name).
 Proof.
@@ -205,7 +281,16 @@ Proof.
   intros *.
   unfold mk_var_distinct, smt_distinct_value.
   apply term_reflect_not.
-  apply term_reflect_eq.
+  (* apply term_reflect_eq. *)
+  change
+    ((fun ρ : SMTLib.valuation =>
+      ρ (verilog_to_smt_var VerilogLeft name) =
+      ρ (verilog_to_smt_var VerilogRight name)))
+    with
+    ((fun ρ : SMTLib.valuation =>
+      SMTLib.interp_term ρ (SMTLib.Term_Const (verilog_to_smt_var VerilogLeft name)) =
+      SMTLib.interp_term ρ (SMTLib.Term_Const (verilog_to_smt_var VerilogRight name)))).
+  apply term_reflect_eq_bitwise.
 Qed.
 
 Lemma mk_outputs_distinct_spec outputs :
