@@ -728,8 +728,10 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             appendFile out $ intercalate "," [design, variant, result]
             appendFile out $ "\n"
 
-    phony "pulp-elau" $ do
-        let summaryFile = "out/pulp-elau/summary.csv"
+    phony "pulp-elau" $ putError "You must specify a width (e.g. `pulp-elau-8`)"
+
+    patternPhony "pulp-elau-*" $ \[width] -> do
+        let summaryFile = "out" </> "pulp-elau-" ++ width </> "summary.csv"
         need [summaryFile]
         csv <- liftIO (LBS.readFile summaryFile)
         let Right (_, results) = decodeByName @BenchmarkResult csv
@@ -752,11 +754,11 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                     \name -> putInfo (printf "  - %s" name)
         putInfo (printf "\nFull details in %s" summaryFile)
 
-    "out/pulp-elau/summary.csv" %> \out -> do
-        sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
+    "out/pulp-elau-*/summary.csv" !%> \out [width] -> do
+        sourceFiles <- getDirectoryFiles "pulp-elau/src" ["*.sv"]
         benchmarksReport out $
             [ MkBenchmark
-                { baseDir = "out" </> "pulp-elau" </> design
+                { baseDir = "out" </> "pulp-elau-" ++ width </> design
                 , modA
                 , modB
                 }
@@ -766,16 +768,19 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             , (modA, modB) <- [("slow", "medium"), ("slow", "fast"), ("medium", "fast")]
             ]
 
-    "out/pulp-elau/*/*.sv" !%> \out [design, variant] -> do
+    "out/pulp-elau-*/*/*.sv" !%> \out [widthStr, design, variant] -> do
         let top :: String = case variant of
                 "behavioural" -> "behavioural_" ++ design
                 _ -> design
-            speed = case variant of
+            speedParam = case variant of
                 "behavioural" -> ""
                 "slow" -> "-G speed=lau_pkg::SLOW"
                 "medium" -> "-G speed=lau_pkg::MEDIUM"
                 "fast" -> "-G speed=lau_pkg::FAST"
                 _ -> error ("Invalid variant: " ++ variant)
+            width :: Int = read widthStr
+            widthParam = printf "-G width=%d -G widthX=%d -G widthY=%d -G widthA=%d" width width width (2 * width + width `div` 2)
+            params = unwords [speedParam, widthParam]
             log = out <.> "log"
         cmd_
             (FileStdout log)
@@ -785,14 +790,14 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
             [ printf
                 "read_slang pulp-elau/src/*.sv --top %s %s; flatten; write_verilog %s"
                 top
-                speed
+                params
                 out ::
                 String
             ]
 
-    "out/pulp-elau/*/*.lowered.vera.log" %> \out -> need [dropExtension out]
-    "out/pulp-elau/*/*.lowered.vera" !%> \out [design, variant] -> do
-        let src = "out/pulp-elau" </> design </> variant <.> "sv"
+    "out/pulp-elau-*/*/*.lowered.vera.log" %> \out -> need [dropExtension out]
+    "out/pulp-elau-*/*/*.lowered.vera" !%> \out [width, design, variant] -> do
+        let src = (out & dropExtension & dropExtension) <.> "sv"
             log = out <.> "log"
         timeout <- askOracle ConfigVeraTimeout
         veraMemoryLimit <- askOracle ConfigVeraMemoryLimit
@@ -822,6 +827,9 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     pat %> \target ->
         let Just split = filePattern pat target
          in act target split
+
+patternPhony :: FilePattern -> ([String] -> Action ()) -> Rules ()
+patternPhony pat act = phonys $ \target -> act <$> filePattern pat target
 
 -- Split the list on the first instance of the separator
 splitOn :: (Eq a) => a -> [a] -> ([a], [a])
