@@ -356,6 +356,25 @@ Module RawBV.
     - apply set_slice_list_size. exact wf.
     - apply N.leb_gt in E. lia.
   Qed.
+
+  Lemma extract_as_firstn_skipn bits i j :
+    extract bits i j = List.firstn (j - i) (List.skipn i bits).
+  Proof.
+    revert i j. induction bits; intros [|i] [|j]; simpl; try reflexivity.
+    - destruct (j - i)%nat; reflexivity.
+    - f_equal. specialize (IHbits 0 j). simpl in IHbits.
+      replace (j - 0)%nat with j in IHbits by lia. exact IHbits.
+    - apply IHbits.
+  Qed.
+
+  Lemma firstn_add_skipn {A} (a b : nat) (xs : list A) :
+    List.firstn (a + b) xs =
+      (List.firstn a xs ++ List.firstn b (List.skipn a xs))%list.
+  Proof.
+    revert xs. induction a; intros [|x xs]; simpl; auto.
+    - destruct b; reflexivity.
+    - f_equal. apply IHa.
+  Qed.
 End RawBV.
 
 Module BV.
@@ -390,6 +409,111 @@ Module BV.
     simpl. clear wf1 wf2. subst bits2.
     rewrite N.eqb_refl.
     apply RAWBITVECTOR_LIST.List_eq_refl.
+  Qed.
+
+  Lemma bv_zero_eq (bv1 bv2 : bitvector 0) : bv1 = bv2.
+  Proof.
+    apply of_bits_equal.
+    destruct bv1 as [bits1 wf1], bv2 as [bits2 wf2]. simpl.
+    unfold RawBV.size in *.
+    destruct bits1, bits2; simpl in *; try discriminate; reflexivity.
+  Qed.
+
+  Lemma bv_decompose {w} idx (bv : bitvector w)
+    (in_bounds : (idx <= w)%N) :
+    bv = rew [bitvector] (N.sub_add idx w in_bounds) in
+      bv_concat (bv_extr idx (w - idx) bv) (bv_extr 0 idx bv).
+  Proof.
+    destruct bv as [bits wf].
+    apply of_bits_equal. destruct_rew. simpl.
+    unfold RawBV.bv_extr, RawBV.bv_concat. simpl.
+    replace (w <? w - idx + idx)%N with false
+      by (symmetry; apply N.ltb_ge; lia).
+    replace (w <? idx + 0)%N with false
+      by (symmetry; apply N.ltb_ge; lia).
+    rewrite ! RawBV.extract_as_firstn_skipn.
+    rewrite N.add_0_r, N.sub_add by assumption.
+    replace (N.to_nat idx - 0)%nat with (N.to_nat idx) by lia.
+    replace (N.to_nat w - N.to_nat idx)%nat with
+      (length bits - N.to_nat idx)%nat
+      by (unfold RawBV.size in wf; lia).
+    rewrite List.skipn_O. symmetry.
+    replace (List.firstn (length bits - N.to_nat idx)
+      (List.skipn (N.to_nat idx) bits)) with
+      (List.skipn (N.to_nat idx) bits).
+    2: { symmetry. apply List.firstn_all2.
+         rewrite List.length_skipn. lia. }
+    apply List.firstn_skipn.
+  Qed.
+
+  Lemma bv_extr_plus {w} (bv : bitvector w) idx a b :
+    (idx + a + b <= w)%N ->
+    bv_extr idx (a + b) bv =
+      bv_concat (bv_extr (idx + b) a bv) (bv_extr idx b bv).
+  Proof.
+    intros Hbound.
+    destruct bv as [bits wf].
+    apply of_bits_equal. simpl.
+    unfold RawBV.bv_extr, RawBV.bv_concat. simpl.
+    replace (w <? a + b + idx)%N with false
+      by (symmetry; apply N.ltb_ge; lia).
+    replace (w <? a + (idx + b))%N with false
+      by (symmetry; apply N.ltb_ge; lia).
+    replace (w <? b + idx)%N with false
+      by (symmetry; apply N.ltb_ge; lia).
+    rewrite ! RawBV.extract_as_firstn_skipn.
+    rewrite ! N2Nat.inj_add.
+    replace (N.to_nat (a + b + idx) - N.to_nat idx)%nat with
+      (N.to_nat b + N.to_nat a)%nat by lia.
+    replace (N.to_nat (b + idx) - N.to_nat idx)%nat with
+      (N.to_nat b) by lia.
+    replace (N.to_nat (a + (idx + b)) - N.to_nat (idx + b))%nat with
+      (N.to_nat a) by lia.
+    replace (N.to_nat a + N.to_nat b + N.to_nat idx - N.to_nat idx)%nat
+      with (N.to_nat b + N.to_nat a)%nat by lia.
+    replace (N.to_nat b + N.to_nat idx - N.to_nat idx)%nat with
+      (N.to_nat b) by lia.
+    replace (N.to_nat a + (N.to_nat idx + N.to_nat b) -
+      (N.to_nat idx + N.to_nat b))%nat with (N.to_nat a) by lia.
+    rewrite RawBV.firstn_add_skipn, List.skipn_skipn.
+    replace (N.to_nat b + N.to_nat idx)%nat with
+      (N.to_nat idx + N.to_nat b)%nat by lia.
+    reflexivity.
+  Qed.
+
+  Lemma bv_concat_eq_iff {w_hi w_lo}
+    (hi1 hi2 : bitvector w_hi) (lo1 lo2 : bitvector w_lo) :
+    bv_concat hi1 lo1 = bv_concat hi2 lo2 <->
+      (hi1 = hi2 /\ lo1 = lo2).
+  Proof.
+    split; [|intros [-> ->]; reflexivity].
+    intros H. apply (f_equal (fun x => bits x)) in H.
+    destruct hi1 as [hi1 wfhi1], hi2 as [hi2 wfhi2].
+    destruct lo1 as [lo1 wflo1], lo2 as [lo2 wflo2].
+    simpl in H. unfold RawBV.bv_concat in H.
+    unfold RawBV.size in *.
+    assert (Hlen : length lo1 = length lo2) by lia.
+    assert (Hparts : lo1 = lo2 /\ hi1 = hi2).
+    { clear wflo1 wflo2. revert lo2 H Hlen.
+      induction lo1 as [|b1 lo1 IH]; intros [|b2 lo2] H Hlen;
+        simpl in *; try discriminate.
+      - split; auto.
+      - injection H as Htail Hhead.
+        specialize (IH lo2 Hhead ltac:(lia)).
+        destruct IH. subst. auto. }
+    destruct Hparts. split; apply of_bits_equal; simpl; assumption.
+  Qed.
+
+  Lemma bv_extr_full {w} (bv : bitvector w) : bv_extr 0 w bv = bv.
+  Proof.
+    destruct bv as [bits wf].
+    apply of_bits_equal. simpl.
+    unfold RawBV.bv_extr. simpl.
+    rewrite N.add_0_r, N.ltb_irrefl.
+    unfold RawBV.size in wf.
+    rewrite <- wf, Nat2N.id. clear wf w.
+    induction bits; [reflexivity|].
+    cbn. now rewrite IHbits.
   Qed.
 
   (* Local variant of the tactic. The full version needs XBV so it

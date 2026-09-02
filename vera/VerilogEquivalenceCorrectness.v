@@ -158,41 +158,6 @@ Proof.
   destruct (SMTLib.interp_term ρ t); crush.
 Qed.
 
-(***** Move me to bitvector ****)
-
-Lemma bv_zero_eq (bv1 bv2 : BV.bitvector 0) : bv1 = bv2.
-Proof.
-  destruct bv1 as [[] wf1], bv2 as [[] wf2].
-  2,3,4: crush.
-  f_equal. apply proof_irrelevance.
-Qed.
-
-(* Only keep this if it is can be used by the next three. *)
-Lemma bv_decompose {w} idx (bv : BV.bitvector w) (in_bounds : (idx <= w)%N) :
-  bv = rew [BV.bitvector] (N.sub_add idx w in_bounds) in BV.bv_concat (BV.bv_extr idx (w - idx) bv) (BV.bv_extr 0 idx bv).
-Proof.
-  destruct bv. unfold BV.bv_extr, BV.bv_concat. simpl.
-  apply BV.of_bits_equal. destruct_rew.
-  unfold RawBV.size in *. subst. N_to_nat.
-  revert idx in_bounds.
-  induction bv.
-  all: intros.
-  all: simpl.
-Admitted.
-
-Lemma bv_extr_plus {w} (bv: BV.bitvector w) idx a b : 
-  BV.bv_extr idx (a + b) bv = BV.bv_concat (BV.bv_extr (idx + b) a bv) (BV.bv_extr idx b bv).
-Proof. Admitted.
-
-Lemma bv_concat_eq_iff {w_hi w_lo} (hi1 hi2 : BV.bitvector w_hi) (lo1 lo2 : BV.bitvector w_lo) :
-  BV.bv_concat hi1 lo1 = BV.bv_concat hi2 lo2 <-> (hi1 = hi2 /\ lo1 = lo2).
-Proof. Admitted.
-
-Lemma bv_extr_full {w} (bv : BV.bitvector w) : BV.bv_extr 0 w bv = bv.
-Proof. Admitted.
-
-(*******************************)
-
 Opaque N.of_nat N.to_nat N.add N.sub reflexivity.
 
 Lemma term_reflect_eq_bitwise_rec w idx wf (t1 t2 : SMTLib.term (SMTLib.Sort_BitVec w)):
@@ -206,14 +171,14 @@ Proof.
   funelim (eq_bitwise w t1 t2 idx wf).
   all: clear Heqcall.
   - simpl. split.
-    { intros. exact (bv_zero_eq _ _). }
+    { intros. exact (BV.bv_zero_eq _ _). }
     { intros. reflexivity. }
   - specialize (H ρ). simpl. 
     rewrite Bool.andb_true_iff.
     rewrite BV.bv_eq_reflect.
     replace (N.of_nat (S idx_pred)) with (1 + N.of_nat idx_pred)%N by lia.
-    rewrite ! bv_extr_plus. rewrite N.add_0_l.
-    rewrite bv_concat_eq_iff.
+    rewrite ! BV.bv_extr_plus by lia. rewrite N.add_0_l.
+    rewrite BV.bv_concat_eq_iff.
     rewrite H. clear H.
     apply and_iff_compat_r.
     replace (1 + N.of_nat idx_pred - N.of_nat idx_pred)%N with 1%N by lia.
@@ -230,7 +195,7 @@ Proof.
                                    = BV.bv_extr 0 (N.of_nat (N.to_nat w)) (SMTLib.interp_term ρ t2)).
   - apply term_reflect_eq_bitwise_rec.
   - apply functional_extensionality. intros ρ.
-    rewrite N2Nat.id. rewrite ! bv_extr_full. reflexivity.
+    rewrite N2Nat.id. rewrite ! BV.bv_extr_full. reflexivity.
 Qed.
 
 Lemma mk_var_same_spec : forall name,
