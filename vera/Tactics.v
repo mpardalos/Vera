@@ -261,3 +261,6 @@ Ltac unpack_goal :=
   | [|- _ <-> _] => split
   | [|- (_ /\ _) -> _] => let H := fresh "H" in intro H; decompose record H; clear H
   end.
+
+(* `maybe t1; t2` Tries just applying t2. If that fails, applies t1, then t2. *)
+Tactic Notation "maybe" tactic3(t) := idtac + t.
