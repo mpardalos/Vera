@@ -435,11 +435,12 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     -- Running eqy
     "//*_vs_*/compare.eqy" !%> \out [dir, mod1, mod2] -> do
         let template = "templates/compare.eqy.j2"
-        need [template]
-        solver <- askOracle ConfigSolver
-        outputs <- liftIO $ getOutputs (dir </> mod1 <.> "sv")
+        let mod1File = dir </> mod1 <.> "sv"
+        need [template, mod1File]
+        outputs <- liftIO $ getOutputs mod1File
         let outputsJson =
                 "[" ++ intercalate "," ["\"" ++ BS8.unpack output ++ "\"" | output <- outputs] ++ "]"
+        solver <- askOracle ConfigSolver
         cmd_
             (Traced "jinja")
             (FileStdout out)
