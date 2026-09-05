@@ -6,7 +6,7 @@ From vera Require VerilogSemantics.
 Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
 From vera Require Import VerilogSimpl.
-From vera Require Import BreakConstAssigns.
+From vera Require Import BreakConcatAssigns.
 From vera Require Import DropUnused.
 From vera Require VerilogEquivalence.
 From vera Require Import Common.
@@ -132,20 +132,12 @@ Section sort.
   Qed.
 End sort.
 
-Definition sort_vmodule_pass : Pass.t :=
-  Pass.Mk "Sort" (@sort_vmodule) (@sort_vmodule_exact_equivalence).
-Definition simpl_vmodule_pass : Pass.t :=
-  Pass.pure "Simpl" (@simpl_vmodule) (@simpl_vmodule_exact_equivalence).
-Definition break_const_assigns_pass : Pass.t :=
-  Pass.Mk "BreakConstAssigns" (@break_const_assigns_vmodule) (@break_const_assigns_exact_equivalence).
-Definition drop_unused_pass : Pass.t :=
-  Pass.Mk "DropUnused" (@drop_unused) (@drop_unused_exact_equivalence).
-
 Definition verilog_pipeline : Pass.t :=
-  sort_vmodule_pass
-  ∘ simpl_vmodule_pass
-  ∘ break_const_assigns_pass
-  ∘ drop_unused_pass.
+  Pass.Mk "Sort" (@sort_vmodule) (@sort_vmodule_exact_equivalence)
+  ∘ Pass.Mk "BreakConcatAssigns" (@break_concat_assigns_vmodule) (@break_concat_assigns_exact_equivalence)
+  ∘ Pass.Mk "DropUnused" (@drop_unused) (@drop_unused_exact_equivalence)
+  ∘ Pass.pure "Simpl" (@simpl_vmodule) (@simpl_vmodule_exact_equivalence)
+  .
 
 Definition lower_verilog :=
   Pass.pass_apply verilog_pipeline.
