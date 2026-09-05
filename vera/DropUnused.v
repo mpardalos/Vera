@@ -42,7 +42,7 @@ Equations module_body_keep_assigns :
       trace
         ("Dropping " ++ to_string (BlockingAssign lhs _ rhs))%string
         ( let (dropped', body') := module_body_keep_assigns keep body in
-          (LocationSet.union_small dropped' (assign_target_writes lhs), body'))
+          (assign_target_writes lhs ∪ dropped', body'))
     | false =>
       let (dropped', body') := module_body_keep_assigns keep body in
       (dropped', AlwaysComb (BlockingAssign lhs _ rhs) :: body')
@@ -56,7 +56,7 @@ Definition drop_unused1 {i o} (v : vmodule i o) : string + (LocationSet.t * vmod
         (LocationSet.of_varset (VarSet.of_list i))
         (LocationSet.of_varset (VarSet.of_list o)) in
     let keep_locations :=
-        (LocationSet.union_small external_vars (module_body_reads (modBody v))) in
+        (external_vars ∪ module_body_reads (modBody v)) in
     let result := module_body_keep_assigns keep_locations (modBody v) in
     inr (fst result, {|
       modName := modName v;
@@ -156,8 +156,7 @@ Proof.
   simpl in *.
   monad_inv.
   apply module_body_keep_assigns_sorted.
-  - rewrite LocationSet.union_small_spec.
-    LocationSet.setdec.
+  - LocationSet.setdec.
   - exact Hsorted.
 Qed.
 
@@ -177,10 +176,8 @@ Proof.
   symmetry.
   eapply RegisterState.match_on_subset; cycle 1.
   - apply module_body_keep_assigns_spec.
-    rewrite LocationSet.union_small_spec.
     LocationSet.setdec.
-  - rewrite LocationSet.union_small_spec.
-    LocationSet.setdec.
+  - LocationSet.setdec.
 Qed.
 
 #[local] Opaque drop_unused1.

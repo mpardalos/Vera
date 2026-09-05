@@ -1439,36 +1439,6 @@ Module LocationSet <: WSets.
   Qed.
 
   Include MySet.
-
-  (* Retain the old API until its callers are migrated. *)
-  Definition union_small := union.
-  Definition disjoint_small := disjoint.
-
-  Lemma union_small_spec small large :
-    Equal (union_small small large) (union small large).
-  Proof. reflexivity. Qed.
-
-  Lemma disjoint_small_spec small large :
-    disjoint_small small large = true <-> Disjoint small large.
-  Proof. apply disjoint_spec. Qed.
-
-  Definition dec_disjoint_small := dec_vs_disjoint.
-
-  Opaque union_small disjoint_small.
-
-  Global Instance union_small_m : Proper (Equal ==> Equal ==> Equal) union_small.
-  Proof.
-    intros small small' Hsmall large large' Hlarge.
-    rewrite !union_small_spec. now rewrite Hsmall, Hlarge.
-  Qed.
-
-  Global Instance disjoint_small_m :
-    Proper (Equal ==> Equal ==> Logic.eq) disjoint_small.
-  Proof.
-    intros small small' Hsmall large large' Hlarge.
-    apply Bool.eq_true_iff_eq. rewrite !disjoint_small_spec.
-    now rewrite Hsmall, Hlarge.
-  Qed.
 End LocationSet.
 Module LocationSetFacts := MSetFacts.Facts(LocationSet).
 
