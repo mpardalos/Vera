@@ -800,22 +800,6 @@ Module Sort.
       module_items_sorted vars (mi :: mis)
   .
 
-  #[refine]
-  Global Instance dec_module_items_sorted vars ms : DecProp (module_items_sorted vars ms) :=
-    traceBracket "Check sort" _.
-  Proof.
-    revert vars.
-    induction ms; intros vars.
-    - left. constructor.
-    - destruct (dec (LocationSet.Subset (Verilog.module_item_reads a) vars));
-        [|right; inversion 1; crush].
-      destruct (dec (LocationSet.Disjoint (Verilog.module_item_writes a) vars));
-        [|right; inversion 1; crush].
-      destruct (IHms (Verilog.module_item_writes a ∪ vars));
-        [|right; inversion 1; crush].
-      left. constructor; auto.
-  Defined.
-
   Lemma module_items_sorted_no_overwrite inputs body :
     module_items_sorted inputs body ->
     LocationSet.Disjoint (module_body_writes body) inputs.
@@ -846,6 +830,23 @@ Module Sort.
       + symmetry. eassumption.
       + eassumption.
   Qed.
+
+  #[refine]
+  Global Instance dec_module_items_sorted vars ms : DecProp (module_items_sorted vars ms) :=
+    traceBracket "Check sort" _.
+  Proof.
+    revert vars.
+    induction ms as [|mi mis IH]; intros vars.
+    - left. constructor.
+    - destruct (dec (LocationSet.Subset (module_item_reads mi) vars)) as [Hreads|Hreads];
+        [|right; inversion 1; contradiction].
+      destruct (LocationSet.dec_disjoint_small (module_item_writes mi) vars) as [Hwrites|Hwrites];
+        [|right; inversion 1; contradiction].
+      destruct (IH (LocationSet.union_small (module_item_writes mi) vars)) as [Hsorted|Hsorted];
+        rewrite LocationSet.union_small_spec in Hsorted.
+      + left. constructor; assumption.
+      + right. inversion 1. contradiction.
+  Defined.
 
   Global Instance Proper_module_body_writes_Permutation_Equal :
     Proper (@Permutation module_item ==> LocationSet.Equal) module_body_writes.
@@ -1021,14 +1022,14 @@ Module Sort.
     : option (LocationSet.t * list module_item * list module_item) := {
     | ready, chosen, skipped, [] => Some (ready, chosen, skipped)
     | ready, chosen, skipped, (mi :: mis')
-      with LocationSet.disjoint (module_item_writes mi) ready,
+      with LocationSet.disjoint_small (module_item_writes mi) ready,
            LocationSet.subset (module_item_reads mi) ready => {
       | false, _    =>
         (* trace ("Conflict on " ++ to_string mi) *) None (* Conflict *)
       | true, false => (* Not ready *)
         sort_module_items_split_ready ready chosen (mi :: skipped) mis'
       | true, true => (* Ready *)
-        sort_module_items_split_ready (module_item_writes mi ∪ ready) (mi :: chosen) skipped mis'
+        sort_module_items_split_ready (LocationSet.union_small (module_item_writes mi) ready) (mi :: chosen) skipped mis'
     }
   }.
 
@@ -1096,7 +1097,7 @@ Module Sort.
       intros Hsorted Hready Hsplit.
     - inv Hsplit. exact Hsorted.
     - rewrite LocationSet.subset_spec in Heq.
-      rewrite LocationSet.disjoint_spec in Heq0.
+      rewrite LocationSet.disjoint_small_spec in Heq0.
       eapply H.
       + simpl. apply module_items_sorted_app.
         * assumption.
@@ -1105,7 +1106,7 @@ Module Sort.
           -- LocationSet.setdec.
           -- LocationSet.setdec.
           -- constructor.
-      + simpl. LocationSet.setdec.
+      + simpl. rewrite LocationSet.union_small_spec. LocationSet.setdec.
       + exact Hsplit.
     - eapply H; eassumption.
     - inv Hsplit.
@@ -1124,10 +1125,11 @@ Module Sort.
       + simpl. LocationSet.setdec.
       + reflexivity.
     - rewrite LocationSet.subset_spec in Heq.
-      rewrite LocationSet.disjoint_spec in Heq0.
+      rewrite LocationSet.disjoint_small_spec in Heq0.
       simpl in H. rewrite <- app_assoc in H. simpl in H.
-      apply H in Hsorted; [|LocationSet.setdec].
+      apply H in Hsorted; [|rewrite LocationSet.union_small_spec; LocationSet.setdec].
       destruct Hsorted as [ready' [Hready' Htail]].
+      rewrite LocationSet.union_small_spec in Hready'.
       (* rewrite Hready' in *. clear ready'. *)
       rewrite Htail.
       simpl.
@@ -1146,7 +1148,7 @@ Module Sort.
       apply module_items_sorted_app_inv_tail in Hsorted. inv Hsorted.
       rewrite <- Permutation_rev in *.
       rewrite <- Hready_correct in H3.
-      apply LocationSet.disjoint_spec in H3.
+      apply LocationSet.disjoint_small_spec in H3.
       congruence.
   Qed.
 
@@ -1158,10 +1160,10 @@ Module Sort.
     funelim (sort_module_items_split_ready ready chosen skipped mis); intros Hwrites_ready Hsplit.
     - inv Hsplit. LocationSet.setdec.
     - rewrite LocationSet.subset_spec in Heq.
-      rewrite LocationSet.disjoint_spec in Heq0.
+      rewrite LocationSet.disjoint_small_spec in Heq0.
       eapply H in Hsplit.
       + exact Hsplit.
-      + simpl. LocationSet.setdec.
+      + simpl. rewrite LocationSet.union_small_spec. LocationSet.setdec.
     - eapply H; eassumption.
     - inv Hsplit.
   Qed.

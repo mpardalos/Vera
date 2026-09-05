@@ -1464,6 +1464,20 @@ Module LocationSet <: WSets.
   Defined.
 
   Opaque union_small disjoint_small.
+
+  Global Instance union_small_m : Proper (Equal ==> Equal ==> Equal) union_small.
+  Proof.
+    intros small small' Hsmall large large' Hlarge.
+    rewrite !union_small_spec. now rewrite Hsmall, Hlarge.
+  Qed.
+
+  Global Instance disjoint_small_m :
+    Proper (Equal ==> Equal ==> Logic.eq) disjoint_small.
+  Proof.
+    intros small small' Hsmall large large' Hlarge.
+    apply Bool.eq_true_iff_eq. rewrite !disjoint_small_spec.
+    now rewrite Hsmall, Hlarge.
+  Qed.
 End LocationSet.
 Module LocationSetFacts := MSetFacts.Facts(LocationSet).
 
