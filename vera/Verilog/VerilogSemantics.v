@@ -800,22 +800,6 @@ Module Sort.
       module_items_sorted vars (mi :: mis)
   .
 
-  #[refine]
-  Global Instance dec_module_items_sorted vars ms : DecProp (module_items_sorted vars ms) :=
-    traceBracket "Check sort" _.
-  Proof.
-    revert vars.
-    induction ms; intros vars.
-    - left. constructor.
-    - destruct (dec (LocationSet.Subset (Verilog.module_item_reads a) vars));
-        [|right; inversion 1; crush].
-      destruct (dec (LocationSet.Disjoint (Verilog.module_item_writes a) vars));
-        [|right; inversion 1; crush].
-      destruct (IHms (Verilog.module_item_writes a ∪ vars));
-        [|right; inversion 1; crush].
-      left. constructor; auto.
-  Defined.
-
   Lemma module_items_sorted_no_overwrite inputs body :
     module_items_sorted inputs body ->
     LocationSet.Disjoint (module_body_writes body) inputs.
@@ -846,6 +830,22 @@ Module Sort.
       + symmetry. eassumption.
       + eassumption.
   Qed.
+
+  #[refine]
+  Global Instance dec_module_items_sorted vars ms : DecProp (module_items_sorted vars ms) :=
+    traceBracket "Check sort" _.
+  Proof.
+    revert vars.
+    induction ms as [|mi mis IH]; intros vars.
+    - left. constructor.
+    - destruct (dec (LocationSet.Subset (module_item_reads mi) vars)) as [Hreads|Hreads];
+        [|right; inversion 1; contradiction].
+      destruct (dec (LocationSet.Disjoint (module_item_writes mi) vars)) as [Hwrites|Hwrites];
+        [|right; inversion 1; contradiction].
+      destruct (IH (module_item_writes mi ∪ vars)) as [Hsorted|Hsorted].
+      + left. constructor; assumption.
+      + right. inversion 1. contradiction.
+  Defined.
 
   Global Instance Proper_module_body_writes_Permutation_Equal :
     Proper (@Permutation module_item ==> LocationSet.Equal) module_body_writes.

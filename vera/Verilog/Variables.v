@@ -222,22 +222,21 @@ Module Type UsualWSets.
   Include WSetsOn E.
 End UsualWSets.
 
-Module MySet(Import S : UsualWSets).
+Module Type UsualWSetsWithDisjoint.
+  Include UsualWSets.
+  Parameter disjoint : t -> t -> bool.
+  Parameter disjoint_spec : forall a b,
+    disjoint a b = true <-> Empty (inter a b).
+End UsualWSetsWithDisjoint.
+
+Module MySet(Import S : UsualWSetsWithDisjoint).
   Module Facts := MSetFacts.WFactsOn E S.
   Module Dec := MSetDecide.WDecideOn E S.
   Module Props := MSetProperties.WPropertiesOn E S.
   Import Facts.
   Import Dec.
   Import Props.
-  Definition disjoint (a b : t) := is_empty (inter a b).
   Definition Disjoint (a b : t) : Prop := Empty (inter a b).
-
-  Lemma disjoint_spec (a b : t) : disjoint a b = true <-> Disjoint a b.
-  Proof.
-    unfold disjoint, Disjoint.
-    rewrite is_empty_spec.
-    reflexivity.
-  Qed.
 
   Opaque disjoint.
 
@@ -453,6 +452,9 @@ End MySet.
 
 Module VarSet.
   Include MSetAVL.Make(Var).
+  Definition disjoint (a b : t) := is_empty (inter a b).
+  Lemma disjoint_spec a b : disjoint a b = true <-> Empty (inter a b).
+  Proof. unfold disjoint. apply is_empty_spec. Qed.
   Include MySet.
 End VarSet.
 Module VarSetFacts := MSetFacts.Facts(VarSet).
@@ -504,14 +506,16 @@ Module LocationSet <: WSets.
   Definition of_varset (v : VarSet.t) : t :=
     VarSet.fold add_variable v empty.
   
+  (* Traverse the first map, preserving untouched subtrees of the second.
+     Put the smaller operand first; this is a performance convention only. *)
   Definition union (s1 s2 : t) : t :=
-    VarMap.map2 (fun o1 o2 =>
-      match o1, o2 with
-      | Some m1, Some m2 => Some (N.lor m1 m2)
-      | Some m1, None => Some m1
-      | None, Some m2 => Some m2
-      | None, None => None
-      end) s1 s2.
+    VarMap.fold (fun v mask acc =>
+      VarMap.add v
+        (match VarMap.find v acc with
+         | Some old => N.lor mask old
+         | None => mask
+         end) acc
+    ) s1 s2.
   
   Definition inter (s1 s2 : t) : t :=
     VarMap.map2 (fun o1 o2 =>
@@ -530,17 +534,32 @@ Module LocationSet <: WSets.
              end
     ) s1 true.
   
+  Module MapProps := FMapFacts.WProperties_fun Var_LegacyOT VarMap.
+
   Lemma union_spec : forall (s s' : t) (x : elt), In x (union s s') <-> In x s \/ In x s'.
   Proof.
-    intros s s' x. unfold In, mem, union.
-    rewrite VarMapFacts.map2_1bis; [| reflexivity].
-    destruct (VarMap.find (Location.var x) s) as [m1|] eqn:E1;
-    destruct (VarMap.find (Location.var x) s') as [m2|] eqn:E2.
-    - rewrite N.lor_spec. rewrite orb_true_iff. reflexivity.
-    - split; intros H; [left|destruct H; [|discriminate]]; exact H.
-    - split; intros H; [right|destruct H; [discriminate|]]; exact H.
-    - split; intros H; [discriminate|destruct H; discriminate H].
+    intros s s'. unfold union.
+    apply (MapProps.fold_rec_bis
+      (P := fun processed acc => forall loc,
+        In loc acc <-> In loc processed \/ In loc s')).
+    - intros before after acc Hequal IH loc.
+      specialize (IH loc). unfold In, mem in *. now rewrite <- Hequal.
+    - intros loc. unfold In, mem. rewrite VarMapFacts.empty_o.
+      intuition discriminate.
+    - intros v mask acc processed _ Hfresh IH loc.
+      specialize (IH loc). unfold In, mem in *.
+      rewrite !VarMapFacts.add_o.
+      destruct (VarMapFacts.eq_dec v (Location.var loc)) as [Heq|Hneq];
+        [subst v|exact IH].
+      assert (Hnone : VarMap.find (Location.var loc) processed = None).
+      { apply VarMapFacts.not_find_in_iff. exact Hfresh. }
+      rewrite Hnone in IH.
+      destruct (VarMap.find (Location.var loc) acc) as [old|];
+        cbn; try rewrite N.lor_spec, Bool.orb_true_iff;
+        intuition discriminate.
   Qed.
+
+  Opaque union.
   
   Definition Subset (s1 s2 : t) := forall x, In x s1 -> In x s2.
   Definition Equal (s1 s2 : t) : Prop := forall x, In x s1 <-> In x s2.
@@ -1339,8 +1358,6 @@ Module LocationSet <: WSets.
     rewrite H_fold. simpl. unfold Equal. intros x. reflexivity.
   Qed.
 
-  Include MySet.
-
   (* A set is in-bounds when every location's bit index is within its
      variable's width.  Sets built from variables ([of_variable],
      [of_varset]) are in-bounds by construction; the raw representation
@@ -1385,6 +1402,43 @@ Module LocationSet <: WSets.
   Lemma subset_in_bounds s1 s2 :
     Subset s1 s2 -> InBounds s2 -> InBounds s1.
   Proof. intros Hsub H loc Hin. auto. Qed.
+
+  (* As with union, put the smaller map first. Test mask overlap directly
+     rather than allocating an intersection. *)
+  Definition disjoint (small large : t) : bool :=
+    VarMap.fold (fun v mask acc =>
+      acc && match VarMap.find v large with
+             | Some other => N.eqb (N.land mask other) 0
+             | None => true
+             end
+    ) small true.
+
+  Lemma disjoint_spec small large :
+    disjoint small large = true <-> Empty (inter small large).
+  Proof.
+    unfold disjoint. rewrite fold_andb_true.
+    unfold Empty. setoid_rewrite inter_spec.
+    split.
+    - intros H [v idx] [Hsmall Hlarge].
+      unfold In, mem in Hsmall, Hlarge. cbn in Hsmall, Hlarge.
+      destruct (VarMap.find v small) as [mask|] eqn:Hfind;
+        [|discriminate].
+      specialize (H v mask (VarMap.find_2 Hfind)).
+      destruct (VarMap.find v large) as [other|]; [|discriminate].
+      apply N.eqb_eq in H.
+      assert (Hbit : N.testbit (N.land mask other) idx = true).
+      { rewrite N.land_spec, Hsmall, Hlarge. reflexivity. }
+      rewrite H, N.bits_0 in Hbit. discriminate.
+    - intros H v mask Hfind. apply VarMap.find_1 in Hfind.
+      destruct (VarMap.find v large) as [other|] eqn:Hother;
+        [|reflexivity].
+      apply N.eqb_eq. apply m1_0_iff. intros idx Hbit.
+      rewrite N.land_spec, Bool.andb_true_iff in Hbit.
+      apply (H (Location.Mk v idx)).
+      unfold In, mem. cbn. now rewrite Hfind, Hother.
+  Qed.
+
+  Include MySet.
 End LocationSet.
 Module LocationSetFacts := MSetFacts.Facts(LocationSet).
 
