@@ -1385,6 +1385,26 @@ Module LocationSet <: WSets.
   Lemma subset_in_bounds s1 s2 :
     Subset s1 s2 -> InBounds s2 -> InBounds s1.
   Proof. intros Hsub H loc Hin. auto. Qed.
+
+  (* These operations traverse only the first map, intended to be the small
+     operand. Union preserves untouched subtrees of the second map, and
+     disjointness avoids allocating an intersection. *)
+  Definition union_small (small large : t) : t :=
+    VarMap.fold (fun v mask acc =>
+      VarMap.add v
+        (match VarMap.find v acc with
+         | Some old => N.lor mask old
+         | None => mask
+         end) acc
+    ) small large.
+
+  Definition disjoint_small (small large : t) : bool :=
+    VarMap.fold (fun v mask acc =>
+      acc && match VarMap.find v large with
+             | Some other => N.eqb (N.land mask other) 0
+             | None => true
+             end
+    ) small true.
 End LocationSet.
 Module LocationSetFacts := MSetFacts.Facts(LocationSet).
 
