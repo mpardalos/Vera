@@ -534,8 +534,30 @@ Module LocationSet <: WSets.
              end
     ) s1 true.
   
+  Module MapProps := FMapFacts.WProperties_fun Var_LegacyOT VarMap.
+
   Lemma union_spec : forall (s s' : t) (x : elt), In x (union s s') <-> In x s \/ In x s'.
-  Admitted.
+  Proof.
+    intros s s'. unfold union.
+    apply (MapProps.fold_rec_bis
+      (P := fun processed acc => forall loc,
+        In loc acc <-> In loc processed \/ In loc s')).
+    - intros before after acc Hequal IH loc.
+      specialize (IH loc). unfold In, mem in *. now rewrite <- Hequal.
+    - intros loc. unfold In, mem. rewrite VarMapFacts.empty_o.
+      intuition discriminate.
+    - intros v mask acc processed _ Hfresh IH loc.
+      specialize (IH loc). unfold In, mem in *.
+      rewrite !VarMapFacts.add_o.
+      destruct (VarMapFacts.eq_dec v (Location.var loc)) as [Heq|Hneq];
+        [subst v|exact IH].
+      assert (Hnone : VarMap.find (Location.var loc) processed = None).
+      { apply VarMapFacts.not_find_in_iff. exact Hfresh. }
+      rewrite Hnone in IH.
+      destruct (VarMap.find (Location.var loc) acc) as [old|];
+        cbn; try rewrite N.lor_spec, Bool.orb_true_iff;
+        intuition discriminate.
+  Qed.
 
   Opaque union.
   
@@ -1393,7 +1415,28 @@ Module LocationSet <: WSets.
 
   Lemma disjoint_spec small large :
     disjoint small large = true <-> Empty (inter small large).
-  Admitted.
+  Proof.
+    unfold disjoint. rewrite fold_andb_true.
+    unfold Empty. setoid_rewrite inter_spec.
+    split.
+    - intros H [v idx] [Hsmall Hlarge].
+      unfold In, mem in Hsmall, Hlarge. cbn in Hsmall, Hlarge.
+      destruct (VarMap.find v small) as [mask|] eqn:Hfind;
+        [|discriminate].
+      specialize (H v mask (VarMap.find_2 Hfind)).
+      destruct (VarMap.find v large) as [other|]; [|discriminate].
+      apply N.eqb_eq in H.
+      assert (Hbit : N.testbit (N.land mask other) idx = true).
+      { rewrite N.land_spec, Hsmall, Hlarge. reflexivity. }
+      rewrite H, N.bits_0 in Hbit. discriminate.
+    - intros H v mask Hfind. apply VarMap.find_1 in Hfind.
+      destruct (VarMap.find v large) as [other|] eqn:Hother;
+        [|reflexivity].
+      apply N.eqb_eq. apply m1_0_iff. intros idx Hbit.
+      rewrite N.land_spec, Bool.andb_true_iff in Hbit.
+      apply (H (Location.Mk v idx)).
+      unfold In, mem. cbn. now rewrite Hfind, Hother.
+  Qed.
 
   Include MySet.
 
