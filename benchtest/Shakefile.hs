@@ -16,6 +16,7 @@
 {-# LANGUAGE NoFieldSelectors #-}
 
 import Control.DeepSeq (NFData)
+import Control.Exception (SomeException, try)
 import Control.Monad (forM, forM_, guard, join, void, when, (>=>))
 import Data.Bifunctor (bimap)
 import Data.Binary (Binary)
@@ -33,7 +34,7 @@ import Data.Function ((&))
 import Data.Functor ((<&>))
 import Data.Hashable (Hashable)
 import Data.IORef (modifyIORef', newIORef, readIORef)
-import Data.List (find, groupBy, intercalate, isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix, unsnoc)
+import Data.List (find, groupBy, intercalate, isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix, tails, unsnoc)
 import Data.List.Extra (firstJust)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -260,6 +261,75 @@ findResult t =
         , result = findPrefixedLine (resultLogPrefix "result") t
         }
 
+pulpElauDesigns :: [(String, [String])]
+pulpElauDesigns =
+    [ ("Add", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddC", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddCfast", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddV", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddMod2Nm1", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddMod2Nm1s0", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddMod2Np1", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddCsv", [{- "behavioural", -} "fast"])
+    , ("AddMop", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddMopCsv", ["slow", "fast"])
+    , ("Sub", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("SubC", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("SubCZ", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("SubV", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("SubVZ", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("Neg", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("NegC", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AbsVal", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddSub", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddSubC", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddSubV", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("Inc", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("IncC", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("Dec", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("DecC", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("IncDec", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("IncDecC", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("CmpEQ", [{- "behavioural", -} "fast"])
+    , ("CmpGE", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("CmpEQGE", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("MulSgn", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("MulUns", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("MulAddSgn", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("MulAddUns", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddMulSgn", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("AddMulUns", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("MulCsvSgn", ["slow", "fast"])
+    , ("MulCsvUns", ["slow", "fast"])
+    , ("SqrSgn", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("SqrUns", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("DivArrSgn", [{- "behavioural", -} "slow"])
+    , ("DivArrUns", [{- "behavioural", -} "slow"])
+    , ("SqrtArrUns", [{- "behavioural", -} "slow"])
+    , ("AllZeroDet", [{- "behavioural", -} "fast"])
+    , ("AllOneDet", [{- "behavioural", -} "fast"])
+    , ("SumZeroDet", [{- "behavioural", -} "fast"])
+    , ("LeadZeroDet", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("LeadOneDet", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("LeadSignDet", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("Log2", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("Decode", [{- "behavioural", -} "fast", "fast"])
+    , ("Encode", [{- "behavioural", -} "fast"])
+    , ("Bin2Gray", [{- "behavioural", -} "fast"])
+    , ("Gray2Bin", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("IncGray", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("IncGrayC", [{- "behavioural", -} "slow", "medium", "fast"])
+    , ("Cnt", [{- "behavioural", -} "slow", "fast"])
+    , ("Cpr", ["slow", "fast"])
+    , ("RedAnd", [{- "behavioural", -} "fast"])
+    , ("RedOr", [{- "behavioural", -} "fast"])
+    , ("RedXor", [{- "behavioural", -} "fast"])
+    , ("PrefixAnd", ["slow", "medium", "fast"])
+    , ("PrefixOr", ["slow", "medium", "fast"])
+    , ("PrefixAndOr", ["slow", "medium", "fast"])
+    , ("PrefixXor", ["slow", "medium", "fast"])
+    ]
+
 main :: IO ()
 main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     --- SETTINGS ---------------------------------------------
@@ -271,7 +341,7 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
     -- be buggy for this version of EQY.
     addOracle $ \ConfigSolver -> pure "cvc5"
     -- Timeout for vera/eqy runs (in seconds)
-    addOracle $ \ConfigVeraTimeout -> pure 300
+    addOracle $ \ConfigVeraTimeout -> pure 2
     -- Vera memory limit (in GB)
     addOracle $ \ConfigVeraMemoryLimit -> pure 32
     ----------------------------------------------------------
@@ -475,10 +545,11 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                     "-f"
                     "compare.eqy"
 
-        let strategiesDir = eqyDir </> "compare" </> "strategies"
-        [strategyName] <- liftIO $ listDirectory strategiesDir
-        let strategyLogFile = strategiesDir </> strategyName </> "sby" </> strategyName </> "logfile.txt"
-        strategyLog <- liftIO $ T.readFile strategyLogFile
+        strategyLog <- liftIO . fmap (fromRight T.empty) . try @SomeException $ do
+            let strategiesDir = eqyDir </> "compare" </> "strategies"
+            [strategyName] <- listDirectory strategiesDir
+            let strategyLogFile = strategiesDir </> strategyName </> "sby" </> strategyName </> "logfile.txt"
+            T.readFile strategyLogFile
         -- Looking for a line like this:
         --   SBY 18:11:11 [top.P] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:59 (59)
         let smtTime :: Maybe Int =
@@ -755,17 +826,17 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         putInfo (printf "\nFull details in %s" summaryFile)
 
     "out/pulp-elau-*/summary.csv" !%> \out [width] -> do
-        sourceFiles <- getDirectoryFiles "pulp-elau/src" ["*.sv"]
         benchmarksReport out $
             [ MkBenchmark
                 { baseDir = "out" </> "pulp-elau-" ++ width </> design
                 , modA
                 , modB
                 }
-            | sourceFile <- sourceFiles
-            , let design = dropExtension sourceFile
-            , design /= "arith_utils"
-            , (modA, modB) <- [("slow", "medium"), ("slow", "fast"), ("medium", "fast")]
+            | (design, speedgrades) <- pulpElauDesigns
+            , modA : rest <- tails $ case speedgrades of
+                [speed] -> [speed, speed]
+                _ -> speedgrades
+            , modB <- rest
             ]
 
     "out/pulp-elau-*/*/*.sv" !%> \out [widthStr, design, variant] -> do
