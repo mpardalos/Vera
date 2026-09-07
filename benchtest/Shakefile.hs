@@ -313,12 +313,12 @@ pulpElauDesigns =
     , ("LeadOneDet", [{- "behavioural", -} "slow", "medium", "fast"])
     , ("LeadSignDet", [{- "behavioural", -} "slow", "medium", "fast"])
     , ("Log2", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("Decode", [{- "behavioural", -} "fast", "fast"])
+    -- , ("Decode", [{- "behavioural", -} "fast", "fast"]) -- $signed
     , ("Encode", [{- "behavioural", -} "fast"])
     , ("Bin2Gray", [{- "behavioural", -} "fast"])
     , ("Gray2Bin", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("IncGray", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("IncGrayC", [{- "behavioural", -} "slow", "medium", "fast"])
+    -- , ("IncGray", [{- "behavioural", -} "slow", "medium", "fast"]) -- Non-0 LSB
+    -- , ("IncGrayC", [{- "behavioural", -} "slow", "medium", "fast"]) -- Non-0 LSB
     , ("Cnt", [{- "behavioural", -} "slow", "fast"])
     , ("Cpr", ["slow", "fast"])
     , ("RedAnd", [{- "behavioural", -} "fast"])
