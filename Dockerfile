@@ -1,4 +1,4 @@
-FROM nixos/nix:2.32.8
+FROM docker.io/nixos/nix:2.32.8
 
 RUN echo "extra-experimental-features = nix-command flakes" >> /etc/nix/nix.conf
 # Add editors for convenience
