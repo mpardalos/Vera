@@ -422,12 +422,12 @@ Global Instance match_on_eq_subrelation vars :
   subrelation eq (RegisterState.match_on vars).
 Proof. intros a b <-. reflexivity. Qed.
 
-Global Instance Proper_execution_permitted {i o} (v : Verilog.vmodule i o) :
+Global Instance Proper_permits_state {i o} (v : Verilog.vmodule i o) :
   Proper
     (RegisterState.match_on (Verilog.module_locations v) ==> iff)
-    (execution_permitted v).
+    (permits_state v).
 Proof.
-  unfold execution_permitted.
+  unfold permits_state.
   repeat intro.
   setoid_replace x with y
     using relation (RegisterState.match_on (Verilog.module_locations v))
