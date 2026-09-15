@@ -92,7 +92,7 @@ Definition counterexample_valuation {i o} (v1 v2 : Verilog.vmodule i o) ρ :=
   /\ v2 ⇓ execution_of_valuation VerilogRight ρ
   .
 
-Definition execution_some_distinct_value (C : VarSet.t) (e1 e2 : execution) : Prop :=
+Definition execution_some_distinct_value (C : VarSet.t) (e1 e2 : RegisterState.t) : Prop :=
   exists var bv1 bv2,
     VarSet.In var C
     /\ e1 var = XBV.from_bv bv1

@@ -49,9 +49,6 @@ Module RegisterState.
   #[global]
   Notation t := register_state.
 
-  #[global]
-  Notation execution := t.
-
   Definition get_location (st : t) (loc : Location.t) : RawXBV.bit :=
     XBV.bitOf (Location.idx loc) (st (Location.var loc)).
 
@@ -1703,20 +1700,18 @@ Module CombinationalOnly.
     - rewrite Heq. reflexivity.
   Qed.
 
-  Notation execution := RegisterState.t.
-
   (* This might often be called "ad-mitted", but we would like to
      avoid that word because it shows up when grepping for
      ad-mit. Permit is close enough. *)
-  Definition execution_permitted {i o} (v : vmodule i o) (e : execution) :=
+  Definition execution_permitted {i o} (v : vmodule i o) (e : RegisterState.t) :=
     run_vmodule v e =( module_locations v )= e.
 
   Infix "⇓" := execution_permitted (at level 20) : verilog_scope.
 
-  Definition execution_not_x (e : execution) name :=
+  Definition execution_not_x (e : RegisterState.t) name :=
     ~ XBV.has_x (e name).
 
-  Definition execution_no_exes_for C (e : execution) :=
+  Definition execution_no_exes_for C (e : RegisterState.t) :=
     forall var, C var -> execution_not_x e var.
 
   Global Instance Proper_execution_no_exes_for :

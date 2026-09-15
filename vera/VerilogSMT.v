@@ -160,7 +160,7 @@ Qed.
 
 Import EqNotations.
 
-Definition execution_of_valuation (tag : VarTag) (ρ : SMTLib.valuation) : execution :=
+Definition execution_of_valuation (tag : VarTag) (ρ : SMTLib.valuation) : RegisterState.t :=
   fun var => XBV.from_bv (ρ (verilog_to_smt_var tag var)).
 
 Lemma execution_of_valuation_defined_value C tag ρ:
@@ -174,7 +174,7 @@ Proof.
   destruct (BV.bitOf _ _); discriminate.
 Qed.
 
-Equations valuation_of_executions : execution -> execution -> SMTLib.valuation := {
+Equations valuation_of_executions : RegisterState.t -> RegisterState.t -> SMTLib.valuation := {
   | e1, e2, {| SMTLib.symName := symName; SMTLib.symSort := SMTLib.Sort_BitVec w |} with untag_name symName, (dec (w > 0)%N) => {
     | Some (t, varName), left prf =>
         XBV.to_bv_def false (tag_choose t e1 e2 (Var.MkVariable varName w prf))
