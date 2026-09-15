@@ -103,7 +103,7 @@ Qed.
 
 Lemma module_body_keep_assigns_spec keep init body :
   module_body_reads body ⊆ keep ->
-  exec_module_body init (snd (module_body_keep_assigns keep body)) =( keep )= exec_module_body init body.
+  exec_module_body (snd (module_body_keep_assigns keep body)) init =( keep )= exec_module_body body init.
 Proof.
   intros Hreads_kept.
   funelim (module_body_keep_assigns keep body).

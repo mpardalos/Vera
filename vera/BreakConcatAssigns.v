@@ -149,8 +149,8 @@ Section semantics.
   Qed.
 
   Lemma exec_module_body_app regs body1 body2 :
-    exec_module_body regs (body1 ++ body2) =
-    exec_module_body (exec_module_body regs body1) body2.
+    exec_module_body (body1 ++ body2) regs =
+    exec_module_body body2 (exec_module_body body1 regs).
   Proof.
     revert regs.
     induction body1; intros regs; simpl; simp exec_module_body; simpl.
@@ -160,8 +160,8 @@ Section semantics.
 
   Lemma exec_break_concat_assign {w} (target : assign_target w) wf val regs :
     LocationSet.Disjoint (assign_target_writes target) (expr_reads val) ->
-    exec_module_body regs (break_concat_assign target wf val) =
-    set_target regs target (eval_expr regs val).
+    exec_module_body (break_concat_assign target wf val) regs =
+    set_target target (eval_expr regs val) regs.
   Proof.
     funelim (break_concat_assign target wf val).
     all: clear Heqcall; intros Hdisjoint; cbn in Hdisjoint.
@@ -169,7 +169,7 @@ Section semantics.
     all: try reflexivity. all: expect 1.
     rewrite exec_module_body_app.
     repeat match goal with
-    | IH : forall regs, _ -> exec_module_body regs _ = _ |- _ =>
+    | IH : forall regs, _ -> exec_module_body _ regs = _ |- _ =>
       rewrite IH by (rewrite extract_assign_rhs_reads; LocationSet.setdec)
     end.
     rewrite ! eval_extract_assign_rhs by lia.
@@ -180,8 +180,8 @@ Section semantics.
 
   Lemma exec_break_concat_assigns_module_body regs body :
     forall vars, module_items_sorted vars body ->
-    exec_module_body regs (break_concat_assigns_module_body body) =
-    exec_module_body regs body.
+    exec_module_body (break_concat_assigns_module_body body) regs =
+    exec_module_body body regs.
   Proof.
     funelim (break_concat_assigns_module_body body).
     all: clear Heqcall; intros vars Hsorted; inv Hsorted.

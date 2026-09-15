@@ -83,7 +83,7 @@ Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
     verilog_smt_match_states_partial
       (Verilog.module_item_reads mi ∪ Verilog.module_item_writes mi)
       tag
-      (exec_module_item regs mi) ρ ->
+      (exec_module_item mi regs) ρ ->
     SMTQueries.term_satisfied_by ρ t.
 Proof.
   unfold verilog_smt_match_states_partial in *.
@@ -112,7 +112,7 @@ Lemma assign_target_to_smt_valid {w} tag (target : Verilog.assign_target w) :
     verilog_smt_match_states_partial
       (Verilog.assign_target_writes target)
       tag
-      (set_target regs target (XBV.from_bv (SMTLib.interp_term ρ target_smt)))
+      (set_target target (XBV.from_bv (SMTLib.interp_term ρ target_smt)) regs)
       ρ.
 Proof.
   intros Hwf * Htarget_smt.
@@ -131,7 +131,7 @@ Lemma module_item_to_smt_valid tag  (mi : Verilog.module_item) :
         tag r1 ρ ->
       verilog_smt_match_states_partial
         (Verilog.module_item_writes mi)
-        tag (exec_module_item r1 mi) ρ.
+        tag (exec_module_item mi r1) ρ.
 Proof.
   funelim (transfer_module_item tag mi);
     intros * Hdisjoint * Htransf Hsat * Hmatch1; monad_inv; [idtac].
@@ -165,7 +165,7 @@ Lemma transfer_module_body_exec_satisfiable inputs body :
     transfer_module_body tag body = inr q ->
     verilog_smt_match_states_partial
       (inputs ∪ Verilog.module_body_writes body)
-      tag (exec_module_body r1 body) ρ ->
+      tag (exec_module_body body r1) ρ ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q.
 Proof.
   revert inputs.
@@ -243,7 +243,7 @@ Lemma transfer_module_body_exec_valid inputs body : forall tag ρ q,
 	r1 ρ ->
       verilog_smt_match_states_partial
         (Verilog.module_body_writes body) tag
-	(exec_module_body r1 body) ρ.
+	(exec_module_body body r1) ρ.
 Proof.
   revert inputs.
   induction body.
@@ -324,7 +324,7 @@ Section Clean.
   Lemma set_target_defined {w} regs (target : Verilog.assign_target w) bv :
     Verilog.assign_target_wf target ->
     RegisterState.defined_value_for (Verilog.assign_target_writes target)
-      (set_target regs target (XBV.from_bv bv)).
+      (set_target target (XBV.from_bv bv) regs).
   Proof.
     intros target_wf. revert regs bv.
     induction target_wf.
@@ -385,7 +385,7 @@ Section Clean.
   Lemma module_item_clean mi init smt :
     transfer_module_item tag mi = inr smt ->
     RegisterState.defined_value_for (Verilog.module_item_reads mi) init ->
-    RegisterState.defined_value_for (Verilog.module_item_writes mi) (exec_module_item init mi).
+    RegisterState.defined_value_for (Verilog.module_item_writes mi) (exec_module_item mi init).
   Proof.
     destruct mi as [[? target target_wf expr]].
     simp transfer_module_item exec_module_item exec_statement; simpl.
@@ -402,7 +402,7 @@ Section Clean.
     module_items_sorted inputs body ->
     transfer_module_body tag body = inr smt ->
     RegisterState.defined_value_for inputs init ->
-    RegisterState.defined_value_for (Verilog.module_body_writes body) (exec_module_body init body).
+    RegisterState.defined_value_for (Verilog.module_body_writes body) (exec_module_body body init).
   Proof.
     intros Hsorted Htransf Hinputs_defined.
     funelim (transfer_module_body tag body).
@@ -440,7 +440,7 @@ Section Clean.
     rewrite sort_module_items_stable by assumption.
     unfold Verilog.module_locations.
     assert (Hwrites_defined : RegisterState.defined_value_for (Verilog.module_writes v)
-        (exec_module_body (e // VarSet.of_list i) (Verilog.modBody v))). {
+        (exec_module_body (Verilog.modBody v) (e // VarSet.of_list i))). {
       eapply module_body_clean.
       all: try eassumption; expect 1.
       apply RegisterState.defined_value_for_limit_to_regs.
@@ -448,7 +448,7 @@ Section Clean.
     }
 
     assert (Hinputs_defined_after : RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list i))
-        (exec_module_body (e // VarSet.of_list i) (Verilog.modBody v))). {
+        (exec_module_body (Verilog.modBody v) (e // VarSet.of_list i))). {
       rewrite <- Facts.exec_module_body_preserve
         by (symmetry; eapply module_items_sorted_no_overwrite; exact Hsorted).
       apply RegisterState.defined_value_for_limit_to_regs.

@@ -1629,36 +1629,36 @@ Module CombinationalOnly.
     eval_expr regs (Verilog.IntegerLiteral _ val) := val ;
     eval_expr regs (Verilog.NamedExpression var) := regs var.
 
-  Equations set_target {w} (regs : RegisterState.t) (target : Verilog.assign_target w) (value : XBV.xbv w) : RegisterState.t :=
-    set_target regs (Verilog.AssignVar var) value :=
+  Equations set_target {w} (target : Verilog.assign_target w) (value : XBV.xbv w) (regs : RegisterState.t) : RegisterState.t :=
+    set_target (Verilog.AssignVar var) value regs :=
       RegisterState.set_reg var value regs ;
-    set_target regs (Verilog.AssignBit loc wf) value :=
+    set_target (Verilog.AssignBit loc wf) value regs :=
       RegisterState.set_location loc wf (XBV.bitOf 0 value) regs ;
-    set_target regs (Verilog.AssignSlice slice) value :=
+    set_target (Verilog.AssignSlice slice) value regs :=
       RegisterState.set_slice slice value regs ;
-    set_target regs (@Verilog.AssignConcat w1 w2 t1 t2) value :=
-      set_target (set_target regs t2 (XBV.extr value 0 w2)) t1 (XBV.extr value w2 w1)
+    set_target (@Verilog.AssignConcat w1 w2 t1 t2) value regs :=
+      set_target t1 (XBV.extr value w2 w1) (set_target t2 (XBV.extr value 0 w2) regs)
     .
 
   Equations
-    exec_statement (regs : RegisterState.t) (stmt : Verilog.statement) : RegisterState.t by struct :=
-    exec_statement regs (Verilog.BlockingAssign target _ rhs) :=
+    exec_statement (stmt : Verilog.statement) (regs : RegisterState.t) : RegisterState.t by struct :=
+    exec_statement (Verilog.BlockingAssign target _ rhs) regs :=
       let rhs_val := eval_expr regs rhs in
-      set_target regs target rhs_val ;
+      set_target target rhs_val regs ;
   .
 
   Equations
-    exec_module_item : RegisterState.t -> Verilog.module_item -> RegisterState.t :=
-    exec_module_item st (Verilog.AlwaysComb stmt ) :=
-      exec_statement st stmt;
+    exec_module_item : Verilog.module_item -> RegisterState.t -> RegisterState.t :=
+    exec_module_item (Verilog.AlwaysComb stmt ) st :=
+      exec_statement stmt st;
   .
 
   Equations
-    exec_module_body : RegisterState.t -> list Verilog.module_item -> RegisterState.t :=
-    exec_module_body regs [] := regs;
-    exec_module_body regs (mi :: mis) :=
-      let regs' := exec_module_item regs mi in
-      exec_module_body regs' mis;
+    exec_module_body : list Verilog.module_item -> RegisterState.t -> RegisterState.t :=
+    exec_module_body [] regs := regs;
+    exec_module_body (mi :: mis) regs :=
+      let regs' := exec_module_item mi regs in
+      exec_module_body mis regs';
   .
 
   Definition mk_initial_state {i o} (v : vmodule i o) (regs : RegisterState.t) : RegisterState.t :=
@@ -1684,7 +1684,7 @@ Module CombinationalOnly.
   Definition run_vmodule {i o} (v : vmodule i o) (inputs : RegisterState.t) : RegisterState.t :=
     match sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) with
     | None => mk_initial_state v inputs
-    | Some sorted => exec_module_body (mk_initial_state v inputs) sorted
+    | Some sorted => exec_module_body sorted (mk_initial_state v inputs)
     end.
 
   Global Instance Proper_run_vmodule_match_on {i o} (v : vmodule i o) :
@@ -2143,7 +2143,7 @@ Module Facts.
 
     Lemma set_target_preserve {w} target value regs l :
       LocationSet.Disjoint (Verilog.assign_target_writes target) l ->
-      set_target (w:=w) regs target value =( l )= regs.
+      set_target (w:=w) target value regs =( l )= regs.
     Proof.
       revert value regs l.
       induction target.
@@ -2162,7 +2162,7 @@ Module Facts.
 
     Lemma set_target_match_before {w} target value regs reference l :
       LocationSet.Disjoint (Verilog.assign_target_writes target) l ->
-      set_target (w:=w) regs target value =( l )= reference ->
+      set_target (w:=w) target value regs =( l )= reference ->
       regs =( l )= reference.
     Proof.
       intros Hdisjoint Hmatch loc Hloc.
@@ -2173,7 +2173,7 @@ Module Facts.
     Lemma read_target_set_target {w} (target : Verilog.assign_target w) :
       Verilog.assign_target_wf target ->
       forall regs value,
-        read_target (set_target regs target value) target = value.
+        read_target (set_target target value regs) target = value.
     Proof.
       intros Hwf.
       induction Hwf; intros *; simp read_target set_target; simpl.
@@ -2191,7 +2191,7 @@ Module Facts.
     Lemma set_target_from_state {w} (target : Verilog.assign_target w) :
       Verilog.assign_target_wf target ->
       forall regs reference,
-        set_target regs target (read_target reference target)
+        set_target target (read_target reference target) regs
           =( Verilog.assign_target_writes target )=
         reference.
     Proof.
@@ -2212,9 +2212,9 @@ Module Facts.
 
     Lemma set_target_change_regs {w} target value regs1 regs2 :
       assign_target_wf target ->
-      set_target (w:=w) regs1 target value
+      set_target (w:=w) target value regs1
         =( Verilog.assign_target_writes target )=
-      set_target regs2 target value.
+      set_target target value regs2.
     Proof.
       intros target_wf.
       revert value regs1 regs2.
@@ -2233,7 +2233,7 @@ Module Facts.
 
     Lemma set_target_change_preserve {w} l target value regs1 regs2 :
       regs1 =( l )= regs2 ->
-      set_target (w:=w) regs1 target value =( l )= set_target (w:=w) regs2 target value.
+      set_target (w:=w) target value regs1 =( l )= set_target (w:=w) target value regs2.
     Proof.
       revert value l regs1 regs2.
       induction target.
@@ -2251,12 +2251,12 @@ Module Facts.
   Section statement.
     Lemma exec_statement_change_regs stmt regs1 regs2 :
       regs1 =(Verilog.statement_reads stmt)= regs2 ->
-      exec_statement regs1 stmt
+      exec_statement stmt regs1
         =( Verilog.statement_writes stmt )=
-      exec_statement regs2 stmt.
+      exec_statement stmt regs2.
     Proof.
       intros Hmatch.
-      funelim (exec_statement regs1 stmt); expect 1.
+      funelim (exec_statement stmt regs1); expect 1.
       try rewrite <- Heqcall in *; clear Heqcall.
       simp exec_statement in *; simpl.
       simp exec_statement statement_reads statement_writes in *.
@@ -2268,7 +2268,7 @@ Module Facts.
     Lemma exec_statement_change_preserve l stmt regs1 regs2 :
       regs1 =( Verilog.statement_reads stmt )= regs2 ->
       regs1 =( l )= regs2 ->
-      exec_statement regs1 stmt =( l )= exec_statement regs2 stmt.
+      exec_statement stmt regs1 =( l )= exec_statement stmt regs2.
     Proof.
       intros Hmatch_other Hmatch_reads.
       destruct stmt; expect 1.
@@ -2280,15 +2280,15 @@ Module Facts.
 
     Lemma exec_statement_change_preserve_reads stmt regs1 regs2 :
       regs1 =( Verilog.statement_reads stmt )= regs2 ->
-      exec_statement regs1 stmt =( Verilog.statement_reads stmt )= exec_statement regs2 stmt.
+      exec_statement stmt regs1 =( Verilog.statement_reads stmt )= exec_statement stmt regs2.
     Proof. auto using exec_statement_change_preserve. Qed.
 
     Lemma exec_statement_preserve stmt regs  l :
       LocationSet.Disjoint l (Verilog.statement_writes stmt) ->
-      regs =( l )= exec_statement regs stmt.
+      regs =( l )= exec_statement stmt regs.
     Proof.
       intros Hdisjoint.
-      funelim (exec_statement regs stmt);
+      funelim (exec_statement stmt regs);
         try rewrite <- Heqcall in *; clear Heqcall.
       simpl in *.
       symmetry.
@@ -2299,12 +2299,12 @@ Module Facts.
   Section module_item.
     Lemma exec_module_item_change_regs mi regs1 regs2 :
       regs1 =(Verilog.module_item_reads mi)= regs2 ->
-      exec_module_item regs1 mi
+      exec_module_item mi regs1
         =(Verilog.module_item_writes mi)=
-      exec_module_item regs2 mi.
+      exec_module_item mi regs2.
     Proof.
       intros Hmatch.
-      funelim (exec_module_item regs1 mi).
+      funelim (exec_module_item mi regs1).
       try rewrite <- Heqcall in *; clear Heqcall.
       simp exec_module_item in *; simpl.
       try solve [constructor]; expect 1.
@@ -2315,7 +2315,7 @@ Module Facts.
     Lemma exec_module_item_change_preserve mi regs1 regs2 :
       regs1 =( Verilog.module_item_reads mi )= regs2 ->
       forall l, regs1 =( l )= regs2 ->
-      exec_module_item regs1 mi =( l )= exec_module_item regs2 mi.
+      exec_module_item mi regs1 =( l )= exec_module_item mi regs2.
     Proof.
       intros Hmatch_other Hmatch_reads.
       destruct mi; expect 1.
@@ -2325,15 +2325,15 @@ Module Facts.
 
     Lemma exec_module_item_change_preserve_reads mi regs1 regs2 :
       regs1 =( Verilog.module_item_reads mi )= regs2 ->
-      exec_module_item regs1 mi =( Verilog.module_item_reads mi )= exec_module_item regs2 mi.
+      exec_module_item mi regs1 =( Verilog.module_item_reads mi )= exec_module_item mi regs2.
     Proof. auto using exec_module_item_change_preserve. Qed.
 
     Lemma exec_module_item_preserve mi regs l :
       LocationSet.Disjoint l (Verilog.module_item_writes mi) ->
-      regs =( l )= exec_module_item regs mi.
+      regs =( l )= exec_module_item mi regs.
     Proof.
       intros Hdisjoint Hexec.
-      funelim (exec_module_item regs mi);
+      funelim (exec_module_item mi regs);
       try rewrite <- Heqcall in *; clear Heqcall.
       simp module_item_writes expr_reads in *.
       try discriminate; expect 1.
@@ -2345,7 +2345,7 @@ Module Facts.
     Lemma exec_module_body_change_preserve body regs1 regs2 :
       regs1 =( Verilog.module_body_reads body )= regs2 ->
       forall l, regs1 =( l )= regs2 ->
-      exec_module_body regs1 body =( l )= exec_module_body regs2 body.
+      exec_module_body body regs1 =( l )= exec_module_body body regs2.
     Proof.
       revert regs1 regs2.
       induction body; intros * Hmatch_reads l Hmatch_other.
@@ -2359,12 +2359,12 @@ Module Facts.
 
     Lemma exec_module_body_change_regs body regs1 regs2 :
       regs1 =(Verilog.module_body_reads body)= regs2 ->
-      exec_module_body regs1 body
+      exec_module_body body regs1
         =(Verilog.module_body_writes body)=
-      exec_module_body regs2 body.
+      exec_module_body body regs2.
     Proof.
       intros Hmatch.
-      funelim (exec_module_body regs1 body); [crush|].
+      funelim (exec_module_body body regs1); [crush|].
       try rewrite <- Heqcall in *; clear Heqcall.
       simp exec_module_body in *; simpl in *.
       RegisterState.unpack_match_on.
@@ -2377,15 +2377,15 @@ Module Facts.
 
     Lemma exec_module_body_change_preserve_reads body regs1 regs2 :
       regs1 =( Verilog.module_body_reads body )= regs2 ->
-      exec_module_body regs1 body =( Verilog.module_body_reads body )= exec_module_body regs2 body.
+      exec_module_body body regs1 =( Verilog.module_body_reads body )= exec_module_body body regs2.
     Proof. auto using exec_module_body_change_preserve. Qed.
 
     Lemma exec_module_body_preserve body regs l :
       LocationSet.Disjoint l (module_body_writes body) ->
-      regs =( l )= exec_module_body regs body.
+      regs =( l )= exec_module_body body regs.
     Proof.
       intros Hdisjoint.
-      funelim (exec_module_body regs body); [reflexivity|].
+      funelim (exec_module_body body regs); [reflexivity|].
       try rewrite <- Heqcall in *; clear Heqcall.
       simpl in *.
       try discriminate; try (some_inv; reflexivity); expect 1.
