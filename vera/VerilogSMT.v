@@ -160,21 +160,21 @@ Qed.
 
 Import EqNotations.
 
-Definition execution_of_valuation (tag : VarTag) (ρ : SMTLib.valuation) : execution :=
+Definition state_of_valuation (tag : VarTag) (ρ : SMTLib.valuation) : RegisterState.t :=
   fun var => XBV.from_bv (ρ (verilog_to_smt_var tag var)).
 
-Lemma execution_of_valuation_defined_value C tag ρ:
+Lemma state_of_valuation_defined_value C tag ρ:
   LocationSet.InBounds C ->
-  RegisterState.defined_value_for C (execution_of_valuation tag ρ).
+  RegisterState.defined_value_for C (state_of_valuation tag ρ).
 Proof.
   intros Hwf loc Hin.
   specialize (Hwf loc Hin).
-  unfold execution_of_valuation, RegisterState.get_location.
+  unfold state_of_valuation, RegisterState.get_location.
   rewrite XBV.bit_of_as_bv by assumption.
   destruct (BV.bitOf _ _); discriminate.
 Qed.
 
-Equations valuation_of_executions : execution -> execution -> SMTLib.valuation := {
+Equations valuation_of_states : RegisterState.t -> RegisterState.t -> SMTLib.valuation := {
   | e1, e2, {| SMTLib.symName := symName; SMTLib.symSort := SMTLib.Sort_BitVec w |} with untag_name symName, (dec (w > 0)%N) => {
     | Some (t, varName), left prf =>
         XBV.to_bv_def false (tag_choose t e1 e2 (Var.MkVariable varName w prf))
@@ -202,17 +202,17 @@ Proof.
     exact H.
 Qed.
 
-Lemma execution_of_valuation_left_match_on e1 e2 ls :
+Lemma state_of_valuation_left_match_on e1 e2 ls :
   RegisterState.defined_value_for ls e1 ->
-  execution_of_valuation VerilogLeft
-    (valuation_of_executions e1 e2) =( ls )= e1.
+  state_of_valuation VerilogLeft
+    (valuation_of_states e1 e2) =( ls )= e1.
 Proof.
   intros Hdefined loc Hin.
   pose proof (Hdefined _ Hin) as Hnot_x.
-  unfold RegisterState.get_location, execution_of_valuation in *.
+  unfold RegisterState.get_location, state_of_valuation in *.
   destruct loc as [[varName varType] idx]; simpl in *.
   unfold verilog_to_smt_var. simpl.
-  simp valuation_of_executions.
+  simp valuation_of_states.
   rewrite untag_tag_name.
   simpl.
   rewrite (dec_yes varTypeWf).
@@ -220,17 +220,17 @@ Proof.
   apply Hnot_x.
 Qed.
 
-Lemma execution_of_valuation_right_match_on e1 e2 ls :
+Lemma state_of_valuation_right_match_on e1 e2 ls :
   RegisterState.defined_value_for ls e2 ->
-  execution_of_valuation VerilogRight
-    (valuation_of_executions e1 e2) =( ls )= e2.
+  state_of_valuation VerilogRight
+    (valuation_of_states e1 e2) =( ls )= e2.
 Proof.
   intros Hdefined loc Hin.
   pose proof (Hdefined _ Hin) as Hnot_x.
-  unfold RegisterState.get_location, execution_of_valuation in *.
+  unfold RegisterState.get_location, state_of_valuation in *.
   destruct loc as [[varName varType] idx]; simpl in *.
   unfold verilog_to_smt_var. simpl.
-  simp valuation_of_executions.
+  simp valuation_of_states.
   rewrite untag_tag_name.
   simpl.
   rewrite (dec_yes varTypeWf).
@@ -243,7 +243,7 @@ Definition verilog_smt_match_states_partial
   (tag : VarTag)
   (regs : RegisterState.t)
   (ρ : SMTLib.valuation) : Prop :=
-  regs =( locs )= execution_of_valuation tag ρ.
+  regs =( locs )= state_of_valuation tag ρ.
 
 (* Might not be needed *)
 Global Instance verilog_smt_match_states_partial_proper :
@@ -273,8 +273,8 @@ Proof.
   apply H, Hsub, Hloc.
 Qed.
 
-Lemma verilog_smt_match_states_execution_of_valuation_same C tag ρ :
-  verilog_smt_match_states_partial C tag (execution_of_valuation tag ρ) ρ.
+Lemma verilog_smt_match_states_state_of_valuation_same C tag ρ :
+  verilog_smt_match_states_partial C tag (state_of_valuation tag ρ) ρ.
 Proof.
   intros loc _. reflexivity.
 Qed.
@@ -327,7 +327,7 @@ Lemma verilog_smt_match_states_partial_set_reg_elim C tag regs ρ var bv :
 Proof.
   intros Hvar Hrest loc Hloc.
   specialize (Hrest loc Hloc).
-  unfold RegisterState.get_location, execution_of_valuation in *.
+  unfold RegisterState.get_location, state_of_valuation in *.
   destruct (dec (Location.var loc = var)) as [e|n].
   - rewrite e.
     rewrite RegisterState.set_reg_get_in.
@@ -352,32 +352,32 @@ Lemma verilog_smt_match_states_partial_defined_value_for C tag regs ρ :
 Proof.
   intros Hwf Hmatch loc Hloc.
   specialize (Hwf loc Hloc). specialize (Hmatch loc Hloc).
-  unfold RegisterState.get_location, execution_of_valuation in *.
+  unfold RegisterState.get_location, state_of_valuation in *.
   rewrite Hmatch.
   rewrite XBV.bit_of_as_bv by assumption.
   destruct (BV.bitOf _ _); discriminate.
 Qed.
 
-Lemma verilog_smt_match_states_partial_execution_match_on C tag ρ e :
+Lemma verilog_smt_match_states_partial_state_match_on C tag ρ e :
     verilog_smt_match_states_partial C tag e ρ ->
-    e =( C )= execution_of_valuation tag ρ.
+    e =( C )= state_of_valuation tag ρ.
 Proof. trivial. Qed.
 
-Lemma verilog_smt_match_states_partial_execution_defined_value_for C tag ρ e :
+Lemma verilog_smt_match_states_partial_state_defined_value_for C tag ρ e :
     LocationSet.InBounds C ->
     verilog_smt_match_states_partial C tag e ρ ->
     RegisterState.defined_value_for C e.
 Proof. apply verilog_smt_match_states_partial_defined_value_for. Qed.
 
-Lemma execution_of_valuation_inv tag ρ var bv :
-  execution_of_valuation tag ρ var = XBV.from_bv bv ->
+Lemma state_of_valuation_inv tag ρ var bv :
+  state_of_valuation tag ρ var = XBV.from_bv bv ->
   ρ (verilog_to_smt_var tag var) = bv.
 Proof.
-  unfold execution_of_valuation.
+  unfold state_of_valuation.
   apply XBV.from_bv_injective.
 Qed.
 
-Lemma execution_match_on_verilog_smt_match_states_partial C tag ρ e :
-    e =( C )= (execution_of_valuation tag ρ) ->
+Lemma state_match_on_verilog_smt_match_states_partial C tag ρ e :
+    e =( C )= (state_of_valuation tag ρ) ->
     verilog_smt_match_states_partial C tag e ρ.
 Proof. trivial. Qed.

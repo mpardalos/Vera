@@ -53,7 +53,7 @@ Qed.
 Lemma assign_target_to_smt_value {w} tag (target : Verilog.assign_target w) :
   forall ρ target_smt,
     assign_target_to_smt tag target = inr target_smt ->
-    read_target (execution_of_valuation tag ρ) target =
+    read_target (state_of_valuation tag ρ) target =
       XBV.from_bv (SMTLib.interp_term ρ target_smt).
 Proof.
   induction target.
@@ -198,7 +198,7 @@ Qed.
 Lemma transfer_module_body_satisfiable {i o} (v : Verilog.vmodule i o) tag ρ q :
     module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) ->
     transfer_module_body tag (Verilog.modBody v) = inr q ->
-    v ⇓ execution_of_valuation tag ρ ->
+    v ⇓ state_of_valuation tag ρ ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q.
 Proof.
   intros * Hsorted Htransfer Hvalid .
@@ -207,7 +207,7 @@ Proof.
   repeat unfold mk_initial_state, run_vmodule in *.
   rewrite ! sort_module_items_stable in * by eassumption.
   eapply transfer_module_body_exec_satisfiable; eauto.
-  apply execution_match_on_verilog_smt_match_states_partial.
+  apply state_match_on_verilog_smt_match_states_partial.
   unfold Verilog.module_locations in Hvalid.
   RegisterState.unpack_match_on.
   - eassumption.
@@ -284,13 +284,13 @@ Lemma transfer_module_body_valid {i o} tag (v : Verilog.vmodule i o) ρ q :
     (Verilog.module_writes v ∪ LocationSet.of_varset (VarSet.of_list i)) ->
   transfer_module_body tag (Verilog.modBody v) = inr q ->
   List.Forall (SMTQueries.term_satisfied_by ρ) q ->
-  v ⇓ execution_of_valuation tag ρ.
+  v ⇓ state_of_valuation tag ρ.
 Proof.
   intros * Hsorted Hall_driven Htransfer Hsat.
   unfold "⇓".
   repeat unfold mk_initial_state, run_vmodule in *.
   rewrite sort_module_items_stable by assumption. simpl.
-  eapply verilog_smt_match_states_partial_execution_match_on.
+  eapply verilog_smt_match_states_partial_state_match_on.
   unfold Verilog.module_locations.
   setoid_rewrite Hall_driven.
   unpack_verilog_smt_match_states_partial.
@@ -299,10 +299,10 @@ Proof.
     + eassumption.
     + eassumption.
     + rewrite RegisterState.limit_to_regs_match_on.
-      apply verilog_smt_match_states_execution_of_valuation_same.
+      apply verilog_smt_match_states_state_of_valuation_same.
   - rewrite <- Facts.exec_module_body_preserve.
     + rewrite RegisterState.limit_to_regs_match_on.
-      apply verilog_smt_match_states_execution_of_valuation_same.
+      apply verilog_smt_match_states_state_of_valuation_same.
     + symmetry.
       eapply module_items_sorted_no_overwrite.
       apply Hsorted.
@@ -372,13 +372,13 @@ Section Clean.
   Proof.
     intros Hexpr_to_smt Hinputs_defined.
     eexists.
-    eapply expr_to_smt_value with (ρ := valuation_of_executions regs regs).
+    eapply expr_to_smt_value with (ρ := valuation_of_states regs regs).
     - eassumption.
     - unfold verilog_smt_match_states_partial.
       symmetry.
       destruct tag.
-      + apply execution_of_valuation_left_match_on. exact Hinputs_defined.
-      + apply execution_of_valuation_right_match_on. exact Hinputs_defined.
+      + apply state_of_valuation_left_match_on. exact Hinputs_defined.
+      + apply state_of_valuation_right_match_on. exact Hinputs_defined.
   Qed.
 
   #[local]
@@ -470,7 +470,7 @@ Theorem verilog_to_smt_correct {i o} tag (v : Verilog.vmodule i o) smt :
   verilog_to_smt tag v = inr smt ->
   SMTQueries.smt_reflect
     smt
-    (fun ρ => v ⇓ execution_of_valuation tag ρ).
+    (fun ρ => v ⇓ state_of_valuation tag ρ).
 Proof.
   unfold verilog_to_smt.
   intros Htransf ρ. simpl in Htransf.
