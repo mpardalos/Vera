@@ -88,18 +88,18 @@ Definition smt_some_distinct_values (vars : VarSet.t) (ρ : SMTLib.valuation) :=
 Definition counterexample_valuation {i o} (v1 v2 : Verilog.vmodule i o) ρ :=
   smt_all_same_values (VarSet.of_list i) ρ
   /\ smt_some_distinct_values (VarSet.of_list o) ρ
-  /\ v1 ⇓ execution_of_valuation VerilogLeft ρ
-  /\ v2 ⇓ execution_of_valuation VerilogRight ρ
+  /\ v1 ⇓ state_of_valuation VerilogLeft ρ
+  /\ v2 ⇓ state_of_valuation VerilogRight ρ
   .
 
-Definition execution_some_distinct_value (C : VarSet.t) (e1 e2 : RegisterState.t) : Prop :=
+Definition state_some_distinct_value (C : VarSet.t) (e1 e2 : RegisterState.t) : Prop :=
   exists var bv1 bv2,
     VarSet.In var C
     /\ e1 var = XBV.from_bv bv1
     /\ e2 var = XBV.from_bv bv2
     /\ bv1 <> bv2.
 
-Definition counterexample_execution {i o} (v1 v2 : Verilog.vmodule i o) e1 e2 :=
+Definition counterexample_state {i o} (v1 v2 : Verilog.vmodule i o) e1 e2 :=
   v1 ⇓ e1
   /\ v2 ⇓ e2
   /\ e1 =!!(LocationSet.of_varset (VarSet.of_list i))!!= e2
@@ -288,9 +288,9 @@ Proof. unfold smt_all_same_values, smt_same_value. auto. Qed.
 
 Lemma smt_distinct_values_not_defined_match vars ρ :
   smt_some_distinct_values vars ρ ->
-  ~ (execution_of_valuation VerilogLeft ρ
+  ~ (state_of_valuation VerilogLeft ρ
        =( LocationSet.of_varset vars )=
-     execution_of_valuation VerilogRight ρ).
+     state_of_valuation VerilogRight ρ).
 Proof.
   unfold smt_some_distinct_values.
   intros [var [Hin Hsmt_distinct]] contra.
@@ -302,11 +302,11 @@ Proof.
   apply LocationSet.of_varset_spec. auto.
 Qed.
 
-Lemma smt_all_same_values_execution_match vars ρ :
+Lemma smt_all_same_values_state_match vars ρ :
   smt_all_same_values vars ρ ->
-  (execution_of_valuation VerilogLeft ρ) =!!(
+  (state_of_valuation VerilogLeft ρ) =!!(
     LocationSet.of_varset vars
-  )!!= (execution_of_valuation VerilogRight ρ).
+  )!!= (state_of_valuation VerilogRight ρ).
 Proof.
   unfold smt_all_same_values, smt_same_value.
   intros Hmatch.
@@ -315,16 +315,16 @@ Proof.
   apply LocationSet.of_varset_spec in Hloc.
   destruct Hloc as [Hvar_in Hidx].
   specialize (Hmatch _ Hvar_in).
-  unfold execution_of_valuation, RegisterState.get_location.
+  unfold state_of_valuation, RegisterState.get_location.
   rewrite Hmatch.
   rewrite XBV.bit_of_as_bv by assumption.
   destruct (BV.bitOf _ _); cbn; eauto.
 Qed.
 
-Lemma execution_defined_match_smt_all_same_values vars ρ :
-  (execution_of_valuation VerilogLeft ρ)
+Lemma state_defined_match_smt_all_same_values vars ρ :
+  (state_of_valuation VerilogLeft ρ)
     =!!( LocationSet.of_varset vars )!!=
-  (execution_of_valuation VerilogRight ρ) ->
+  (state_of_valuation VerilogRight ρ) ->
   smt_all_same_values vars ρ.
 Proof.
   rewrite RegisterState.defined_match_on_iff.
@@ -357,7 +357,7 @@ Lemma not_defined_match_some_distinct (C : VarSet.t) e1 e2 :
   RegisterState.defined_value_for (LocationSet.of_varset C) e1 ->
   RegisterState.defined_value_for (LocationSet.of_varset C) e2 ->
   ~ (e1 =!!( LocationSet.of_varset C )!!= e2) ->
-  execution_some_distinct_value C e1 e2.
+  state_some_distinct_value C e1 e2.
 Proof.
   intros Hdef1 Hdef2 Hnmatch.
   assert (~ (e1 =( LocationSet.of_varset C )= e2)) as Hnmatch'
@@ -389,16 +389,16 @@ Proof.
 Qed.
 
 Lemma not_defined_match_on_smt_some_distinct_values vars ρ :
-  execution_some_distinct_value
+  state_some_distinct_value
     vars
-    (execution_of_valuation VerilogLeft ρ)
-    (execution_of_valuation VerilogRight ρ) ->
+    (state_of_valuation VerilogLeft ρ)
+    (state_of_valuation VerilogRight ρ) ->
   smt_some_distinct_values vars ρ.
 Proof.
-  unfold execution_some_distinct_value, smt_some_distinct_values, smt_distinct_value in *.
+  unfold state_some_distinct_value, smt_some_distinct_values, smt_distinct_value in *.
   intros [var [bv1 [bv2 [Hin [Hlookup_left [Hlookup_right Hneq]]]]]].
-  apply execution_of_valuation_inv in Hlookup_left. decompose record Hlookup_left.
-  apply execution_of_valuation_inv in Hlookup_right. decompose record Hlookup_right.
+  apply state_of_valuation_inv in Hlookup_left. decompose record Hlookup_left.
+  apply state_of_valuation_inv in Hlookup_right. decompose record Hlookup_right.
   eexists. split; [eassumption|].
   congruence.
 Qed.
@@ -449,7 +449,7 @@ Lemma list_subset_empty {A} (l : list A) :
   list_subset [] l.
 Proof. apply Forall_nil. Qed.
 
-Lemma execution_congruent {i o} (v : Verilog.vmodule i o) e1 e2 :
+Lemma state_congruent {i o} (v : Verilog.vmodule i o) e1 e2 :
   v ⇓ e1 -> v ⇓ e2 ->
   e1 =( LocationSet.of_varset (VarSet.of_list i) )= e2 ->
   e1 =( LocationSet.of_varset (VarSet.of_list o) )= e2.
@@ -471,10 +471,10 @@ Qed.
 Lemma no_counterexample_equivalent_iff {i o} (v1 v2 : Verilog.vmodule i o) :
   vmodule_sortable v1 ->
   vmodule_sortable v2 ->
-  (forall e1 e2, ~ counterexample_execution v1 v2 e1 e2) <-> (v1 ~~ v2).
+  (forall e1 e2, ~ counterexample_state v1 v2 e1 e2) <-> (v1 ~~ v2).
 Proof.
   intros Hsortable1 Hsortable2.
-  unfold counterexample_execution.
+  unfold counterexample_state.
   split. 
   - intros H.
     intros e Hno_exes.
@@ -514,7 +514,7 @@ Lemma not_equivalent_counterexample_iff {i o} (v1 v2 : Verilog.vmodule i o) :
   Verilog.module_outputs v1 = Verilog.module_outputs v2 ->
   vmodule_sortable v1 ->
   vmodule_sortable v2 ->
-  (exists e1 e2, counterexample_execution v1 v2 e1 e2) <-> ~ (v1 ~~ v2).
+  (exists e1 e2, counterexample_state v1 v2 e1 e2) <-> ~ (v1 ~~ v2).
 Proof.
   intros Hinput_match Houtput_match Hsortable1 Hsortable2.
   setoid_rewrite <- no_counterexample_equivalent_iff; try assumption; [idtac].
@@ -557,45 +557,45 @@ Proof.
   constructor; eauto using verilog_to_smt_checks.
 Qed.
 
-Lemma counterexample_valuation_execution {i o} (v1 v2 : Verilog.vmodule i o) ρ :
+Lemma counterexample_valuation_state {i o} (v1 v2 : Verilog.vmodule i o) ρ :
   equivalence_query_checked v1 v2 ->
   counterexample_valuation v1 v2 ρ <->
-    counterexample_execution v1 v2
-      (execution_of_valuation VerilogLeft ρ)
-      (execution_of_valuation VerilogRight ρ).
+    counterexample_state v1 v2
+      (state_of_valuation VerilogLeft ρ)
+      (state_of_valuation VerilogRight ρ).
 Proof.
   intros Hequivalence_query.
   destruct Hequivalence_query.
   inv verilog_to_smt_checked3.
   inv verilog_to_smt_checked4.
-  unfold counterexample_valuation, counterexample_execution.
+  unfold counterexample_valuation, counterexample_state.
   split. 
   - unpack_goal.
     + assumption.
     + assumption.
-    + apply smt_all_same_values_execution_match. assumption.
+    + apply smt_all_same_values_state_match. assumption.
     + apply smt_distinct_values_not_defined_match. assumption.
   - unpack_goal.
-    + apply execution_defined_match_smt_all_same_values. assumption.
+    + apply state_defined_match_smt_all_same_values. assumption.
     + apply not_defined_match_on_smt_some_distinct_values; expect 1.
       apply not_defined_match_some_distinct.
-      * apply execution_of_valuation_defined_value, LocationSet.of_varset_in_bounds.
-      * apply execution_of_valuation_defined_value, LocationSet.of_varset_in_bounds.
+      * apply state_of_valuation_defined_value, LocationSet.of_varset_in_bounds.
+      * apply state_of_valuation_defined_value, LocationSet.of_varset_in_bounds.
       * unfold "_ =!!( _ )!!= _". intuition eauto.
     + assumption.
     + assumption.
 Qed.
 
-Theorem equivalence_query_execution_spec {i o} (v1 v2 : Verilog.vmodule i o) smt :
+Theorem equivalence_query_state_spec {i o} (v1 v2 : Verilog.vmodule i o) smt :
   equivalence_query v1 v2 = inr smt ->
   smt_reflect
     smt
-    (fun ρ => counterexample_execution v1 v2
-      (execution_of_valuation VerilogLeft ρ)
-      (execution_of_valuation VerilogRight ρ)).
+    (fun ρ => counterexample_state v1 v2
+      (state_of_valuation VerilogLeft ρ)
+      (state_of_valuation VerilogRight ρ)).
 Proof.
   intros Hfunc.
-  setoid_rewrite <- counterexample_valuation_execution;
+  setoid_rewrite <- counterexample_valuation_state;
     [|eauto using equivalence_query_checks].
   eapply equivalence_query_spec.
   assumption.
@@ -604,12 +604,12 @@ Qed.
 Theorem equivalence_query_sat_correct {i o} (v1 v2 : Verilog.vmodule i o) smt ρ :
   equivalence_query v1 v2 = inr smt ->
   satisfied_by ρ smt ->
-  counterexample_execution v1 v2
-    (execution_of_valuation VerilogLeft ρ)
-    (execution_of_valuation VerilogRight ρ).
+  counterexample_state v1 v2
+    (state_of_valuation VerilogLeft ρ)
+    (state_of_valuation VerilogRight ρ).
 Proof.
   intros.
-  eapply equivalence_query_execution_spec.
+  eapply equivalence_query_state_spec.
   all: eassumption.
 Qed.
 
@@ -623,11 +623,11 @@ Proof.
   intros var. autodestruct; crush.
 Qed.
 
-Lemma counterexample_execution_rewrite_left {i o} (v v2 : Verilog.vmodule i o) e1 e1' e2 :
+Lemma counterexample_state_rewrite_left {i o} (v v2 : Verilog.vmodule i o) e1 e1' e2 :
   e1 =( Verilog.module_locations v )= e1' ->
-  counterexample_execution v v2 e1 e2 <-> counterexample_execution v v2 e1' e2.
+  counterexample_state v v2 e1 e2 <-> counterexample_state v v2 e1' e2.
 Proof.
-  unfold counterexample_execution.
+  unfold counterexample_state.
   intros H.
   split.
   all: intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]].
@@ -645,11 +645,11 @@ Proof.
   - rewrite Houtputs. apply Hnot_defined_out.
 Qed.
 
-Lemma counterexample_execution_rewrite_right {i o} (v1 v2 : Verilog.vmodule i o) e1 e2 e2' :
+Lemma counterexample_state_rewrite_right {i o} (v1 v2 : Verilog.vmodule i o) e1 e2 e2' :
   e2 =( Verilog.module_locations v2 )= e2' ->
-  counterexample_execution v1 v2 e1 e2 <-> counterexample_execution v1 v2 e1 e2'.
+  counterexample_state v1 v2 e1 e2 <-> counterexample_state v1 v2 e1 e2'.
 Proof.
-  unfold counterexample_execution.
+  unfold counterexample_state.
   intros H.
   split.
   all: intros [Hvalid1 [Hvalid2 [Hdefined_in Hnot_defined_out]]].
@@ -668,7 +668,7 @@ Proof.
 Qed.
 
 (* TODO: Move me to semantics *)
-Lemma permitted_execution_all_vars_defined {i o} (v : Verilog.vmodule i o) e :
+Lemma permitted_state_all_vars_defined {i o} (v : Verilog.vmodule i o) e :
   clean_module v ->
   v ⇓ e ->
   RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list i)) e ->
@@ -684,24 +684,24 @@ Qed.
 Lemma equivalence_query_unsat_no_counterexample {i o} (v1 v2 : Verilog.vmodule i o) smt :
   equivalence_query v1 v2 = inr smt ->
   (forall ρ, ~ satisfied_by ρ smt) ->
-  (forall e1 e2, ~ counterexample_execution v1 v2 e1 e2).
+  (forall e1 e2, ~ counterexample_state v1 v2 e1 e2).
 Proof.
   intros Hquery Hunsat e1 e2 Hcounterexample.
   destruct (equivalence_query_checks v1 v2 smt)
     as [[? [? ?]] [? [? ?]] ? ?];
     [assumption|].
-  eapply Hunsat with (ρ := valuation_of_executions e1 e2).
-  eapply equivalence_query_execution_spec; eauto.
+  eapply Hunsat with (ρ := valuation_of_states e1 e2).
+  eapply equivalence_query_state_spec; eauto.
   erewrite
-    counterexample_execution_rewrite_left,
-    counterexample_execution_rewrite_right.
+    counterexample_state_rewrite_left,
+    counterexample_state_rewrite_right.
   all: try eassumption.
   all: expect 2.
-  1: eapply execution_of_valuation_right_match_on.
-  2: eapply execution_of_valuation_left_match_on.
-  all: unfold counterexample_execution in Hcounterexample.
+  1: eapply state_of_valuation_right_match_on.
+  2: eapply state_of_valuation_left_match_on.
+  all: unfold counterexample_state in Hcounterexample.
   all: decompose record Hcounterexample.
-  all: eapply permitted_execution_all_vars_defined.
+  all: eapply permitted_state_all_vars_defined.
   - eapply VerilogToSMTCorrect.verilog_to_smt_clean. eassumption.
   - assumption.
   - eapply defined_match_on_defined_value_right. eassumption.

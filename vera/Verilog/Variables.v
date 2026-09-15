@@ -43,7 +43,7 @@ Module Var <: UsualOrderedType.
       to use `N` for Verilog too. Most things work without this proof
       (there is no reason why Verilog couldn't have zero-width
       BVs). But sometimes it comes up (see
-      `execution_match_on_verilog_smt_match_states_partial`).
+      `state_match_on_verilog_smt_match_states_partial`).
       *)
 
       ; varTypeWf : (varType > 0)%N
