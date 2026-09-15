@@ -217,7 +217,7 @@ Proof.
   all: try eassumption.
 Qed.
 
-Lemma transfer_execution {i o} (v v' : vmodule i o) e :
+Lemma transfer_state {i o} (v v' : vmodule i o) e :
   v ~~~ v' ->
   v ⇓ e ->
   exists e',
@@ -239,16 +239,16 @@ Qed.
 Lemma transfer_counterexample {i o} (v1 v1' v2 v2' : vmodule i o) e1 e2 :
   v1 ~~~ v1' ->
   v2 ~~~ v2' ->
-  counterexample_execution v1 v2 e1 e2 ->
+  counterexample_state v1 v2 e1 e2 ->
   exists e1' e2',
     e1 =( LocationSet.of_varset (VarSet.of_list i) ∪ LocationSet.of_varset (VarSet.of_list o) )= e1'
     /\ e2 =( LocationSet.of_varset (VarSet.of_list i) ∪ LocationSet.of_varset (VarSet.of_list o) )= e2'
-    /\ counterexample_execution v1' v2' e1' e2'.
+    /\ counterexample_state v1' v2' e1' e2'.
 Proof.
-  unfold counterexample_execution.
+  unfold counterexample_state.
   intros Heq1 Heq2 [Hpermitted1 [Hpermitted2 [Hmatch_inputs Hmatch_outputs]]].
-  destruct (transfer_execution v1 v1' e1) as [e1' [? ?]]; try assumption; expect 1.
-  destruct (transfer_execution v2 v2' e2) as [e2' [? ?]]; try assumption; expect 1.
+  destruct (transfer_state v1 v1' e1) as [e1' [? ?]]; try assumption; expect 1.
+  destruct (transfer_state v2 v2' e2) as [e2' [? ?]]; try assumption; expect 1.
   exists e1'. exists e2'.
   unpack_goal.
   - assumption.
@@ -270,7 +270,7 @@ Qed.
 Theorem equivalence_query_general_sat_correct {i o} (v1 v2 : vmodule i o) smt ρ :
   equivalence_query_general v1 v2 = inr smt ->
   satisfied_by ρ smt ->
-  exists e1 e2, counterexample_execution v1 v2 e1 e2.
+  exists e1 e2, counterexample_state v1 v2 e1 e2.
 Proof.
   intros. unfold equivalence_query_general in *. monad_inv.
   rewrite rew_interface_refl in *.
