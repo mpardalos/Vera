@@ -785,6 +785,27 @@ End RegisterState.
 
 Export (notations) RegisterState.
 
+Module Execution.
+  (** Register state at each cycle. *)
+  Definition t := nat -> RegisterState.t.
+
+  Definition match_on_until (locs : LocationSet.t) (until : nat) (e1 e2 : t) : Prop :=
+    forall n, (n < until) -> e1 n =( locs )= e2 n.
+
+  Definition match_on_forever (locs : LocationSet.t) (e1 e2 : t) : Prop :=
+    forall n, e1 n =( locs )= e2 n.
+
+  Notation "rs1 =[ until & vars ]= rs2" :=
+    (match_on_until vars until rs1 rs2)
+    (at level 80) : type_scope.
+
+  Notation "rs1 =[ && vars ]= rs2" :=
+    (match_on_forever vars rs1 rs2)
+    (at level 80) : type_scope.
+End Execution.
+
+Export (notations) Execution.
+
 Module Sort.
   Import Verilog.
 
@@ -1661,6 +1682,12 @@ Module CombinationalOnly.
       exec_module_body mis regs';
   .
 
+  Fixpoint run_module_body (body : list Verilog.module_item) (inputs : Execution.t) : Execution.t := fun cycle =>
+    match cycle with
+    | 0 => exec_module_body 
+    | S n => exec_module_body body (run_module_body body init n)
+    end.
+
   Definition mk_initial_state {i o} (v : vmodule i o) (regs : RegisterState.t) : RegisterState.t :=
     regs // VarSet.of_list i.
 
@@ -1681,10 +1708,10 @@ Module CombinationalOnly.
      a sentinel "empty" state.
   *)
 
-  Definition run_vmodule {i o} (v : vmodule i o) (inputs : RegisterState.t) : RegisterState.t :=
+  Definition run_vmodule {i o} (v : vmodule i o) (inputs : Execution.t) : Execution.t :=
     match sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) with
-    | None => mk_initial_state v inputs
-    | Some sorted => exec_module_body sorted (mk_initial_state v inputs)
+    | None => fun _ => mk_initial_state v inputs
+    | Some sorted => run_module_body sorted inputs
     end.
 
   Global Instance Proper_run_vmodule_match_on {i o} (v : vmodule i o) :
@@ -1697,16 +1724,17 @@ Module CombinationalOnly.
     unfold mk_initial_state.
     autodestruct.
     - rewrite Heq. reflexivity.
-    - rewrite Heq. reflexivity.
+    - apply functional_extensionality. intro.
+      rewrite Heq. reflexivity.
   Qed.
 
   (* This might often be called "ad-mitted", but we would like to
      avoid that word because it shows up when grepping for
      ad-mit. Permit is close enough. *)
-  Definition permits_state {i o} (v : vmodule i o) (e : RegisterState.t) :=
-    run_vmodule v e =( module_locations v )= e.
+  Definition permits_execution {i o} (v : vmodule i o) (e : Execution.t) :=
+    run_vmodule v (e 0) =[ && module_locations v ]= e.
 
-  Infix "⇓" := permits_state (at level 20) : verilog_scope.
+  Infix "⇓" := permits_execution (at level 20) : verilog_scope.
 
   Equations
     eval_expr_static {w} (e : Verilog.expression w) : option (XBV.xbv w) :=
