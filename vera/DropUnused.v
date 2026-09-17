@@ -101,7 +101,7 @@ Proof.
   all: LocationSet.setdec.
 Qed.
 
-Lemma module_body_keep_assigns_spec keep init body :
+Lemma module_body_keep_assigns_exec_spec keep init body :
   module_body_reads body ⊆ keep ->
   exec_module_body (snd (module_body_keep_assigns keep body)) init =( keep )= exec_module_body body init.
 Proof.
@@ -121,6 +121,22 @@ Proof.
     LocationSet.setdec.
   - symmetry. apply Facts.set_target_preserve.
     LocationSet.setdec.
+Qed.
+
+Lemma module_body_keep_assigns_spec keep i inputs body :
+  module_body_reads body ⊆ keep ->
+  run_module_body i (snd (module_body_keep_assigns keep body)) inputs
+    =[ keep ]=
+  run_module_body i body inputs.
+Proof.
+  intros H cycle. induction cycle.
+  all: simpl.
+  all: rewrite module_body_keep_assigns_exec_spec by assumption.
+  - reflexivity.
+  - apply Facts.exec_module_body_change_preserve.
+    all: apply RegisterState.set_vars_same_match_on.
+    + rewrite H. apply IHcycle.
+    + apply IHcycle.
 Qed.
 
 Import ExactEquivalence.
@@ -167,13 +183,13 @@ Lemma drop_unused1_exact_equivalence {i o} dropped (v1 v2 : vmodule i o) :
 Proof.
   intros Hsorted H.
   apply exact_by_output_equality.
-  unfold run_vmodule, mk_initial_state.
+  unfold run_vmodule.
   intros.
   rewrite sort_module_items_stable by exact Hsorted.
   rewrite sort_module_items_stable by (eapply drop_unused1_transfer_sorted; eassumption).
   destruct v1, v2. unfold drop_unused1 in *. simpl in *.
   monad_inv.
-  symmetry.
+  intro cycle. symmetry.
   eapply RegisterState.match_on_subset; cycle 1.
   - apply module_body_keep_assigns_spec.
     LocationSet.setdec.

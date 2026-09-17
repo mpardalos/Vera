@@ -824,6 +824,17 @@ Module RegisterState.
     rewrite Hvar_in.
     reflexivity.
   Qed.
+
+  Lemma set_vars_same_match_on vars vals r1 r2 l :
+    r1 =( l )= r2 ->
+    RegisterState.set_vars vars vals r1 =( l )= RegisterState.set_vars vars vals r2.
+  Proof.
+    intros Hmatch loc Hloc_in.
+    unfold RegisterState.set_vars, RegisterState.get_location.
+    destruct (VarSet.mem (Location.var loc) vars).
+    - reflexivity.
+    - apply Hmatch. exact Hloc_in.
+  Qed.
 End RegisterState.
 
 Export (notations) RegisterState.
@@ -1755,13 +1766,13 @@ Module CombinationalOnly.
     : Execution.t :=
     fun cycle =>
       match cycle with
-      | 0 => exec_module_body body (input_vals 0 // inputs)
+      | 0 =>
+        exec_module_body body (input_vals 0 // inputs)
       | S n =>
-        exec_module_body body
-          (RegisterState.set_vars inputs (input_vals (S n))
-            (run_module_body inputs body input_vals n))
-      end
-    .
+        let prev_state := run_module_body inputs body input_vals n in
+        let with_inputs := RegisterState.set_vars inputs (input_vals (S n)) prev_state in
+        exec_module_body body with_inputs
+      end.
 
   (* We make a choice here, about how to handle non-sortable
      modules. Originally, this return `option

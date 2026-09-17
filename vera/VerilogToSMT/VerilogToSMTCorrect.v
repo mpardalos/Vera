@@ -440,7 +440,7 @@ Section Clean.
     rewrite sort_module_items_stable by assumption.
     unfold Verilog.module_locations.
     assert (Hwrites_defined : RegisterState.defined_value_for (Verilog.module_writes v)
-        (exec_module_body (Verilog.modBody v) (e // VarSet.of_list i))). {
+        (exec_module_body (Verilog.modBody v) (e %% VarSet.of_list i))). {
       eapply module_body_clean.
       all: try eassumption; expect 1.
       apply RegisterState.defined_value_for_limit_to_regs.
@@ -448,7 +448,7 @@ Section Clean.
     }
 
     assert (Hinputs_defined_after : RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list i))
-        (exec_module_body (Verilog.modBody v) (e // VarSet.of_list i))). {
+        (exec_module_body (Verilog.modBody v) (e %% VarSet.of_list i))). {
       rewrite <- Facts.exec_module_body_preserve
         by (symmetry; eapply module_items_sorted_no_overwrite; exact Hsorted).
       apply RegisterState.defined_value_for_limit_to_regs.
