@@ -68,6 +68,9 @@ Module RegisterState.
            | right _ => r var'
            end.
 
+  Definition set_vars (vars : VarSet.t) (r1 r2 : t) : t:=
+    fun var => if VarSet.mem var vars then r1 var else r2 var.
+
   Definition set_location (loc : Location.t) (wf : (Location.idx loc < Var.varType (Location.var loc))%N) (bit : RawXBV.bit) (r : register_state) : register_state :=
     set_reg (Location.var loc) (XBV.set_bit (r (Location.var loc)) (Location.idx loc) bit wf) r.
 
@@ -259,6 +262,21 @@ Module RegisterState.
     transitivity proved by (match_on_trans locs)
     as match_on_rel.
 
+  Lemma match_on_varset vars r1 r2 :
+    (forall var, VarSet.In var vars -> r1 var = r2 var)
+    <-> r1 =( LocationSet.of_varset vars )= r2.
+  Proof.
+    unfold match_on, get_location.
+    setoid_rewrite LocationSet.of_varset_spec.
+    split. all: intros H.
+    - intros loc [Hloc_in Hloc_wf].
+      rewrite H by exact Hloc_in.
+      reflexivity.
+    - intros var Hvar_in.
+      apply XBV.bitOf_ext. intros idx Hidx.
+      apply (H (Location.Mk var idx)). auto.
+  Qed.
+
   Definition defined_match_on vars e1 e2 :=
     e1 =( vars )= e2 /\ RegisterState.defined_value_for vars e1.
 
@@ -358,6 +376,21 @@ Module RegisterState.
     apply H.
     apply LocationSet.of_varset_spec.
     auto.
+  Qed.
+
+  Global Instance Proper_set_vars vars :
+    Proper
+      (match_on (LocationSet.of_varset vars) ==> eq ==> eq)
+      (set_vars vars).
+  Proof.
+    intros r1 r2 Hmatch regs regs' ->.
+    apply functional_extensionality_dep. intro var.
+    unfold set_vars.
+    destruct (VarSet.mem var vars) eqn:Hmem; try reflexivity.
+    apply VarSet.mem_spec in Hmem.
+    apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
+    apply (Hmatch (Location.Mk var bit_idx)).
+    apply LocationSet.of_varset_spec. auto.
   Qed.
 
   Lemma limit_to_regs_twice st regs :
@@ -781,6 +814,16 @@ Module RegisterState.
       | [ H: _ =( {} )= _ |- _ ] =>
           clear H
       end.
+
+  Lemma set_vars_match_on vars r1 r2 :
+    set_vars vars r1 r2 =( LocationSet.of_varset vars )= r1.
+  Proof.
+    apply match_on_varset. intros var Hvar_in.
+    unfold set_vars.
+    apply VarSet.mem_spec in Hvar_in.
+    rewrite Hvar_in.
+    reflexivity.
+  Qed.
 End RegisterState.
 
 Export (notations) RegisterState.
@@ -795,13 +838,36 @@ Module Execution.
   Definition match_on_forever (locs : LocationSet.t) (e1 e2 : t) : Prop :=
     forall n, e1 n =( locs )= e2 n.
 
-  Notation "rs1 =[ until & vars ]= rs2" :=
+  Notation "rs1 =[ until ][ vars ]= rs2" :=
     (match_on_until vars until rs1 rs2)
     (at level 80) : type_scope.
 
-  Notation "rs1 =[ && vars ]= rs2" :=
+  Notation "rs1 =[ vars ]= rs2" :=
     (match_on_forever vars rs1 rs2)
     (at level 80) : type_scope.
+
+  Add Parametric Relation (locs : LocationSet.t) (until : nat) :
+    t (match_on_until locs until)
+    reflexivity proved by (ltac:(intros e n Hn; reflexivity))
+    symmetry proved by (ltac:(intros e1 e2 Hmatch n Hn;
+      symmetry; apply Hmatch; assumption))
+    transitivity proved by (ltac:(intros e1 e2 e3 H12 H23 n Hn;
+      transitivity (e2 n); [apply H12 | apply H23]; assumption))
+    as match_on_until_rel.
+
+  Add Parametric Relation (locs : LocationSet.t) :
+    t (match_on_forever locs)
+    reflexivity proved by (ltac:(intros e n; reflexivity))
+    symmetry proved by (ltac:(intros e1 e2 Hmatch n;
+      symmetry; apply Hmatch))
+    transitivity proved by (ltac:(intros e1 e2 e3 H12 H23 n;
+      transitivity (e2 n); [apply H12 | apply H23]))
+    as match_on_forever_rel.
+
+  Definition limit_to_regs (vars : VarSet.t) (e : t) : t :=
+    fun n => e n // vars.
+
+  Notation "e /// vars" := (limit_to_regs vars e) (at level 20) : verilog_scope.
 End Execution.
 
 Export (notations) Execution.
@@ -1682,18 +1748,20 @@ Module CombinationalOnly.
       exec_module_body mis regs';
   .
 
-  Fixpoint run_module_body (body : list Verilog.module_item) (inputs : Execution.t) : Execution.t := fun cycle =>
-    match cycle with
-    | 0 => exec_module_body 
-    | S n => exec_module_body body (run_module_body body init n)
-    end.
-
-  Definition mk_initial_state {i o} (v : vmodule i o) (regs : RegisterState.t) : RegisterState.t :=
-    regs // VarSet.of_list i.
-
-  Lemma initial_state_same {i o1 o2} (v1 : vmodule i o1) (v2 : vmodule i o2) regs :
-    mk_initial_state v1 regs = mk_initial_state v2 regs.
-  Proof. reflexivity. Qed.
+  Fixpoint run_module_body
+    (inputs : VarSet.t)
+    (body : list Verilog.module_item)
+    (input_vals : Execution.t)
+    : Execution.t :=
+    fun cycle =>
+      match cycle with
+      | 0 => exec_module_body body (input_vals 0 // inputs)
+      | S n =>
+        exec_module_body body
+          (RegisterState.set_vars inputs (input_vals (S n))
+            (run_module_body inputs body input_vals n))
+      end
+    .
 
   (* We make a choice here, about how to handle non-sortable
      modules. Originally, this return `option
@@ -1702,37 +1770,48 @@ Module CombinationalOnly.
      `option` types were quite annoying to deal with, and we need
      special versions of all our operators (`_ =?( _ )?= _` rather
      than `_ =( _ )= _` to handle them).
-
-     Instead of exposing the option types on this function, we can
-     kind of "push" the `None`s into the RegisterState, by returning
-     a sentinel "empty" state.
   *)
 
-  Definition run_vmodule {i o} (v : vmodule i o) (inputs : Execution.t) : Execution.t :=
+  Definition run_vmodule {i o} (v : vmodule i o) (input_vals : Execution.t) : Execution.t :=
     match sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) with
-    | None => fun _ => mk_initial_state v inputs
-    | Some sorted => run_module_body sorted inputs
+    (* This seems a bit dirty... Invalid modules all become passthrough. *)
+    | None => fun cycle => input_vals cycle // (VarSet.of_list i)
+    | Some sorted => run_module_body (VarSet.of_list i) sorted input_vals
     end.
+
+  Global Instance Proper_run_module_body_match_on inputs body :
+    Proper
+      (Execution.match_on_forever (LocationSet.of_varset inputs) ==> eq)
+      (run_module_body inputs body).
+  Proof.
+    intros r1 r2 Heq.
+    apply functional_extensionality. intro cycle.
+    induction cycle.
+    all: simpl.
+    - rewrite (Heq 0). reflexivity.
+    - rewrite IHcycle.
+      rewrite (Heq (S cycle)).
+      reflexivity.
+  Qed.
 
   Global Instance Proper_run_vmodule_match_on {i o} (v : vmodule i o) :
     Proper
-      (RegisterState.match_on (LocationSet.of_varset (VarSet.of_list i)) ==> eq)
+      (Execution.match_on_forever (LocationSet.of_varset (VarSet.of_list i)) ==> eq)
       (run_vmodule v).
   Proof.
     intros r1 r2 Heq.
     unfold run_vmodule.
-    unfold mk_initial_state.
     autodestruct.
     - rewrite Heq. reflexivity.
-    - apply functional_extensionality. intro.
-      rewrite Heq. reflexivity.
+    - apply functional_extensionality. intro cycle.
+      rewrite (Heq cycle). reflexivity.
   Qed.
 
   (* This might often be called "ad-mitted", but we would like to
      avoid that word because it shows up when grepping for
      ad-mit. Permit is close enough. *)
   Definition permits_execution {i o} (v : vmodule i o) (e : Execution.t) :=
-    run_vmodule v (e 0) =[ && module_locations v ]= e.
+    run_vmodule v e =[ module_locations v ]= e.
 
   Infix "⇓" := permits_execution (at level 20) : verilog_scope.
 
@@ -2422,22 +2501,32 @@ Module Facts.
       eapply exec_module_item_preserve.
       LocationSet.setdec.
     Qed.
+
+    Lemma run_module_body_preserve_inputs inputs body e :
+      LocationSet.Disjoint (LocationSet.of_varset inputs) (module_body_writes body) ->
+      run_module_body inputs body e =[ LocationSet.of_varset inputs ]= e.
+    Proof.
+      intros Hdisjoint cycle.
+      induction cycle.
+      all: simpl.
+      all: rewrite <- exec_module_body_preserve by assumption.
+      - apply RegisterState.limit_to_regs_match_on.
+      - apply RegisterState.set_vars_match_on.
+    Qed.
   End module_body.
 
   Section vmodule.
     Lemma run_vmodule_preserve_inputs {i o} (v : vmodule i o) e :
-      run_vmodule v e =( LocationSet.of_varset (VarSet.of_list i) )= e.
+      run_vmodule v e =[ LocationSet.of_varset (VarSet.of_list i) ]= e.
     Proof.
-      unfold vmodule_sortable, run_vmodule, mk_initial_state.
+      unfold vmodule_sortable, run_vmodule.
       autodestruct_eqn E.
-      - symmetry.
-        rewrite <- exec_module_body_preserve.
-        + symmetry.
-          apply RegisterState.limit_to_regs_match_on.
-        + symmetry.
-          apply module_items_sorted_no_overwrite.
-          eapply sort_module_items_sorted.
-          eassumption.
+      all: intro cycle.
+      - apply run_module_body_preserve_inputs.
+        symmetry.
+        apply module_items_sorted_no_overwrite.
+        eapply sort_module_items_sorted.
+        exact E.
       - apply RegisterState.limit_to_regs_match_on.
     Qed.
 
@@ -2462,7 +2551,9 @@ Module Facts.
       - unfold run_vmodule, vmodule_sortable in *.
         destruct (sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (modBody v)).
         + contradict n. eauto.
-        + unfold mk_initial_state. rewrite RegisterState.limit_to_regs_twice. reflexivity.
+        + intro cycle.
+          rewrite RegisterState.limit_to_regs_twice.
+          reflexivity.
     Qed.
   End vmodule.
 
@@ -2484,16 +2575,13 @@ Module DefinedEquivalence.
   Declare Scope verilog.
   Local Open Scope verilog.
 
-  Record clean_module {i o} (v : vmodule i o) := MkCleanModule { 
-    defined_outputs : forall e,
-      RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list (Verilog.module_inputs v))) e ->
-      RegisterState.defined_value_for (module_locations v) (run_vmodule v e)
-  }.
-
   Definition defined_equivalence {i o} (v1 v2 : Verilog.vmodule i o) : Prop :=
-      forall init,
-        RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list i)) init ->
-        (run_vmodule v1 init =( LocationSet.of_varset (VarSet.of_list o) )= run_vmodule v2 init).
+      forall inputs,
+        (forall cycle,
+          RegisterState.defined_value_for
+            (LocationSet.of_varset (VarSet.of_list i))
+            (inputs cycle)) ->
+        (run_vmodule v1 inputs =[ LocationSet.of_varset (VarSet.of_list o) ]= run_vmodule v2 inputs).
 
   Infix "~~" := defined_equivalence (at level 20) : verilog_scope.
 
@@ -2524,7 +2612,7 @@ Module ExactEquivalence.
   Local Open Scope verilog.
 
   Definition exact_equivalence {i o} (v1 v2 : Verilog.vmodule i o) : Prop :=
-    forall init, run_vmodule v1 init =( LocationSet.of_varset (VarSet.of_list o))= run_vmodule v2 init.
+    forall init, run_vmodule v1 init =[ LocationSet.of_varset (VarSet.of_list o)]= run_vmodule v2 init.
 
   Infix "~~~" := exact_equivalence (at level 20) : verilog_scope.
 
@@ -2560,7 +2648,7 @@ Module ExactEquivalence.
   Proof. unfold "~~~", "~~". easy. Qed.
 
   Lemma exact_by_output_equality {i o} (v1 v2 : vmodule i o) :
-    (forall initial, run_vmodule v1 initial =( LocationSet.of_varset (VarSet.of_list o) )= run_vmodule v2 initial) ->
+    (forall initial, run_vmodule v1 initial =[ LocationSet.of_varset (VarSet.of_list o) ]= run_vmodule v2 initial) ->
     v1 ~~~ v2.
   Proof. intros H. exact H. Qed.
 
@@ -2571,3 +2659,8 @@ Module ExactEquivalence.
       (defined_equivalence).
   Proof. unfold "~~~", "~~". solve_proper. Qed.
 End ExactEquivalence.
+
+Definition clean_module {i o} (v : vmodule i o) :=
+  forall input,
+    (forall cycle, RegisterState.defined_value_for (LocationSet.of_varset (VarSet.of_list i)) (input cycle)) ->
+    (forall cycle, RegisterState.defined_value_for (module_locations v) (CombinationalOnly.run_vmodule v input cycle)).
