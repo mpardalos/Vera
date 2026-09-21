@@ -60,8 +60,14 @@ Equations simpl_expr {w} (e : expression w) : expression w := {
   | NamedExpression var => NamedExpression var
   }.
 
+Equations simpl_module_item : module_item -> module_item := {
+  | AlwaysComb (BlockingAssign lhs wf rhs) => AlwaysComb (BlockingAssign lhs wf (simpl_expr rhs))
+  | AlwaysFF (NonBlockingAssign lhs wf rhs) => AlwaysFF (NonBlockingAssign lhs wf (simpl_expr rhs))
+  | mi => mi (* Leave invalid untouched *)
+}.
+
 Definition simpl_module_body : list module_item -> list module_item :=
-    map (fun '(AlwaysComb (BlockingAssign lhs wf rhs)) => AlwaysComb (BlockingAssign lhs wf (simpl_expr rhs))).
+    map simpl_module_item.
 
 Lemma simpl_module_body_writes mis :
   LocationSet.Equal
@@ -70,8 +76,10 @@ Lemma simpl_module_body_writes mis :
 Proof.
   induction mis.
   - reflexivity.
-  - destruct a as [[lhs rhs]]. simpl.
-    rewrite IHmis. reflexivity.
+  - destruct a as [stmt|stmt]; destruct stmt.
+    all: simpl; simp simpl_module_item; simpl.
+    all: rewrite IHmis; clear IHmis.
+    all: reflexivity.
 Qed.
 
 #[refine]
@@ -223,25 +231,28 @@ Proof.
   
   rewrite sort_module_items_map; expect 3; cycle 1.
   {
-    intros [[lhs rhs]].
-    simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
-    apply simpl_expr_reads_Equal.
+    intros [stmt|stmt]. all: destruct stmt.
+    all: simpl; simp simpl_module_item; simpl.
+    1: solve [apply simpl_expr_reads_Equal].
+    all: reflexivity.
   }
   {
-    intros [[lhs rhs]].
-    simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
-    reflexivity.
+    intros [stmt|stmt]. all: destruct stmt.
+    all: reflexivity.
   }
 
   destruct (sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (modBody v));
     simpl; [|reflexivity].
   generalize (init // VarSet.of_list i). clear init v.
   induction l; intros r; [reflexivity|].
-  destruct a; expect 1. destruct s; expect 1.
-  simpl. simp exec_module_body exec_module_item exec_statement. simpl.
-  simp exec_module_body.
+  destruct a; expect 2.
+  all: destruct s.
+  all: simp simpl_module_item.
+  all: repeat progress (simpl; simp simpl_module_item exec_module_body exec_module_item exec_statement).
+  all: expect 1.
+  rewrite IHl.
   rewrite simpl_expr_correct.
-  apply IHl.
+  reflexivity.
 Qed.
 
 Import ExactEquivalence.
