@@ -214,6 +214,12 @@ Section expr_to_smt.
       let* lhs_smt := assign_target_to_smt lhs in
       let* rhs_smt := expr_to_smt rhs in
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
+    transfer_module_item (Verilog.AlwaysComb (Verilog.NonBlockingAssign _ _ _)) :=
+      inl "Invalid nonblocking assign in always_comb"%string;
+    transfer_module_item (Verilog.AlwaysFF (Verilog.NonBlockingAssign lhs _ rhs)) :=
+      inl "TODO: non-blocking assigns"%string;
+    transfer_module_item (Verilog.AlwaysFF (Verilog.BlockingAssign lhs _ rhs)) :=
+      inl "Invalid blocking assign in always_ff"%string
   .
 
   Equations transfer_module_body : list Verilog.module_item -> transf (list (SMTLib.term Sort_Bool)) :=

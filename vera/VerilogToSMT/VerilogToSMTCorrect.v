@@ -387,15 +387,18 @@ Section Clean.
     RegisterState.defined_value_for (Verilog.module_item_reads mi) init ->
     RegisterState.defined_value_for (Verilog.module_item_writes mi) (exec_module_item init mi).
   Proof.
-    destruct mi as [[? target target_wf expr]].
-    simp transfer_module_item exec_module_item exec_statement; simpl.
+    destruct mi as [stmt|stmt].
+    2: admit. (* TODO: Sequential semantics *)
+    destruct stmt as [? target target_wf expr|?].
+    all: simp transfer_module_item exec_module_item exec_statement; simpl.
+    2: solve [inversion 1].
     intros Htransf Hinputs_defined.
     monad_inv.
     edestruct (expr_to_smt_defined expr) as [bv Heval]; [eassumption|eassumption|].
     rewrite Heval.
     apply set_target_defined.
     exact target_wf.
-  Qed.
+  Admitted.
 
   #[local]
   Lemma module_body_clean inputs body init smt :
