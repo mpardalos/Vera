@@ -1648,12 +1648,16 @@ Module CombinationalOnly.
     exec_statement regs (Verilog.BlockingAssign target _ rhs) :=
       let rhs_val := eval_expr regs rhs in
       set_target regs target rhs_val ;
+    exec_statement regs (Verilog.NonBlockingAssign target _ rhs) :=
+      regs (* TODO: sequential semantics *)
   .
 
   Equations
     exec_module_item : RegisterState.t -> Verilog.module_item -> RegisterState.t :=
     exec_module_item st (Verilog.AlwaysComb stmt ) :=
       exec_statement st stmt;
+    exec_module_item st (Verilog.AlwaysFF stmt ) :=
+      st (* TODO: sequential semantics *)
   .
 
   Equations
@@ -2271,7 +2275,8 @@ Module Facts.
       exec_statement regs2 stmt.
     Proof.
       intros Hmatch.
-      funelim (exec_statement regs1 stmt); expect 1.
+      funelim (exec_statement regs1 stmt); expect 2.
+      2: exact Hmatch. (* Sequential semantics *)
       try rewrite <- Heqcall in *; clear Heqcall.
       simp exec_statement in *; simpl.
       simp exec_statement statement_reads statement_writes in *.
@@ -2286,7 +2291,8 @@ Module Facts.
       exec_statement regs1 stmt =( l )= exec_statement regs2 stmt.
     Proof.
       intros Hmatch_other Hmatch_reads.
-      destruct stmt; expect 1.
+      destruct stmt; expect 2.
+      2: exact Hmatch_reads. (* Sequential semantics *)
       simp exec_statement. simpl in *.
       erewrite eval_expr_change_regs by eassumption.
       eapply set_target_change_preserve.
@@ -2303,8 +2309,8 @@ Module Facts.
       regs =( l )= exec_statement regs stmt.
     Proof.
       intros Hdisjoint.
-      funelim (exec_statement regs stmt);
-        try rewrite <- Heqcall in *; clear Heqcall.
+      funelim (exec_statement regs stmt); expect 2.
+      2: reflexivity. (* TODO: Sequential semantics *)
       simpl in *.
       symmetry.
       apply set_target_preserve. symmetry. exact Hdisjoint.
@@ -2319,8 +2325,8 @@ Module Facts.
       exec_module_item regs2 mi.
     Proof.
       intros Hmatch.
-      funelim (exec_module_item regs1 mi).
-      try rewrite <- Heqcall in *; clear Heqcall.
+      funelim (exec_module_item regs1 mi); expect 2.
+      2: exact Hmatch. (* Sequential semantics *)
       simp exec_module_item in *; simpl.
       try solve [constructor]; expect 1.
       simp exec_module_item module_item_reads module_item_writes expr_reads in *.
@@ -2332,8 +2338,9 @@ Module Facts.
       forall l, regs1 =( l )= regs2 ->
       exec_module_item regs1 mi =( l )= exec_module_item regs2 mi.
     Proof.
-      intros Hmatch_other Hmatch_reads.
-      destruct mi; expect 1.
+      intros Hmatch_other * Hmatch_reads.
+      destruct mi; expect 2.
+      2: exact Hmatch_reads. (* TODO: Sequential semantics *)
       simpl in *; simp exec_module_item in *.
       apply exec_statement_change_preserve; assumption.
     Qed.
@@ -2347,9 +2354,9 @@ Module Facts.
       LocationSet.Disjoint l (Verilog.module_item_writes mi) ->
       regs =( l )= exec_module_item regs mi.
     Proof.
-      intros Hdisjoint Hexec.
-      funelim (exec_module_item regs mi);
-      try rewrite <- Heqcall in *; clear Heqcall.
+      intros Hdisjoint.
+      funelim (exec_module_item regs mi); expect 2.
+      2: reflexivity.
       simp module_item_writes expr_reads in *.
       try discriminate; expect 1.
       eapply exec_statement_preserve; eassumption.

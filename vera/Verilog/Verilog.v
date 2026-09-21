@@ -339,10 +339,13 @@ Module Verilog.
 
   Inductive statement :=
   | BlockingAssign {w} (lhs : assign_target w) (lhs_wf : assign_target_wf lhs) (rhs : expression w)
+  | NonBlockingAssign {w} (lhs : assign_target w) (lhs_wf : assign_target_wf lhs) (rhs : expression w)
   .
 
   Inductive module_item :=
   | AlwaysComb : statement -> module_item
+  (* It is assumed that all AlwaysFF blocks use the same clock *)
+  | AlwaysFF : statement -> module_item
   .
 
   Local Open Scope verilog.
@@ -397,21 +400,25 @@ Module Verilog.
   Definition statement_reads (s : Verilog.statement) : LocationSet.t :=
     match s with
     | Verilog.BlockingAssign lhs _ rhs => expr_reads rhs  (* ONLY looking at rhs here *)
+    | Verilog.NonBlockingAssign lhs _ rhs => LocationSet.empty (* TODO: Sequential semantics *)
     end.
 
   Definition statement_writes (s : Verilog.statement) : LocationSet.t :=
     match s with
     | (Verilog.BlockingAssign lhs _ rhs) => assign_target_writes lhs (* ONLY looking at lhs here *)
+    | (Verilog.NonBlockingAssign lhs _ rhs) => LocationSet.empty (* TODO: Sequential semantics *)
     end.
 
   Definition module_item_reads (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
     | (Verilog.AlwaysComb stmt) => statement_reads stmt
+    | (Verilog.AlwaysFF stmt) => LocationSet.empty (* ONLY looking at rhs here *)
     end.
 
   Definition module_item_writes (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
     | Verilog.AlwaysComb stmt => statement_writes stmt
+    | Verilog.AlwaysFF stmt => LocationSet.empty (* ONLY looking at rhs here *)
     end.
 
   Fixpoint module_body_reads (mis : list Verilog.module_item) : LocationSet.t :=
@@ -509,7 +516,11 @@ Module Verilog.
   Qed.
 
   Lemma statement_reads_in_bounds s : LocationSet.InBounds (statement_reads s).
-  Proof. destruct s; apply expr_reads_in_bounds. Qed.
+  Proof.
+    destruct s.
+    - apply expr_reads_in_bounds.
+    - apply empty_in_bounds.
+  Qed.
 
   Lemma assign_target_writes_in_bounds w a : LocationSet.InBounds (assign_target_writes (w:=w) a).
   Proof.
@@ -523,13 +534,25 @@ Module Verilog.
   Qed.
   
   Lemma statement_writes_in_bounds s : LocationSet.InBounds (statement_writes s).
-  Proof. destruct s; apply assign_target_writes_in_bounds. Qed.
+  Proof.
+    destruct s.
+    - apply assign_target_writes_in_bounds.
+    - apply empty_in_bounds.
+  Qed.
 
   Lemma module_item_reads_in_bounds mi : LocationSet.InBounds (module_item_reads mi).
-  Proof. destruct mi; apply statement_reads_in_bounds. Qed.
+  Proof.
+    destruct mi.
+    - apply statement_reads_in_bounds.
+    - apply empty_in_bounds.
+  Qed.
 
   Lemma module_item_writes_in_bounds mi : LocationSet.InBounds (module_item_writes mi).
-  Proof. destruct mi; apply statement_writes_in_bounds. Qed.
+  Proof.
+    destruct mi.
+    - apply statement_writes_in_bounds.
+    - apply empty_in_bounds.
+  Qed.
 
   Lemma module_body_reads_in_bounds mis : LocationSet.InBounds (module_body_reads mis).
   Proof.
@@ -589,6 +612,8 @@ Module Verilog.
           match u with
           | Verilog.BlockingAssign lhs _ rhs =>
             show lhs << " = " << show rhs
+          | Verilog.NonBlockingAssign lhs _ rhs =>
+            show lhs << " <= " << show rhs
           end
       }.
 
@@ -597,6 +622,8 @@ Module Verilog.
           match u with
           | Verilog.AlwaysComb stmt =>
             ("always_comb "%string << show stmt )
+          | Verilog.AlwaysFF stmt =>
+            ("always_ff @(??) "%string << show stmt )
           end
       }.
   End show.
