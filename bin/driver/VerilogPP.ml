@@ -188,9 +188,13 @@ module Typed = struct
     match s with
     | Verilog.BlockingAssign (_, lhs, rhs) ->
         fprintf fmt "%a = %a" assign_target lhs expression rhs
+    | Verilog.NonBlockingAssign (_, lhs, rhs) ->
+        fprintf fmt "%a <= %a" assign_target lhs expression rhs
 
   let mod_item (fmt : formatter) (i : Verilog.module_item) =
-    fprintf fmt "always_comb %a" statement i
+    match i with
+    | Verilog.AlwaysComb stmt -> fprintf fmt "always_comb %a" statement stmt
+    | Verilog.AlwaysFF stmt -> fprintf fmt "always_ff %a" statement stmt
 
   let vmodule (fmt : formatter) (m : Verilog.vmodule) =
     fprintf fmt "Verilog.module %s {@." (Util.lst_to_string m.modName);
