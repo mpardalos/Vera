@@ -36,6 +36,20 @@ Equations module_body_keep_assigns :
     list module_item ->
     (LocationSet.t * list module_item) := {
   | keep, [] => (LocationSet.empty, []);
+  | keep, (AlwaysFF (NonBlockingAssign lhs _ rhs) :: body)
+    with (LocationSet.disjoint (assign_target_writes lhs) keep) => {
+    | true =>
+      trace
+        ("Dropping " ++ to_string (NonBlockingAssign lhs _ rhs))%string
+        ( let (dropped', body') := module_body_keep_assigns keep body in
+          (assign_target_writes lhs ∪ dropped', body'))
+    | false =>
+      let (dropped', body') := module_body_keep_assigns keep body in
+      (dropped', AlwaysFF (NonBlockingAssign lhs _ rhs) :: body')
+  }
+  | keep, (AlwaysFF stmt :: body) => (* Skip invalid *)
+    let (dropped, rest) := module_body_keep_assigns keep body in
+    (dropped, AlwaysFF stmt :: rest)
   | keep, (AlwaysComb (BlockingAssign lhs _ rhs) :: body)
     with (LocationSet.disjoint (assign_target_writes lhs) keep) => {
     | true =>
@@ -47,6 +61,9 @@ Equations module_body_keep_assigns :
       let (dropped', body') := module_body_keep_assigns keep body in
       (dropped', AlwaysComb (BlockingAssign lhs _ rhs) :: body')
   }
+  | keep, (AlwaysComb stmt :: body) => (* Skip invalid *)
+    let (dropped, rest) := module_body_keep_assigns keep body in
+    (dropped, AlwaysComb stmt :: rest)
 }.
 
 Definition drop_unused1 {i o} (v : vmodule i o) : string + (LocationSet.t * vmodule i o) :=
@@ -112,7 +129,7 @@ Proof.
   1: reflexivity.
   all: rewrite (surjective_pairing (module_body_keep_assigns keep body)); simpl in *.
   all: simp exec_module_body exec_module_item exec_statement; simpl in *.
-  2: apply H; LocationSet.setdec.
+  all: try (apply H; LocationSet.setdec). all: expect 1.
   apply LocationSet.disjoint_spec in Heq.
   rewrite Facts.exec_module_body_change_preserve.
   - apply H; LocationSet.setdec.
@@ -137,12 +154,15 @@ Proof.
   all: cbn in *.
   all: rewrite (surjective_pairing (module_body_keep_assigns keep body)); simpl.
   all: inv Hsorted.
+  all: try solve [constructor; try assumption; apply H; intuition LocationSet.setdec].
+  all: expect 2.
   - apply LocationSet.disjoint_spec in Heq.
     eapply module_items_sorted_skip with (vars_skip := assign_target_writes lhs).
     + rewrite module_body_keep_assigns_reads. all: LocationSet.setdec.
     + apply H. all: intuition LocationSet.setdec.
-  - constructor; try assumption; expect 1.
-    apply H. all: intuition LocationSet.setdec.
+  - eapply module_items_sorted_skip with (vars_skip := LocationSet.empty).
+    + LocationSet.setdec.
+    + apply H. all: intuition LocationSet.setdec.
 Qed.
 
 Lemma drop_unused1_transfer_sorted {i o} dropped (v1 v2 : vmodule i o) :
