@@ -70,10 +70,15 @@ Section definition.
 
   Equations break_concat_assigns_module_body : list module_item -> list module_item := {
     | AlwaysComb (BlockingAssign target wf val) :: tl =>
-      trace
-        ("Break concat assign to " ++ to_string target)
-        (break_concat_assign target wf val)
+      break_concat_assign target wf val
       ++ break_concat_assigns_module_body tl
+    | AlwaysComb stmt :: tl =>
+      AlwaysComb stmt :: break_concat_assigns_module_body tl
+    | AlwaysFF (NonBlockingAssign target wf val) :: tl =>
+      break_concat_assign target wf val
+      ++ break_concat_assigns_module_body tl
+    | AlwaysFF stmt :: tl =>
+      AlwaysFF stmt :: break_concat_assigns_module_body tl
     | [] => []
   }.
 
@@ -187,9 +192,10 @@ Section semantics.
     all: clear Heqcall; intros vars Hsorted; inv Hsorted.
     all: simp exec_module_body; simpl.
     all: try reflexivity; try eauto.
+    all: expect 2. 2: admit.
     rewrite exec_module_body_app, exec_break_concat_assign by (simpl in *; LocationSet.setdec).
     simp exec_module_item exec_statement.
-  Qed.
+  Admitted.
 End semantics.
 
 Section sort.
@@ -219,6 +225,7 @@ Section sort.
     all: clear Heqcall; intros Hsorted; inv Hsorted.
     all: simpl.
     all: try (constructor; try assumption; eauto).
+    2: admit. (* TODO: Sequential semantics *)
     rename_match (forall vars, module_items_sorted vars tl -> _) into IH.
     rename_match (LocationSet.Disjoint _ vars) into Hdisjoint.
     rename_match (module_items_sorted _ tl) into Hsorted_tl.
@@ -229,7 +236,7 @@ Section sort.
         (l := assign_target_writes target ∪ vars).
       + rewrite break_concat_assign_writes. LocationSet.setdec.
       + exact Hsorted_tl.
-  Qed.
+  Admitted.
 End sort.
 
 Theorem break_concat_assigns_exact_equivalence {i o} (v1 v2 : vmodule i o) :
