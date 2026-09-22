@@ -1,19 +1,13 @@
 #!/usr/bin/env runhaskell
 
-{-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE NoFieldSelectors #-}
 
 import Control.DeepSeq (NFData)
 import Control.Exception (SomeException, try)
@@ -27,7 +21,22 @@ import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.Lazy qualified as LBS
 import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Char (isDigit)
-import Data.Csv
+import Data.Csv (
+    DefaultOrdered (..),
+    EncodeOptions (encUseCrLf),
+    FromNamedRecord (..),
+    Header,
+    NamedRecord,
+    Parser,
+    ToNamedRecord (..),
+    decodeByName,
+    defaultEncodeOptions,
+    encodeDefaultOrderedByNameWith,
+    header,
+    namedRecord,
+    (.:),
+    (.=),
+ )
 import Data.Data (Typeable)
 import Data.Either (fromRight)
 import Data.Function ((&))
@@ -56,15 +65,52 @@ import Safe (findJustNote, fromJustNote, lastMay, readMay)
 import System.Directory (listDirectory)
 import System.Directory qualified as SD
 import System.Exit (ExitCode (..))
-import System.Posix.Resource (Resource (ResourceOpenFiles), ResourceLimit (..), ResourceLimits (..), getResourceLimit, setResourceLimit)
+import System.Posix.Resource (ResourceLimit (..), ResourceLimits (..), getResourceLimit, setResourceLimit, pattern ResourceOpenFiles)
 import Text.Printf (printf)
 
-{- | Directory containing this Shakefile, captured at compile time. All the
-paths in this file are relative to it, so we @cd@ here at startup and the
-build can then be run from any working directory.
--}
-shakefileDir :: FilePath
-shakefileDir = takeDirectory $(location >>= \l -> pure (LitE (StringL (loc_filename l))))
+main :: IO ()
+main = shakeArgs shakeOptions{shakeThreads = 0} $ do
+    --- SETTINGS ---------------------------------------------
+    -- Total memory on the machine in GB. Used to limit parallelism. Must be
+    -- higher than ConfigVeraMemoryLimit below
+    memResource <- newResource "RAM GB" 256
+    -- Solver used by both Vera and eqy. The artifact environment allows
+    -- for "cvc5" or "z3". "Bitwuzla" was attempted too but appears to
+    -- be buggy for this version of EQY.
+    addOracle $ \ConfigSolver -> pure "cvc5"
+    -- Timeout for vera/eqy runs (in seconds)
+    addOracle $ \ConfigVeraTimeout -> pure 2
+    -- Vera memory limit (in GB)
+    addOracle $ \ConfigVeraMemoryLimit -> pure 32
+    ----------------------------------------------------------
+
+    liftIO $ do
+        -- Set open file soft limit to the hard limit
+        ResourceLimits{hardLimit} <- getResourceLimit ResourceOpenFiles
+        setResourceLimit ResourceOpenFiles (ResourceLimits hardLimit hardLimit)
+
+        -- Make all relative paths below resolve against the Shakefile's directory,
+        -- regardless of where the build is invoked from. makeAbsolute runs before we
+        -- change directory, so a relative shakefileDir resolves against the original
+        -- working directory.
+        SD.setCurrentDirectory =<< SD.makeAbsolute shakefileDir
+
+    phony "clean" $ do
+        need ["clean-synth", "clean-run"]
+
+    phony "synth" $ do
+        sources <-
+            filter (not . (".synth.sv" `isSuffixOf`))
+                <$> getDirectoryFiles "." ["templates//*.sv"]
+        let targets = map (-<.> "synth.sv") sources
+        need targets
+
+    veraRules memResource
+    eqyRules memResource
+    epflRules
+    pulpRules
+
+--------------------------------------------------------------------------
 
 -- | Path to vera binary
 vera :: FilePath
@@ -261,402 +307,227 @@ findResult t =
         , result = findPrefixedLine (resultLogPrefix "result") t
         }
 
-pulpElauDesigns :: [(String, [String])]
-pulpElauDesigns =
-    [ ("Add", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddC", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddCfast", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddV", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddMod2Nm1", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddMod2Nm1s0", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddMod2Np1", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddCsv", [{- "behavioural", -} "fast"])
-    , ("AddMop", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddMopCsv", ["slow", "fast"])
-    , ("Sub", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("SubC", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("SubCZ", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("SubV", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("SubVZ", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("Neg", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("NegC", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AbsVal", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddSub", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddSubC", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddSubV", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("Inc", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("IncC", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("Dec", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("DecC", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("IncDec", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("IncDecC", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("CmpEQ", [{- "behavioural", -} "fast"])
-    , ("CmpGE", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("CmpEQGE", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("MulSgn", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("MulUns", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("MulAddSgn", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("MulAddUns", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddMulSgn", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("AddMulUns", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("MulCsvSgn", ["slow", "fast"])
-    , ("MulCsvUns", ["slow", "fast"])
-    , ("SqrSgn", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("SqrUns", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("DivArrSgn", [{- "behavioural", -} "slow"])
-    , ("DivArrUns", [{- "behavioural", -} "slow"])
-    , ("SqrtArrUns", [{- "behavioural", -} "slow"])
-    , ("AllZeroDet", [{- "behavioural", -} "fast"])
-    , ("AllOneDet", [{- "behavioural", -} "fast"])
-    , ("SumZeroDet", [{- "behavioural", -} "fast"])
-    , ("LeadZeroDet", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("LeadOneDet", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("LeadSignDet", [{- "behavioural", -} "slow", "medium", "fast"])
-    , ("Log2", [{- "behavioural", -} "slow", "medium", "fast"])
-    -- , ("Decode", [{- "behavioural", -} "fast", "fast"]) -- $signed
-    , ("Encode", [{- "behavioural", -} "fast"])
-    , ("Bin2Gray", [{- "behavioural", -} "fast"])
-    , ("Gray2Bin", [{- "behavioural", -} "slow", "medium", "fast"])
-    -- , ("IncGray", [{- "behavioural", -} "slow", "medium", "fast"]) -- Non-0 LSB
-    -- , ("IncGrayC", [{- "behavioural", -} "slow", "medium", "fast"]) -- Non-0 LSB
-    , ("Cnt", [{- "behavioural", -} "slow", "fast"])
-    , ("Cpr", ["slow", "fast"])
-    , ("RedAnd", [{- "behavioural", -} "fast"])
-    , ("RedOr", [{- "behavioural", -} "fast"])
-    , ("RedXor", [{- "behavioural", -} "fast"])
-    , ("PrefixAnd", ["slow", "medium", "fast"])
-    , ("PrefixOr", ["slow", "medium", "fast"])
-    , ("PrefixAndOr", ["slow", "medium", "fast"])
-    , ("PrefixXor", ["slow", "medium", "fast"])
-    ]
+getDesignSize :: String -> Action Int
+getDesignSize verilogFile = do
+    Stdout (output :: ByteString) <-
+        cmd "yosys" "--commands" [printf "read_verilog -sv %s; stat" verilogFile :: String]
+    return $
+        output
+            & BS8.lines
+            & map BS8.strip
+            & map BS8.words
+            & map (map BS8.unpack)
+            & firstJust (\case [readMay -> Just count, "wire", "bits"] -> Just count; _ -> Nothing)
+            & fromMaybe (-1)
 
-main :: IO ()
-main = shakeArgs shakeOptions{shakeThreads = 0} $ do
-    --- SETTINGS ---------------------------------------------
-    -- Total memory on the machine in GB. Used to limit parallelism. Must be
-    -- higher than ConfigVeraMemoryLimit below
-    memResource <- newResource "RAM GB" 256
-    -- Solver used by both Vera and eqy. The artifact environment allows
-    -- for "cvc5" or "z3". "Bitwuzla" was attempted too but appears to
-    -- be buggy for this version of EQY.
-    addOracle $ \ConfigSolver -> pure "cvc5"
-    -- Timeout for vera/eqy runs (in seconds)
-    addOracle $ \ConfigVeraTimeout -> pure 2
-    -- Vera memory limit (in GB)
-    addOracle $ \ConfigVeraMemoryLimit -> pure 32
-    ----------------------------------------------------------
+runBenchmarks :: [Benchmark] -> Action [BenchmarkResult]
+runBenchmarks benchmarks = do
+    let veraLog b = b.baseDir </> printf "%s_vs_%s.vera.log" b.modA b.modB
+    let eqyLog b = b.baseDir </> printf "%s_vs_%s.eqy.log" b.modA b.modB
+    need $ [veraLog, eqyLog] <*> benchmarks
+    forM benchmarks $ \b -> do
+        veraRun <- findResult <$> liftIO (T.readFile (veraLog b))
+        eqyRun <- findResult <$> liftIO (T.readFile (eqyLog b))
+        (sizeA, sizeB) <-
+            getDesignSize (b.baseDir </> b.modA <.> "sv")
+                `par` getDesignSize (b.baseDir </> b.modB <.> "sv")
+        pure MkBenchmarkResult{benchmark = b, size = sizeA + sizeB, veraRun, eqyRun}
 
-    -- The following are only relevant for the templated tests, which
-    -- are not part of the evaluation on the paper. These make no
-    -- difference for the EPFL benchmarks
+benchmarksReport :: FilePath -> [Benchmark] -> Action ()
+benchmarksReport out benchmarks = do
+    results <- runBenchmarks benchmarks
+    -- encodeDefaultOrderedByName writes the header itself. The
+    -- non-default line ending keeps the file plain-\n, as before.
+    let csv = encodeDefaultOrderedByNameWith defaultEncodeOptions{encUseCrLf = False} results
+    liftIO (LBS.writeFile out csv)
+    trackWrite [out]
 
-    -- Sizes which templated examples will be evaluated at
-    addOracle $ \ConfigRunSizes -> pure [4 .. 8]
-    -- Timeout for yosys synthesis (in)(NOT symbiyosys/eqy equivalence checking)
-    addOracle $ \ConfigYosysTimeout -> pure 600
+pulpRules :: Rules ()
+pulpRules = do
+    phony "pulp-elau-to-smt" $ need ["out/pulp-elau/to_smt_summary.csv"]
+    "out/pulp-elau/to_smt_summary.csv" %> \out -> do
+        sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
+        let logFiles =
+                [ (design, variant, "out" </> "pulp-elau" </> design </> variant <.> target)
+                | sourceFile <- sourceFiles
+                , let design = dropExtension sourceFile
+                , design /= "arith_utils"
+                , variant <- ["slow", "medium", "fast"]
+                , target <- ["lowered.vera"]
+                ]
+        need [f | (_, _, f) <- logFiles]
 
-    liftIO $ do
-        -- Set open file soft limit to the hard limit
-        ResourceLimits{hardLimit} <- getResourceLimit ResourceOpenFiles
-        setResourceLimit ResourceOpenFiles (ResourceLimits hardLimit hardLimit)
+        liftIO $ T.writeFile out $ (T.pack "Benchmark,Speed,Result\n")
+        forM_ logFiles $ \(design, variant, outFile) -> liftIO $ do
+            outText <- readFile outFile
+            logText <- readFile (outFile <.> "log")
+            let result =
+                    if or [msg `isInfixOf` txt | msg <- ["Error", "exception"], txt <- [outText, logText]]
+                        then "Error"
+                        else "OK"
 
-        -- Make all relative paths below resolve against the Shakefile's directory,
-        -- regardless of where the build is invoked from. makeAbsolute runs before we
-        -- change directory, so a relative shakefileDir resolves against the original
-        -- working directory.
-        SD.setCurrentDirectory =<< SD.makeAbsolute shakefileDir
+            appendFile out $ intercalate "," [design, variant, result]
+            appendFile out $ "\n"
 
-    phony "clean" $ do
-        need ["clean-synth", "clean-run"]
-        removeFilesAfter "" ["out/templates/summary.csv"]
-        removeFilesAfter "out/templates" ["//"]
+    phony "pulp-elau" $ putError "You must specify a width (e.g. `pulp-elau-8`)"
 
-    phony "synth" $ do
-        sources <-
-            filter (not . (".synth.sv" `isSuffixOf`))
-                <$> getDirectoryFiles "." ["templates//*.sv"]
-        let targets = map (-<.> "synth.sv") sources
-        need targets
+    patternPhony "pulp-elau-*" $ \[width] -> do
+        let summaryFile = "out" </> "pulp-elau-" ++ width </> "summary.csv"
+        need [summaryFile]
+        csv <- liftIO (LBS.readFile summaryFile)
+        let Right (_, results) = decodeByName @BenchmarkResult csv
+        let groups =
+                Map.toList . Map.fromListWith (++) $
+                    [ (message, [name])
+                    | MkBenchmarkResult{..} <- V.toList results
+                    , let name = benchmarkName benchmark & dropDirectory1 & dropDirectory1
+                    , message <- case (T.unpack veraRun.result, T.unpack eqyRun.result) of
+                        ("OK", "OK") -> ["Both OK"]
+                        ("OK", _) -> ["Only Vera"]
+                        (_, "OK") -> ["Only EQY"]
+                        (_, _) -> ["Both failed"]
+                    ]
+        forM_ groups $ \(message, benchmarks) -> do
+            putInfo (printf "%s (%d)" message (length benchmarks))
+            when (message /= "Both OK") $
+                forM_ benchmarks $
+                    \name -> putInfo (printf "  - %s" name)
+        putInfo (printf "\nFull details in %s" summaryFile)
 
-    phony "clean-synth" $ do
-        removeFilesAfter "out/" ["//*.synth.sv", "//*.synth.log"]
+    "out/pulp-elau-*/summary.csv" !%> \out [width] -> do
+        benchmarksReport out $
+            [ MkBenchmark
+                { baseDir = "out" </> "pulp-elau-" ++ width </> design
+                , modA
+                , modB
+                }
+            | (design, speedgrades) <- pulpElauDesigns
+            , modA : rest <- tails $ case speedgrades of
+                [speed] -> [speed, speed]
+                _ -> speedgrades
+            , modB <- rest
+            ]
 
-    qYosysGateCount <- addOracleCache $ \(YosysGateCount verilogFile) -> do
-        Stdout (output :: ByteString) <-
-            cmd "yosys" "--commands" [printf "read_verilog -sv %s; stat" verilogFile :: String]
-        return $
-            output
-                & BS8.lines
-                & map BS8.strip
-                & map BS8.words
-                & map (map BS8.unpack)
-                & firstJust (\case [readMay -> Just count, "wire", "bits"] -> Just count; _ -> Nothing)
-                & fromMaybe (-1)
-    let getDesignSize fp = qYosysGateCount (YosysGateCount fp)
-
-    -- Run yosys synthesis. Needs to take priority over the gen_ rule
-    -- below, since they both match gen_*/*.synth.sv
-    priority 2 $
-        "out//*.synth.sv" %> \out -> do
-            let src = dropExtensions out <> ".sv"
-            let log = dropExtensions out <> ".synth.log"
-            need ["templates/synth.tcl", src]
-            yosysTimeout <- askOracle ConfigYosysTimeout
-            withResource memResource yosysMemory $
-                cmd_
-                    (Traced "yosys")
-                    (AddEnv "SV_INPUT" src)
-                    (AddEnv "SV_OUTPUT" out)
-                    (Timeout yosysTimeout)
-                    (FileStdout log)
-                    (FileStderr log)
-                    "yosys"
-                    "-c"
-                    "templates/synth.tcl"
-
-    -- gen_<category>_<N>/<module>.sv -> templates/<category>/<module>.sv.j2
-    "out/templates/gen_*/*.sv" %> \out -> do
-        let Just (template, size) = templateForInstantiation out
-            log = out -<.> "gen.log"
-        need [template]
+    "out/pulp-elau-*/*/*.sv" !%> \out [widthStr, design, variant] -> do
+        let top :: String = case variant of
+                "behavioural" -> "behavioural_" ++ design
+                _ -> design
+            speedParam = case variant of
+                "behavioural" -> ""
+                "slow" -> "-G speed=lau_pkg::SLOW"
+                "medium" -> "-G speed=lau_pkg::MEDIUM"
+                "fast" -> "-G speed=lau_pkg::FAST"
+                _ -> error ("Invalid variant: " ++ variant)
+            width :: Int = read widthStr
+            widthParam = printf "-G width=%d -G widthX=%d -G widthY=%d -G widthA=%d" width width width (2 * width + width `div` 2)
+            params = unwords [speedParam, widthParam]
+            log = out <.> "log"
         cmd_
-            (Traced "jinja")
-            (FileStdout out)
+            (FileStdout log)
             (FileStderr log)
-            "jinja2"
-            "-D"
-            ("N=" <> show size)
-            template
+            "yosys"
+            "--commands"
+            [ printf
+                "read_slang pulp-elau/src/*.sv --top %s %s; flatten; write_verilog %s"
+                top
+                params
+                out ::
+                String
+            ]
 
-    -- Running vera
-    "//*.vera.smt2" %> \out -> need [out -<.> "log"]
-    "//*_vs_*.vera.log" !%> \out [dir, mod1, mod2] -> do
-        let smtFile = out -<.> "smt2"
-            left = dir </> mod1 <.> "sv"
-            right = dir </> mod2 <.> "sv"
+    "out/pulp-elau-*/*/*.lowered.vera.log" %> \out -> need [dropExtension out]
+    "out/pulp-elau-*/*/*.lowered.vera" !%> \out [width, design, variant] -> do
+        let src = (out & dropExtension & dropExtension) <.> "sv"
+            log = out <.> "log"
         timeout <- askOracle ConfigVeraTimeout
         veraMemoryLimit <- askOracle ConfigVeraMemoryLimit
-        veraSolver <- askOracle ConfigSolver
-        need [vera, left, right]
-        (Exit veraExitCode, CmdTime veraTime) <-
-            withResource memResource veraMemoryLimit $
-                cmd
-                    (Traced "vera")
-                    (Timeout timeout)
-                    (FileStdout out)
-                    (FileStderr out)
-                    (AddEnv "OCAMLRUNPARAM" "b")
-                    (AddEnv "VERA_MAX_MEMORY" (show (gibiBytes veraMemoryLimit)))
-                    (AddEnv "VERA_TRACE" "1")
-                    vera
-                    "compare"
-                    ("--solver=none")
-                    ("--dump-query=" ++ smtFile)
-                    left
-                    right
-        case veraExitCode of
-            ExitFailure (-2) ->
-                liftIO . T.appendFile out . resultLines $
-                    RunResult
-                        { runTime = tShow veraTime
-                        , smtTime = T.pack "-"
-                        , result = T.pack "Vera timeout"
-                        }
-            ExitFailure err -> liftIO $ do
-                liftIO . T.appendFile out . resultLines $
-                    RunResult
-                        { runTime = tShow veraTime
-                        , smtTime = T.pack "-"
-                        , result = T.pack (printf "Vera failed (%d)" err)
-                        }
-            ExitSuccess -> do
-                (Exit smtExitCode, CmdTime smtTimeD, Stdouterr output) <-
-                    withResource memResource veraMemoryLimit $
-                        cmd
-                            (Traced (veraSolver ++ " for vera"))
-                            (Timeout timeout)
-                            veraSolver
-                            smtFile
-                liftIO . T.appendFile out . resultLines $
-                    RunResult
-                        { runTime = tShow (veraTime + smtTimeD)
-                        , smtTime = tShow smtTimeD
-                        , result = T.pack $ case smtExitCode of
-                            ExitFailure 130 -> "SMT Timeout"
-                            ExitFailure err -> printf "SMT failed (%d)\n" err
-                            ExitSuccess ->
-                                case output & T.pack & T.lines & last & T.strip & T.unpack of
-                                    "unsat" -> "OK"
-                                    "sat" -> "False negative"
-                                    _ -> "SMT Error"
-                        }
-
-    phony "vera" $ need [vera]
-    vera %> \out -> do
-        need
-            =<< getDirectoryFiles
-                ""
-                [ dir <//> ext
-                | dir <- ["../vera", "../bin"]
-                , ext <- ["*.v", "*.ml"]
-                ]
-        cmd_ (Cwd "..") "dune" "build"
-
-    -- Running eqy
-    "//*_vs_*/compare.eqy" !%> \out [dir, mod1, mod2] -> do
-        let template = "templates/compare.eqy.j2"
-        let mod1File = dir </> mod1 <.> "sv"
-        need [template, mod1File]
-        outputs <- liftIO $ getOutputs mod1File
-        let outputsJson =
-                "[" ++ intercalate "," ["\"" ++ BS8.unpack output ++ "\"" | output <- outputs] ++ "]"
-        solver <- askOracle ConfigSolver
-        cmd_
-            (Traced "jinja")
-            (FileStdout out)
-            "jinja2"
-            "-D"
-            ("SOLVER=" <> solver)
-            "-D"
-            ("SV_GOLD=" <> (".." </> mod1 <.> "sv"))
-            "-D"
-            ("SV_GATE=" <> (".." </> mod2 <.> "sv"))
-            (Stdin ("{\"OUTPUTS\":" ++ outputsJson ++ "}"))
-            "--format=json"
-            template
-            "-"
-
-    "//*_vs_*.eqy.log" !%> \out [dir, mod1, mod2] -> do
-        let eqyDir = dropExtensions out
-            eqyFile = eqyDir </> "compare.eqy"
-            left = dir </> mod1 <.> "sv"
-            right = dir </> mod2 <.> "sv"
-        timeout <- askOracle ConfigVeraTimeout
-        need [eqyFile, left, right]
-        (Exit exitCode, Stdout output, CmdTime runTime) <-
-            withResource memResource eqyMemory $
-                cmd
-                    (Traced "eqy")
-                    (Timeout timeout)
-                    (FileStdout out)
-                    (FileStderr out)
-                    (Cwd eqyDir)
-                    "eqy"
-                    "-f"
-                    "compare.eqy"
-
-        strategyLog <- liftIO . fmap (fromRight T.empty) . try @SomeException $ do
-            let strategiesDir = eqyDir </> "compare" </> "strategies"
-            [strategyName] <- listDirectory strategiesDir
-            let strategyLogFile = strategiesDir </> strategyName </> "sby" </> strategyName </> "logfile.txt"
-            T.readFile strategyLogFile
-        -- Looking for a line like this:
-        --   SBY 18:11:11 [top.P] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:59 (59)
-        let smtTime :: Maybe Int =
-                find (T.pack "summary: Elapsed clock time [H:MM:SS (secs)]:" `T.isInfixOf`) (T.lines strategyLog)
-                    >>= lastMay . T.words
-                    >>= T.stripPrefix (T.pack "(")
-                    >>= T.stripSuffix (T.pack ")")
-                    >>= readMay . T.unpack
-        liftIO . T.appendFile out . resultLines $
-            RunResult
-                { runTime = tShow runTime
-                , smtTime = T.pack $ maybe "Unknown" show smtTime
-                , result = T.pack $ case exitCode of
-                    ExitFailure 130 -> "Timeout"
-                    ExitFailure err
-                        | "EQY ---- Keyboard interrupt or external termination signal ----" `isInfixOf` output ->
-                            "Timeout"
-                        | otherwise -> (printf "Failed (%d)" err)
-                    ExitSuccess -> "OK"
-                }
-
-    phony "clean-run" $ do
-        removeFilesAfter
-            "out/templates"
-            ["//*.log", "//*.time", "//*.vera.smt2", "//*.csv", "//*.pdf"]
-
-    phony "plots" $ need ["out/templates/summary.pdf"]
-
-    "out/templates/summary.pdf" %> \out -> do
-        templateExampleDirs <- getDirectoryDirs ("templates")
-        templateExamples <- fmap join <$> forM templateExampleDirs $ \exampleTemplateDir -> do
-            moduleTemplates <- getDirectoryFiles ("templates" </> exampleTemplateDir) ["*.sv.j2"]
-            let moduleNames = map dropExtensions moduleTemplates
-            return
-                [ printf "out/templates/%s/%s_vs_%s.summary.pdf" exampleTemplateDir left right
-                | (left, right) <- allPairs moduleNames
-                , left /= right
-                ]
-        need templateExamples
-        cmd_ "gs" "-dBATCH" "-dNOPAUSE" "-q" "-sDEVICE=pdfwrite" ("-sOutputFile=" ++ out) templateExamples
-
-    "out/templates/*/*.summary.pdf" !%> \out [category, name] -> do
-        let base = dropExtensions out
-            summaryCSV = base <.> "summary.csv"
-            cleanName = map (\case '_' -> ' '; c -> c) (takeFileName name)
-            title :: String = printf "%s - %s" category cleanName
-        need [summaryCSV]
-        (Exit code) <-
+        need [vera, src]
+        (Exit exitCode) <-
             cmd
-                (Traced "gnuplot")
-                "gnuplot"
-                "-e"
-                [ unwords
-                    [ "set terminal pdf;"
-                    , "set output '" ++ out ++ "';"
-                    , "set datafile separator ',';"
-                    , "set xlabel 'Bit width';"
-                    , "set ylabel 'Time (s)';"
-                    , "set title '" ++ title ++ "';"
-                    , "set xtics 1;"
-                    , "plot '" ++ summaryCSV ++ "' using 1:2 with linespoints title columnheader(2)"
-                    , "   , '" ++ summaryCSV ++ "' using 1:3 with linespoints title columnheader(3)"
-                    ]
-                ]
-        case code of
-            ExitSuccess -> pure ()
-            ExitFailure _ ->
-                cmd_
-                    (Traced "gnuplot_dummy")
-                    "gnuplot"
-                    "-e"
-                    [ unwords
-                        [ "set terminal pdf;"
-                        , "set output '" ++ out ++ "';"
-                        , "set title '" ++ title ++ "';"
-                        , "unset border;"
-                        , "unset tics;"
-                        , "set xrange [0:1];"
-                        , "set yrange [0:1];"
-                        , "set label 1 'Error: Plot generation failed or missing data' at 0.5, 0.5 center font ',14';"
-                        , "plot NaN notitle"
-                        ]
-                    ]
+                (Traced "vera")
+                (Timeout timeout)
+                (FileStdout out)
+                (FileStderr log)
+                (AddEnv "OCAMLRUNPARAM" "b")
+                (AddEnv "VERA_MAX_MEMORY" (show (gibiBytes veraMemoryLimit)))
+                (AddEnv "VERA_TRACE" "1")
+                vera
+                "lower"
+                "smt"
+                src
+        return ()
+  where
+    pulpElauDesigns :: [(String, [String])]
+    pulpElauDesigns =
+        [ ("Add", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddC", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddCfast", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddV", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddMod2Nm1", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddMod2Nm1s0", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddMod2Np1", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddCsv", [{- "behavioural", -} "fast"])
+        , ("AddMop", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddMopCsv", ["slow", "fast"])
+        , ("Sub", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("SubC", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("SubCZ", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("SubV", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("SubVZ", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("Neg", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("NegC", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AbsVal", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddSub", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddSubC", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddSubV", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("Inc", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("IncC", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("Dec", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("DecC", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("IncDec", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("IncDecC", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("CmpEQ", [{- "behavioural", -} "fast"])
+        , ("CmpGE", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("CmpEQGE", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("MulSgn", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("MulUns", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("MulAddSgn", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("MulAddUns", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddMulSgn", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("AddMulUns", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("MulCsvSgn", ["slow", "fast"])
+        , ("MulCsvUns", ["slow", "fast"])
+        , ("SqrSgn", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("SqrUns", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("DivArrSgn", [{- "behavioural", -} "slow"])
+        , ("DivArrUns", [{- "behavioural", -} "slow"])
+        , ("SqrtArrUns", [{- "behavioural", -} "slow"])
+        , ("AllZeroDet", [{- "behavioural", -} "fast"])
+        , ("AllOneDet", [{- "behavioural", -} "fast"])
+        , ("SumZeroDet", [{- "behavioural", -} "fast"])
+        , ("LeadZeroDet", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("LeadOneDet", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("LeadSignDet", [{- "behavioural", -} "slow", "medium", "fast"])
+        , ("Log2", [{- "behavioural", -} "slow", "medium", "fast"])
+        , -- , ("Decode", [{- "behavioural", -} "fast", "fast"]) -- $signed
+          ("Encode", [{- "behavioural", -} "fast"])
+        , ("Bin2Gray", [{- "behavioural", -} "fast"])
+        , ("Gray2Bin", [{- "behavioural", -} "slow", "medium", "fast"])
+        , -- , ("IncGray", [{- "behavioural", -} "slow", "medium", "fast"]) -- Non-0 LSB
+          -- , ("IncGrayC", [{- "behavioural", -} "slow", "medium", "fast"]) -- Non-0 LSB
+          ("Cnt", [{- "behavioural", -} "slow", "fast"])
+        , ("Cpr", ["slow", "fast"])
+        , ("RedAnd", [{- "behavioural", -} "fast"])
+        , ("RedOr", [{- "behavioural", -} "fast"])
+        , ("RedXor", [{- "behavioural", -} "fast"])
+        , ("PrefixAnd", ["slow", "medium", "fast"])
+        , ("PrefixOr", ["slow", "medium", "fast"])
+        , ("PrefixAndOr", ["slow", "medium", "fast"])
+        , ("PrefixXor", ["slow", "medium", "fast"])
+        ]
 
-    let runBenchmarks :: [Benchmark] -> Action [BenchmarkResult]
-        runBenchmarks benchmarks = do
-            let veraLog b = b.baseDir </> printf "%s_vs_%s.vera.log" b.modA b.modB
-            let eqyLog b = b.baseDir </> printf "%s_vs_%s.eqy.log" b.modA b.modB
-            need $ [veraLog, eqyLog] <*> benchmarks
-            forM benchmarks $ \b -> do
-                veraRun <- findResult <$> liftIO (T.readFile (veraLog b))
-                eqyRun <- findResult <$> liftIO (T.readFile (eqyLog b))
-                (sizeA, sizeB) <-
-                    getDesignSize (b.baseDir </> b.modA <.> "sv")
-                        `par` getDesignSize (b.baseDir </> b.modB <.> "sv")
-                pure MkBenchmarkResult{benchmark = b, size = sizeA + sizeB, veraRun, eqyRun}
-
-    let benchmarksReport :: FilePath -> [Benchmark] -> Action ()
-        benchmarksReport out benchmarks = do
-            results <- runBenchmarks benchmarks
-            -- encodeDefaultOrderedByName writes the header itself. The
-            -- non-default line ending keeps the file plain-\n, as before.
-            let csv = encodeDefaultOrderedByNameWith defaultEncodeOptions{encUseCrLf = False} results
-            liftIO (LBS.writeFile out csv)
-            trackWrite [out]
-
-    -- EPFL benchmarks
+epflRules :: Rules ()
+epflRules = do
     let blifToVerilog :: FilePath -> FilePath -> Action ()
         blifToVerilog from to = do
             need [from]
@@ -772,123 +643,151 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
                 , ("random_control", "voter")
                 ]
 
-    -- PULP ELAU -------------------------------------------------------------
-
-    phony "pulp-elau-to-smt" $ need ["out/pulp-elau/to_smt_summary.csv"]
-    "out/pulp-elau/to_smt_summary.csv" %> \out -> do
-        sourceFiles <- getDirectoryFiles "pulp-elau/src/" ["*.sv"]
-        let logFiles =
-                [ (design, variant, "out" </> "pulp-elau" </> design </> variant <.> target)
-                | sourceFile <- sourceFiles
-                , let design = dropExtension sourceFile
-                , design /= "arith_utils"
-                , variant <- ["slow", "medium", "fast"]
-                , target <- ["lowered.vera"]
-                ]
-        need [f | (_, _, f) <- logFiles]
-
-        liftIO $ T.writeFile out $ (T.pack "Benchmark,Speed,Result\n")
-        forM_ logFiles $ \(design, variant, outFile) -> liftIO $ do
-            outText <- readFile outFile
-            logText <- readFile (outFile <.> "log")
-            let result =
-                    if or [msg `isInfixOf` txt | msg <- ["Error", "exception"], txt <- [outText, logText]]
-                        then "Error"
-                        else "OK"
-
-            appendFile out $ intercalate "," [design, variant, result]
-            appendFile out $ "\n"
-
-    phony "pulp-elau" $ putError "You must specify a width (e.g. `pulp-elau-8`)"
-
-    patternPhony "pulp-elau-*" $ \[width] -> do
-        let summaryFile = "out" </> "pulp-elau-" ++ width </> "summary.csv"
-        need [summaryFile]
-        csv <- liftIO (LBS.readFile summaryFile)
-        let Right (_, results) = decodeByName @BenchmarkResult csv
-        let
-            groups =
-                Map.toList . Map.fromListWith (++) $
-                    [ (message, [name])
-                    | MkBenchmarkResult{..} <- V.toList results
-                    , let name = benchmarkName benchmark & dropDirectory1 & dropDirectory1
-                    , message <- case (T.unpack veraRun.result, T.unpack eqyRun.result) of
-                        ("OK", "OK") -> ["Both OK"]
-                        ("OK", _) -> ["Only Vera"]
-                        (_, "OK") -> ["Only EQY"]
-                        (_, _) -> ["Both failed"]
-                    ]
-        forM_ groups $ \(message, benchmarks) -> do
-            putInfo (printf "%s (%d)" message (length benchmarks))
-            when (message /= "Both OK") $
-                forM_ benchmarks $
-                    \name -> putInfo (printf "  - %s" name)
-        putInfo (printf "\nFull details in %s" summaryFile)
-
-    "out/pulp-elau-*/summary.csv" !%> \out [width] -> do
-        benchmarksReport out $
-            [ MkBenchmark
-                { baseDir = "out" </> "pulp-elau-" ++ width </> design
-                , modA
-                , modB
-                }
-            | (design, speedgrades) <- pulpElauDesigns
-            , modA : rest <- tails $ case speedgrades of
-                [speed] -> [speed, speed]
-                _ -> speedgrades
-            , modB <- rest
-            ]
-
-    "out/pulp-elau-*/*/*.sv" !%> \out [widthStr, design, variant] -> do
-        let top :: String = case variant of
-                "behavioural" -> "behavioural_" ++ design
-                _ -> design
-            speedParam = case variant of
-                "behavioural" -> ""
-                "slow" -> "-G speed=lau_pkg::SLOW"
-                "medium" -> "-G speed=lau_pkg::MEDIUM"
-                "fast" -> "-G speed=lau_pkg::FAST"
-                _ -> error ("Invalid variant: " ++ variant)
-            width :: Int = read widthStr
-            widthParam = printf "-G width=%d -G widthX=%d -G widthY=%d -G widthA=%d" width width width (2 * width + width `div` 2)
-            params = unwords [speedParam, widthParam]
-            log = out <.> "log"
-        cmd_
-            (FileStdout log)
-            (FileStderr log)
-            "yosys"
-            "--commands"
-            [ printf
-                "read_slang pulp-elau/src/*.sv --top %s %s; flatten; write_verilog %s"
-                top
-                params
-                out ::
-                String
-            ]
-
-    "out/pulp-elau-*/*/*.lowered.vera.log" %> \out -> need [dropExtension out]
-    "out/pulp-elau-*/*/*.lowered.vera" !%> \out [width, design, variant] -> do
-        let src = (out & dropExtension & dropExtension) <.> "sv"
-            log = out <.> "log"
+veraRules :: Resource -> Rules ()
+veraRules memResource = do
+    -- Running vera
+    "//*.vera.smt2" %> \out -> need [out -<.> "log"]
+    "//*_vs_*.vera.log" !%> \out [dir, mod1, mod2] -> do
+        let smtFile = out -<.> "smt2"
+            left = dir </> mod1 <.> "sv"
+            right = dir </> mod2 <.> "sv"
         timeout <- askOracle ConfigVeraTimeout
         veraMemoryLimit <- askOracle ConfigVeraMemoryLimit
-        need [vera, src]
-        (Exit exitCode) <-
-            cmd
-                (Traced "vera")
-                (Timeout timeout)
-                (FileStdout out)
-                (FileStderr log)
-                (AddEnv "OCAMLRUNPARAM" "b")
-                (AddEnv "VERA_MAX_MEMORY" (show (gibiBytes veraMemoryLimit)))
-                (AddEnv "VERA_TRACE" "1")
-                vera
-                "lower"
-                "smt"
-                src
-        return ()
+        veraSolver <- askOracle ConfigSolver
+        need [vera, left, right]
+        (Exit veraExitCode, CmdTime veraTime) <-
+            withResource memResource veraMemoryLimit $
+                cmd
+                    (Traced "vera")
+                    (Timeout timeout)
+                    (FileStdout out)
+                    (FileStderr out)
+                    (AddEnv "OCAMLRUNPARAM" "b")
+                    (AddEnv "VERA_MAX_MEMORY" (show (gibiBytes veraMemoryLimit)))
+                    (AddEnv "VERA_TRACE" "1")
+                    vera
+                    "compare"
+                    ("--solver=none")
+                    ("--dump-query=" ++ smtFile)
+                    left
+                    right
+        case veraExitCode of
+            ExitFailure (-2) ->
+                liftIO . T.appendFile out . resultLines $
+                    RunResult
+                        { runTime = tShow veraTime
+                        , smtTime = T.pack "-"
+                        , result = T.pack "Vera timeout"
+                        }
+            ExitFailure err -> liftIO $ do
+                liftIO . T.appendFile out . resultLines $
+                    RunResult
+                        { runTime = tShow veraTime
+                        , smtTime = T.pack "-"
+                        , result = T.pack (printf "Vera failed (%d)" err)
+                        }
+            ExitSuccess -> do
+                (Exit smtExitCode, CmdTime smtTimeD, Stdouterr output) <-
+                    withResource memResource veraMemoryLimit $
+                        cmd
+                            (Traced (veraSolver ++ " for vera"))
+                            (Timeout timeout)
+                            veraSolver
+                            smtFile
+                liftIO . T.appendFile out . resultLines $
+                    RunResult
+                        { runTime = tShow (veraTime + smtTimeD)
+                        , smtTime = tShow smtTimeD
+                        , result = T.pack $ case smtExitCode of
+                            ExitFailure 130 -> "SMT Timeout"
+                            ExitFailure err -> printf "SMT failed (%d)\n" err
+                            ExitSuccess ->
+                                case output & T.pack & T.lines & last & T.strip & T.unpack of
+                                    "unsat" -> "OK"
+                                    "sat" -> "False negative"
+                                    _ -> "SMT Error"
+                        }
 
---------------------------------------------------------------------------
+    phony "vera" $ need [vera]
+    vera %> \out -> do
+        need
+            =<< getDirectoryFiles
+                ""
+                [ dir <//> ext
+                | dir <- ["../vera", "../bin"]
+                , ext <- ["*.v", "*.ml"]
+                ]
+        cmd_ (Cwd "..") "dune" "build"
+
+eqyRules :: Resource -> Rules ()
+eqyRules memResource = do
+    "//*_vs_*/compare.eqy" !%> \out [dir, mod1, mod2] -> do
+        let template = "templates/compare.eqy.j2"
+        let mod1File = dir </> mod1 <.> "sv"
+        need [template, mod1File]
+        outputs <- liftIO $ getOutputs mod1File
+        let outputsJson =
+                "[" ++ intercalate "," ["\"" ++ BS8.unpack output ++ "\"" | output <- outputs] ++ "]"
+        solver <- askOracle ConfigSolver
+        cmd_
+            (Traced "jinja")
+            (FileStdout out)
+            "jinja2"
+            "-D"
+            ("SOLVER=" <> solver)
+            "-D"
+            ("SV_GOLD=" <> (".." </> mod1 <.> "sv"))
+            "-D"
+            ("SV_GATE=" <> (".." </> mod2 <.> "sv"))
+            (Stdin ("{\"OUTPUTS\":" ++ outputsJson ++ "}"))
+            "--format=json"
+            template
+            "-"
+
+    "//*_vs_*.eqy.log" !%> \out [dir, mod1, mod2] -> do
+        let eqyDir = dropExtensions out
+            eqyFile = eqyDir </> "compare.eqy"
+            left = dir </> mod1 <.> "sv"
+            right = dir </> mod2 <.> "sv"
+        timeout <- askOracle ConfigVeraTimeout
+        need [eqyFile, left, right]
+        (Exit exitCode, Stdout output, CmdTime runTime) <-
+            withResource memResource eqyMemory $
+                cmd
+                    (Traced "eqy")
+                    (Timeout timeout)
+                    (FileStdout out)
+                    (FileStderr out)
+                    (Cwd eqyDir)
+                    "eqy"
+                    "-f"
+                    "compare.eqy"
+
+        strategyLog <- liftIO . fmap (fromRight T.empty) . try @SomeException $ do
+            let strategiesDir = eqyDir </> "compare" </> "strategies"
+            [strategyName] <- listDirectory strategiesDir
+            let strategyLogFile = strategiesDir </> strategyName </> "sby" </> strategyName </> "logfile.txt"
+            T.readFile strategyLogFile
+        -- Looking for a line like this:
+        --   SBY 18:11:11 [top.P] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:59 (59)
+        let smtTime :: Maybe Int =
+                find (T.pack "summary: Elapsed clock time [H:MM:SS (secs)]:" `T.isInfixOf`) (T.lines strategyLog)
+                    >>= lastMay . T.words
+                    >>= T.stripPrefix (T.pack "(")
+                    >>= T.stripSuffix (T.pack ")")
+                    >>= readMay . T.unpack
+        liftIO . T.appendFile out . resultLines $
+            RunResult
+                { runTime = tShow runTime
+                , smtTime = T.pack $ maybe "Unknown" show smtTime
+                , result = T.pack $ case exitCode of
+                    ExitFailure 130 -> "Timeout"
+                    ExitFailure err
+                        | "EQY ---- Keyboard interrupt or external termination signal ----" `isInfixOf` output ->
+                            "Timeout"
+                        | otherwise -> (printf "Failed (%d)" err)
+                    ExitSuccess -> "OK"
+                }
 
 -- Helpers
 
@@ -925,23 +824,6 @@ parseTemplateDir name = do
         then Just (category, read widthPart)
         else Nothing
 
--- .../gen_<category>_<N>/<module>.sv -> Just (.../templates/<category>/<module>.sv.j2, N)
-templateForInstantiation :: FilePath -> Maybe (FilePath, Int)
-templateForInstantiation (splitDirectories -> ["out", "templates", dir, file]) = do
-    (category, size) <- parseTemplateDir dir
-    Just ("templates" </> category </> file <> ".j2", size)
-templateForInstantiation _ = Nothing
-
-isTemplateInstantiation :: FilePath -> Bool
-isTemplateInstantiation = isJust . templateForInstantiation
-
-pattern Snoc :: [a] -> a -> [a]
-pattern Snoc xs x <- (unsnoc -> Just (xs, x))
-
-allPairs :: [a] -> [(a, a)]
-allPairs [] = []
-allPairs (x : xs) = map (x,) xs ++ allPairs xs
-
 findPrefixedLine :: Text -> Text -> Text
 findPrefixedLine prefix =
     fromMaybe (T.pack "-")
@@ -958,3 +840,10 @@ writeFileT' fp txt = liftIO (T.writeFile fp txt) >> trackWrite [fp]
 
 tShow :: (Show a) => a -> Text
 tShow = T.pack . show
+
+{- | Directory containing this Shakefile, captured at compile time. All the
+paths in this file are relative to it, so we @cd@ here at startup and the
+build can then be run from any working directory.
+-}
+shakefileDir :: FilePath
+shakefileDir = takeDirectory $(location >>= \l -> pure (LitE (StringL (loc_filename l))))
