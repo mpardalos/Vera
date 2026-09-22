@@ -6,6 +6,7 @@ From vera Require VerilogToSMT.
 From vera Require Common.
 From vera Require Bitvector.
 From vera Require VerilogSemantics.
+From vera Require Verilog3AC.
 
 From vera Require Import BVList.
 From vera Require SMTLib.
@@ -74,5 +75,6 @@ Extraction "Vera.ml"
   Verilog.Typecheck.tc_vmodule
   VerilogToSMT.expr_to_smt
   VerilogSemantics.Sort.sort_module_items
+  Verilog3AC.to_3ac_vmodule
   (* Common.NameMap *)
   .
