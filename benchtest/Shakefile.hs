@@ -350,13 +350,16 @@ benchmarksReport out benchmarks = do
 
 verilog2smvRules :: Rules ()
 verilog2smvRules = do
+    phony "verilog2smv" $ do
+        need ["out/verilog2smv/report.csv"]
+
     "out/verilog2smv/report.csv" %> \out -> do
         verilogFiles <-
             readFile' "verilog2smv/files.txt"
                 <&> lines
                 <&> map words
-                <&> map (\[verilogFile, _, _top] -> ("out/verilog2smv" </> verilogFile))
-        let benchmarkLogs = [f <.> "sby.log" | f <- verilogFiles]
+                <&> map (\[verilogFile, _top] -> ("out/verilog2smv" </> verilogFile))
+        let benchmarkLogs = [dropExtension f <.> "sby.log" | f <- verilogFiles]
         need benchmarkLogs
         lines <- forM benchmarkLogs $ \sbyLogFile -> do
             let name = sbyLogFile & dropDirectory1 & dropDirectory1 & dropExtensions & T.pack
@@ -364,7 +367,7 @@ verilog2smvRules = do
             return (T.intercalate (T.pack ",") [name, result, runTime])
         liftIO (T.writeFile out (T.unlines (T.pack "Name,SBY Result,SBY Time" : lines)))
 
-    "out/verilog2smv//*.v" !%> \out [subdir, name] ->
+    "out/verilog2smv//*.sv" !%> \out [subdir, name] ->
         copyFile' (dropDirectory1 out) out
 
 pulpRules :: Rules ()
@@ -816,7 +819,8 @@ eqyRules memResource = do
 
 sbyRules :: Rules ()
 sbyRules = do
-    "//*.sby" !%> \out [dir, file] -> do
+    "//*.sby" !%> \out [dir, mod] -> do
+        let file = mod <.> "sv"
         liftIO . writeFile out . unlines $
             [ "[options]"
             , "mode prove"
@@ -830,11 +834,12 @@ sbyRules = do
             , "prep -auto-top"
             ]
 
-    "//*.sby.log" !%> \out [dir, file] -> do
+    "//*.sby.log" !%> \out [dir, mod] -> do
         let
-            sbyFile = file <.> "sby"
-            workDir = file ++ "_workdir"
-        need [dir </> file, dir </> sbyFile]
+            sbyFile = mod <.> "sby"
+            workDir = mod ++ "_workdir"
+            verilogFile = mod <.> "sv"
+        need [dir </> verilogFile, dir </> sbyFile]
         (Exit exitCode, CmdTime runTime) <-
             cmd
                 (Traced "sby")
