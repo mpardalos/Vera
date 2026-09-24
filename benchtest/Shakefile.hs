@@ -1,6 +1,7 @@
 #!/usr/bin/env runhaskell
 
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -105,8 +106,13 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         let targets = map (-<.> "synth.sv") sources
         need targets
 
+    -- Tools
     veraRules memResource
     eqyRules memResource
+    sbyRules
+
+    -- Benchmark sets
+    verilog2smvRules
     epflRules
     pulpRules
 
@@ -341,6 +347,25 @@ benchmarksReport out benchmarks = do
     let csv = encodeDefaultOrderedByNameWith defaultEncodeOptions{encUseCrLf = False} results
     liftIO (LBS.writeFile out csv)
     trackWrite [out]
+
+verilog2smvRules :: Rules ()
+verilog2smvRules = do
+    "out/verilog2smv/report.csv" %> \out -> do
+        verilogFiles <-
+            readFile' "verilog2smv/files.txt"
+                <&> lines
+                <&> map words
+                <&> map (\[verilogFile, _, _top] -> ("out/verilog2smv" </> verilogFile))
+        let benchmarkLogs = [f <.> "sby.log" | f <- verilogFiles]
+        need benchmarkLogs
+        lines <- forM benchmarkLogs $ \sbyLogFile -> do
+            let name = sbyLogFile & dropDirectory1 & dropDirectory1 & dropExtensions & T.pack
+            RunResult{runTime, result} <- liftIO (findResult <$> T.readFile sbyLogFile)
+            return (T.intercalate (T.pack ",") [name, result, runTime])
+        liftIO (T.writeFile out (T.unlines (T.pack "Name,SBY Result,SBY Time" : lines)))
+
+    "out/verilog2smv//*.v" !%> \out [subdir, name] ->
+        copyFile' (dropDirectory1 out) out
 
 pulpRules :: Rules ()
 pulpRules = do
@@ -786,6 +811,48 @@ eqyRules memResource = do
                         | "EQY ---- Keyboard interrupt or external termination signal ----" `isInfixOf` output ->
                             "Timeout"
                         | otherwise -> (printf "Failed (%d)" err)
+                    ExitSuccess -> "OK"
+                }
+
+sbyRules :: Rules ()
+sbyRules = do
+    "//*.sby" !%> \out [dir, file] -> do
+        liftIO . writeFile out . unlines $
+            [ "[options]"
+            , "mode prove"
+            , "depth 20"
+            , "[engines]"
+            , "smtbmc cvc5"
+            , "[files]"
+            , file
+            , "[script]"
+            , "read_slang " ++ file
+            , "prep -auto-top"
+            ]
+
+    "//*.sby.log" !%> \out [dir, file] -> do
+        let
+            sbyFile = file <.> "sby"
+            workDir = file ++ "_workdir"
+        need [dir </> file, dir </> sbyFile]
+        (Exit exitCode, CmdTime runTime) <-
+            cmd
+                (Traced "sby")
+                (FileStdout out)
+                (FileStderr out)
+                (Timeout 10) -- TODO: Make it a Config option
+                (Cwd dir)
+                "sby"
+                "-d"
+                workDir
+                "-f"
+                sbyFile
+        liftIO . T.appendFile out . resultLines $
+            RunResult
+                { runTime = tShow runTime
+                , smtTime = T.pack "UNKNOWN"
+                , result = T.pack $ case exitCode of
+                    ExitFailure err -> printf "Failed (%d)" err
                     ExitSuccess -> "OK"
                 }
 
