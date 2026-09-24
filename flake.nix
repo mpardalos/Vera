@@ -21,6 +21,7 @@
         };
         yosys-slang = pkgs.callPackage nix/yosys-slang.nix {};
         yosys-with-plugins = pkgs.yosys.withPlugins [yosys-slang];
+        rIC3 = pkgs.callPackage nix/ric3.nix {};
 
         deps = [
           coq
@@ -52,6 +53,7 @@
           yosys-with-plugins
           (pkgs.sby.override { yosys = yosys-with-plugins; })
           pkgs.sby
+          rIC3
           eqy
           pkgs.iverilog
           pkgs.jinja2-cli
