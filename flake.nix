@@ -20,6 +20,7 @@
           dune_3 = coq.ocamlPackages.dune_3;
         };
         yosys-slang = pkgs.callPackage nix/yosys-slang.nix {};
+        yosys-with-plugins = pkgs.yosys.withPlugins [yosys-slang];
 
         deps = [
           coq
@@ -48,7 +49,8 @@
           pkgs.bitwuzla
           pkgs.cvc4
           pkgs.cvc5
-          (pkgs.yosys.withPlugins [yosys-slang])
+          yosys-with-plugins
+          (pkgs.sby.override { yosys = yosys-with-plugins; })
           pkgs.sby
           eqy
           pkgs.iverilog
