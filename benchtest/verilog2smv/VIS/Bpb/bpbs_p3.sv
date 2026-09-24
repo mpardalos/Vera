@@ -81,7 +81,8 @@ module branchPredictionBuffer(clock,stall,inst_addr,update,branch_result,
 	    if (state_bank3[inst_addr] > 1)
 		prediction[3] <= 1;
 	    else
-		prediction[3] = 0;
+	        // CHANGE FOR VERA: Use non-blocking assignment
+		prediction[3] <= 0;
 	    if (state_bank2[inst_addr] > 1)
 		prediction[2] <= 1;
 	    else
