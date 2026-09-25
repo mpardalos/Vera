@@ -46,16 +46,21 @@
         ];
 
         dev-deps = [
-          pkgs.abc-verifier
+          # Rocq
+          coqPackages.coq-lsp
+          rocq-mcp
+          # SMT Solvers
           pkgs.bitwuzla
-          pkgs.cvc4
+          pkgs.z3
           pkgs.cvc5
+          # Hardware tools
+          pkgs.abc-verifier
           yosys-with-plugins
           (pkgs.sby.override { yosys = yosys-with-plugins; })
-          pkgs.sby
           rIC3
           eqy
           pkgs.iverilog
+          # Test runner
           pkgs.jinja2-cli
           (pkgs.python3.withPackages (ps: with ps; [ networkx pygraphviz ]))
           (pkgs.haskellPackages.ghcWithPackages (ps: with ps; [
@@ -63,12 +68,8 @@
             cassava
             haskell-language-server
           ]))
-          pkgs.z3
-          pkgs.cvc5
           pkgs.gnuplot
           pkgs.jq
-          coqPackages.coq-lsp
-          rocq-mcp
         ];
       in {
         devShells.default = pkgs.mkShell {
