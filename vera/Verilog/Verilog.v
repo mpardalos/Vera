@@ -337,12 +337,34 @@ Module Verilog.
     : assign_target_wf (AssignConcat lhs rhs)
   .
 
+  Unset Elimination Schemes.
   Inductive statement :=
   | BlockingAssign {w} (lhs : assign_target w) (lhs_wf : assign_target_wf lhs) (rhs : expression w)
+  | Block (body : list statement)
   .
+  Set Elimination Schemes.
+
+  Scheme statement_rec := Induction for statement Sort Set.
+  Scheme statement_rect := Induction for statement Sort Type.
+  Scheme statement_sind := Induction for statement Sort SProp.
+
+  (* Rocq 9.1 finds the default induction principle by this name. *)
+  Lemma statement_ind (P : statement -> Prop)
+    (Hassign : forall w (lhs : assign_target w) (lhs_wf : assign_target_wf lhs)
+      (rhs : expression w), P (BlockingAssign lhs lhs_wf rhs))
+    (Hblock : forall body, Forall P body -> P (Block body)) :
+    forall s, P s.
+  Proof.
+    fix IH 1.
+    intros [w lhs lhs_wf rhs | body].
+    - apply Hassign.
+    - apply Hblock. induction body as [| stmt body IHbody]; constructor; auto.
+  Qed.
 
   Inductive module_item :=
+  | Initial : statement -> module_item
   | AlwaysComb : statement -> module_item
+  | AlwaysFF : statement -> module_item
   .
 
   Local Open Scope verilog.
@@ -394,24 +416,30 @@ Module Verilog.
     | (Verilog.NamedExpression var) => VarSet.singleton var
     end.
 
-  Definition statement_reads (s : Verilog.statement) : LocationSet.t :=
+  Fixpoint statement_reads (s : Verilog.statement) : LocationSet.t :=
     match s with
     | Verilog.BlockingAssign lhs _ rhs => expr_reads rhs  (* ONLY looking at rhs here *)
+    | Verilog.Block body => LocationSet.union_all (map statement_reads body)
     end.
 
-  Definition statement_writes (s : Verilog.statement) : LocationSet.t :=
+  Fixpoint statement_writes (s : Verilog.statement) : LocationSet.t :=
     match s with
-    | (Verilog.BlockingAssign lhs _ rhs) => assign_target_writes lhs (* ONLY looking at lhs here *)
+    | Verilog.BlockingAssign lhs _ rhs => assign_target_writes lhs (* ONLY looking at lhs here *)
+    | Verilog.Block body => LocationSet.union_all (map statement_writes body)
     end.
 
   Definition module_item_reads (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
-    | (Verilog.AlwaysComb stmt) => statement_reads stmt
+    | Initial stmt => statement_reads stmt
+    | AlwaysComb stmt => statement_reads stmt
+    | AlwaysFF stmt => statement_reads stmt
     end.
 
   Definition module_item_writes (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
-    | Verilog.AlwaysComb stmt => statement_writes stmt
+    | Initial stmt => statement_writes stmt
+    | AlwaysComb stmt => statement_writes stmt
+    | AlwaysFF stmt => statement_writes stmt
     end.
 
   Fixpoint module_body_reads (mis : list Verilog.module_item) : LocationSet.t :=
@@ -509,7 +537,12 @@ Module Verilog.
   Qed.
 
   Lemma statement_reads_in_bounds s : LocationSet.InBounds (statement_reads s).
-  Proof. destruct s; apply expr_reads_in_bounds. Qed.
+  Proof.
+    induction s.
+    - apply expr_reads_in_bounds.
+    - apply LocationSet.union_all_in_bounds.
+      apply Forall_map. exact H.
+  Qed.
 
   Lemma assign_target_writes_in_bounds w a : LocationSet.InBounds (assign_target_writes (w:=w) a).
   Proof.
@@ -523,7 +556,12 @@ Module Verilog.
   Qed.
   
   Lemma statement_writes_in_bounds s : LocationSet.InBounds (statement_writes s).
-  Proof. destruct s; apply assign_target_writes_in_bounds. Qed.
+  Proof.
+    induction s.
+    - apply assign_target_writes_in_bounds.
+    - apply LocationSet.union_all_in_bounds.
+      apply Forall_map. exact H.
+  Qed.
 
   Lemma module_item_reads_in_bounds mi : LocationSet.InBounds (module_item_reads mi).
   Proof. destruct mi; apply statement_reads_in_bounds. Qed.
@@ -589,14 +627,17 @@ Module Verilog.
           match u with
           | Verilog.BlockingAssign lhs _ rhs =>
             show lhs << " = " << show rhs
+          | Verilog.Block body =>
+            "begin" << newline << "  ..." << newline << "end"
           end
       }.
 
     Global Instance module_item_Show : Show module_item :=
       { show u :=
           match u with
-          | Verilog.AlwaysComb stmt =>
-            ("always_comb "%string << show stmt )
+          | Initial stmt => ("initial " << show stmt)%string
+          | AlwaysComb stmt => ("always_comb " << show stmt)%string
+          | AlwaysFF stmt => ("always_ff @(posedge clk) " << show stmt)%string
           end
       }.
   End show.
@@ -637,10 +678,13 @@ Module RawVerilog.
 
   Inductive statement :=
   | BlockingAssign (lhs rhs : expression)
+  | Block (body : list statement)
   .
 
   Inductive module_item :=
+  | Initial : statement -> module_item
   | AlwaysComb : statement -> module_item
+  | AlwaysFF : statement -> module_item
   .
 
   (** Verilog modules *)
@@ -759,13 +803,21 @@ Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
   let* t_rhs' := cast_width "Different widths in blocking assign" w_lhs t_rhs in
   let* lhs_wf := check_assign_target_wf t_lhs in
   inr (Verilog.BlockingAssign t_lhs _ t_rhs')
-}
-.
+| RawVerilog.Block body =>
+  let* t_body := mapT tc_statement body in
+  inr (Verilog.Block t_body)
+}.
 
 Equations tc_module_item : RawVerilog.module_item -> transf Verilog.module_item := {
 | RawVerilog.AlwaysComb stmt =>
   let* t_stmt := tc_statement stmt in
   inr (Verilog.AlwaysComb t_stmt)
+| RawVerilog.AlwaysFF stmt =>
+  let* t_stmt := tc_statement stmt in
+  inr (Verilog.AlwaysFF t_stmt)
+| RawVerilog.Initial stmt =>
+  let* t_stmt := tc_statement stmt in
+  inr (Verilog.Initial t_stmt)
 }.
 
 Equations tc_module_item_lst : list RawVerilog.module_item -> transf (list Verilog.module_item) := {

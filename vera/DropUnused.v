@@ -29,27 +29,30 @@ Local Open Scope verilog_scope.
 Import EqNotations.
 Opaque N.add N.sub.
 
+Definition result := sum string.
+
 (* This will create partially (and wholly) undriven variables *)
 
 Equations module_body_keep_assigns :
     LocationSet.t ->
     list module_item ->
-    (LocationSet.t * list module_item) := {
-  | keep, [] => (LocationSet.empty, []);
+    result (LocationSet.t * list module_item) := {
+  | keep, [] => inr (LocationSet.empty, []);
+  | keep, (Initial _ :: _) => inl "Unexpected initial block in DropUnused"
+  | keep, (AlwaysComb (Block _) :: body) => inl "Unexpected Block in DropUnused"
   | keep, (AlwaysComb (BlockingAssign lhs _ rhs) :: body)
     with (LocationSet.disjoint (assign_target_writes lhs) keep) => {
     | true =>
-      trace
-        ("Dropping " ++ to_string (BlockingAssign lhs _ rhs))%string
-        ( let (dropped', body') := module_body_keep_assigns keep body in
-          (assign_target_writes lhs ∪ dropped', body'))
+      let* (dropped', body') := module_body_keep_assigns keep body in
+      inr (assign_target_writes lhs ∪ dropped', body')
     | false =>
-      let (dropped', body') := module_body_keep_assigns keep body in
-      (dropped', AlwaysComb (BlockingAssign lhs _ rhs) :: body')
-  }
+      let* (dropped', body') := module_body_keep_assigns keep body in
+      inr (dropped', AlwaysComb (BlockingAssign lhs _ rhs) :: body')
+    }
+  | keep, (AlwaysFF _ :: _) => inl "Unexpected always_ff block in DropUnused"
 }.
 
-Definition drop_unused1 {i o} (v : vmodule i o) : string + (LocationSet.t * vmodule i o) :=
+Definition drop_unused1 {i o} (v : vmodule i o) : result (LocationSet.t * vmodule i o) :=
   traceBracket ("Drop unused (iteration) " ++ Verilog.modName v) (
     let external_vars :=
       LocationSet.union
@@ -57,17 +60,17 @@ Definition drop_unused1 {i o} (v : vmodule i o) : string + (LocationSet.t * vmod
         (LocationSet.of_varset (VarSet.of_list o)) in
     let keep_locations :=
         (external_vars ∪ module_body_reads (modBody v)) in
-    let result := module_body_keep_assigns keep_locations (modBody v) in
-    inr (fst result, {|
+    let* (dropped, v') := module_body_keep_assigns keep_locations (modBody v) in
+    inr (dropped, {|
       modName := modName v;
-      modBody := snd result;
+      modBody := v';
       modWfIODisjoint := modWfIODisjoint v;
       modWfInputsNoDup := modWfInputsNoDup v;
       modWfOutputsNoDup := modWfOutputsNoDup v;
     |})
   ).
 
-Fixpoint drop_unused_rec {i o} (fuel : nat) (v : vmodule i o) : string + vmodule i o :=
+Fixpoint drop_unused_rec {i o} (fuel : nat) (v : vmodule i o) : result (vmodule i o) :=
   match fuel with
   | 0 => ret v
   | S n =>
@@ -77,7 +80,7 @@ Fixpoint drop_unused_rec {i o} (fuel : nat) (v : vmodule i o) : string + vmodule
     else drop_unused_rec n m'
   end.
 
-Definition drop_unused {i o} (v : vmodule i o) : string + vmodule i o :=
+Definition drop_unused {i o} (v : vmodule i o) : result (vmodule i o) :=
   traceBracket ("Drop unused " ++ Verilog.modName v) (
     assert_dec
       (Sort.module_items_sorted
@@ -87,62 +90,69 @@ Definition drop_unused {i o} (v : vmodule i o) : string + vmodule i o :=
     drop_unused_rec (List.length (modBody v)) v
   ).
 
-Lemma module_body_keep_assigns_reads keep body :
+Lemma module_body_keep_assigns_reads keep dropped body body' :
   module_body_reads body ⊆ keep ->
-  module_body_reads (snd (module_body_keep_assigns keep body)) ⊆ module_body_reads body.
+  module_body_keep_assigns keep body = inr (dropped, body') ->
+  module_body_reads body' ⊆ module_body_reads body.
 Proof.
+  intros Hreads_kept Hrun.
   funelim (module_body_keep_assigns keep body).
-  all: intros Hreads_kept.
+  all: rewrite <- Heqcall in Hrun; clear Heqcall.
+  all: monad_inv. all: expect 3.
   all: simpl; simp exec_module_body; simpl.
-  all: clear Heqcall.
   1: LocationSet.setdec.
-  all: rewrite (surjective_pairing (module_body_keep_assigns keep body)); simpl in *.
-  all: rewrite H by LocationSet.setdec.
+  (* all: rewrite (surjective_pairing (module_body_keep_assigns keep body)); simpl in *. *)
+  all: cbn in *.
+  all: rewrite H by (reflexivity || LocationSet.setdec).
   all: LocationSet.setdec.
 Qed.
 
-Lemma module_body_keep_assigns_spec keep init body :
+Lemma module_body_keep_assigns_spec keep dropped init body body' :
   module_body_reads body ⊆ keep ->
-  exec_module_body init (snd (module_body_keep_assigns keep body)) =( keep )= exec_module_body init body.
+  module_body_keep_assigns keep body = inr (dropped, body') ->
+  exec_module_body init body' =( keep )= exec_module_body init body.
 Proof.
-  intros Hreads_kept.
+  intros Hreads_kept Hrun.
   funelim (module_body_keep_assigns keep body).
-  all: simpl; simp exec_module_body; simpl.
-  all: clear Heqcall.
+  all: rewrite <- Heqcall in Hrun; clear Heqcall.
+  all: monad_inv. all: expect 3.
   1: reflexivity.
-  all: rewrite (surjective_pairing (module_body_keep_assigns keep body)); simpl in *.
   all: simp exec_module_body exec_module_item exec_statement; simpl in *.
-  2: apply H; LocationSet.setdec.
+  2: eapply H; LocationSet.setdec.
   apply LocationSet.disjoint_spec in Heq.
   rewrite Facts.exec_module_body_change_preserve.
-  - apply H; LocationSet.setdec.
+  - eapply H.
+    + LocationSet.setdec.
+    + reflexivity.
   - symmetry. apply Facts.set_target_preserve.
-    rewrite module_body_keep_assigns_reads by LocationSet.setdec.
-    LocationSet.setdec.
+    rewrite module_body_keep_assigns_reads.
+    3: eassumption. all: LocationSet.setdec.
   - symmetry. apply Facts.set_target_preserve.
     LocationSet.setdec.
 Qed.
 
 Import ExactEquivalence.
 
-Lemma module_body_keep_assigns_sorted keep vars body :
+Lemma module_body_keep_assigns_sorted keep dropped vars body body' :
   module_body_reads body ⊆ keep ->
+  module_body_keep_assigns keep body = inr (dropped, body') ->
   module_items_sorted vars body ->
-  module_items_sorted vars (snd (module_body_keep_assigns keep body)).
+  module_items_sorted vars body'.
 Proof.
+  intros Hreads_kept Hrun Hsorted.
   funelim (module_body_keep_assigns keep body).
-  all: clear Heqcall.
-  all: intros Hreads Hsorted.
+  all: rewrite <- Heqcall in Hrun; clear Heqcall.
+  all: monad_inv. all: expect 3.
   1: solve [constructor].
   all: cbn in *.
-  all: rewrite (surjective_pairing (module_body_keep_assigns keep body)); simpl.
   all: inv Hsorted.
   - apply LocationSet.disjoint_spec in Heq.
     eapply module_items_sorted_skip with (vars_skip := assign_target_writes lhs).
-    + rewrite module_body_keep_assigns_reads. all: LocationSet.setdec.
-    + apply H. all: intuition LocationSet.setdec.
+    + rewrite module_body_keep_assigns_reads.
+      3: eassumption. all: LocationSet.setdec.
+    + eapply H. all: intuition LocationSet.setdec.
   - constructor; try assumption; expect 1.
-    apply H. all: intuition LocationSet.setdec.
+    eapply H. all: intuition LocationSet.setdec.
 Qed.
 
 Lemma drop_unused1_transfer_sorted {i o} dropped (v1 v2 : vmodule i o) :
@@ -155,7 +165,7 @@ Proof.
   unfold drop_unused1 in Hdrop.
   simpl in *.
   monad_inv.
-  apply module_body_keep_assigns_sorted.
+  eapply module_body_keep_assigns_sorted. 2: eassumption.
   - LocationSet.setdec.
   - exact Hsorted.
 Qed.
@@ -175,7 +185,7 @@ Proof.
   monad_inv.
   symmetry.
   eapply RegisterState.match_on_subset; cycle 1.
-  - apply module_body_keep_assigns_spec.
+  - eapply module_body_keep_assigns_spec. 2: eassumption.
     LocationSet.setdec.
   - LocationSet.setdec.
 Qed.

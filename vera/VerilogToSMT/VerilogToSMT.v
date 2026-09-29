@@ -210,10 +210,16 @@ Section expr_to_smt.
   .
 
   Equations transfer_module_item : Verilog.module_item -> transf (SMTLib.term Sort_Bool) :=
+    transfer_module_item (Verilog.Initial _) :=
+      inl "Unexpected initial block in VerilogToSMT"%string;
     transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign lhs _ rhs)) :=
       let* lhs_smt := assign_target_to_smt lhs in
       let* rhs_smt := expr_to_smt rhs in
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
+    transfer_module_item (Verilog.AlwaysComb (Verilog.Block stmt)) :=
+      inl "Unexpected Block in VerilogToSMT"%string;
+    transfer_module_item (Verilog.AlwaysFF _) :=
+      inl "Unexpected initial block in VerilogToSMT"%string
   .
 
   Equations transfer_module_body : list Verilog.module_item -> transf (list (SMTLib.term Sort_Bool)) :=

@@ -12,6 +12,7 @@ From Stdlib Require Import Structures.OrderedType.
 From Stdlib Require Import MSetInterface.
 From Stdlib Require Import Lia.
 From Stdlib Require String.
+From Stdlib Require Import Morphisms.
 Import String (string).
 Import (notations) String.
 From Stdlib Require Import Logic.ProofIrrelevance.
@@ -560,7 +561,7 @@ Module LocationSet <: WSets.
   Qed.
 
   Opaque union.
-  
+
   Definition Subset (s1 s2 : t) := forall x, In x s1 -> In x s2.
   Definition Equal (s1 s2 : t) : Prop := forall x, In x s1 <-> In x s2.
   Definition Empty (s : t) : Prop := forall x, ~ In x s.
@@ -1365,6 +1366,15 @@ Module LocationSet <: WSets.
   Definition InBounds (s : t) : Prop :=
     forall loc, In loc s -> (Location.idx loc < Var.varType (Location.var loc))%N.
 
+  Global Instance InBounds_Proper : Proper (Equal ==> iff) InBounds.
+  Proof.
+    unfold InBounds. intros a b Hab.
+    split; intros H loc Hin.
+    all: apply H.
+    - apply Hab. exact Hin.
+    - apply Hab. exact Hin.
+  Qed.
+
   Lemma of_varset_in_bounds vs : InBounds (of_varset vs).
   Proof. intros loc Hin. apply of_varset_spec in Hin. intuition. Qed.
 
@@ -1439,6 +1449,52 @@ Module LocationSet <: WSets.
   Qed.
 
   Include MySet.
+
+  Definition union_all (sets : list t) : t :=
+    List.fold_left union sets empty.
+
+  Lemma union_all_fold_symmetric sets :
+    forall acc, Equal (fold_left union sets acc) (fold_right union acc sets).
+  Proof.
+    induction sets; intros; [reflexivity|].
+    simpl. rewrite IHsets. clear IHsets. revert a acc.
+    induction sets; intros; simpl.
+    - setdec.
+    - rewrite IHsets. setdec.
+  Qed.
+
+  Lemma union_all_spec sets loc :
+    In loc (union_all sets) <-> exists s, List.In s sets /\ In loc s.
+  Proof.
+    unfold union_all. rewrite union_all_fold_symmetric.
+    induction sets as [| s sets IH].
+    - cbn [List.fold_right List.In]. split.
+      + intros Hin. exfalso. exact (empty_spec loc Hin).
+      + intros [s [Hin _]]. contradiction.
+    - cbn [List.fold_right List.In]. rewrite union_spec, IH.
+      split.
+      + intros [Hin | [s' [Hsets Hin]]].
+        * exists s. auto.
+        * exists s'. auto.
+      + intros [s' [[Heq | Hsets] Hin]].
+        * subst s'. auto.
+        * right. exists s'. auto.
+  Qed.
+
+  Lemma union_all_in_bounds ss :
+    Forall InBounds ss ->
+    InBounds (union_all ss).
+  Proof.
+    unfold union_all. 
+    setoid_rewrite union_all_fold_symmetric.
+    assert (Hacc : InBounds empty). { intros ? H. now apply empty_spec in H. }
+    intros H.
+    generalize dependent empty.
+    induction H. all: simpl. 1: solve [trivial].
+    intros acc Hacc.
+    apply union_in_bounds.
+    all: auto.
+  Qed.
 End LocationSet.
 Module LocationSetFacts := MSetFacts.Facts(LocationSet).
 

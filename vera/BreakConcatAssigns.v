@@ -32,6 +32,10 @@ Import EqNotations.
 Import SigTNotations.
 Opaque N.add N.sub.
 
+Definition break_concat_assigns_undefined : module_item -> list module_item. Admitted.
+Extract Constant break_concat_assigns_undefined =>
+  "(fun _ -> failwith ""AXIOM TO BE REALIZED: break_concat_assigns_undefined"")".
+
 Section definition.
   Lemma assign_target_width_positive {w} (t : assign_target w) : (w > 0)%N.
   Proof.
@@ -68,12 +72,18 @@ Section definition.
   Next Obligation. inv wf. assumption. Qed.
   Next Obligation. inv wf. assumption. Qed.
 
-  Equations break_concat_assigns_module_body : list module_item -> list module_item := {
+  Local Obligation Tactic := idtac.
+
+  Equations break_concat_assigns_module_body
+      (body : list module_item) : list module_item by struct body := {
+    | (Initial s) :: tl =>
+      break_concat_assigns_undefined (Initial s)
     | AlwaysComb (BlockingAssign target wf val) :: tl =>
-      trace
-        ("Break concat assign to " ++ to_string target)
-        (break_concat_assign target wf val)
-      ++ break_concat_assigns_module_body tl
+        break_concat_assign target wf val ++ break_concat_assigns_module_body tl
+    | AlwaysComb (Block stmts) :: tl =>
+      break_concat_assigns_undefined (AlwaysComb (Block stmts))
+    | AlwaysFF s :: tl =>
+      break_concat_assigns_undefined (AlwaysFF s)
     | [] => []
   }.
 
@@ -183,13 +193,17 @@ Section semantics.
     exec_module_body regs (break_concat_assigns_module_body body) =
     exec_module_body regs body.
   Proof.
+    intros * Hsorted.
     funelim (break_concat_assigns_module_body body).
-    all: clear Heqcall; intros vars Hsorted; inv Hsorted.
-    all: simp exec_module_body; simpl.
-    all: try reflexivity; try eauto.
-    rewrite exec_module_body_app, exec_break_concat_assign by (simpl in *; LocationSet.setdec).
-    simp exec_module_item exec_statement.
-  Qed.
+    - reflexivity.
+    - admit. (* TODO: initial *)
+    - inv Hsorted.
+      simp exec_module_body; simpl.
+      try reflexivity; try eauto.
+      rewrite exec_module_body_app, exec_break_concat_assign by (simpl in *; LocationSet.setdec).
+      simp exec_module_item exec_statement.
+    - admit. (* TODO: always_ff *)
+  Admitted.
 End semantics.
 
 Section sort.
@@ -215,21 +229,24 @@ Section sort.
     module_items_sorted vars body ->
     module_items_sorted vars (break_concat_assigns_module_body body).
   Proof.
+    intros Hsorted.
     funelim (break_concat_assigns_module_body body).
-    all: clear Heqcall; intros Hsorted; inv Hsorted.
-    all: simpl.
-    all: try (constructor; try assumption; eauto).
-    rename_match (forall vars, module_items_sorted vars tl -> _) into IH.
-    rename_match (LocationSet.Disjoint _ vars) into Hdisjoint.
-    rename_match (module_items_sorted _ tl) into Hsorted_tl.
-    apply module_items_sorted_app.
-    - apply break_concat_assign_sorted; assumption.
-    - apply IH.
-      eapply module_items_sorted_permute_vars with
-        (l := assign_target_writes target ∪ vars).
-      + rewrite break_concat_assign_writes. LocationSet.setdec.
-      + exact Hsorted_tl.
-  Qed.
+    all: clear Heqcall.
+    - constructor.
+    - admit. (* TODO: initial *)
+    - inv Hsorted.
+      rename_match (forall vars, module_items_sorted vars tl -> _) into IH.
+      rename_match (LocationSet.Disjoint _ vars) into Hdisjoint.
+      rename_match (module_items_sorted _ tl) into Hsorted_tl.
+      apply module_items_sorted_app.
+      + apply break_concat_assign_sorted; assumption.
+      + apply IH.
+        eapply module_items_sorted_permute_vars with
+          (l := assign_target_writes target ∪ vars).
+        * rewrite break_concat_assign_writes. LocationSet.setdec.
+        * exact Hsorted_tl.
+    - admit. (* TODO: initial *)
+  Admitted.
 End sort.
 
 Theorem break_concat_assigns_exact_equivalence {i o} (v1 v2 : vmodule i o) :

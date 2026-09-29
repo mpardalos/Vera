@@ -100,13 +100,23 @@ module Raw = struct
         fprintf fmt "( %a@ as@ %a )" expression e vtype n);
     Format.fprintf fmt "@]"
 
-  let statement (fmt : formatter) (s : RawVerilog.statement) =
+  let rec statement (fmt : formatter) (s : RawVerilog.statement) =
     match s with
     | RawVerilog.BlockingAssign (lhs, rhs) ->
         fprintf fmt "%a = %a" expression lhs expression rhs
+    | RawVerilog.Block stmts ->
+        fprintf fmt "begin@,    @[<v>%a@]@,end"
+          (pp_print_list statement ~pp_sep:Util.colon_sep)
+          stmts
 
   let mod_item (fmt : formatter) (i : RawVerilog.module_item) =
-    fprintf fmt "always_comb %a" statement i
+    match i with
+    | RawVerilog.Initial s ->
+        fprintf fmt "always_comb %a" statement s
+    | RawVerilog.AlwaysComb s ->
+        fprintf fmt "always_comb %a" statement s
+    | RawVerilog.AlwaysFF s ->
+        fprintf fmt "always_ff %a" statement s
 
   let vmodule (fmt : formatter) (m : RawVerilog.vmodule) =
     fprintf fmt "RawVerilog.module %s {@." (Util.lst_to_string m.modName);
@@ -184,13 +194,23 @@ module Typed = struct
     | Verilog.AssignConcat (_, _, lhs, rhs) ->
         fprintf fmt "{%a, %a}" assign_target lhs assign_target rhs
 
-  let statement (fmt : formatter) (s : Verilog.statement) =
+  let rec statement (fmt : formatter) (s : Verilog.statement) =
     match s with
     | Verilog.BlockingAssign (_, lhs, rhs) ->
         fprintf fmt "%a = %a" assign_target lhs expression rhs
+    | Verilog.Block stmts ->
+        fprintf fmt "begin@,    @[<v>%a@]@,end"
+          (pp_print_list statement ~pp_sep:Util.colon_sep)
+          stmts
 
   let mod_item (fmt : formatter) (i : Verilog.module_item) =
-    fprintf fmt "always_comb %a" statement i
+    match i with
+    | Verilog.Initial s ->
+        fprintf fmt "always_comb %a" statement s
+    | Verilog.AlwaysComb s ->
+        fprintf fmt "always_comb %a" statement s
+    | Verilog.AlwaysFF s ->
+        fprintf fmt "always_ff %a" statement s
 
   let vmodule (fmt : formatter) (m : Verilog.vmodule) =
     fprintf fmt "Verilog.module %s {@." (Util.lst_to_string m.modName);

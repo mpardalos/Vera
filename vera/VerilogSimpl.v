@@ -60,8 +60,18 @@ Equations simpl_expr {w} (e : expression w) : expression w := {
   | NamedExpression var => NamedExpression var
   }.
 
+Definition simpl_module_item_undefined : module_item -> module_item. Admitted.
+Extract Constant simpl_module_item_undefined =>
+  "(fun _ -> failwith ""AXIOM TO BE REALIZED: simpl_module_item_undefined"")".
+
+Definition simpl_module_item mi : module_item :=
+  match mi with
+  | AlwaysComb (BlockingAssign lhs wf rhs) => AlwaysComb (BlockingAssign lhs wf (simpl_expr rhs))
+  | _ => simpl_module_item_undefined mi
+  end.
+
 Definition simpl_module_body : list module_item -> list module_item :=
-    map (fun '(AlwaysComb (BlockingAssign lhs wf rhs)) => AlwaysComb (BlockingAssign lhs wf (simpl_expr rhs))).
+    map simpl_module_item.
 
 Lemma simpl_module_body_writes mis :
   LocationSet.Equal
@@ -70,9 +80,14 @@ Lemma simpl_module_body_writes mis :
 Proof.
   induction mis.
   - reflexivity.
-  - destruct a as [[lhs rhs]]. simpl.
-    rewrite IHmis. reflexivity.
-Qed.
+  - destruct a.
+    all: expect 3.
+    1, 3: admit. (* TODO: initial, always_ff *)
+    destruct s as [lhs rhs|?].
+    all: simpl.
+    + rewrite IHmis. reflexivity.
+    + admit. (* TODO: Blocks *)
+Admitted.
 
 #[refine]
 Definition simpl_vmodule {i o} (v : vmodule i o) : vmodule i o :=
@@ -223,12 +238,18 @@ Proof.
   
   rewrite sort_module_items_map; expect 3; cycle 1.
   {
-    intros [[lhs rhs]].
+    intros mi. destruct mi.
+    all: expect 3. 1, 3: admit. (* TODO initial, always_ff *)
+    destruct s as [lhs rhs|].
+    2: admit. (* TODO: Blocks *)
     simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
     apply simpl_expr_reads_Equal.
   }
   {
-    intros [[lhs rhs]].
+    intros mi. destruct mi.
+    all: expect 3. 1, 3: admit. (* TODO initial, always_ff *)
+    destruct s as [lhs rhs|].
+    2: admit. (* TODO: Blocks *)
     simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
     reflexivity.
   }
@@ -237,12 +258,15 @@ Proof.
     simpl; [|reflexivity].
   generalize (init // VarSet.of_list i). clear init v.
   induction l; intros r; [reflexivity|].
-  destruct a; expect 1. destruct s; expect 1.
+  destruct a.
+  all: expect 3. 1, 3: admit. (* TODO initial, always_ff *)
+  destruct s as [lhs rhs|].
+  2: admit. (* TODO: Blocks *)
   simpl. simp exec_module_body exec_module_item exec_statement. simpl.
   simp exec_module_body.
   rewrite simpl_expr_correct.
   apply IHl.
-Qed.
+Admitted.
 
 Import ExactEquivalence.
 

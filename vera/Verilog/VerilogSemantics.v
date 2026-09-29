@@ -1644,17 +1644,24 @@ Module CombinationalOnly.
     .
 
   Equations
-    exec_statement (regs : RegisterState.t) (stmt : Verilog.statement) : RegisterState.t by struct :=
+    exec_statement (regs : RegisterState.t) (stmt : Verilog.statement) : RegisterState.t by struct stmt :=
     exec_statement regs (Verilog.BlockingAssign target _ rhs) :=
       let rhs_val := eval_expr regs rhs in
       set_target regs target rhs_val ;
+    exec_statement regs (Verilog.Block body) :=
+      exec_block regs body
+    where exec_block (acc : RegisterState.t) (stmts : list Verilog.statement) : RegisterState.t by struct stmts :=
+      exec_block acc [] := acc;
+      exec_block acc (s :: rest) := exec_block (exec_statement acc s) rest
   .
 
   Equations
     exec_module_item : RegisterState.t -> Verilog.module_item -> RegisterState.t :=
-    exec_module_item st (Verilog.AlwaysComb stmt ) :=
-      exec_statement st stmt;
+    exec_module_item st (Initial stmt ) := _;
+    exec_module_item st (AlwaysComb stmt ) := exec_statement st stmt;
+    exec_module_item st (AlwaysFF stmt) := _
   .
+  Admit Obligations.
 
   Equations
     exec_module_body : RegisterState.t -> list Verilog.module_item -> RegisterState.t :=
@@ -2271,14 +2278,14 @@ Module Facts.
       exec_statement regs2 stmt.
     Proof.
       intros Hmatch.
-      funelim (exec_statement regs1 stmt); expect 1.
-      try rewrite <- Heqcall in *; clear Heqcall.
+      induction stmt.
+      2: admit. (* TODO: Blocks *)
       simp exec_statement in *; simpl.
       simp exec_statement statement_reads statement_writes in *.
       erewrite eval_expr_change_regs by eassumption.
       apply set_target_change_regs.
       assumption.
-    Qed.
+    Admitted.
 
     Lemma exec_statement_change_preserve l stmt regs1 regs2 :
       regs1 =( Verilog.statement_reads stmt )= regs2 ->
@@ -2286,12 +2293,13 @@ Module Facts.
       exec_statement regs1 stmt =( l )= exec_statement regs2 stmt.
     Proof.
       intros Hmatch_other Hmatch_reads.
-      destruct stmt; expect 1.
+      destruct stmt; expect 2.
+      2: admit. (* TODO: Blocks *)
       simp exec_statement. simpl in *.
       erewrite eval_expr_change_regs by eassumption.
       eapply set_target_change_preserve.
       exact Hmatch_reads.
-    Qed.
+    Admitted.
 
     Lemma exec_statement_change_preserve_reads stmt regs1 regs2 :
       regs1 =( Verilog.statement_reads stmt )= regs2 ->
@@ -2303,12 +2311,12 @@ Module Facts.
       regs =( l )= exec_statement regs stmt.
     Proof.
       intros Hdisjoint.
-      funelim (exec_statement regs stmt);
-        try rewrite <- Heqcall in *; clear Heqcall.
-      simpl in *.
+      induction stmt; expect 2.
+      2: admit. (* TODO: Blocks *)
+      simp exec_statement. simpl in *. 
       symmetry.
       apply set_target_preserve. symmetry. exact Hdisjoint.
-    Qed.
+    Admitted.
   End statement.
 
   Section module_item.
@@ -2320,12 +2328,13 @@ Module Facts.
     Proof.
       intros Hmatch.
       funelim (exec_module_item regs1 mi).
+      1, 3: admit. (* TODO: initial, always_ff *)
       try rewrite <- Heqcall in *; clear Heqcall.
       simp exec_module_item in *; simpl.
       try solve [constructor]; expect 1.
       simp exec_module_item module_item_reads module_item_writes expr_reads in *.
       apply exec_statement_change_regs. assumption.
-    Qed.
+    Admitted.
 
     Lemma exec_module_item_change_preserve mi regs1 regs2 :
       regs1 =( Verilog.module_item_reads mi )= regs2 ->
@@ -2333,10 +2342,11 @@ Module Facts.
       exec_module_item regs1 mi =( l )= exec_module_item regs2 mi.
     Proof.
       intros Hmatch_other Hmatch_reads.
-      destruct mi; expect 1.
+      destruct mi; expect 3.
+      1, 3: admit. (* TODO: initial, always_ff *)
       simpl in *; simp exec_module_item in *.
       apply exec_statement_change_preserve; assumption.
-    Qed.
+    Admitted.
 
     Lemma exec_module_item_change_preserve_reads mi regs1 regs2 :
       regs1 =( Verilog.module_item_reads mi )= regs2 ->
@@ -2350,10 +2360,9 @@ Module Facts.
       intros Hdisjoint Hexec.
       funelim (exec_module_item regs mi);
       try rewrite <- Heqcall in *; clear Heqcall.
-      simp module_item_writes expr_reads in *.
-      try discriminate; expect 1.
+      1, 3: admit. (* TODO: initial, always_ff *)
       eapply exec_statement_preserve; eassumption.
-    Qed.
+    Admitted.
   End module_item.
 
   Section module_body.

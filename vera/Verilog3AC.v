@@ -34,6 +34,10 @@ Opaque N.add N.sub.
 
 Definition result := sum string.
 
+Definition to_3ac_undefined : unit -> result (list module_item * nat). Admitted. 
+Extract Constant to_3ac_undefined =>
+  "(fun _ -> failwith ""AXIOM TO BE REALIZED: to_3ac_undefined"")".
+
 Section definition.
   Notation tmp_var idx w wf := (Var.MkVariable ("t" ++ to_string idx)%string w wf).
 
@@ -138,6 +142,9 @@ Section definition.
     match mi with
     | AlwaysComb (BlockingAssign (AssignVar var) _ expr) => to_3ac_assign fresh var expr
     | AlwaysComb (BlockingAssign target _ _) => inl ("Unexpected assign LHS in 3AC pass: " ++ to_string target)%string
+    | AlwaysComb (Block _) => inl "Unexpected Block in 3AC pass"%string
+    | Initial _ => to_3ac_undefined tt
+    | AlwaysFF _ => to_3ac_undefined tt
     end.
 
   Fixpoint to_3ac_module_body (fresh_1 : nat) (body : list module_item) : result (list module_item * nat) :=

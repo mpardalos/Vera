@@ -340,7 +340,7 @@ let rec parse_expression json =
       (* Vera.RawVerilog.NamedExpression ((), Util.string_to_lst kind) *)
       raise (SlangUnexpectedValueFor ("expression kind", kind))
 
-let parse_statement json =
+let rec parse_statement json =
   not_null "statement" json;
   match json |> member "kind" |> to_string with
   | "ExpressionStatement" ->
@@ -349,6 +349,14 @@ let parse_statement json =
       let lhs = parse_expression (expr |> member "left") in
       let rhs = parse_expression (expr |> member "right") in
       Vera.RawVerilog.BlockingAssign (lhs, rhs)
+  | "Block" ->
+      let blockKind = json |> member "blockKind" |> to_string in
+      expect_value blockKind "Sequential";
+      let body = json |> member "body" in
+      expect_kind "List" body;
+      let bodyList = body |> member "list" |> to_list in
+      let statements = List.map parse_statement bodyList in
+      Vera.RawVerilog.Block statements
   | str -> raise (SlangUnexpectedValueFor ("statement kind", str))
 
 let parse_continuous_assign json =
@@ -357,13 +365,15 @@ let parse_continuous_assign json =
   expect_kind "Assignment" assignment;
   let lhs = parse_expression (assignment |> member "left") in
   let rhs = parse_expression (assignment |> member "right") in
-  (* Vera.RawVerilog.AlwaysComb *) (Vera.RawVerilog.BlockingAssign (lhs, rhs))
+  Vera.RawVerilog.AlwaysComb (Vera.RawVerilog.BlockingAssign (lhs, rhs))
 
 let parse_procedural_block json =
   expect_kind "ProceduralBlock" json;
   let body = json |> member "body" in
   match json |> member "procedureKind" |> to_string with
-  | "AlwaysComb" -> (* Vera.RawVerilog.AlwaysComb *) (parse_statement body)
+  | "AlwaysComb" -> Vera.RawVerilog.AlwaysComb (parse_statement body)
+  | "Initial" -> Vera.RawVerilog.Initial (parse_statement body)
+  | "AlwaysFF" -> Vera.RawVerilog.AlwaysFF (parse_statement body)
   | str ->
       raise (SlangUnexpectedValue ("AlwaysComb, AlwaysFF, or Initial", str))
 
