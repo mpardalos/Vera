@@ -51,6 +51,20 @@ Proof.
   all: reflexivity.
 Qed.
 
+Lemma logicalop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
+    eval_logicalop op (XBV.from_bv (SMTLib.interp_term ρ smt_lhs)) (XBV.from_bv (SMTLib.interp_term ρ smt_rhs))
+      = XBV.from_bv (SMTLib.interp_term ρ (logicalop_to_smt op smt_lhs smt_rhs)).
+Proof.
+  destruct op.
+  - simp logicalop_to_smt. cbn.
+    destruct (BV.bv_eq (SMTLib.interp_term ρ smt_lhs) (BV.zeros w)) eqn:lhs_zero;
+      [apply BV.bv_eq_reflect in lhs_zero|apply BV.bv_neq_reflect in lhs_zero].
+    all: destruct (BV.bv_eq (SMTLib.interp_term ρ smt_rhs) (BV.zeros w)) eqn:rhs_zero;
+      [apply BV.bv_eq_reflect in rhs_zero|apply BV.bv_neq_reflect in rhs_zero].
+    all: try (rewrite lhs_zero; clear lhs_zero).
+    all: try (rewrite rhs_zero; clear rhs_zero).
+Admitted.
+
 Lemma bitwiseop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
     eval_bitwiseop op (XBV.from_bv (SMTLib.interp_term ρ smt_lhs)) (XBV.from_bv (SMTLib.interp_term ρ smt_rhs))
       = XBV.from_bv (SMTLib.interp_term ρ (bitwiseop_to_smt op smt_lhs smt_rhs)).
@@ -179,9 +193,9 @@ Proof.
   all: try match goal with [slice : Slice.t _ |- _] => destruct slice end.
   all: simpl in *; simp expr_to_smt eval_expr in *.
   all: unpack_verilog_smt_match_states_partial.
-  all: expect 12.
+  all: expect 13.
   all: try solve [some_inv]. (* Handle expressions that we abort on *)
-  all: expect 11.
+  all: expect 12.
   all: simpl in *.
   (* all: unfold Verilog.expr_type in *. *)
   all: repeat match type of Hexpr_to_smt with
@@ -209,6 +223,8 @@ Proof.
   all: try (erewrite IHexpr3 by eauto; clear IHexpr3).
   - (* arithmeticop *)
     apply arithmeticop_to_smt_value.
+  - (* logicalop *)
+    apply logicalop_to_smt_value.
   - (* bitwiseop *)
     apply bitwiseop_to_smt_value.
   - (* shiftop *)

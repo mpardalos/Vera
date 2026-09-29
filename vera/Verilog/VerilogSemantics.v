@@ -1527,6 +1527,19 @@ Module CombinationalOnly.
     eval_arithmeticop Verilog.ArithmeticStar l r := bv_binop (@BV.bv_mult _) l r;
   .
 
+  Definition of_bool {n} (b : bool) : XBV.xbv n :=
+    if b then XBV.ones n else XBV.zeros n.
+
+  Definition to_bool {n} (bv : BV.bitvector n) : bool :=
+    negb (BV.is_zero bv).
+
+  Equations eval_logicalop {n} (op : Verilog.logicalop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv 1 :=
+    eval_logicalop Verilog.LogicalAnd l r with XBV.to_bv l, XBV.to_bv r := {
+      | Some l_bv, Some r_bv => of_bool (andb (to_bool l_bv) (to_bool r_bv))
+      | _, _ => XBV.exes 1
+    };
+  .
+
   Equations eval_bitwiseop {n} (op : Verilog.bitwiseop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv n :=
     eval_bitwiseop Verilog.BinaryBitwiseAnd l r := bitwise_binop and_bit l r;
     eval_bitwiseop Verilog.BinaryBitwiseOr l r := bitwise_binop or_bit l r;
@@ -1596,6 +1609,10 @@ Module CombinationalOnly.
       let lhs_val := eval_expr regs lhs in
       let rhs_val := eval_expr regs rhs in
       (eval_arithmeticop op lhs_val rhs_val);
+    eval_expr regs (Verilog.LogicalOp op lhs rhs _) :=
+      let lhs_val := eval_expr regs lhs in
+      let rhs_val := eval_expr regs rhs in
+      (eval_logicalop op lhs_val rhs_val);
     eval_expr regs (Verilog.BitwiseOp op lhs rhs) :=
       let lhs_val := eval_expr regs lhs in
       let rhs_val := eval_expr regs rhs in
@@ -1739,6 +1756,10 @@ Module CombinationalOnly.
       let* lhs_val := eval_expr_static lhs in
       let* rhs_val := eval_expr_static rhs in
       Some (eval_arithmeticop op lhs_val rhs_val);
+    eval_expr_static (Verilog.LogicalOp op lhs rhs _) :=
+      let* lhs_val := eval_expr_static lhs in
+      let* rhs_val := eval_expr_static rhs in
+      Some (eval_logicalop op lhs_val rhs_val);
     eval_expr_static (Verilog.BitwiseOp op lhs rhs) :=
       let* lhs_val := eval_expr_static lhs in
       let* rhs_val := eval_expr_static rhs in

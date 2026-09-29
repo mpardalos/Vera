@@ -41,6 +41,7 @@ Solve All Obligations with lia.
 Equations simpl_expr {w} (e : expression w) : expression w := {
   | UnaryOp op e => UnaryOp op (simpl_expr e)
   | ArithmeticOp op lhs rhs => ArithmeticOp op (simpl_expr lhs) (simpl_expr rhs)
+  | LogicalOp op lhs rhs wf => LogicalOp op (simpl_expr lhs) (simpl_expr rhs) wf
   | BitwiseOp op lhs rhs => BitwiseOp op (simpl_expr lhs) (simpl_expr rhs)
   | @ShiftOp w1 w2 op lhs rhs wf_lhs wf_rhs with dec (w1 = w2) => {
     | left E => ShiftOp op (simpl_expr lhs) (simpl_expr rhs) wf_lhs wf_rhs

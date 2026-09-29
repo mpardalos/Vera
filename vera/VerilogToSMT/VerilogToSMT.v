@@ -98,6 +98,21 @@ Section expr_to_smt.
       SMTLib.Term_BVBinOp SMTLib.BVMul lhs rhs;
     .
 
+  Definition smt_to_bool {w} (t : SMTLib.term (Sort_BitVec w)) : SMTLib.term (Sort_BitVec 1) :=
+    SMTLib.Term_ITE
+      (SMTLib.Term_Eq t (SMTLib.Term_BVLit w (BV.zeros w)))
+      (SMTLib.Term_BVLit 1 (BV.zeros 1))
+      (SMTLib.Term_BVLit 1 (BV.ones 1)).
+    
+  Equations logicalop_to_smt {w} :
+      Verilog.logicalop ->
+      SMTLib.term (Sort_BitVec w) ->
+      SMTLib.term (Sort_BitVec w) ->
+      (SMTLib.term (Sort_BitVec 1)) :=
+    logicalop_to_smt Verilog.LogicalAnd lhs rhs :=
+      SMTLib.Term_BVBinOp SMTLib.BVAnd (smt_to_bool lhs) (smt_to_bool rhs);
+    .
+
   Equations shiftop_to_smt {w} : Verilog.shiftop -> SMTLib.term (Sort_BitVec w) -> SMTLib.term (Sort_BitVec w) -> (SMTLib.term (Sort_BitVec w)) :=
     shiftop_to_smt Verilog.BinaryShiftLeft lhs rhs :=
       (SMTLib.Term_BVBinOp SMTLib.BVShl lhs rhs);
@@ -151,6 +166,10 @@ Section expr_to_smt.
       let* lhs_smt := expr_to_smt lhs in
       let* rhs_smt := expr_to_smt rhs in
       ret (arithmeticop_to_smt op lhs_smt rhs_smt);
+    expr_to_smt (Verilog.LogicalOp op lhs rhs wf) :=
+      let* lhs_smt := expr_to_smt lhs in
+      let* rhs_smt := expr_to_smt rhs in
+      ret (logicalop_to_smt op lhs_smt rhs_smt);
     expr_to_smt (Verilog.BitwiseOp op lhs rhs) :=
       let* lhs_smt := expr_to_smt lhs in
       let* rhs_smt := expr_to_smt rhs in

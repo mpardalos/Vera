@@ -57,6 +57,15 @@ Section definition.
       let* (rhs_items, fresh_3) := to_3ac_assign fresh_2 rhs_var rhs in
       let mi := assign_var var (ArithmeticOp op (NamedExpression lhs_var) (NamedExpression rhs_var)) in
       inr (lhs_items ++ rhs_items ++ [mi], fresh_3)
+    | fresh, Var.MkVariable name _ wf_1, @LogicalOp w op lhs rhs wf_w =>
+      let var := Var.MkVariable name 1%N wf_1 in
+      let lhs_var := tmp_var fresh w wf_w in
+      let rhs_var := tmp_var (S fresh) w wf_w in
+      let fresh_1 := S (S fresh) in
+      let* (lhs_items, fresh_2) := to_3ac_assign fresh_1 lhs_var lhs in
+      let* (rhs_items, fresh_3) := to_3ac_assign fresh_2 rhs_var rhs in
+      let mi := assign_var var (LogicalOp op (NamedExpression lhs_var) (NamedExpression rhs_var) wf_w) in
+      inr (lhs_items ++ rhs_items ++ [mi], fresh_3)
     | fresh, Var.MkVariable name _ wf, @BitwiseOp w op lhs rhs =>
       let var := Var.MkVariable name w wf in
       let lhs_var := tmp_var fresh w wf in

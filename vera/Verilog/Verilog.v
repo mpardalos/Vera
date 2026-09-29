@@ -76,23 +76,23 @@ Variant bitwiseop :=
     | BinaryBitwiseXor (* '^' *)
   .
 
-  (* Variant logicalop :=
-   *   | BinaryEqualsEquals (\* '==' *\)
-   *   | BinaryEqualsEqualsEquals (\* '===' *\)
-   *   | BinaryGreaterThan (\* '>' *\)
-   *   | BinaryGreaterThanEqual (\* '>=' *\)
-   *   | BinaryLessThan (\* '<' *\)
-   *   | BinaryLessThanEqual (\* '<=' *\)
-   *   | BinaryLogicalAnd (\* '&&' *\)
-   *   | BinaryLogicalEquivalence (\* '<->' *\)
-   *   | BinaryLogicalImplication (\* '->' *\)
-   *   | BinaryLogicalOr (\* '||' *\)
-   *   | BinaryNotEquals (\* '!=' *\)
-   *   | BinaryNotEqualsEquals (\* '!==' *\)
-   *   | BinaryWildcardEqual (\* '==?' *\)
-   *   | BinaryWildcardNotEqual (\* '!=?' *\)
-   *   | BinaryXNor (\* '^~', '~^' *\)
-   * . *)
+  Variant logicalop :=
+    (* | EqualsEquals (\* '==' *\) *)
+    (* | EqualsEqualsEquals (\* '===' *\) *)
+    (* | GreaterThan (\* '>' *\) *)
+    (* | GreaterThanEqual (\* '>=' *\) *)
+    (* | LessThan (\* '<' *\) *)
+    (* | LessThanEqual (\* '<=' *\) *)
+    | LogicalAnd (* '&&' *)
+    (* | LogicalEquivalence (\* '<->' *\) *)
+    (* | LogicalImplication (\* '->' *\) *)
+    (* | LogicalOr (\* '||' *\) *)
+    (* | NotEquals (\* '!=' *\) *)
+    (* | NotEqualsEquals (\* '!==' *\) *)
+    (* | WildcardEqual (\* '==?' *\) *)
+    (* | WildcardNotEqual (\* '!=?' *\) *)
+    (* | XNor (\* '^~', '~^' *\) *)
+  .
 
   Variant shiftop :=
     | BinaryShiftRight (* '>>' *)
@@ -196,6 +196,13 @@ Variant bitwiseop :=
           end
       }.
 
+    Global Instance logicalop_Show : Show logicalop :=
+      { show u :=
+          match u with
+          | LogicalAnd => "&&"
+          end
+      }.
+
     Global Instance shiftop_Show : Show shiftop :=
       { show u :=
           match u with
@@ -273,6 +280,11 @@ Module Verilog.
 
   Inductive expression : N -> Type :=
   | ArithmeticOp {w} (op : arithmeticop) : expression w -> expression w -> expression w
+  | LogicalOp {w}
+    (op : logicalop)
+    (lhs rhs : expression w)
+    (wf : (w > 0)%N)
+    : expression 1
   | BitwiseOp {w} (op : bitwiseop) : expression w -> expression w -> expression w
   | ShiftOp {w1 w2}
     (op : shiftop)
@@ -379,6 +391,7 @@ Module Verilog.
     match e with
     | (Verilog.UnaryOp op operand) => expr_reads operand
     | (Verilog.ArithmeticOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
+    | (Verilog.LogicalOp op lhs rhs _) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.BitwiseOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.ShiftOp op lhs rhs _ _) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.Conditional cond tBranch fBranch) => expr_reads cond ∪ expr_reads tBranch ∪ expr_reads fBranch
@@ -403,6 +416,7 @@ Module Verilog.
     match e with
     | (Verilog.UnaryOp op operand) => expr_reads_vars operand
     | (Verilog.ArithmeticOp op lhs rhs) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
+    | (Verilog.LogicalOp op lhs rhs _) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
     | (Verilog.BitwiseOp op lhs rhs) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
     | (Verilog.ShiftOp op lhs rhs _ _) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
     | (Verilog.Conditional cond tBranch fBranch) =>
@@ -606,6 +620,7 @@ Module Verilog.
     Fixpoint show_expression {w} (u : expression w) : showM :=
       match u with
       | ArithmeticOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
+      | LogicalOp op lhs rhs _ => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
       | BitwiseOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
       | ShiftOp op lhs rhs _ _ => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
       | UnaryOp op e => "(" << show op << " " << show_expression e << ")"
@@ -662,6 +677,7 @@ Module RawVerilog.
 
   Inductive expression : Type :=
   | ArithmeticOp (op : arithmeticop) (lhs rhs : expression)
+  | LogicalOp (op : logicalop) (lhs rhs : expression)
   | BitwiseOp (op : bitwiseop) (lhs rhs : expression)
   | ShiftOp (op : shiftop) (lhs rhs : expression)
   | UnaryOp (op : unaryop) (expr : expression)
@@ -716,6 +732,12 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   let* (w_rhs; t_rhs) := tc_expr rhs in
   let* t_rhs' := cast_width ("Different widths in " ++ to_string op) w_lhs t_rhs in
   inr (_; Verilog.ArithmeticOp op t_lhs t_rhs')
+| RawVerilog.LogicalOp op lhs rhs =>
+  let* (w_lhs; t_lhs) := tc_expr lhs in
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width ("Different widths in " ++ to_string op) w_lhs t_rhs in
+  let* wf := assert_dec (w_lhs > 0)%N "0 width not allowed in logical op"%string in
+  inr (_; Verilog.LogicalOp op t_lhs t_rhs' wf)
 | RawVerilog.BitwiseOp op lhs rhs =>
   let* (w_lhs; t_lhs) := tc_expr lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
