@@ -1534,8 +1534,20 @@ Module CombinationalOnly.
     negb (BV.is_zero bv).
 
   Equations eval_logicalop {n} (op : Verilog.logicalop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv 1 :=
+    eval_logicalop Verilog.EqualsEquals l r with XBV.to_bv l, XBV.to_bv r := {
+      | Some l_bv, Some r_bv => of_bool (BV.bv_eq l_bv r_bv)
+      | _, _ => XBV.exes 1
+    };
+    eval_logicalop Verilog.NotEquals l r with XBV.to_bv l, XBV.to_bv r := {
+      | Some l_bv, Some r_bv => of_bool (negb (BV.bv_eq l_bv r_bv))
+      | _, _ => XBV.exes 1
+    };
     eval_logicalop Verilog.LogicalAnd l r with XBV.to_bv l, XBV.to_bv r := {
       | Some l_bv, Some r_bv => of_bool (andb (to_bool l_bv) (to_bool r_bv))
+      | _, _ => XBV.exes 1
+    };
+    eval_logicalop Verilog.LogicalOr l r with XBV.to_bv l, XBV.to_bv r := {
+      | Some l_bv, Some r_bv => of_bool (orb (to_bool l_bv) (to_bool r_bv))
       | _, _ => XBV.exes 1
     };
   .

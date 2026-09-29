@@ -254,7 +254,10 @@ let read_binary_op = function
   | "BinaryXor" -> `Bitwise Vera.RawVerilog.BinaryBitwiseXor
   | "LogicalShiftLeft" -> `Shift Vera.RawVerilog.BinaryShiftLeft
   | "LogicalShiftRight" -> `Shift Vera.RawVerilog.BinaryShiftRight
-  | "LogicalAnd" -> `Logical () (* Vera.RawVerilog.LogicalAnd *)
+  | "Equality" -> `Logical Vera.RawVerilog.EqualsEquals
+  | "Inequality" -> `Logical Vera.RawVerilog.NotEquals
+  | "LogicalAnd" -> `Logical Vera.RawVerilog.LogicalAnd
+  | "LogicalOr" -> `Logical Vera.RawVerilog.LogicalOr
   | str -> raise (SlangUnexpectedValueFor ("binary operator", str))
 
 let read_unary_op = function
@@ -333,7 +336,7 @@ let rec parse_expression json =
       | `Arithmetic op -> Vera.RawVerilog.ArithmeticOp (op, lhs, rhs)
       | `Bitwise op -> Vera.RawVerilog.BitwiseOp (op, lhs, rhs)
       | `Shift op -> Vera.RawVerilog.ShiftOp (op, lhs, rhs)
-      | `Logical _ -> Vera.RawVerilog.LogicalOp ((* op, *) lhs, rhs))
+      | `Logical op -> Vera.RawVerilog.LogicalOp (op, lhs, rhs))
   | "UnaryOp" ->
       let op = json |> member "op" |> to_string |> read_unary_op in
       let operand = json |> member "operand" |> parse_expression in

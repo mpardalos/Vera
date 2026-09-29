@@ -77,7 +77,7 @@ Variant bitwiseop :=
   .
 
   Variant logicalop :=
-    (* | EqualsEquals (\* '==' *\) *)
+    | EqualsEquals (* '==' *)
     (* | EqualsEqualsEquals (\* '===' *\) *)
     (* | GreaterThan (\* '>' *\) *)
     (* | GreaterThanEqual (\* '>=' *\) *)
@@ -86,8 +86,8 @@ Variant bitwiseop :=
     | LogicalAnd (* '&&' *)
     (* | LogicalEquivalence (\* '<->' *\) *)
     (* | LogicalImplication (\* '->' *\) *)
-    (* | LogicalOr (\* '||' *\) *)
-    (* | NotEquals (\* '!=' *\) *)
+    | LogicalOr (* '||' *)
+    | NotEquals (* '!=' *)
     (* | NotEqualsEquals (\* '!==' *\) *)
     (* | WildcardEqual (\* '==?' *\) *)
     (* | WildcardNotEqual (\* '!=?' *\) *)
@@ -199,7 +199,10 @@ Variant bitwiseop :=
     Global Instance logicalop_Show : Show logicalop :=
       { show u :=
           match u with
+          | EqualsEquals => "=="
+          | NotEquals => "!="
           | LogicalAnd => "&&"
+          | LogicalOr => "||"
           end
       }.
 

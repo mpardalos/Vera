@@ -10,7 +10,10 @@ let arithmeticop fmt = function
   (* | Verilog.BinaryPercent -> fprintf fmt "%%" *)
 
 let logicalop fmt = function
-  | (* Verilog.LogicalAnd *) () -> fprintf fmt "&&"
+  | Verilog.EqualsEquals -> fprintf fmt "=="
+  | Verilog.NotEquals -> fprintf fmt "!="
+  | Verilog.LogicalAnd -> fprintf fmt "&&"
+  | Verilog.LogicalOr -> fprintf fmt "||"
 
 let bitwiseop fmt = function
   | Verilog.BinaryBitwiseAnd -> fprintf fmt "&"
@@ -91,8 +94,8 @@ module Raw = struct
           f
     | RawVerilog.ArithmeticOp (op, l, r) ->
         fprintf fmt "( %a@ %a@ %a )" expression l arithmeticop op expression r
-    | RawVerilog.LogicalOp ((* op, *) l, r) ->
-        fprintf fmt "( %a@ %a@ %a )" expression l logicalop () expression r
+    | RawVerilog.LogicalOp (op, l, r) ->
+        fprintf fmt "( %a@ %a@ %a )" expression l logicalop op expression r
     | RawVerilog.BitwiseOp (op, l, r) ->
         fprintf fmt "( %a@ %a@ %a )" expression l bitwiseop op expression r
     | RawVerilog.ShiftOp (op, l, r) ->
@@ -166,8 +169,8 @@ module Typed = struct
         fprintf fmt "( %a@ as@ %a )" expression e vtype t
     | Verilog.ArithmeticOp (_, op, l, r) ->
         fprintf fmt "( %a@ %a@ %a )" expression l arithmeticop op expression r
-    | Verilog.LogicalOp (_, (* op, *) l, r) ->
-        fprintf fmt "( %a@ %a@ %a )" expression l logicalop () expression r
+    | Verilog.LogicalOp (_, op, l, r) ->
+        fprintf fmt "( %a@ %a@ %a )" expression l logicalop op expression r
     | Verilog.BitwiseOp (_, op, l, r) ->
         fprintf fmt "( %a@ %a@ %a )" expression l bitwiseop op expression r
     | Verilog.ShiftOp (_, _, op, l, r) ->

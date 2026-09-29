@@ -109,8 +109,18 @@ Section expr_to_smt.
       SMTLib.term (Sort_BitVec w) ->
       SMTLib.term (Sort_BitVec w) ->
       (SMTLib.term (Sort_BitVec 1)) :=
+    logicalop_to_smt Verilog.EqualsEquals lhs rhs :=
+      SMTLib.Term_ITE (SMTLib.Term_Eq lhs rhs)
+        (SMTLib.Term_BVLit 1 (BV.ones 1))
+        (SMTLib.Term_BVLit 1 (BV.zeros 1));
+    logicalop_to_smt Verilog.NotEquals lhs rhs :=
+      SMTLib.Term_ITE (SMTLib.Term_Eq lhs rhs)
+        (SMTLib.Term_BVLit 1 (BV.zeros 1))
+        (SMTLib.Term_BVLit 1 (BV.ones 1));
     logicalop_to_smt Verilog.LogicalAnd lhs rhs :=
       SMTLib.Term_BVBinOp SMTLib.BVAnd (smt_to_bool lhs) (smt_to_bool rhs);
+    logicalop_to_smt Verilog.LogicalOr lhs rhs :=
+      SMTLib.Term_BVBinOp SMTLib.BVOr (smt_to_bool lhs) (smt_to_bool rhs);
     .
 
   Equations shiftop_to_smt {w} : Verilog.shiftop -> SMTLib.term (Sort_BitVec w) -> SMTLib.term (Sort_BitVec w) -> (SMTLib.term (Sort_BitVec w)) :=

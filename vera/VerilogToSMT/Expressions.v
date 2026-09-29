@@ -56,13 +56,21 @@ Lemma logicalop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort
       = XBV.from_bv (SMTLib.interp_term ρ (logicalop_to_smt op smt_lhs smt_rhs)).
 Proof.
   destruct op.
-  - simp logicalop_to_smt. cbn.
-    destruct (BV.bv_eq (SMTLib.interp_term ρ smt_lhs) (BV.zeros w)) eqn:lhs_zero;
-      [apply BV.bv_eq_reflect in lhs_zero|apply BV.bv_neq_reflect in lhs_zero].
-    all: destruct (BV.bv_eq (SMTLib.interp_term ρ smt_rhs) (BV.zeros w)) eqn:rhs_zero;
-      [apply BV.bv_eq_reflect in rhs_zero|apply BV.bv_neq_reflect in rhs_zero].
-    all: try (rewrite lhs_zero; clear lhs_zero).
-    all: try (rewrite rhs_zero; clear rhs_zero).
+  all: try solve [
+    simp eval_logicalop logicalop_to_smt;
+    autorewrite with xbv;
+    simp eval_logicalop;
+    cbn [SMTLib.interp_term SMTLib.value_eqb];
+    destruct (BV.bv_eq (SMTLib.interp_term ρ smt_lhs) (SMTLib.interp_term ρ smt_rhs));
+    cbn [of_bool negb]; autorewrite with xbv; reflexivity].
+  all: expect 2.
+  all: simp logicalop_to_smt; cbn.
+  all: destruct (BV.bv_eq (SMTLib.interp_term ρ smt_lhs) (BV.zeros w)) eqn:lhs_zero;
+    [apply BV.bv_eq_reflect in lhs_zero|apply BV.bv_neq_reflect in lhs_zero].
+  all: destruct (BV.bv_eq (SMTLib.interp_term ρ smt_rhs) (BV.zeros w)) eqn:rhs_zero;
+    [apply BV.bv_eq_reflect in rhs_zero|apply BV.bv_neq_reflect in rhs_zero].
+  all: try (rewrite lhs_zero; clear lhs_zero).
+  all: try (rewrite rhs_zero; clear rhs_zero).
 Admitted.
 
 Lemma bitwiseop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
