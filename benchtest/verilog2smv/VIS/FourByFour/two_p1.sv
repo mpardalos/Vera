@@ -15,15 +15,21 @@ module twoByFour(clock,from,to);
     input [2:0] from;
     input [2:0] to;
 
+    // CHANGED FOR VERA
+    // Was [1:0], which was truncating. Changed to [2:0], which is the
+    // correct behaviour
     reg [2:0] 	b[0:7];
     reg [2:0] 	freg, treg;
     wire 	valid, parity;
 
+    // CHANGED FOR VERA
+    // Made all literal sizes explicit, to avoid implicit signedness
+
     initial begin
-         b[0]  = 7; b[1]  = 6; b[2]  = 5; b[3]  = 4;
-	 b[4]  = 3; b[5]  = 2; b[6]  = 1; b[7]  = 0;
-	treg = 0;
-	freg = 0;
+         b[0]  = 3'd7; b[1]  = 3'd6; b[2]  = 3'd5; b[3]  = 3'd4;
+	 b[4]  = 3'd3; b[5]  = 3'd2; b[6]  = 3'd1; b[7]  = 3'd0;
+	treg = 3'd0;
+	freg = 3'd0;
     end 
 
     assign valid = (b[treg] == 3'b000) &&
@@ -38,14 +44,14 @@ module twoByFour(clock,from,to);
 		    );
 
     assign parity = 
-	   (((b[0] & 5) == 1) | ((b[0] & 5) == 4)) ^
-	   (((b[1] & 5) == 0) | ((b[1] & 5) == 5)) ^
-	   (((b[2] & 5) == 1) | ((b[2] & 5) == 4)) ^
-	   (((b[3] & 5) == 0) | ((b[3] & 5) == 5)) ^
-	   (((b[4] & 5) == 1) | ((b[4] & 5) == 4)) ^
-	   (((b[5] & 5) == 0) | ((b[5] & 5) == 5)) ^
-	   (((b[6] & 5) == 1) | ((b[6] & 5) == 4)) ^
-	   (((b[7] & 5) == 0) | ((b[7] & 5) == 5));
+	   (((b[0] & 3'd5) == 3'd1) | ((b[0] & 3'd5) == 3'd4)) ^
+	   (((b[1] & 3'd5) == 3'd0) | ((b[1] & 3'd5) == 3'd5)) ^
+	   (((b[2] & 3'd5) == 3'd1) | ((b[2] & 3'd5) == 3'd4)) ^
+	   (((b[3] & 3'd5) == 3'd0) | ((b[3] & 3'd5) == 3'd5)) ^
+	   (((b[4] & 3'd5) == 3'd1) | ((b[4] & 3'd5) == 3'd4)) ^
+	   (((b[5] & 3'd5) == 3'd0) | ((b[5] & 3'd5) == 3'd5)) ^
+	   (((b[6] & 3'd5) == 3'd1) | ((b[6] & 3'd5) == 3'd4)) ^
+	   (((b[7] & 3'd5) == 3'd0) | ((b[7] & 3'd5) == 3'd5));
 
     always @ (posedge clock) begin
 	freg <= from;
@@ -55,7 +61,7 @@ module twoByFour(clock,from,to);
     always @ (posedge clock) begin
 	if (valid) begin
 	    b[treg] <= b[freg];
-	    b[freg] <= 0;
+	    b[freg] <= 3'd0;
 	end
     end
 
