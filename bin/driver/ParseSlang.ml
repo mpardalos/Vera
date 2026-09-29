@@ -358,10 +358,12 @@ let rec parse_statement json =
       let blockKind = json |> member "blockKind" |> to_string in
       expect_value blockKind "Sequential";
       let body = json |> member "body" in
-      expect_kind "List" body;
-      let bodyList = body |> member "list" |> to_list in
-      let statements = List.map parse_statement bodyList in
-      Vera.RawVerilog.Block statements
+      (match body |> member "kind" |> to_string with
+      | "List" ->
+        let bodyList = body |> member "list" |> to_list in
+        let statements = List.map parse_statement bodyList in
+        Vera.RawVerilog.Block statements
+      | _ -> parse_statement body)
   | str -> raise (SlangUnexpectedValueFor ("statement kind", str))
 
 let parse_continuous_assign json =
@@ -374,11 +376,19 @@ let parse_continuous_assign json =
 
 let parse_procedural_block json =
   expect_kind "ProceduralBlock" json;
-  let body = json |> member "body" in
   match json |> member "procedureKind" |> to_string with
-  | "AlwaysComb" -> Vera.RawVerilog.AlwaysComb (parse_statement body)
-  | "Initial" -> Vera.RawVerilog.Initial (parse_statement body)
-  | "AlwaysFF" -> Vera.RawVerilog.AlwaysFF (parse_statement body)
+  | "AlwaysComb" ->
+     let body = json |> member "body" |> parse_statement in
+     Vera.RawVerilog.AlwaysComb body
+  | "Initial" ->
+     let body = json |> member "body" |> parse_statement in
+     Vera.RawVerilog.Initial body
+  | "Always" | "AlwaysFF" ->
+     let body = json |> member "body" in
+     expect_kind "Timed" body;
+     expect_value "PosEdge" (body |> member "timing" |> member "edge" |> to_string);
+     let bodyStatements = body |> member "stmt" |> parse_statement in
+     Vera.RawVerilog.AlwaysFF bodyStatements
   | str ->
       raise (SlangUnexpectedValue ("AlwaysComb, AlwaysFF, or Initial", str))
 
