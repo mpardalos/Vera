@@ -98,7 +98,7 @@ Proof.
   all: now autorewrite with xbv bv_binop in *.
 Qed.
 
-Lemma unaryop_to_smt_value ρ op w (smt_expr : SMTLib.term (SMTLib.Sort_BitVec w)) :
+Lemma unaryop_to_smt_value ρ op (w : positive) (smt_expr : SMTLib.term (SMTLib.Sort_BitVec w)) :
     eval_unaryop op (XBV.from_bv (SMTLib.interp_term ρ smt_expr))
       = XBV.from_bv (SMTLib.interp_term ρ (unaryop_to_smt op smt_expr)).
 Proof.
@@ -192,10 +192,13 @@ Proof.
   lia.
 Qed.
 
+Definition value_from_smt {t} : SMTLib.interp_sort (type_to_sort t) -> interp_type t :=
+  match t with Verilog.Logic w => @XBV.from_bv (Npos w) end.
+
 Lemma expr_to_smt_value w expr : forall tag regs ρ t,
     expr_to_smt tag expr = inr t ->
     verilog_smt_match_states_partial (Verilog.expr_reads expr) tag regs ρ ->
-    eval_expr (w:=w) regs expr = XBV.from_bv (SMTLib.interp_term ρ t).
+    eval_expr (t:=w) regs expr = value_from_smt (SMTLib.interp_term ρ t).
 Proof.
   induction expr.
   all: intros * Hexpr_to_smt Hmatch.
@@ -212,13 +215,6 @@ Proof.
          let E := fresh "E" in destruct e eqn:E
        | inl _ = inr _ => inv Hexpr_to_smt
        | inr _ = inr _ => inv Hexpr_to_smt
-       end.
-  all: repeat match goal with
-       | [ |- context[eval_expr ?r ?e'] ] =>
-         edestruct eval_expr_defined with (e := e');
-         eauto using verilog_smt_match_states_partial_defined_value_for;
-	 expect 1;
-         replace (eval_expr r e') in *
        end.
   all: cbn - [SMTLib.interp_term eval_conditional conditional_to_smt XBV.extr N.add] in *.
   all: try rewrite XBV.xbv_bv_inverse in *.
@@ -237,6 +233,9 @@ Proof.
   - (* bitwiseop *)
     apply bitwiseop_to_smt_value.
   - (* shiftop *)
+    rename_match (@eq N _ _) into Hwidth_eq.
+    injection Hwidth_eq as Ewidth. subst w2.
+    rewrite (proof_irrelevance _ Hwidth_eq eq_refl). simpl.
     apply shiftop_to_smt_value.
   - (* unop *)
     apply unaryop_to_smt_value.
@@ -245,13 +244,16 @@ Proof.
   - (* Range select *)
     unfold verilog_smt_match_states_partial in Hmatch.
     simpl.
+    rewrite smtlib_interp_rewrite, <- (map_subst (@XBV.from_bv)).
+    cbn [SMTLib.interp_term].
     rewrite <- XBV.extr_no_exes by lia.
-    change (XBV.extr (regs var) lo (1 + hi - lo))
-      with (RegisterState.get_slice regs (Slice.Mk var hi lo wf)).
-    erewrite RegisterState.get_slice_match by exact Hmatch.
-    reflexivity.
+    rewrite (f_equal_dep XBV.xbv
+      (fun width => XBV.extr (XBV.from_bv (SMTLib.interp_term ρ (var_to_smt tag var))) lo width)).
+    change (RegisterState.get_slice regs (Slice.Mk var hi lo wf) =
+      RegisterState.get_slice (execution_of_valuation tag ρ) (Slice.Mk var hi lo wf)).
+    apply RegisterState.get_slice_match. exact Hmatch.
   - (* Bitselect (literal) *)
-    destruct expr.
+    clear IHexpr. dependent destruction expr.
     all: simp expr_to_smt in Hexpr_to_smt.
     all: inv Hexpr_to_smt.
     all: rename_match (_ = inr t) into Hexpr_to_smt.
@@ -275,7 +277,7 @@ Proof.
     apply Hmatch.
     apply LocationSet.singleton_spec. reflexivity.
   - (* concat *)
-    apply XBV.concat_no_exes.
+    exact (XBV.concat_no_exes (Npos w1) (Npos w2) _ _).
   - (* literal *)
     destruct (XBV.to_bv x) eqn:Hbv; simpl in E; inv E. 
     apply XBV.bv_xbv_inverse in Hbv. subst x.
@@ -290,9 +292,9 @@ Qed.
 
 (* DELETEME: Duplicate *)
 Lemma expr_to_smt_valid w tag expr t regs ρ :
-  expr_to_smt (w := w) tag expr = inr t ->
+  expr_to_smt (t := w) tag expr = inr t ->
   verilog_smt_match_states_partial (Verilog.expr_reads expr) tag regs ρ ->
-  eval_expr regs expr = XBV.from_bv (SMTLib.interp_term ρ t).
+  eval_expr regs expr = value_from_smt (SMTLib.interp_term ρ t).
 Proof.
   eapply expr_to_smt_value.
 Qed.

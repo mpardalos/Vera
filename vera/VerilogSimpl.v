@@ -29,26 +29,27 @@ Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
 Program Definition equalized_shiftop {w1 w2}
-    (wf : (w1 > 0)%N) op (lhs : expression w1) (rhs : expression w2)
-    : expression w1 :=
+    op
+    (lhs : expression (Logic w1))
+    (rhs : expression (Logic w2))
+    : expression (Logic w1) :=
   Resize w1
     (ShiftOp op
-      (Resize (N.max w1 w2) lhs _)
-      (Resize (N.max w1 w2) rhs _)
-      _ _)
-    _.
+      (Resize (Pos.max w1 w2) lhs)
+      (Resize (Pos.max w1 w2) rhs))
+    .
 Solve All Obligations with lia.
 
 Equations simpl_expr {w} (e : expression w) : expression w := {
   | UnaryOp op e => UnaryOp op (simpl_expr e)
   | ArithmeticOp op lhs rhs => ArithmeticOp op (simpl_expr lhs) (simpl_expr rhs)
-  | LogicalOp op lhs rhs wf => LogicalOp op (simpl_expr lhs) (simpl_expr rhs) wf
+  | LogicalOp op lhs rhs => LogicalOp op (simpl_expr lhs) (simpl_expr rhs)
   | BitwiseOp op lhs rhs => BitwiseOp op (simpl_expr lhs) (simpl_expr rhs)
-  | @ShiftOp w1 w2 op lhs rhs wf_lhs wf_rhs with dec (w1 = w2) => {
-    | left E => ShiftOp op (simpl_expr lhs) (simpl_expr rhs) wf_lhs wf_rhs
+  | @ShiftOp w1 w2 op lhs rhs with dec (w1 = w2) => {
+    | left E => ShiftOp op (simpl_expr lhs) (simpl_expr rhs)
     | right _ =>
       (* Shift operand widths must match in SMTLIB *)
-      equalized_shiftop wf_lhs op (simpl_expr lhs) (simpl_expr rhs)
+      equalized_shiftop op (simpl_expr lhs) (simpl_expr rhs)
   }
   | Concatenation e1 e2 => Concatenation (simpl_expr e1) (simpl_expr e2)
   | Replication n e =>
@@ -57,7 +58,7 @@ Equations simpl_expr {w} (e : expression w) : expression w := {
   | Conditional cond ifT ifF => Conditional (simpl_expr cond) (simpl_expr ifT) (simpl_expr ifF)
   | RangeSelect slice => RangeSelect slice
   | BitSelect vec idx => BitSelect vec (simpl_expr idx)
-  | Resize to expr wf => Resize to (simpl_expr expr) wf
+  | Resize to expr => Resize to (simpl_expr expr)
   | IntegerLiteral w val => IntegerLiteral w val
   | NamedExpression var => NamedExpression var
   }.
@@ -171,8 +172,8 @@ Proof.
   - destruct_rew. reflexivity.
 Qed.
 
-Lemma eval_equalized_shiftop {w1 w2} regs op wf (lhs : expression w1) (rhs : expression w2) :
-  eval_expr regs (equalized_shiftop wf op lhs rhs)
+Lemma eval_equalized_shiftop {w1 w2} regs op (lhs : expression (Logic w1)) (rhs : expression (Logic w2)) :
+  eval_expr regs (equalized_shiftop op lhs rhs)
     = eval_shiftop op (eval_expr regs lhs) (eval_expr regs rhs).
 Proof.
   unfold equalized_shiftop.
@@ -182,8 +183,8 @@ Proof.
   funelim (eval_shiftop op lhs rhs).
   all: simp eval_shiftop.
   all: match type of Heq with
-       | (_ = Some _) => apply convert_extend_to_N with (to := N.max n1 n2) in Heq
-       | (_ = None) => apply convert_extend_to_N_none with (to := N.max n1 n2) in Heq
+       | (_ = Some _) => apply convert_extend_to_N with (to := Pos.max w1 w2) in Heq
+       | (_ = None) => apply convert_extend_to_N_none with (to := Pos.max w1 w2) in Heq
        end; [|lia].
   all: rewrite Heq; simpl.
   - apply convert_shr_convert. lia.
@@ -207,8 +208,8 @@ Proof.
   all: reflexivity.
 Qed.
 
-Lemma equalized_shiftop_reads_reads_Equal w1 w2 wf op (lhs : expression w1) (rhs : expression w2) :
-  LocationSet.Equal (expr_reads (equalized_shiftop wf op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
+Lemma equalized_shiftop_reads_reads_Equal w1 w2 op (lhs : expression (Logic w1)) (rhs : expression (Logic w2)) :
+  LocationSet.Equal (expr_reads (equalized_shiftop op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
 Proof. reflexivity. Qed.
 
 Lemma simpl_expr_reads_Equal w (e : expression w) :

@@ -63,6 +63,9 @@ Proof.
   - right. now apply Nat.leb_nle in E.
 Defined.
 
+Instance dec_eq_pos (x y : positive) : DecProp (x = y) :=
+  mk_dec_eq(Pos.eq_dec).
+
 Instance dec_eq_N (x y : N) : DecProp (x = y) :=
   mk_dec_eq(N.eq_dec).
 

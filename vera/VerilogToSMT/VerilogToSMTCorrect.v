@@ -55,7 +55,7 @@ Lemma assign_target_to_smt_value {w} tag (target : Verilog.assign_target w) :
   forall ρ target_smt,
     assign_target_to_smt tag target = inr target_smt ->
     read_target (execution_of_valuation tag ρ) target =
-      XBV.from_bv (SMTLib.interp_term ρ target_smt).
+      value_from_smt (SMTLib.interp_term ρ target_smt).
 Proof.
   induction target.
   all: intros * Htarget_smt.
@@ -70,11 +70,15 @@ Proof.
     reflexivity.
   - destruct slice.
     simp assign_target_to_smt in Htarget_smt. inv Htarget_smt.
-    apply XBV.extr_no_exes.
-    simpl. lia.
+    rewrite smtlib_interp_rewrite, <- (map_subst (@XBV.from_bv)).
+    cbn [SMTLib.interp_term].
+    rewrite <- XBV.extr_no_exes by lia.
+    rewrite (f_equal_dep XBV.xbv
+      (fun width => XBV.extr (XBV.from_bv (SMTLib.interp_term ρ (var_to_smt tag var))) lo width)).
+    reflexivity.
   - erewrite IHtarget1 by reflexivity.
     erewrite IHtarget2 by reflexivity.
-    apply XBV.concat_no_exes.
+    exact (XBV.concat_no_exes (Npos w1) (Npos w2) _ _).
 Qed.
 
 Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
@@ -98,11 +102,13 @@ Proof.
   rename_match (_ =( Verilog.assign_target_writes _ )= _) into Hwrites.
   cbn in *.
   apply Facts.set_target_match_before in Hreads; [|LocationSet.setdec].
+  destruct t as [width].
   apply XBV.from_bv_injective.
-  erewrite <- assign_target_to_smt_value by eassumption.
+  change (@XBV.from_bv (Npos width)) with (@value_from_smt (Verilog.Logic width)).
+  erewrite <- (assign_target_to_smt_value tag lhs) by eassumption.
   erewrite <- Facts.read_target_change_regs by eassumption.
   rewrite Facts.read_target_set_target by assumption.
-  eapply expr_to_smt_value.
+  eapply (expr_to_smt_value (Verilog.Logic width) rhs).
   all: eassumption.
 Qed.
 
@@ -113,7 +119,7 @@ Lemma assign_target_to_smt_valid {w} tag (target : Verilog.assign_target w) :
     verilog_smt_match_states_partial
       (Verilog.assign_target_writes target)
       tag
-      (set_target regs target (XBV.from_bv (SMTLib.interp_term ρ target_smt)))
+      (set_target regs target (value_from_smt (SMTLib.interp_term ρ target_smt)))
       ρ.
 Proof.
   intros Hwf * Htarget_smt.
@@ -325,7 +331,7 @@ Section Clean.
   Lemma set_target_defined {w} regs (target : Verilog.assign_target w) bv :
     Verilog.assign_target_wf target ->
     RegisterState.defined_value_for (Verilog.assign_target_writes target)
-      (set_target regs target (XBV.from_bv bv)).
+      (set_target regs target (value_from_smt bv)).
   Proof.
     intros target_wf. revert regs bv.
     induction target_wf.
@@ -369,7 +375,7 @@ Section Clean.
   Lemma expr_to_smt_defined {w} (expr : Verilog.expression w) regs t :
     expr_to_smt tag expr = inr t ->
     RegisterState.defined_value_for (Verilog.expr_reads expr) regs ->
-    exists bv, eval_expr regs expr = XBV.from_bv bv.
+    exists bv, eval_expr regs expr = value_from_smt bv.
   Proof.
     intros Hexpr_to_smt Hinputs_defined.
     eexists.

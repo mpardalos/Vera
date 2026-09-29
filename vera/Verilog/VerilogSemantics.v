@@ -35,6 +35,7 @@ Import ListNotations.
 Import MonadLetNotation.
 Import SigTNotations.
 Import Verilog.Notations.
+Import EqNotations.
 Local Open Scope monad_scope.
 Local Open Scope bv_scope.
 Local Open Scope verilog.
@@ -43,6 +44,10 @@ Set Bullet Behavior "Strict Subproofs".
 
 Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
+
+Coercion Npos : positive >-> N.
+
+Derive NoConfusion for Verilog.type.
 
 Module RegisterState.
   Definition register_state := forall var, XBV.xbv (Var.varType var).
@@ -129,12 +134,9 @@ Module RegisterState.
       XBV.bitOf 0 (RegisterState.get_slice regs (Slice.of_location loc wf)).
   Proof.
     unfold RegisterState.get_location, RegisterState.get_slice.
-    rewrite XBV.extr_bitOf.
-    - unfold Slice.of_location. destruct_rew.
-      rewrite N.add_0_r. reflexivity.
-    - apply N.lt_0_1.
-    - unfold Slice.of_location. destruct_rew.
-      lia.
+    rewrite Slice.get_lo_of_location, Slice.get_var_of_location.
+    rewrite XBV.extr_bitOf by lia.
+    rewrite N.add_0_r. reflexivity.
   Qed.
                           
   Definition defined_value_for (locs : LocationSet.t) (regs : RegisterState.t) :=
@@ -1574,7 +1576,7 @@ Module CombinationalOnly.
       };
   .
 
-  Equations eval_unaryop {n} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv (Verilog.unaryop_result op n) :=
+  Equations eval_unaryop {n : positive} (op : Verilog.unaryop) (operand : XBV.xbv n) : XBV.xbv (Verilog.unaryop_result op n) :=
     eval_unaryop Verilog.UnaryPlus x := x;
     eval_unaryop Verilog.UnaryNot x := XBV.not x;
     eval_unaryop Verilog.UnaryReduceAnd x := XBV.of_bits [ XBV.fold I and_bit x ] ;
@@ -1589,8 +1591,6 @@ Module CombinationalOnly.
 
   (* Notation rewriting a b e := (@eq_rect_r _ a _ e b _). *)
   (* Notation with_rewrite e := (eq_rect_r _ e _). *)
-
-  Import EqNotations.
 
   Equations convert {from} (to : N) (value : XBV.xbv from) : XBV.xbv to :=
     convert to value with dec (from < to)%N := {
@@ -1613,8 +1613,13 @@ Module CombinationalOnly.
           else ifT
       end.
 
+  Definition interp_type (x : Verilog.type) : Type :=
+    match x with
+    | Logic n => XBV.xbv n
+    end.
+
   Equations
-    eval_expr {w} (regs: RegisterState.t) (e : Verilog.expression w) : XBV.xbv w :=
+    eval_expr {t} (regs: RegisterState.t) (e : Verilog.expression t) : interp_type t :=
     eval_expr regs (Verilog.UnaryOp op operand) :=
       let operand_val := eval_expr regs operand in
       (eval_unaryop op operand_val);
@@ -1622,7 +1627,7 @@ Module CombinationalOnly.
       let lhs_val := eval_expr regs lhs in
       let rhs_val := eval_expr regs rhs in
       (eval_arithmeticop op lhs_val rhs_val);
-    eval_expr regs (Verilog.LogicalOp op lhs rhs _) :=
+    eval_expr regs (Verilog.LogicalOp op lhs rhs) :=
       let lhs_val := eval_expr regs lhs in
       let rhs_val := eval_expr regs rhs in
       (eval_logicalop op lhs_val rhs_val);
@@ -1630,7 +1635,7 @@ Module CombinationalOnly.
       let lhs_val := eval_expr regs lhs in
       let rhs_val := eval_expr regs rhs in
       (eval_bitwiseop op lhs_val rhs_val);
-    eval_expr regs (Verilog.ShiftOp op lhs rhs _ _) :=
+    eval_expr regs (Verilog.ShiftOp op lhs rhs) :=
       let lhs_val := eval_expr regs lhs in
       let rhs_val := eval_expr regs rhs in
       (eval_shiftop op lhs_val rhs_val);
@@ -1641,7 +1646,7 @@ Module CombinationalOnly.
       (eval_conditional cond_val tBranch_val fBranch_val);
     eval_expr regs (Verilog.RangeSelect (Slice.Mk vec hi lo _)) :=
       let vec_val := regs vec in
-      (XBV.extr vec_val lo (1 + hi - lo));
+      (XBV.extr vec_val lo (N.succ_pos (hi - lo)));
     eval_expr regs (Verilog.BitSelect vec idx) :=
       let vec_val := regs vec in
       let idx_val := eval_expr regs idx in
@@ -1649,7 +1654,7 @@ Module CombinationalOnly.
       | Some idx => XBV.extr vec_val idx 1
       | None => XBV.exes 1
       end;
-    eval_expr regs (Verilog.Resize t expr _) :=
+    eval_expr regs (Verilog.Resize t expr) :=
       let val := eval_expr regs expr in
       (convert t val);
     eval_expr regs (Verilog.Concatenation e1 e2) :=
@@ -1662,7 +1667,7 @@ Module CombinationalOnly.
     eval_expr regs (Verilog.IntegerLiteral _ val) := val ;
     eval_expr regs (Verilog.NamedExpression var) := regs var.
 
-  Equations set_target {w} (regs : RegisterState.t) (target : Verilog.assign_target w) (value : XBV.xbv w) : RegisterState.t :=
+  Equations set_target {t} (regs : RegisterState.t) (target : Verilog.assign_target t) (value : interp_type t) : RegisterState.t :=
     set_target regs (Verilog.AssignVar var) value :=
       RegisterState.set_reg var value regs ;
     set_target regs (Verilog.AssignBit loc wf) value :=
@@ -1761,7 +1766,7 @@ Module CombinationalOnly.
   Proof. repeat intro. subst. crush. Qed.
 
   Equations
-    eval_expr_static {w} (e : Verilog.expression w) : option (XBV.xbv w) :=
+    eval_expr_static {t} (e : Verilog.expression t) : option (interp_type t) :=
     eval_expr_static (Verilog.UnaryOp op operand) :=
       let* operand_val := eval_expr_static operand in
       Some (eval_unaryop op operand_val);
@@ -1769,7 +1774,7 @@ Module CombinationalOnly.
       let* lhs_val := eval_expr_static lhs in
       let* rhs_val := eval_expr_static rhs in
       Some (eval_arithmeticop op lhs_val rhs_val);
-    eval_expr_static (Verilog.LogicalOp op lhs rhs _) :=
+    eval_expr_static (Verilog.LogicalOp op lhs rhs) :=
       let* lhs_val := eval_expr_static lhs in
       let* rhs_val := eval_expr_static rhs in
       Some (eval_logicalop op lhs_val rhs_val);
@@ -1777,7 +1782,7 @@ Module CombinationalOnly.
       let* lhs_val := eval_expr_static lhs in
       let* rhs_val := eval_expr_static rhs in
       Some (eval_bitwiseop op lhs_val rhs_val);
-    eval_expr_static (Verilog.ShiftOp op lhs rhs _ _) :=
+    eval_expr_static (Verilog.ShiftOp op lhs rhs) :=
       let* lhs_val := eval_expr_static lhs in
       let* rhs_val := eval_expr_static rhs in
       Some (eval_shiftop op lhs_val rhs_val);
@@ -1790,7 +1795,7 @@ Module CombinationalOnly.
       None; (* range select is always on a variable *)
     eval_expr_static (Verilog.BitSelect vec idx) :=
       None; (* bit select is always on a variable *)
-    eval_expr_static (Verilog.Resize t expr _) :=
+    eval_expr_static (Verilog.Resize t expr) :=
       let* val := eval_expr_static expr in
       Some (convert t val);
     eval_expr_static (Verilog.Concatenation e1 e2) :=
@@ -1803,12 +1808,11 @@ Module CombinationalOnly.
     eval_expr_static (Verilog.IntegerLiteral _ val) := Some val ;
     eval_expr_static (Verilog.NamedExpression var) := None.
 
-  Lemma eval_expr_static_spec {w} regs (e : expression w) x :
+  Lemma eval_expr_static_spec {t} regs (e : expression t) x :
     eval_expr_static e = Some x ->
     eval_expr regs e = x.
   Proof.
-    intros H.
-    induction e.
+    revert x. induction e; intros value Heval.
     all: simp eval_expr eval_expr_static in *.
     all: monad_inv.
     all: simpl.
@@ -1987,7 +1991,7 @@ Section ExpressionFacts.
           rewrite Nat2N.id in contra. discriminate.
     Qed.
 
-    Lemma eval_unop_to_bv op w (e : BV.bitvector w) :
+    Lemma eval_unop_to_bv op w (e : BV.bitvector (Npos w)) :
       exists bv, XBV.to_bv (eval_unaryop op (XBV.from_bv e)) = Some bv.
     Proof.
       funelim (eval_unaryop op (XBV.from_bv e)).
@@ -2002,7 +2006,7 @@ Section ExpressionFacts.
           rewrite XBV.zeros_to_bv. eauto.
     Qed.
     
-    Lemma eval_unop_no_exes op w (e : BV.bitvector w) :
+    Lemma eval_unop_no_exes op w (e : BV.bitvector (Npos w)) :
       exists bv, eval_unaryop op (XBV.from_bv e) = XBV.from_bv bv.
     Proof.
       edestruct eval_unop_to_bv as [bv Hbv].
@@ -2018,8 +2022,6 @@ Section ExpressionFacts.
     rewrite XBV.xbv_bv_inverse.
     crush.
   Qed.
-
-  Import EqNotations. 
 
   Equations convert_bv {from} (to : N) (value : BV.bitvector from) : BV.bitvector to :=
     convert_bv to value with dec (from < to)%N := {
@@ -2060,7 +2062,7 @@ Section ExpressionFacts.
     all: eauto.
   Qed.
 
-  Inductive upper_bound_static {w} (e : expression w) (bound : N) : Prop :=
+  Inductive upper_bound_static {w} (e : expression (Logic w)) (bound : N) : Prop :=
   | upper_bound_static_eval xbv val
     (Heval : eval_expr_static e = Some xbv)
     (Hto_N : XBV.to_N xbv = Some val)
@@ -2068,7 +2070,7 @@ Section ExpressionFacts.
   | upper_bound_static_by_width
     (Hwidth : (2 ^ w < bound)%N).
 
-  Lemma upper_bound_static_spec {w} regs (e : expression w) b val :
+  Lemma upper_bound_static_spec {w} regs (e : expression (Logic w)) b val :
     upper_bound_static e b ->
     XBV.to_N (eval_expr regs e) = Some val ->
     (val < b)%N.
@@ -2130,6 +2132,7 @@ Module Facts.
   Proof.
     intros.
     funelim (eval_expr regs e).
+    all: clear Heqcall.
     all: simp eval_expr expr_reads in *; simpl in *.
     all: RegisterState.unpack_match_on.
     all: repeat match goal with [ IH : forall _, _ -> eval_expr _ _ = eval_expr _ _ |- _ ] =>
@@ -2137,23 +2140,22 @@ Module Facts.
          end.
     all: simp eval_expr; simpl; try reflexivity.
     all: expect 3.
-    - simp eval_expr. simpl.
-      apply XBV.bitOf_ext. intros bit_idx Hbit_idx.
-      rewrite ! XBV.extr_bitOf by lia.
-      apply (H (Location.Mk vec (lo + bit_idx)%N)).
-      apply LocationSet.of_slice_spec.
-      unfold Slice.has_location. simpl. split; [reflexivity | lia].
+    - change (RegisterState.get_slice regs (Slice.Mk vec hi lo wf) =
+              RegisterState.get_slice regs' (Slice.Mk vec hi lo wf)).
+      apply RegisterState.get_slice_match. assumption.
     - (* Literal indices read one bit; dynamic indices read the whole vector. *)
       simp eval_expr. cbv zeta.
       rewrite <- H with (regs' := regs'); cycle 1. {
+        clear H.
         destruct idx.
         all: simpl in *.
         all: RegisterState.unpack_match_on.
         all: try assumption.
       }
+      clear H.
       destruct (XBV.to_N (eval_expr regs idx)) eqn:Eidx; [|reflexivity].
       rename_match (regs =( _ )= regs') into Hmatch.
-      destruct idx.
+      dependent elimination idx.
       all: simpl in Hmatch.
       all: RegisterState.unpack_match_on.
       all: repeat apply_somewhere RegisterState.match_on_variable.
@@ -2173,7 +2175,7 @@ Module Facts.
   Qed.
 
   Section assign_target.
-    Equations read_target {w} (regs : RegisterState.t) (target : Verilog.assign_target w) : XBV.xbv w :=
+    Equations read_target {t} (regs : RegisterState.t) (target : Verilog.assign_target t) : interp_type t :=
       read_target regs (Verilog.AssignVar var) := regs var;
       read_target regs (Verilog.AssignBit loc _) :=
         XBV.of_bits [RegisterState.get_location regs loc];
@@ -2197,9 +2199,9 @@ Module Facts.
         rewrite IHtarget2 by assumption. reflexivity.
     Qed.
 
-    Lemma set_target_preserve {w} target value regs l :
+    Lemma set_target_preserve {t} target value regs l :
       LocationSet.Disjoint (Verilog.assign_target_writes target) l ->
-      set_target (w:=w) regs target value =( l )= regs.
+      set_target (t:=t) regs target value =( l )= regs.
     Proof.
       revert value regs l.
       induction target.
@@ -2216,9 +2218,9 @@ Module Facts.
         reflexivity.
     Qed.
 
-    Lemma set_target_match_before {w} target value regs reference l :
+    Lemma set_target_match_before {t} target value regs reference l :
       LocationSet.Disjoint (Verilog.assign_target_writes target) l ->
-      set_target (w:=w) regs target value =( l )= reference ->
+      set_target (t:=t) regs target value =( l )= reference ->
       regs =( l )= reference.
     Proof.
       intros Hdisjoint Hmatch loc Hloc.
@@ -2241,7 +2243,7 @@ Module Facts.
         erewrite read_target_change_regs.
         2: { apply set_target_preserve. exact Hno_overlap. }
         rewrite IHHwf2.
-        apply XBV.concat_extr.
+        exact (@XBV.concat_extr (Npos w1) (Npos w2) value).
     Qed.
 
     Lemma set_target_from_state {w} (target : Verilog.assign_target w) :
@@ -2259,16 +2261,17 @@ Module Facts.
         apply RegisterState.match_on_set_location_same.
       - rewrite RegisterState.match_on_set_slice_elim2.
         apply RegisterState.match_on_set_slice_same.
-      - rewrite XBV.extr_concat_high, XBV.extr_concat_low.
+      - change (Npos (BinPos.Pos.add w1 w2)) with (Npos w1 + Npos w2)%N.
+        rewrite XBV.extr_concat_high, XBV.extr_concat_low.
         RegisterState.unpack_match_on.
         + apply IHHwf1.
         + rewrite set_target_preserve by assumption.
           apply IHHwf2.
     Qed.
 
-    Lemma set_target_change_regs {w} target value regs1 regs2 :
+    Lemma set_target_change_regs {t} target value regs1 regs2 :
       assign_target_wf target ->
-      set_target (w:=w) regs1 target value
+      set_target (t:=t) regs1 target value
         =( Verilog.assign_target_writes target )=
       set_target regs2 target value.
     Proof.
@@ -2287,9 +2290,9 @@ Module Facts.
           apply IHtarget_wf2.
     Qed.
 
-    Lemma set_target_change_preserve {w} l target value regs1 regs2 :
+    Lemma set_target_change_preserve {t} l target value regs1 regs2 :
       regs1 =( l )= regs2 ->
-      set_target (w:=w) regs1 target value =( l )= set_target (w:=w) regs2 target value.
+      set_target (t:=t) regs1 target value =( l )= set_target (t:=t) regs2 target value.
     Proof.
       revert value l regs1 regs2.
       induction target.
@@ -2301,6 +2304,7 @@ Module Facts.
         exact H.
       - apply RegisterState.match_on_set_slice_elim2_in.
         exact H.
+      - apply IHtarget1. apply IHtarget2. assumption.
     Qed.
   End assign_target.
 

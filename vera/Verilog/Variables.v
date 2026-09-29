@@ -29,26 +29,12 @@ Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
 Module Var <: UsualOrderedType.
-  Definition type := N.
+  Definition type := positive.
 
   Record variable :=
     MkVariable
       { varName : string
       ; varType : type
-
-      (*
-      Seems weird to use `N` and then add this proof, when we could
-      just use `positive` instead.
-
-      Verilog does not have zero-width vectors. But SMTLIB does, and
-      both it, and out bitvector library use `N`. So it is convenient
-      to use `N` for Verilog too. Most things work without this proof
-      (there is no reason why Verilog couldn't have zero-width
-      BVs). But sometimes it comes up (see
-      `execution_match_on_verilog_smt_match_states_partial`).
-      *)
-
-      ; varTypeWf : (varType > 0)%N
       }.
 
   Module as_MDT <: MiniDecidableType.
@@ -62,7 +48,7 @@ Module Var <: UsualOrderedType.
     	    end).
       all: destruct x, y.
       all: simpl in *.
-      - subst. f_equal. apply proof_irrelevance.
+      - subst. reflexivity.
       - crush.
       - crush.
     Qed.
@@ -75,7 +61,7 @@ Module Var <: UsualOrderedType.
 
   Definition lt :=
     (relation_disjunction (String_as_OT.lt @@ varName)
-      (relation_conjunction (Logic.eq @@ varName) (N.lt @@ varType)))%signature.
+      (relation_conjunction (Logic.eq @@ varName) (Pos.lt @@ varType)))%signature.
 
   Global Instance lt_strorder : StrictOrder lt.
   Proof.
@@ -98,7 +84,7 @@ Module Var <: UsualOrderedType.
 
   Definition compare v1 v2 :=
     match String.compare (varName v1) (varName v2) with
-    | Eq => (varType v1 ?= varType v2)%N
+    | Eq => (varType v1 ?= varType v2)%positive
     | c => c
     end.
 
@@ -110,8 +96,8 @@ Module Var <: UsualOrderedType.
 
     destruct (String.compare n1 n2) eqn:cmp_n.
     - apply String.compare_eq_iff in cmp_n. subst.
-      destruct (N.compare_spec t1 t2) as [cmp_t|cmp_t|cmp_t].
-      + subst. constructor. cbv. f_equal. apply proof_irrelevance.
+      destruct (Pos.compare_spec t1 t2) as [cmp_t|cmp_t|cmp_t].
+      + subst. constructor. reflexivity.
       + constructor. right. split; [reflexivity|exact cmp_t].
       + constructor. right. split; [reflexivity|exact cmp_t].
     - constructor. left. exact cmp_n.
@@ -184,11 +170,11 @@ Module Location <: UsualOrderedType.
 End Location.
 
 Module Slice.
-  Inductive t : N -> Type := Mk
+  Inductive t : positive -> Type := Mk
     (var : Var.t)
     (hi lo : N)
-    (wf : (lo <= hi < Var.varType var)%N)
-    : t (1 + hi - lo)
+    (wf : (lo <= hi < Npos (Var.varType var))%N)
+    : t (N.succ_pos (hi - lo))
     .
 
   Arguments t : clear implicits.
@@ -203,20 +189,42 @@ Module Slice.
     let '(Mk _ _ lo _) := s in lo.
 
   Definition get_wf {w} (s : t w) :
-    (get_lo s <= get_hi s < Var.varType (get_var s))%N :=
+    (get_lo s <= get_hi s < Npos (Var.varType (get_var s)))%N :=
     let '(Mk _ _ _ wf) := s in wf.
 
   Lemma wf_width {w} (slice : Slice.t w) :
-    (get_lo slice + w <= Var.varType (get_var slice))%N.
-  Proof. destruct slice. simpl. lia. Qed.
+    (get_lo slice + Npos w <= Npos (Var.varType (get_var slice)))%N.
+  Proof. destruct slice. cbn. rewrite N.succ_pos_spec. lia. Qed.
 
   Definition has_location {w} (slice : t w) (loc : Location.t) : Prop :=
     get_var slice = Location.var loc
-    /\ (get_lo slice <= Location.idx loc < get_lo slice + w)%N.
+    /\ (get_lo slice <= Location.idx loc < get_lo slice + Npos w)%N.
 
   (* TODO: the wf constraint should eventually be part of Location.t *)
-  Definition of_location (loc : Location.t) (wf : (Location.idx loc < Var.varType (Location.var loc))%N) : Slice.t 1 :=
-    rew (N.add_sub _ _) in Slice.Mk (Location.var loc) (Location.idx loc) (Location.idx loc) (conj (N.le_refl _) wf).
+  Definition of_location
+      (loc : Location.t)
+      (wf : (Location.idx loc < Npos (Var.varType (Location.var loc)))%N)
+      : Slice.t 1 :=
+    rew [Slice.t] (f_equal N.succ_pos (N.sub_diag _)) in
+      Slice.Mk (Location.var loc) (Location.idx loc) (Location.idx loc) (conj (N.le_refl _) wf).
+
+  Lemma get_lo_of_location loc wf :
+    get_lo (of_location loc wf) = Location.idx loc.
+  Proof.
+    unfold of_location.
+    rewrite <- (map_subst (@get_lo)).
+    rewrite rew_const.
+    reflexivity.
+  Qed.
+
+  Lemma get_var_of_location loc wf :
+    get_var (of_location loc wf) = Location.var loc.
+  Proof.
+    unfold of_location.
+    rewrite <- (map_subst (@get_var)).
+    rewrite rew_const.
+    reflexivity.
+  Qed.
 End Slice.
 
 Module Type UsualWSets.
@@ -467,7 +475,7 @@ Module VarMapFacts := FMapFacts.Facts(VarMap).
 
 Module LocationSet <: WSets.
   (* TODO: This allows bitmasks with out-of-bounds bits set. We need the following well-formedness property:
-     forall var mask, VarMap.MapsTo var mask masks -> (mask <= N.ones (Var.varType v))%N.
+     forall var mask, VarMap.MapsTo var mask masks -> (mask <= N.ones (Npos (Var.varType var)))%N.
   *)
   Definition t := VarMap.t N.
   Module E := Location.
@@ -492,8 +500,8 @@ Module LocationSet <: WSets.
 
   Definition add_slice {w} (slice : Slice.t w) (s : t) : t :=
     let mask := match VarMap.find (Slice.get_var slice) s with
-                | Some m => N.lor m (N.shiftl (N.ones w) (Slice.get_lo slice))
-                | None => N.shiftl (N.ones w) (Slice.get_lo slice)
+                | Some m => N.lor m (N.shiftl (N.ones (Npos w)) (Slice.get_lo slice))
+                | None => N.shiftl (N.ones (Npos w)) (Slice.get_lo slice)
                 end in
     VarMap.add (Slice.get_var slice) mask s.
 
@@ -501,7 +509,7 @@ Module LocationSet <: WSets.
     add_slice slice empty.
 
   Definition add_variable (v : Var.t) (s : t) : t :=
-    VarMap.add v (N.ones (Var.varType v)) s.
+    VarMap.add v (N.ones (Npos (Var.varType v))) s.
 
   Definition of_variable (v : Var.t) : t := add_variable v empty.
 
@@ -815,14 +823,14 @@ Module LocationSet <: WSets.
   Qed.
 
   Lemma add_variable_spec : forall (s : t) v (loc : elt),
-    (loc.(Location.idx) < Var.varType v)%N -> (* TODO : this should be added to the definition of t *)
+    (loc.(Location.idx) < Npos (Var.varType v))%N -> (* TODO : this should be added to the definition of t *)
     In loc (add_variable v s) <-> loc.(Location.var) = v \/ In loc s.
   Proof.
     intros s var [var' idx']. unfold In, mem, add, E.eq, add_variable. simpl.
     destruct (Var.eq_dec var' var).
     - subst var'.
       erewrite VarMap.find_1 by now apply VarMap.add_1.
-      destruct (N.ltb idx' (Var.varType var)) eqn:E.
+      destruct (N.ltb idx' (Npos (Var.varType var))) eqn:E.
       + apply N.ltb_lt in E.
         rewrite N.ones_spec_low by assumption.
 	intuition.
@@ -835,7 +843,7 @@ Module LocationSet <: WSets.
 
   Lemma add_variable_spec_full : forall (s : t) v (loc : elt),
     In loc (add_variable v s) <->
-      (Location.var loc = v /\ (Location.idx loc < Var.varType v)%N)
+      (Location.var loc = v /\ (Location.idx loc < Npos (Var.varType v))%N)
       \/ (Location.var loc <> v /\ In loc s).
   Proof.
     intros s v [var' idx']. unfold In, mem, add_variable. simpl.
@@ -843,7 +851,7 @@ Module LocationSet <: WSets.
     - subst var'. rewrite VarMapFacts.add_eq_o by reflexivity.
       split.
       + intros H. left. split; [reflexivity|].
-        destruct (N.lt_ge_cases idx' (Var.varType v)); [assumption|].
+        destruct (N.lt_ge_cases idx' (Npos (Var.varType v))); [assumption|].
         rewrite N.ones_spec_high in H by assumption. discriminate.
       + intros [[_ Hlt] | [Hneq _]]; [|congruence].
         apply N.ones_spec_low. assumption.
@@ -855,7 +863,7 @@ Module LocationSet <: WSets.
 
   Lemma of_variable_spec : forall v (loc : elt),
     In loc (of_variable v) <->
-      Location.var loc = v /\ (Location.idx loc < Var.varType v)%N.
+      Location.var loc = v /\ (Location.idx loc < Npos (Var.varType v))%N.
   Proof.
     intros. unfold of_variable. rewrite add_variable_spec_full.
     unfold In, mem, empty.
@@ -872,9 +880,9 @@ Module LocationSet <: WSets.
     simpl.
     destruct (Var.eq_dec loc_var slice_var).
     - subst loc_var. rewrite VarMapFacts.add_eq_o by reflexivity.
-      remember (1 + slice_hi - slice_lo)%N as w.
-      assert (Hslice : N.testbit (N.shiftl (N.ones w) slice_lo) loc_idx = true
-                       <-> (slice_lo <= loc_idx < slice_lo + w)%N).
+      remember (N.succ_pos (slice_hi - slice_lo)) as w.
+      assert (Hslice : N.testbit (N.shiftl (N.ones (Npos w)) slice_lo) loc_idx = true
+                       <-> (slice_lo <= loc_idx < slice_lo + Npos w)%N).
       { destruct (N.le_gt_cases slice_lo loc_idx) as [Hle|Hlt].
         - rewrite N.shiftl_spec_high by (assumption || apply N.le_0_l).
           rewrite N.ones_spec_iff. lia.
@@ -904,7 +912,7 @@ Module LocationSet <: WSets.
   Lemma of_varset_fold_helper : forall (l : list Var.t) (acc : t) (loc : elt),
     In loc (fold_left (fun a v => add_variable v a) l acc) <->
       (List.In (Location.var loc) l
-       /\ (Location.idx loc < Var.varType (Location.var loc))%N)
+       /\ (Location.idx loc < Npos (Var.varType (Location.var loc)))%N)
       \/ (~ List.In (Location.var loc) l /\ In loc acc).
   Proof.
     induction l as [|v l IH]; intros acc loc; simpl.
@@ -918,7 +926,7 @@ Module LocationSet <: WSets.
   Lemma of_varset_spec : forall (s : VarSet.t) (loc : elt),
     In loc (of_varset s) <->
       VarSet.In (Location.var loc) s
-      /\ (Location.idx loc < Var.varType (Location.var loc))%N.
+      /\ (Location.idx loc < Npos (Var.varType (Location.var loc)))%N.
   Proof.
     intros. unfold of_varset. rewrite VarSet.fold_spec.
     rewrite of_varset_fold_helper.
@@ -1363,7 +1371,7 @@ Module LocationSet <: WSets.
      [of_varset]) are in-bounds by construction; the raw representation
      does not enforce this (see the TODO at the top of this module). *)
   Definition InBounds (s : t) : Prop :=
-    forall loc, In loc s -> (Location.idx loc < Var.varType (Location.var loc))%N.
+    forall loc, In loc s -> (Location.idx loc < Npos (Var.varType (Location.var loc)))%N.
 
   Global Instance InBounds_Proper : Proper (Equal ==> iff) InBounds.
   Proof.
@@ -1384,7 +1392,7 @@ Module LocationSet <: WSets.
   Qed.
 
   Lemma singleton_in_bounds loc :
-    (Location.idx loc < Var.varType (Location.var loc))%N ->
+    (Location.idx loc < Npos (Var.varType (Location.var loc)))%N ->
     InBounds (singleton loc).
   Proof.
     intros wf loc' Hloc'.
@@ -1400,8 +1408,8 @@ Module LocationSet <: WSets.
     apply of_slice_spec in Hloc.
     unfold Slice.has_location in Hloc.
     destruct Hloc as [Hvar Hidx].
-    destruct loc, slice. simpl in *. subst.
-    lia.
+    destruct loc, slice. cbn in *. subst.
+    rewrite N.succ_pos_spec in *. lia.
   Qed.
 
   Lemma union_in_bounds s1 s2 :

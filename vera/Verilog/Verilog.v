@@ -36,6 +36,7 @@ From Equations Require Import Equations.
 Import ListNotations.
 Import MonadLetNotation.
 Import SigTNotations.
+Import EqNotations.
 Local Open Scope monad_scope.
 
 #[global]
@@ -118,7 +119,7 @@ Variant bitwiseop :=
     (* | UnaryReduce... (* ^~ *) *)
   .
 
-  Definition unaryop_result (op : unaryop) (w : N) : N :=
+  Definition unaryop_result (op : unaryop) (w : positive) : positive :=
     match op with
     | UnaryPlus => w
     | UnaryNot => w
@@ -130,11 +131,11 @@ Variant bitwiseop :=
     | Scalar
     | Vector (msb : N) (lsb : N).
 
-  Equations vector_declaration_width : vector_declaration -> N :=
-    vector_declaration_width Scalar := 1%N ;
-    vector_declaration_width (Vector hi lo) := 1%N + (N.max hi lo) - (N.min hi lo).
+  Equations vector_declaration_width : vector_declaration -> positive :=
+    vector_declaration_width Scalar := 1%positive ;
+    vector_declaration_width (Vector hi lo) := N.succ_pos (N.max hi lo - N.min hi lo).
 
-  Lemma vector_declaration_width_gt v : (vector_declaration_width v > 0)%N.
+  Lemma vector_declaration_width_gt v : (Npos (vector_declaration_width v) > 0)%N.
   Proof. funelim (vector_declaration_width v); lia. Qed.
 
   Variant StorageType := Reg | Wire.
@@ -147,14 +148,13 @@ Variant bitwiseop :=
       ; varDeclName : string
       }.
 
-  Definition varDeclWidth (v : variable_declaration) : N := vector_declaration_width (varDeclVectorDeclaration v).
+  Definition varDeclWidth (v : variable_declaration) : positive := vector_declaration_width (varDeclVectorDeclaration v).
 
   Definition name := string.
 
   Definition variable_of_decl (decl : variable_declaration) : Var.t :=
     {| Var.varName := varDeclName decl
     ; Var.varType := varDeclWidth decl
-    ; Var.varTypeWf := vector_declaration_width_gt _
     |}.
 
   Equations inputs_of_decls : list variable_declaration -> list Var.t := {
@@ -243,6 +243,10 @@ End VerilogCommon.
 Module Verilog.
   Include VerilogCommon.
 
+  Inductive type :=
+  (* | Array (width : positive) (element : type) *)
+  | Logic (width : positive).
+
   (* Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=
    *   match expr with
    *   | Verilog.IntegerLiteral _ val => Some val
@@ -282,52 +286,49 @@ Module Verilog.
        The reference expression was not found in the current environment.
    *)
 
-  Inductive expression : N -> Type :=
-  | ArithmeticOp {w} (op : arithmeticop) : expression w -> expression w -> expression w
+  Inductive expression : type -> Type :=
+  | ArithmeticOp {w} (op : arithmeticop) : expression (Logic w) -> expression (Logic w) -> expression (Logic w)
   | LogicalOp {w}
     (op : logicalop)
-    (lhs rhs : expression w)
-    (wf : (w > 0)%N)
-    : expression 1
-  | BitwiseOp {w} (op : bitwiseop) : expression w -> expression w -> expression w
+    (lhs rhs : expression (Logic w))
+    : expression (Logic 1)
+  | BitwiseOp {w} (op : bitwiseop) : expression (Logic w) -> expression (Logic w) -> expression (Logic w)
   | ShiftOp {w1 w2}
     (op : shiftop)
-    (lhs : expression w1)
-    (rhs : expression w2)
-    (wf_lhs : (w1 > 0)%N)
-    (wf_rhs : (w2 > 0)%N)
-    : expression w1
-  | UnaryOp {w} (op : unaryop) : expression w -> expression (unaryop_result op w)
-  | Conditional {w_val w_cond : N} : expression w_cond -> expression w_val -> expression w_val -> expression w_val
-  | RangeSelect {w} (slice : Slice.t w) : expression w
+    (lhs : expression (Logic w1))
+    (rhs : expression (Logic w2))
+    : expression (Logic w1)
+  | UnaryOp {w} (op : unaryop) : expression (Logic w) -> expression (Logic (unaryop_result op w))
+  | Conditional {w_val w_cond} : expression (Logic w_cond) -> expression (Logic w_val) -> expression (Logic w_val) -> expression (Logic w_val)
+  | RangeSelect {w} (slice : Slice.t w) : expression (Logic w)
   | BitSelect {w_sel}
     (vec : Var.t)
-    (sel : expression w_sel)
-    : expression 1
+    (sel : expression (Logic w_sel))
+    : expression (Logic 1)
   (* We break up the concatenation to make the type more convenient *)
-  | Concatenation {w1 w2} (e1 : expression w1) (e2 : expression w2) : expression (w1 + w2)
-  | Replication {w} (count : N) (e : expression w) : expression (count * w)
-  | IntegerLiteral (w : N) : XBV.xbv w -> expression w
-  | NamedExpression (var : Var.t) : expression (Var.varType var)
-  | Resize {w_from} (w_to : N) (from : expression w_from) (wf : (w_to > 0)%N) : expression w_to
+  | Concatenation {w1 w2} (e1 : expression (Logic w1)) (e2 : expression (Logic w2)) : expression (Logic (w1 + w2))
+  | Replication {w} (count : positive) (e : expression (Logic w)) : expression (Logic (count * w))
+  | IntegerLiteral (w : positive) : XBV.xbv (Npos w) -> expression (Logic w)
+  | NamedExpression (var : Var.t) : expression (Logic (Var.varType var))
+  | Resize {w_from} (w_to : positive) (from : expression (Logic w_from)) : expression (Logic w_to)
   .
 
-  Definition expr_type {w} (e : expression w) := w.
+  Definition expr_type {t} (e : expression t) := t.
 
-  Inductive assign_target : N -> Type :=
+  Inductive assign_target : type -> Type :=
   | AssignVar
     (var : Var.t)
-    : assign_target (Var.varType var)
+    : assign_target (Logic (Var.varType var))
   | AssignBit
     (loc : Location.t)
-    (wf : (Location.idx loc < Var.varType (Location.var loc))%N)
-    : assign_target 1
+    (wf : (Location.idx loc < Npos (Var.varType (Location.var loc)))%N)
+    : assign_target (Logic 1)
   | AssignSlice {w}
     (slice : Slice.t w)
-    : assign_target w
+    : assign_target (Logic w)
   | AssignConcat {w1 w2}
-    (e1 : assign_target w1) (e2 : assign_target w2)
-    : assign_target (w1 + w2)
+    (e1 : assign_target (Logic w1)) (e2 : assign_target (Logic w2))
+    : assign_target (Logic (w1 + w2))
   .
 
   Fixpoint assign_target_writes {w} (a : assign_target w) : LocationSet.t :=
@@ -338,7 +339,7 @@ Module Verilog.
     | AssignConcat t1 t2 => assign_target_writes t1 ∪ assign_target_writes t2
     end.
 
-  Inductive assign_target_wf : forall {w}, assign_target w -> Prop :=
+  Inductive assign_target_wf : forall {t}, assign_target t -> Prop :=
   | AssignVar_wf {var}
     : assign_target_wf (AssignVar var)
   | AssignBit_wf {loc wf}
@@ -346,7 +347,7 @@ Module Verilog.
   | AssignSlice_wf {w} {slice : Slice.t w}
     : assign_target_wf (AssignSlice slice)
   | AssignConcat_wf {w1 w2}
-    {lhs : assign_target w1} {rhs : assign_target w2}
+    {lhs : assign_target (Logic w1)} {rhs : assign_target (Logic w2)}
     (Hlhs_wf : assign_target_wf lhs)
     (Hrhs_wf : assign_target_wf rhs)
     (Hno_overlap : LocationSet.Disjoint (assign_target_writes lhs) (assign_target_writes rhs))
@@ -355,7 +356,7 @@ Module Verilog.
 
   Unset Elimination Schemes.
   Inductive statement :=
-  | BlockingAssign {w} (lhs : assign_target w) (lhs_wf : assign_target_wf lhs) (rhs : expression w)
+  | BlockingAssign {t} (lhs : assign_target t) (lhs_wf : assign_target_wf lhs) (rhs : expression t)
   | Block (body : list statement)
   .
   Set Elimination Schemes.
@@ -386,30 +387,30 @@ Module Verilog.
   Local Open Scope verilog.
 
   Lemma range_select_slice_wf {vec : Var.t} {hi lo : N} :
-    (hi < Var.varType vec)%N ->
+    (hi < Npos (Var.varType vec))%N ->
     (lo <= hi)%N ->
-    (lo + (1 + hi - lo) <= Var.varType vec)%N.
+    (lo + (1 + hi - lo) <= Npos (Var.varType vec))%N.
   Proof. lia. Qed.
 
   Fixpoint expr_reads {w} (e : Verilog.expression w) : LocationSet.t :=
     match e with
     | (Verilog.UnaryOp op operand) => expr_reads operand
     | (Verilog.ArithmeticOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
-    | (Verilog.LogicalOp op lhs rhs _) => expr_reads lhs ∪ expr_reads rhs
+    | (Verilog.LogicalOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.BitwiseOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
-    | (Verilog.ShiftOp op lhs rhs _ _) => expr_reads lhs ∪ expr_reads rhs
+    | (Verilog.ShiftOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.Conditional cond tBranch fBranch) => expr_reads cond ∪ expr_reads tBranch ∪ expr_reads fBranch
     | (Verilog.RangeSelect slice) => LocationSet.of_slice slice
     | (Verilog.BitSelect vec (Verilog.IntegerLiteral _ xbv_idx)) =>
       match XBV.to_N xbv_idx with
       | Some idx =>
-        if (idx <? Var.varType vec)%N
+        if (idx <? Npos (Var.varType vec))%N
         then LocationSet.singleton (Location.Mk vec idx)
         else LocationSet.empty
       | None => LocationSet.empty (* If index is X, result is always X *)
       end
     | (Verilog.BitSelect vec idx) => LocationSet.of_variable vec ∪ expr_reads idx
-    | (Verilog.Resize t expr _) => expr_reads expr
+    | (Verilog.Resize t expr) => expr_reads expr
     | (Verilog.Concatenation e1 e2) => expr_reads e1 ∪ expr_reads e2
     | (Verilog.Replication _ e) => expr_reads e
     | (Verilog.IntegerLiteral _ val) => { }
@@ -420,14 +421,14 @@ Module Verilog.
     match e with
     | (Verilog.UnaryOp op operand) => expr_reads_vars operand
     | (Verilog.ArithmeticOp op lhs rhs) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
-    | (Verilog.LogicalOp op lhs rhs _) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
+    | (Verilog.LogicalOp op lhs rhs) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
     | (Verilog.BitwiseOp op lhs rhs) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
-    | (Verilog.ShiftOp op lhs rhs _ _) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
+    | (Verilog.ShiftOp op lhs rhs) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
     | (Verilog.Conditional cond tBranch fBranch) =>
       VarSet.union (expr_reads_vars cond) (VarSet.union (expr_reads_vars tBranch) (expr_reads_vars fBranch))
     | (Verilog.RangeSelect (Slice.Mk var _ _ _)) => VarSet.singleton var
     | (Verilog.BitSelect vec idx) => VarSet.add vec (expr_reads_vars idx)
-    | (Verilog.Resize t expr _) => expr_reads_vars expr
+    | (Verilog.Resize t expr) => expr_reads_vars expr
     | (Verilog.Concatenation e1 e2) => VarSet.union (expr_reads_vars e1) (expr_reads_vars e2)
     | (Verilog.Replication _ e) => expr_reads_vars e
     | (Verilog.IntegerLiteral _ val) => VarSet.empty
@@ -624,9 +625,9 @@ Module Verilog.
     Fixpoint show_expression {w} (u : expression w) : showM :=
       match u with
       | ArithmeticOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
-      | LogicalOp op lhs rhs _ => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
+      | LogicalOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
       | BitwiseOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
-      | ShiftOp op lhs rhs _ _ => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
+      | ShiftOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
       | UnaryOp op e => "(" << show op << " " << show_expression e << ")"
       | Conditional cond ifT ifF => "(" << show_expression cond << " ? " << show_expression ifT << " : " << show_expression ifF << ")"
       | RangeSelect (Slice.Mk vec hi lo _) => show vec << "[" << show hi << ":" << show lo << "]"
@@ -635,7 +636,7 @@ Module Verilog.
       | Replication count e => "{" << show count << "{" << show_expression e << "}}"
       | IntegerLiteral _ val => show val
       | NamedExpression var => show var
-      | Resize to e _ => show to << "'(" << show_expression e << ")"
+      | Resize to e => show to << "'(" << show_expression e << ")"
       end.
 
     Global Instance expression_Show {w} : Show (expression w) :=
@@ -721,46 +722,52 @@ Module Typecheck.
 
 Definition transf := sum string.
 
-Equations cast_width {w1} (err : string) (w2 : N) (e : Verilog.expression w1)
-  : transf (Verilog.expression w2) :=
-| err, w2, e with (N.eq_dec w1 w2) => {
-  | left eq_refl => inr e
+Equations cast_width {t1} (err : string) (t2 : Verilog.type) (e : Verilog.expression t1)
+  : transf (Verilog.expression t2) :=
+@cast_width (Verilog.Logic w1) err (Verilog.Logic w2) e with (Pos.eq_dec w1 w2) := {
+  | left E => inr (rew (f_equal Verilog.Logic E) in e)
   | right _ => inl (err
     ++ " (Tried to use expression of width "
-    ++ to_string (N.to_nat w1) ++ " as width " ++ to_string (N.to_nat w2) ++ ")")%string
+    ++ to_string (Pos.to_nat w1) ++ " as width " ++ to_string (Pos.to_nat w2) ++ ")")%string
 }.
+
+Equations positive_width (err : string) (w : N) : transf positive := {
+| err, 0%N => inl err
+| err, Npos w => inr w
+}.
+
+Equations tc_literal {w : N} (bits : XBV.xbv w) : transf { t & Verilog.expression t } :=
+  @tc_literal 0%N bits := inl "0 width not allowed in literal"%string;
+  @tc_literal (Npos w) bits := inr (_; Verilog.IntegerLiteral w bits).
 
 Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expression w } := {
 | RawVerilog.ArithmeticOp op lhs rhs =>
-  let* (w_lhs; t_lhs) := tc_expr lhs in
-  let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width ("Different widths in " ++ to_string op) w_lhs t_rhs in
+  let* (Verilog.Logic w_lhs; t_lhs) := tc_expr lhs in
+  let* (Verilog.Logic w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width ("Different widths in " ++ to_string op) (Verilog.Logic w_lhs) t_rhs in
   inr (_; Verilog.ArithmeticOp op t_lhs t_rhs')
 | RawVerilog.LogicalOp op lhs rhs =>
-  let* (w_lhs; t_lhs) := tc_expr lhs in
-  let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width ("Different widths in " ++ to_string op) w_lhs t_rhs in
-  let* wf := assert_dec (w_lhs > 0)%N "0 width not allowed in logical op"%string in
-  inr (_; Verilog.LogicalOp op t_lhs t_rhs' wf)
+  let* (Verilog.Logic w_lhs; t_lhs) := tc_expr lhs in
+  let* (Verilog.Logic w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width ("Different widths in " ++ to_string op) (Verilog.Logic w_lhs) t_rhs in
+  inr (_; Verilog.LogicalOp op t_lhs t_rhs')
 | RawVerilog.BitwiseOp op lhs rhs =>
-  let* (w_lhs; t_lhs) := tc_expr lhs in
-  let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* t_rhs' := cast_width ("Different widths in " ++ to_string op) w_lhs t_rhs in
+  let* (Verilog.Logic w_lhs; t_lhs) := tc_expr lhs in
+  let* (Verilog.Logic w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width ("Different widths in " ++ to_string op) (Verilog.Logic w_lhs) t_rhs in
   inr (_; Verilog.BitwiseOp op t_lhs t_rhs')
 | RawVerilog.ShiftOp op lhs rhs =>
-  let* (w_lhs; t_lhs) := tc_expr lhs in
-  let* wf_lhs := assert_dec (w_lhs > 0)%N "0 width not allowed in shift"%string in
-  let* (w_rhs; t_rhs) := tc_expr rhs in
-  let* wf_rhs := assert_dec (w_rhs > 0)%N "0 width not allowed in shift"%string in
-  inr (_; Verilog.ShiftOp op t_lhs t_rhs wf_lhs wf_rhs)
+  let* (Verilog.Logic w_lhs; t_lhs) := tc_expr lhs in
+  let* (Verilog.Logic w_rhs; t_rhs) := tc_expr rhs in
+  inr (_; Verilog.ShiftOp op t_lhs t_rhs)
 | RawVerilog.UnaryOp op expr =>
-  let* (w_expr; t_expr) := tc_expr expr in
+  let* (Verilog.Logic w_expr; t_expr) := tc_expr expr in
   inr (_; Verilog.UnaryOp op t_expr)
 | RawVerilog.Conditional cond ifTrue ifFalse =>
-  let* (w_cond; t_cond) := tc_expr cond in
-  let* (w_ifTrue; t_ifTrue) := tc_expr ifTrue in
-  let* (w_ifFalse; t_ifFalse) := tc_expr ifFalse in
-  let* t_ifFalse' := cast_width "Different widths in conditional" w_ifTrue t_ifFalse in
+  let* (Verilog.Logic w_cond; t_cond) := tc_expr cond in
+  let* (Verilog.Logic w_ifTrue; t_ifTrue) := tc_expr ifTrue in
+  let* (Verilog.Logic w_ifFalse; t_ifFalse) := tc_expr ifFalse in
+  let* t_ifFalse' := cast_width "Different widths in conditional" (Verilog.Logic w_ifTrue) t_ifFalse in
   inr (_; Verilog.Conditional t_cond t_ifTrue t_ifFalse')
 | RawVerilog.RangeSelect (RawVerilog.NamedExpression vec) (RawVerilog.IntegerLiteral hi_lit) (RawVerilog.IntegerLiteral lo_lit) =>
   let* hi := opt_to_sum "Xs in range bound"%string (RawXBV.to_N hi_lit) in
@@ -770,25 +777,26 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
 | RawVerilog.RangeSelect vec _ _ =>
   raise "Range select must have variable target, literal bounds"%string ;
 | RawVerilog.BitSelect (RawVerilog.NamedExpression vec) idx =>
-  let* (w_idx; t_idx) := tc_expr idx in
-  inr (1%N; Verilog.BitSelect vec t_idx)
+  let* (Verilog.Logic w_idx; t_idx) := tc_expr idx in
+  inr (_; Verilog.BitSelect vec t_idx)
 | RawVerilog.BitSelect _ _ =>
   raise "BitSelect must target variable"%string
 | RawVerilog.Concatenation lhs rhs =>
-  let* (w_lhs; t_lhs) := tc_expr lhs in
-  let* (w_rhs; t_rhs) := tc_expr rhs in
+  let* (Verilog.Logic w_lhs; t_lhs) := tc_expr lhs in
+  let* (Verilog.Logic w_rhs; t_rhs) := tc_expr rhs in
   inr (_; Verilog.Concatenation t_lhs t_rhs)
 | RawVerilog.Replication count expr =>
-  let* (w_expr; t_expr) := tc_expr expr in
+  let* count := positive_width "0 replication count not allowed"%string count in
+  let* (Verilog.Logic w_expr; t_expr) := tc_expr expr in
   inr (_; Verilog.Replication count t_expr)
 | RawVerilog.IntegerLiteral bits =>
-  inr (_; Verilog.IntegerLiteral _ (XBV.of_bits bits))
+  tc_literal (XBV.of_bits bits)
 | RawVerilog.NamedExpression var =>
   inr (_; Verilog.NamedExpression var)
 | RawVerilog.Resize to expr =>
-  let* (w_expr; t_expr) := tc_expr expr in
-  let* wf := assert_dec (to > 0)%N "Cannot resize to 0"%string in
-  inr (_; Verilog.Resize to t_expr wf)
+  let* (Verilog.Logic w_expr; t_expr) := tc_expr expr in
+  let* to := positive_width "Cannot resize to 0"%string to in
+  inr (_; Verilog.Resize to t_expr)
 }.
 
 Equations tc_assign_target : RawVerilog.expression -> transf { w & Verilog.assign_target w } := {
@@ -801,10 +809,10 @@ Equations tc_assign_target : RawVerilog.expression -> transf { w & Verilog.assig
   let* hi := opt_to_sum "Xs in range-select hi"%string (RawXBV.to_N hi_bits) in
   let* lo := opt_to_sum "Xs in range-select lo"%string (RawXBV.to_N lo_bits) in
   let* wf := assert_dec _ "Range select out-of-bounds"%string in
-  inr ((1 + hi - lo)%N; Verilog.AssignSlice (Slice.Mk var hi lo wf))
+  inr (_; Verilog.AssignSlice (Slice.Mk var hi lo wf))
 | RawVerilog.Concatenation lhs rhs =>
-  let* (w_lhs; t_lhs) := tc_assign_target lhs in
-  let* (w_rhs; t_rhs) := tc_assign_target rhs in
+  let* (Verilog.Logic w_lhs; t_lhs) := tc_assign_target lhs in
+  let* (Verilog.Logic w_rhs; t_rhs) := tc_assign_target rhs in
   inr (_; Verilog.AssignConcat t_lhs t_rhs)
 | _ => inl "Invalid assignment LHS"%string
 }.

@@ -119,20 +119,15 @@ Definition verilog_to_smt_var (t : VarTag) (var : Var.t) : SMTLib.const_sym :=
 Definition smt_to_verilog_var (sym : SMTLib.const_sym) : option (VarTag * Var.t)  :=
   let* (t, name) := untag_name (SMTLib.symName sym) in
   let* w := match SMTLib.symSort sym with
-            | SMTLib.Sort_BitVec w => Some w
+            | SMTLib.Sort_BitVec (Npos w) => Some w
 	    | _ => None
 	    end in
-  let* prf := opt_dec (w > 0)%N in
-  Some (t, Var.MkVariable name w prf).
+  Some (t, Var.MkVariable name w).
 
 Lemma verilog_to_smt_to_verilog_var t var : smt_to_verilog_var (verilog_to_smt_var t var) = Some (t, var).
 Proof.
   unfold smt_to_verilog_var, verilog_to_smt_var.
-  destruct var.
-  simpl. rewrite untag_tag_name. monad_inv.
-  - replace g with varTypeWf by (apply proof_irrelevance).
-    reflexivity.
-  - exfalso. destruct varType; crush.
+  destruct var. simpl. rewrite untag_tag_name. reflexivity.
 Qed.
 
 Lemma smt_to_verilog_to_smt_var_some sym t var :
@@ -175,10 +170,10 @@ Proof.
 Qed.
 
 Equations valuation_of_executions : execution -> execution -> SMTLib.valuation := {
-  | e1, e2, {| SMTLib.symName := symName; SMTLib.symSort := SMTLib.Sort_BitVec w |} with untag_name symName, (dec (w > 0)%N) => {
-    | Some (t, varName), left prf =>
-        XBV.to_bv_def false (tag_choose t e1 e2 (Var.MkVariable varName w prf))
-    | _, _ => default (SMTLib.Sort_BitVec w)
+  | e1, e2, {| SMTLib.symName := symName; SMTLib.symSort := SMTLib.Sort_BitVec (Npos w) |} with untag_name symName => {
+    | Some (t, varName) =>
+        XBV.to_bv_def false (tag_choose t e1 e2 (Var.MkVariable varName w))
+    | None => default (SMTLib.Sort_BitVec (Npos w))
   }
   | e1, e2, {| SMTLib.symSort := s |} => default s
 }.
@@ -215,7 +210,6 @@ Proof.
   simp valuation_of_executions.
   rewrite untag_tag_name.
   simpl.
-  rewrite (dec_yes varTypeWf).
   apply to_from_smt_value_inversion.
   apply Hnot_x.
 Qed.
@@ -233,7 +227,6 @@ Proof.
   simp valuation_of_executions.
   rewrite untag_tag_name.
   simpl.
-  rewrite (dec_yes varTypeWf).
   apply to_from_smt_value_inversion.
   apply Hnot_x.
 Qed.

@@ -38,36 +38,24 @@ Extract Constant break_concat_assigns_undefined =>
   "(fun _ -> failwith ""AXIOM TO BE REALIZED: break_concat_assigns_undefined"")".
 
 Section definition.
-  Lemma assign_target_width_positive {w} (t : assign_target w) : (w > 0)%N.
-  Proof.
-    induction t; try lia.
-    - apply Var.varTypeWf.
-    - destruct slice; lia.
-  Qed.
-
-  Equations extract_assign_rhs {w} (rhs : expression w) (lo width : N)
-      (wf : (w > 0)%N) (wf_width : (width > 0)%N) : expression width := {
-    | IntegerLiteral _ val, lo, width, _, _ => IntegerLiteral width (XBV.extr val lo width)
-    | rhs, lo, width, wf, wf_width =>
+  Equations extract_assign_rhs {w} (rhs : expression (Logic w)) (lo : N)
+      (width : positive) : expression (Logic width) := {
+    | IntegerLiteral _ val, lo, width => IntegerLiteral width (XBV.extr val lo width)
+    | rhs, lo, width =>
       Resize width
         (ShiftOp BinaryShiftRight rhs
-          (IntegerLiteral _ (XBV.from_bv (BV.of_bits (RawBV.of_N_full lo))))
-          wf _)
-        wf_width
+          (IntegerLiteral (N.succ_pos (N.pred (RawBV.size (RawBV.of_N_full lo))))
+            (rew _ in XBV.from_bv (BV.of_bits (RawBV.of_N_full lo)))))
   }.
   Solve All Obligations with
-    (destruct lo as [|p]; [cbn; lia | destruct p; cbn; lia]).
+    (intros; rewrite N.succ_pos_spec; destruct lo as [|[p|p|]]; cbn; lia).
 
   Equations break_concat_assign {w} (t : assign_target w) : assign_target_wf t -> expression w -> list module_item := {
     | (@AssignConcat w_hi w_lo target_hi target_lo), wf, val :=
       break_concat_assign target_lo _
-        (extract_assign_rhs val 0 w_lo
-          (assign_target_width_positive (AssignConcat target_hi target_lo))
-          (assign_target_width_positive target_lo))
+        (extract_assign_rhs val 0 w_lo)
       ++ break_concat_assign target_hi _
-        (extract_assign_rhs val w_lo w_hi
-          (assign_target_width_positive (AssignConcat target_hi target_lo))
-          (assign_target_width_positive target_hi))
+        (extract_assign_rhs val w_lo w_hi)
     | target, t_wf, val := [AlwaysComb (BlockingAssign target t_wf val)]
   }.
   Next Obligation. inv wf. assumption. Qed.
@@ -101,10 +89,10 @@ Section definition.
 End definition.
 
 Section accessed.
-  Lemma extract_assign_rhs_reads {w} (rhs : expression w) lo width wf wf_width :
-    LocationSet.Equal (expr_reads (extract_assign_rhs rhs lo width wf wf_width)) (expr_reads rhs).
+  Lemma extract_assign_rhs_reads {w} (rhs : expression (Logic w)) lo width :
+    LocationSet.Equal (expr_reads (extract_assign_rhs rhs lo width)) (expr_reads rhs).
   Proof.
-    funelim (extract_assign_rhs rhs lo width wf wf_width).
+    funelim (extract_assign_rhs rhs lo width).
     all: cbn; LocationSet.setdec.
   Qed.
 
@@ -144,14 +132,15 @@ Section semantics.
     rewrite N.add_0_r; reflexivity.
   Qed.
 
-  Lemma eval_extract_assign_rhs {w} (rhs : expression w) lo width wf wf_width regs :
+  Lemma eval_extract_assign_rhs {w} (rhs : expression (Logic w)) lo (width : positive) regs :
     (lo + width <= w)%N ->
-    eval_expr regs (extract_assign_rhs rhs lo width wf wf_width) =
+    eval_expr regs (extract_assign_rhs rhs lo width) =
     XBV.extr (eval_expr regs rhs) lo width.
   Proof.
-    funelim (extract_assign_rhs rhs lo width wf wf_width).
+    funelim (extract_assign_rhs rhs lo width).
     all: intros Hbound; simp eval_expr; try reflexivity.
     all: simp eval_shiftop.
+    all: rewrite <- (map_subst (@XBV.to_N)), rew_const.
     all: rewrite XBV.to_N_from_bv.
     all: change (BV.to_N (BV.of_bits (RawBV.of_N_full lo)))
       with (RawBV.to_N (RawBV.of_N_full lo)).
