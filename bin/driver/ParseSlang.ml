@@ -354,6 +354,22 @@ let rec parse_statement json =
       let lhs = parse_expression (expr |> member "left") in
       let rhs = parse_expression (expr |> member "right") in
       Vera.RawVerilog.BlockingAssign (lhs, rhs)
+  | "Conditional" ->
+      let cond =
+        match json |> member "conditions" |> to_list with
+        | [condition] when member "pattern" condition = `Null ->
+            condition |> member "expr" |> parse_expression
+        | _ ->
+            raise (SlangUnexpectedValue
+              ("a single expression condition", Yojson.Safe.to_string json))
+      in
+      let ifTrue = json |> member "ifTrue" |> parse_statement in
+      let ifFalse =
+        match json |> member "ifFalse" with
+        | `Null -> Vera.RawVerilog.Block []
+        | stmt -> parse_statement stmt
+      in
+      Vera.RawVerilog.If (cond, ifTrue, ifFalse)
   | "Block" ->
       let blockKind = json |> member "blockKind" |> to_string in
       expect_value blockKind "Sequential";

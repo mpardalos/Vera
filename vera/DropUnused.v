@@ -41,6 +41,7 @@ Equations module_body_keep_assigns :
   | keep, [] => inr (LocationSet.empty, []);
   | keep, (Initial _ :: _) => inl "Unexpected initial block in DropUnused"
   | keep, (AlwaysComb (Block _) :: body) => inl "Unexpected Block in DropUnused"
+  | keep, (AlwaysComb (If _ _ _) :: body) => inl "Unexpected If in DropUnused"
   | keep, (AlwaysComb (BlockingAssign lhs _ rhs) :: body)
     with (LocationSet.disjoint (assign_target_writes lhs) keep) => {
     | true =>

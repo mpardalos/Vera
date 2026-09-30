@@ -256,6 +256,8 @@ Section expr_to_smt.
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
     transfer_module_item (Verilog.AlwaysComb (Verilog.Block stmt)) :=
       inl "Unexpected Block in VerilogToSMT"%string;
+    transfer_module_item (Verilog.AlwaysComb (Verilog.If _ _ _)) :=
+      inl "Unexpected If in VerilogToSMT"%string;
     transfer_module_item (Verilog.AlwaysFF _) :=
       inl "Unexpected initial block in VerilogToSMT"%string
   .

@@ -146,6 +146,7 @@ Section definition.
     | AlwaysComb (BlockingAssign (AssignVar var) _ expr) => to_3ac_assign fresh (Var.varName var) expr
     | AlwaysComb (BlockingAssign target _ _) => inl ("Unexpected assign LHS in 3AC pass: " ++ to_string target)%string
     | AlwaysComb (Block _) => inl "Unexpected Block in 3AC pass"%string
+    | AlwaysComb (If _ _ _) => to_3ac_undefined tt
     | Initial _ => to_3ac_undefined tt
     | AlwaysFF _ => to_3ac_undefined tt
     end.

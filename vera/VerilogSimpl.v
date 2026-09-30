@@ -86,7 +86,8 @@ Proof.
   - destruct a.
     all: expect 3.
     1, 3: admit. (* TODO: initial, always_ff *)
-    destruct s as [lhs rhs|?].
+    destruct s as [lhs rhs | | ].
+    2: admit. (* TODO: If *)
     all: simpl.
     + rewrite IHmis. reflexivity.
     + admit. (* TODO: Blocks *)
@@ -243,16 +244,16 @@ Proof.
   {
     intros mi. destruct mi.
     all: expect 3. 1, 3: admit. (* TODO initial, always_ff *)
-    destruct s as [lhs rhs|].
-    2: admit. (* TODO: Blocks *)
+    destruct s as [lhs rhs | | ].
+    2, 3: admit. (* TODO: If, Blocks *)
     simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
     apply simpl_expr_reads_Equal.
   }
   {
     intros mi. destruct mi.
     all: expect 3. 1, 3: admit. (* TODO initial, always_ff *)
-    destruct s as [lhs rhs|].
-    2: admit. (* TODO: Blocks *)
+    destruct s as [lhs rhs | | ].
+    2, 3: admit. (* TODO: If, Blocks *)
     simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
     reflexivity.
   }
@@ -263,8 +264,8 @@ Proof.
   induction l; intros r; [reflexivity|].
   destruct a.
   all: expect 3. 1, 3: admit. (* TODO initial, always_ff *)
-  destruct s as [lhs rhs|].
-  2: admit. (* TODO: Blocks *)
+  destruct s as [lhs rhs | | ].
+  2, 3: admit. (* TODO: If, Blocks *)
   simpl. simp exec_module_body exec_module_item exec_statement. simpl.
   simp exec_module_body.
   rewrite simpl_expr_correct.

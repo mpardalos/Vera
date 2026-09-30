@@ -112,6 +112,10 @@ module Raw = struct
     match s with
     | RawVerilog.BlockingAssign (lhs, rhs) ->
         fprintf fmt "%a = %a" expression lhs expression rhs
+    | RawVerilog.If (cond, ifT, ifF) ->
+        fprintf fmt "if (%a) %a@,else %a"
+          expression cond statement (RawVerilog.Block [ifT])
+          statement (RawVerilog.Block [ifF])
     | RawVerilog.Block stmts ->
         fprintf fmt "begin@,    @[<v>%a@]@,end"
           (pp_print_list statement ~pp_sep:Util.colon_sep)
@@ -208,6 +212,10 @@ module Typed = struct
     match s with
     | Verilog.BlockingAssign (_, lhs, rhs) ->
         fprintf fmt "%a = %a" assign_target lhs expression rhs
+    | Verilog.If (_, cond, ifT, ifF) ->
+        fprintf fmt "if (%a) %a@,else %a"
+          expression cond statement (Verilog.Block [ifT])
+          statement (Verilog.Block [ifF])
     | Verilog.Block stmts ->
         fprintf fmt "begin@,    @[<v>%a@]@,end"
           (pp_print_list statement ~pp_sep:Util.colon_sep)

@@ -1678,11 +1678,20 @@ Module CombinationalOnly.
       set_target (set_target regs t2 (XBV.extr value 0 w2)) t1 (XBV.extr value w2 w1)
     .
 
+  Definition x_conditional_undefined : RegisterState.t. Admitted.
+
   Equations
     exec_statement (regs : RegisterState.t) (stmt : Verilog.statement) : RegisterState.t by struct stmt :=
     exec_statement regs (Verilog.BlockingAssign target _ rhs) :=
       let rhs_val := eval_expr regs rhs in
       set_target regs target rhs_val ;
+    exec_statement regs (Verilog.If cond ifT ifF) with (XBV.to_bv (eval_expr regs cond)) := {
+      | None => x_conditional_undefined
+      | Some val with BV.is_zero val => {
+        | true => exec_statement regs ifF
+        | false => exec_statement regs ifT
+      }
+    };
     exec_statement regs (Verilog.Block body) :=
       exec_block regs body
     where exec_block (acc : RegisterState.t) (stmts : list Verilog.statement) : RegisterState.t by struct stmts :=
@@ -2317,7 +2326,7 @@ Module Facts.
     Proof.
       intros Hmatch.
       induction stmt.
-      2: admit. (* TODO: Blocks *)
+      2, 3: admit. (* TODO: If, Blocks *)
       simp exec_statement in *; simpl.
       simp exec_statement statement_reads statement_writes in *.
       erewrite eval_expr_change_regs by eassumption.
@@ -2331,8 +2340,8 @@ Module Facts.
       exec_statement regs1 stmt =( l )= exec_statement regs2 stmt.
     Proof.
       intros Hmatch_other Hmatch_reads.
-      destruct stmt; expect 2.
-      2: admit. (* TODO: Blocks *)
+      destruct stmt; expect 3.
+      2, 3: admit. (* TODO: If, Blocks *)
       simp exec_statement. simpl in *.
       erewrite eval_expr_change_regs by eassumption.
       eapply set_target_change_preserve.
@@ -2349,8 +2358,8 @@ Module Facts.
       regs =( l )= exec_statement regs stmt.
     Proof.
       intros Hdisjoint.
-      induction stmt; expect 2.
-      2: admit. (* TODO: Blocks *)
+      induction stmt; expect 3.
+      2, 3: admit. (* TODO: If, Blocks *)
       simp exec_statement. simpl in *. 
       symmetry.
       apply set_target_preserve. symmetry. exact Hdisjoint.

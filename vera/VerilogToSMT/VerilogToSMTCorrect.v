@@ -394,7 +394,7 @@ Section Clean.
     RegisterState.defined_value_for (Verilog.module_item_reads mi) init ->
     RegisterState.defined_value_for (Verilog.module_item_writes mi) (exec_module_item init mi).
   Proof.
-    destruct mi as [?|[? target target_wf expr|?]|?].
+    destruct mi as [?|[? target target_wf expr|w cond ifT ifF|?]|?].
     - admit. (* TODO: initial. *)
     - simp transfer_module_item exec_module_item exec_statement; simpl.
       intros Htransf Hinputs_defined.
@@ -403,6 +403,7 @@ Section Clean.
       rewrite Heval.
       apply set_target_defined.
       exact target_wf.
+    - simp transfer_module_item. inversion 1.
     - simp transfer_module_item exec_module_item exec_statement; simpl.
       inversion 1.
     - admit. (* TODO: always_ff *)

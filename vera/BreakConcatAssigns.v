@@ -71,6 +71,8 @@ Section definition.
         break_concat_assign target wf val ++ break_concat_assigns_module_body tl
     | AlwaysComb (Block stmts) :: tl =>
       break_concat_assigns_undefined (AlwaysComb (Block stmts))
+    | AlwaysComb (If cond ifT ifF) :: tl =>
+      break_concat_assigns_undefined (AlwaysComb (If cond ifT ifF))
     | AlwaysFF s :: tl =>
       break_concat_assigns_undefined (AlwaysFF s)
     | [] => []
@@ -192,6 +194,8 @@ Section semantics.
       try reflexivity; try eauto.
       rewrite exec_module_body_app, exec_break_concat_assign by (simpl in *; LocationSet.setdec).
       simp exec_module_item exec_statement.
+    - admit. (* TODO: Blocks *)
+    - admit. (* TODO: If *)
     - admit. (* TODO: always_ff *)
   Admitted.
 End semantics.
@@ -235,7 +239,9 @@ Section sort.
           (l := assign_target_writes target ∪ vars).
         * rewrite break_concat_assign_writes. LocationSet.setdec.
         * exact Hsorted_tl.
-    - admit. (* TODO: initial *)
+    - admit. (* TODO: Blocks *)
+    - admit. (* TODO: If *)
+    - admit. (* TODO: always_ff *)
   Admitted.
 End sort.
 

@@ -357,6 +357,7 @@ Module Verilog.
   Unset Elimination Schemes.
   Inductive statement :=
   | BlockingAssign {t} (lhs : assign_target t) (lhs_wf : assign_target_wf lhs) (rhs : expression t)
+  | If {w} (cond : expression (Logic w)) (ifT ifF : statement)
   | Block (body : list statement)
   .
   Set Elimination Schemes.
@@ -369,12 +370,15 @@ Module Verilog.
   Lemma statement_ind (P : statement -> Prop)
     (Hassign : forall w (lhs : assign_target w) (lhs_wf : assign_target_wf lhs)
       (rhs : expression w), P (BlockingAssign lhs lhs_wf rhs))
+    (Hif : forall w (cond : expression (Logic w)) ifT ifF,
+      P ifT -> P ifF -> P (If cond ifT ifF))
     (Hblock : forall body, Forall P body -> P (Block body)) :
     forall s, P s.
   Proof.
     fix IH 1.
-    intros [w lhs lhs_wf rhs | body].
+    intros [w lhs lhs_wf rhs | w cond ifT ifF | body].
     - apply Hassign.
+    - apply Hif; apply IH.
     - apply Hblock. induction body as [| stmt body IHbody]; constructor; auto.
   Qed.
 
@@ -438,12 +442,14 @@ Module Verilog.
   Fixpoint statement_reads (s : Verilog.statement) : LocationSet.t :=
     match s with
     | Verilog.BlockingAssign lhs _ rhs => expr_reads rhs  (* ONLY looking at rhs here *)
+    | Verilog.If cond ifT ifF => expr_reads cond ∪ statement_reads ifT ∪ statement_reads ifF
     | Verilog.Block body => LocationSet.union_all (map statement_reads body)
     end.
 
   Fixpoint statement_writes (s : Verilog.statement) : LocationSet.t :=
     match s with
     | Verilog.BlockingAssign lhs _ rhs => assign_target_writes lhs (* ONLY looking at lhs here *)
+    | Verilog.If _ ifT ifF => statement_writes ifT ∪ statement_writes ifF
     | Verilog.Block body => LocationSet.union_all (map statement_writes body)
     end.
 
@@ -559,6 +565,7 @@ Module Verilog.
   Proof.
     induction s.
     - apply expr_reads_in_bounds.
+    - simpl. repeat apply LocationSet.union_in_bounds; auto using expr_reads_in_bounds.
     - apply LocationSet.union_all_in_bounds.
       apply Forall_map. exact H.
   Qed.
@@ -578,6 +585,7 @@ Module Verilog.
   Proof.
     induction s.
     - apply assign_target_writes_in_bounds.
+    - simpl. apply LocationSet.union_in_bounds; assumption.
     - apply LocationSet.union_all_in_bounds.
       apply Forall_map. exact H.
   Qed.
@@ -647,6 +655,8 @@ Module Verilog.
           match u with
           | Verilog.BlockingAssign lhs _ rhs =>
             show lhs << " = " << show rhs
+          | Verilog.If cond ifT ifF =>
+            "if (" << show cond << ") begin ... end else begin ... end"
           | Verilog.Block body =>
             "begin" << newline << "  ..." << newline << "end"
           end
@@ -699,6 +709,7 @@ Module RawVerilog.
 
   Inductive statement :=
   | BlockingAssign (lhs rhs : expression)
+  | If (cond : expression) (ifT ifF : statement)
   | Block (body : list statement)
   .
 
@@ -837,6 +848,11 @@ Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
   let* t_rhs' := cast_width "Different widths in blocking assign" w_lhs t_rhs in
   let* lhs_wf := check_assign_target_wf t_lhs in
   inr (Verilog.BlockingAssign t_lhs _ t_rhs')
+| RawVerilog.If cond ifT ifF =>
+  let* (Verilog.Logic w_cond; t_cond) := tc_expr cond in
+  let* t_ifT := tc_statement ifT in
+  let* t_ifF := tc_statement ifF in
+  inr (Verilog.If t_cond t_ifT t_ifF)
 | RawVerilog.Block body =>
   let* t_body := mapT tc_statement body in
   inr (Verilog.Block t_body)
