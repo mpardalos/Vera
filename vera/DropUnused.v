@@ -27,7 +27,8 @@ Local Open Scope list.
 Local Open Scope verilog_scope.
 
 Import EqNotations.
-Opaque N.add N.sub.
+Arguments N.add _ _ : simpl never.
+Arguments N.sub _ _ : simpl never.
 
 Definition result := sum string.
 

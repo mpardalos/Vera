@@ -222,7 +222,8 @@ Section expr_to_smt.
       ret (var_to_smt var)
   .
 
-  Opaque N.sub N.add.
+  Arguments N.add _ _ : simpl never.
+  Arguments N.sub _ _ : simpl never.
 
   Equations assign_target_to_smt {w} : Verilog.assign_target w -> transf (SMTLib.term (Sort_BitVec w)) :=
     assign_target_to_smt (Verilog.AssignSlice (Slice.Mk var hi lo wf)) :=

@@ -138,7 +138,8 @@ Proof.
   crush.
 Qed.
 
-Opaque N.sub N.add.
+Arguments N.add _ _ : simpl never.
+Arguments N.sub _ _ : simpl never.
 
 Lemma bv_extr_full n bv :
   n = RawBV.size bv ->

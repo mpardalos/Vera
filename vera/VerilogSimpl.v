@@ -25,7 +25,8 @@ Local Open Scope list.
 Local Open Scope verilog_scope.
 
 Import EqNotations.
-Opaque N.add N.sub.
+Arguments N.add _ _ : simpl never.
+Arguments N.sub _ _ : simpl never.
 
 Program Definition equalized_shiftop {w1 w2}
     (wf : (w1 > 0)%N) op (lhs : expression w1) (rhs : expression w2)

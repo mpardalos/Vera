@@ -30,7 +30,8 @@ Local Open Scope verilog_scope.
 
 Import EqNotations.
 Import SigTNotations.
-Opaque N.add N.sub.
+Arguments N.add _ _ : simpl never.
+Arguments N.sub _ _ : simpl never.
 
 Definition break_concat_assigns_undefined : module_item -> list module_item. Admitted.
 Extract Constant break_concat_assigns_undefined =>

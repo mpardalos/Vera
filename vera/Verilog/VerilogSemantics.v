@@ -41,7 +41,8 @@ Local Open Scope verilog.
 
 Set Bullet Behavior "Strict Subproofs".
 
-Opaque N.add N.sub.
+Arguments N.add _ _ : simpl never.
+Arguments N.sub _ _ : simpl never.
 
 Module RegisterState.
   Definition register_state := forall var, XBV.xbv (Var.varType var).

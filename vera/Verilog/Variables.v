@@ -25,7 +25,8 @@ From vera Require Import Common.
 
 Import EqNotations.
 
-Opaque N.add N.sub.
+Arguments N.add _ _ : simpl never.
+Arguments N.sub _ _ : simpl never.
 
 Module Var <: UsualOrderedType.
   Definition type := N.
@@ -861,8 +862,6 @@ Module LocationSet <: WSets.
     rewrite VarMapFacts.empty_o.
     intuition discriminate.
   Qed.
-
-  Opaque N.add N.sub.
 
   Lemma add_slice_spec {w} s (slice : Slice.t w) (loc : elt) :
     In loc (add_slice slice s) <-> Slice.has_location slice loc \/ In loc s.

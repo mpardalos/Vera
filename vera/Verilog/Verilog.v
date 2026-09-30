@@ -46,7 +46,8 @@ Delimit Scope verilog_scope with verilog.
 
 Local Open Scope verilog_scope.
 
-Opaque N.add N.sub.
+Arguments N.add _ _ : simpl never.
+Arguments N.sub _ _ : simpl never.
 
 Module Notations.
   Import LocationSet.

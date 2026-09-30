@@ -40,7 +40,8 @@ Local Open Scope monad_scope.
 Local Open Scope list.
 Local Open Scope verilog_scope.
 
-Opaque N.add N.sub.
+Arguments N.add _ _ : simpl never.
+Arguments N.sub _ _ : simpl never.
 
 Lemma smt_eq_sat_iff s ρ (l r : SMTLib.term s) :
   SMTQueries.term_satisfied_by ρ (SMTLib.Term_Eq l r) <->
