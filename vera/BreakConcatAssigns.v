@@ -75,6 +75,8 @@ Section definition.
       break_concat_assigns_undefined (AlwaysComb (If cond ifT ifF))
     | AlwaysFF s :: tl =>
       break_concat_assigns_undefined (AlwaysFF s)
+    | ConcurrentAssertion expr :: tl =>
+      break_concat_assigns_undefined (ConcurrentAssertion expr)
     | [] => []
   }.
 
@@ -197,6 +199,7 @@ Section semantics.
     - admit. (* TODO: Blocks *)
     - admit. (* TODO: If *)
     - admit. (* TODO: always_ff *)
+    - admit. (* TODO: concurrent assertions *)
   Admitted.
 End semantics.
 
@@ -242,6 +245,7 @@ Section sort.
     - admit. (* TODO: Blocks *)
     - admit. (* TODO: If *)
     - admit. (* TODO: always_ff *)
+    - admit. (* TODO: concurrent assertions *)
   Admitted.
 End sort.
 

@@ -1703,7 +1703,8 @@ Module CombinationalOnly.
     exec_module_item : RegisterState.t -> Verilog.module_item -> RegisterState.t :=
     exec_module_item st (Initial stmt ) := _;
     exec_module_item st (AlwaysComb stmt ) := exec_statement st stmt;
-    exec_module_item st (AlwaysFF stmt) := _
+    exec_module_item st (AlwaysFF stmt) := _;
+    exec_module_item st (ConcurrentAssertion expr) := _
   .
   Admit Obligations.
 
@@ -2375,7 +2376,7 @@ Module Facts.
     Proof.
       intros Hmatch.
       funelim (exec_module_item regs1 mi).
-      1, 3: admit. (* TODO: initial, always_ff *)
+      1, 3, 4: admit. (* TODO: initial, always_ff, concurrent assertions *)
       try rewrite <- Heqcall in *; clear Heqcall.
       simp exec_module_item in *; simpl.
       try solve [constructor]; expect 1.
@@ -2389,8 +2390,8 @@ Module Facts.
       exec_module_item regs1 mi =( l )= exec_module_item regs2 mi.
     Proof.
       intros Hmatch_other Hmatch_reads.
-      destruct mi; expect 3.
-      1, 3: admit. (* TODO: initial, always_ff *)
+      destruct mi; expect 4.
+      1, 3, 4: admit. (* TODO: initial, always_ff, concurrent assertions *)
       simpl in *; simp exec_module_item in *.
       apply exec_statement_change_preserve; assumption.
     Admitted.
@@ -2407,7 +2408,7 @@ Module Facts.
       intros Hdisjoint Hexec.
       funelim (exec_module_item regs mi);
       try rewrite <- Heqcall in *; clear Heqcall.
-      1, 3: admit. (* TODO: initial, always_ff *)
+      1, 3, 4: admit. (* TODO: initial, always_ff, concurrent assertions *)
       eapply exec_statement_preserve; eassumption.
     Admitted.
   End module_item.

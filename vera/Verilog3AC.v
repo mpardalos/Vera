@@ -149,6 +149,7 @@ Section definition.
     | AlwaysComb (If _ _ _) => to_3ac_undefined tt
     | Initial _ => to_3ac_undefined tt
     | AlwaysFF _ => to_3ac_undefined tt
+    | ConcurrentAssertion _ => to_3ac_undefined tt
     end.
 
   Fixpoint to_3ac_module_body (fresh_1 : nat) (body : list module_item) : result (list module_item * nat) :=

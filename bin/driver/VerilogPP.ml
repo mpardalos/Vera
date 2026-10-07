@@ -129,6 +129,8 @@ module Raw = struct
         fprintf fmt "always_comb %a" statement s
     | RawVerilog.AlwaysFF s ->
         fprintf fmt "always_ff %a" statement s
+    | RawVerilog.ConcurrentAssertion e ->
+        fprintf fmt "assert property (@@(posedge clk) %a)" expression e
 
   let vmodule (fmt : formatter) (m : RawVerilog.vmodule) =
     fprintf fmt "RawVerilog.module %s {@." (Util.lst_to_string m.modName);
@@ -229,6 +231,8 @@ module Typed = struct
         fprintf fmt "always_comb %a" statement s
     | Verilog.AlwaysFF s ->
         fprintf fmt "always_ff %a" statement s
+    | Verilog.ConcurrentAssertion e ->
+        fprintf fmt "assert property (@@(posedge clk) %a)" expression e
 
   let vmodule (fmt : formatter) (m : Verilog.vmodule) =
     fprintf fmt "Verilog.module %s {@." (Util.lst_to_string m.modName);

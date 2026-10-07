@@ -392,19 +392,34 @@ let parse_continuous_assign json =
 
 let parse_procedural_block json =
   expect_kind "ProceduralBlock" json;
-  match json |> member "procedureKind" |> to_string with
+  let procedureKind = json |> member "procedureKind" |> to_string in
+  let bodyJson = json |> member "body" in
+  match procedureKind with
   | "AlwaysComb" ->
-     let body = json |> member "body" |> parse_statement in
-     Vera.RawVerilog.AlwaysComb body
+     Vera.RawVerilog.AlwaysComb (parse_statement bodyJson)
   | "Initial" ->
-     let body = json |> member "body" |> parse_statement in
-     Vera.RawVerilog.Initial body
+     Vera.RawVerilog.Initial (parse_statement bodyJson)
   | "Always" | "AlwaysFF" ->
-     let body = json |> member "body" in
-     expect_kind "Timed" body;
-     expect_value "PosEdge" (body |> member "timing" |> member "edge" |> to_string);
-     let bodyStatements = body |> member "stmt" |> parse_statement in
-     Vera.RawVerilog.AlwaysFF bodyStatements
+     (match bodyJson |> member "kind" |> to_string with
+      | "Timed" ->
+         expect_value "PosEdge" (bodyJson |> member "timing" |> member "edge" |> to_string);
+         let bodyStatements = bodyJson |> member "stmt" |> parse_statement in
+         Vera.RawVerilog.AlwaysFF bodyStatements
+      | "ConcurrentAssertion" ->
+         (* Only accept @(posedge blah) *)
+         (* TODO parse clock name too *)
+         let propertySpec = bodyJson |> member "propertySpec" in
+         expect_kind "Clocking" propertySpec;
+         let clocking = propertySpec |> member "clocking" in
+         expect_kind "SignalEvent" clocking;
+         expect_value "PosEdge" (clocking |> member "edge" |> to_string);
+         let exprContainer = propertySpec |> member "expr" in
+         expect_kind "Simple" exprContainer;
+         let expr = exprContainer |> member "expr" |> parse_expression in
+         Vera.RawVerilog.ConcurrentAssertion expr
+      | str ->
+         raise (SlangUnexpectedValue ("Timed or ConcurrentAssertion", str))
+     ) 
   | str ->
       raise (SlangUnexpectedValue ("AlwaysComb, AlwaysFF, or Initial", str))
 

@@ -259,7 +259,9 @@ Section expr_to_smt.
     transfer_module_item (Verilog.AlwaysComb (Verilog.If _ _ _)) :=
       inl "Unexpected If in VerilogToSMT"%string;
     transfer_module_item (Verilog.AlwaysFF _) :=
-      inl "Unexpected initial block in VerilogToSMT"%string
+      inl "Unexpected initial block in VerilogToSMT"%string;
+    transfer_module_item (Verilog.ConcurrentAssertion _) :=
+      inl "Unexpected concurrent assertion in VerilogToSMT"%string
   .
 
   Equations transfer_module_body : list Verilog.module_item -> transf (list (SMTLib.term Sort_Bool)) :=

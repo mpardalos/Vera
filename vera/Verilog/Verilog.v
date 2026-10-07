@@ -386,6 +386,7 @@ Module Verilog.
   | Initial : statement -> module_item
   | AlwaysComb : statement -> module_item
   | AlwaysFF : statement -> module_item
+  | ConcurrentAssertion : expression (Logic 1) -> module_item (* assert (@(posedge clk) expr)*)
   .
 
   Local Open Scope verilog.
@@ -458,6 +459,7 @@ Module Verilog.
     | Initial stmt => statement_reads stmt
     | AlwaysComb stmt => statement_reads stmt
     | AlwaysFF stmt => statement_reads stmt
+    | ConcurrentAssertion expr => expr_reads expr
     end.
 
   Definition module_item_writes (mi : Verilog.module_item) : LocationSet.t :=
@@ -465,6 +467,7 @@ Module Verilog.
     | Initial stmt => statement_writes stmt
     | AlwaysComb stmt => statement_writes stmt
     | AlwaysFF stmt => statement_writes stmt
+    | ConcurrentAssertion expr => LocationSet.empty
     end.
 
   Fixpoint module_body_reads (mis : list Verilog.module_item) : LocationSet.t :=
@@ -591,10 +594,22 @@ Module Verilog.
   Qed.
 
   Lemma module_item_reads_in_bounds mi : LocationSet.InBounds (module_item_reads mi).
-  Proof. destruct mi; apply statement_reads_in_bounds. Qed.
+  Proof.
+    destruct mi.
+    - apply statement_reads_in_bounds.
+    - apply statement_reads_in_bounds.
+    - apply statement_reads_in_bounds.
+    - apply expr_reads_in_bounds.
+  Qed.
 
   Lemma module_item_writes_in_bounds mi : LocationSet.InBounds (module_item_writes mi).
-  Proof. destruct mi; apply statement_writes_in_bounds. Qed.
+  Proof.
+    destruct mi.
+    - apply statement_writes_in_bounds.
+    - apply statement_writes_in_bounds.
+    - apply statement_writes_in_bounds.
+    - apply empty_in_bounds.
+  Qed.
 
   Lemma module_body_reads_in_bounds mis : LocationSet.InBounds (module_body_reads mis).
   Proof.
@@ -668,6 +683,7 @@ Module Verilog.
           | Initial stmt => ("initial " << show stmt)%string
           | AlwaysComb stmt => ("always_comb " << show stmt)%string
           | AlwaysFF stmt => ("always_ff @(posedge clk) " << show stmt)%string
+          | ConcurrentAssertion expr => ("assert property (@(posedge clk) " << show expr << ")")%string
           end
       }.
   End show.
@@ -717,6 +733,7 @@ Module RawVerilog.
   | Initial : statement -> module_item
   | AlwaysComb : statement -> module_item
   | AlwaysFF : statement -> module_item
+  | ConcurrentAssertion : expression -> module_item (* assert (@(posedge clk) expr)*)
   .
 
   (** Verilog modules *)
@@ -868,6 +885,10 @@ Equations tc_module_item : RawVerilog.module_item -> transf Verilog.module_item 
 | RawVerilog.Initial stmt =>
   let* t_stmt := tc_statement stmt in
   inr (Verilog.Initial t_stmt)
+| RawVerilog.ConcurrentAssertion expr =>
+  let* (_; t_expr) := tc_expr expr in
+  let* t_expr' := cast_width "Non-1 width assertion" (Verilog.Logic 1) t_expr in
+  inr (Verilog.ConcurrentAssertion t_expr')
 }.
 
 Equations tc_module_item_lst : list RawVerilog.module_item -> transf (list Verilog.module_item) := {

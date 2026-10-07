@@ -52,6 +52,7 @@ Equations module_body_keep_assigns :
       inr (dropped', AlwaysComb (BlockingAssign lhs _ rhs) :: body')
     }
   | keep, (AlwaysFF _ :: _) => inl "Unexpected always_ff block in DropUnused"
+  | keep, (ConcurrentAssertion _ :: _) => inl "Unexpected concurrent assertion in DropUnused"
 }.
 
 Definition drop_unused1 {i o} (v : vmodule i o) : result (LocationSet.t * vmodule i o) :=

@@ -84,8 +84,8 @@ Proof.
   induction mis.
   - reflexivity.
   - destruct a.
-    all: expect 3.
-    1, 3: admit. (* TODO: initial, always_ff *)
+    all: expect 4.
+    1, 3, 4: admit. (* TODO: initial, always_ff, concurrent assertions *)
     destruct s as [lhs rhs | | ].
     2: admit. (* TODO: If *)
     all: simpl.
@@ -243,7 +243,7 @@ Proof.
   rewrite sort_module_items_map; expect 3; cycle 1.
   {
     intros mi. destruct mi.
-    all: expect 3. 1, 3: admit. (* TODO initial, always_ff *)
+    all: expect 4. 1, 3, 4: admit. (* TODO initial, always_ff, concurrent assertions *)
     destruct s as [lhs rhs | | ].
     2, 3: admit. (* TODO: If, Blocks *)
     simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
@@ -251,7 +251,7 @@ Proof.
   }
   {
     intros mi. destruct mi.
-    all: expect 3. 1, 3: admit. (* TODO initial, always_ff *)
+    all: expect 4. 1, 3, 4: admit. (* TODO initial, always_ff, concurrent assertions *)
     destruct s as [lhs rhs | | ].
     2, 3: admit. (* TODO: If, Blocks *)
     simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
@@ -263,7 +263,7 @@ Proof.
   generalize (init // VarSet.of_list i). clear init v.
   induction l; intros r; [reflexivity|].
   destruct a.
-  all: expect 3. 1, 3: admit. (* TODO initial, always_ff *)
+  all: expect 4. 1, 3, 4: admit. (* TODO initial, always_ff, concurrent assertions *)
   destruct s as [lhs rhs | | ].
   2, 3: admit. (* TODO: If, Blocks *)
   simpl. simp exec_module_body exec_module_item exec_statement. simpl.
