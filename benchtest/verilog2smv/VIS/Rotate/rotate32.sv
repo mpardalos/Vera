@@ -26,8 +26,8 @@ module rotate(clock,amount,din,dout);
     wire [31:0] tmp5;
 
     initial begin
-	dout = 0;
-	inr = 0;
+	dout = 32'd0;
+	inr = 32'd0;
     end
 
     assign tmp0 = inr;
@@ -49,5 +49,5 @@ module rotate(clock,amount,din,dout);
 
 //# FAIL:
 //!(dout[31:0]=b10101010101010101010101010101010);
-	assert property (!(dout==32'b10101010101010101010101010101010));
+	assert property (@(posedge clock) !(dout==32'b10101010101010101010101010101010));
 endmodule // rotate
