@@ -39,9 +39,15 @@ Equations module_body_keep_assigns :
     list module_item ->
     result (LocationSet.t * list module_item) := {
   | keep, [] => inr (LocationSet.empty, []);
-  | keep, (Initial _ :: _) => inl "Unexpected initial block in DropUnused"
-  | keep, (AlwaysComb (Block _) :: body) => inl "Unexpected Block in DropUnused"
-  | keep, (AlwaysComb (If _ _ _) :: body) => inl "Unexpected If in DropUnused"
+  | keep, (Initial (BlockingAssign lhs _ rhs) :: body)
+    with (LocationSet.disjoint (assign_target_writes lhs) keep) => {
+    | true =>
+      let* (dropped', body') := module_body_keep_assigns keep body in
+      inr (assign_target_writes lhs ∪ dropped', body')
+    | false =>
+      let* (dropped', body') := module_body_keep_assigns keep body in
+      inr (dropped', Initial (BlockingAssign lhs _ rhs) :: body')
+    }
   | keep, (AlwaysComb (BlockingAssign lhs _ rhs) :: body)
     with (LocationSet.disjoint (assign_target_writes lhs) keep) => {
     | true =>
@@ -51,11 +57,21 @@ Equations module_body_keep_assigns :
       let* (dropped', body') := module_body_keep_assigns keep body in
       inr (dropped', AlwaysComb (BlockingAssign lhs _ rhs) :: body')
     }
-  (* TODO: NonblockingAssign *)
-  | keep, (AlwaysComb (NonblockingAssign _ _ _) :: _) =>
-    inl "Unexpected nonblocking assignment in DropUnused"
-  | keep, (AlwaysFF _ :: _) => inl "Unexpected always_ff block in DropUnused"
-  | keep, (ConcurrentAssertion _ :: _) => inl "Unexpected concurrent assertion in DropUnused"
+  | keep, (AlwaysFF (NonblockingAssign lhs _ rhs) :: body)
+    with (LocationSet.disjoint (assign_target_writes lhs) keep) => {
+    | true =>
+      let* (dropped', body') := module_body_keep_assigns keep body in
+      inr (assign_target_writes lhs ∪ dropped', body')
+    | false =>
+      let* (dropped', body') := module_body_keep_assigns keep body in
+      inr (dropped', AlwaysFF (NonblockingAssign lhs _ rhs) :: body')
+    }
+  | keep, (Initial _ :: _) => inl "Unexpected body for initial block in DropUnused"
+  | keep, (AlwaysComb _ :: _) => inl "Unexpected body for always_comb block in DropUnused"
+  | keep, (AlwaysFF _ :: _) => inl "Unexpected body for always_ff block in DropUnused"
+  | keep, (ConcurrentAssertion expr :: body) =>
+      let* (dropped', body') := module_body_keep_assigns keep body in
+      inr (dropped', ConcurrentAssertion expr :: body')
 }.
 
 Definition drop_unused1 {i o} (v : vmodule i o) : result (LocationSet.t * vmodule i o) :=
@@ -104,7 +120,7 @@ Proof.
   intros Hreads_kept Hrun.
   funelim (module_body_keep_assigns keep body).
   all: rewrite <- Heqcall in Hrun; clear Heqcall.
-  all: monad_inv. all: expect 3.
+  all: monad_inv. all: expect 8.
   all: simpl; simp exec_module_body; simpl.
   1: LocationSet.setdec.
   (* all: rewrite (surjective_pairing (module_body_keep_assigns keep body)); simpl in *. *)
@@ -120,21 +136,26 @@ Lemma module_body_keep_assigns_spec keep dropped init body body' :
 Proof.
   intros Hreads_kept Hrun.
   funelim (module_body_keep_assigns keep body).
-  all: rewrite <- Heqcall in Hrun; clear Heqcall.
-  all: monad_inv. all: expect 3.
+  all: rewrite <- Heqcall in Hrun; clear Heqcall; monad_inv.
   1: reflexivity.
-  all: simp exec_module_body exec_module_item exec_statement; simpl in *.
-  2: eapply H; LocationSet.setdec.
-  apply LocationSet.disjoint_spec in Heq.
-  rewrite Facts.exec_module_body_change_preserve.
-  - eapply H.
-    + LocationSet.setdec.
-    + reflexivity.
-  - symmetry. apply Facts.set_target_preserve.
-    rewrite module_body_keep_assigns_reads.
-    3: eassumption. all: LocationSet.setdec.
-  - symmetry. apply Facts.set_target_preserve.
-    LocationSet.setdec.
+  all: simp exec_module_body.
+  all: match goal with
+    IH : forall (_ : LocationSet.t) (_ : execution) (_ : list module_item), _ |- _ =>
+      rename IH into IHbody
+  end.
+  (* TODO: Use bullets here *)
+  all: expect 7.
+  all: try solve [eapply IHbody; cbn in *; intuition LocationSet.setdec].
+  all: expect 3.
+  all: apply LocationSet.disjoint_spec in Heq.
+  all: rewrite Facts.exec_module_body_change_preserve.
+  all: try solve [eapply IHbody; cbn in *; intuition LocationSet.setdec].
+  all: expect 6.
+  all: apply Facts.exec_module_item_preserve; cbn.
+  all: cbn in Hreads_kept.
+  all: try solve [LocationSet.setdec].
+  all: expect 2.
+  all: rewrite module_body_keep_assigns_reads; [| |eassumption]; LocationSet.setdec.
 Qed.
 
 Import ExactEquivalence.
@@ -147,18 +168,16 @@ Lemma module_body_keep_assigns_sorted keep dropped vars body body' :
 Proof.
   intros Hreads_kept Hrun Hsorted.
   funelim (module_body_keep_assigns keep body).
-  all: rewrite <- Heqcall in Hrun; clear Heqcall.
-  all: monad_inv. all: expect 3.
+  all: rewrite <- Heqcall in Hrun; clear Heqcall; monad_inv.
   1: solve [constructor].
-  all: cbn in *.
-  all: inv Hsorted.
-  - apply LocationSet.disjoint_spec in Heq.
-    eapply module_items_sorted_skip with (vars_skip := assign_target_writes lhs).
-    + rewrite module_body_keep_assigns_reads.
-      3: eassumption. all: LocationSet.setdec.
-    + eapply H. all: intuition LocationSet.setdec.
-  - constructor; try assumption; expect 1.
-    eapply H. all: intuition LocationSet.setdec.
+  all: cbn in *; inv Hsorted.
+  all: match goal with IH : forall _ _ _, _ |- _ => rename IH into IHbody end.
+  all: try solve [constructor; try assumption; eapply IHbody; intuition LocationSet.setdec].
+  all: try solve [eapply IHbody; intuition LocationSet.setdec].
+  all: apply LocationSet.disjoint_spec in Heq.
+  all: eapply module_items_sorted_skip with (vars_skip := assign_target_writes lhs).
+  all: try solve [eapply IHbody; intuition LocationSet.setdec].
+  all: rewrite module_body_keep_assigns_reads; [| |eassumption]; LocationSet.setdec.
 Qed.
 
 Lemma drop_unused1_transfer_sorted {i o} dropped (v1 v2 : vmodule i o) :
