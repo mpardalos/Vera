@@ -63,15 +63,20 @@ Equations simpl_expr {w} (e : expression w) : expression w := {
   | NamedExpression var => NamedExpression var
   }.
 
-Definition simpl_module_item_undefined : module_item -> module_item. Admitted.
-Extract Constant simpl_module_item_undefined =>
-  "(fun _ -> failwith ""AXIOM TO BE REALIZED: simpl_module_item_undefined"")".
+Fixpoint simpl_statement (stmt : statement) : statement :=
+  match stmt with
+  | BlockingAssign lhs wf rhs => BlockingAssign lhs wf (simpl_expr rhs)
+  | NonblockingAssign lhs wf rhs => NonblockingAssign lhs wf (simpl_expr rhs)
+  | If cond ifT ifF => If (simpl_expr cond) (simpl_statement ifT) (simpl_statement ifF)
+  | Block stmts => Block (map simpl_statement stmts)
+  end.
 
 Definition simpl_module_item mi : module_item :=
   match mi with
-  | AlwaysComb (BlockingAssign lhs wf rhs) => AlwaysComb (BlockingAssign lhs wf (simpl_expr rhs))
-  (* TODO: NonblockingAssign, If, Blocks, and other module items. *)
-  | _ => simpl_module_item_undefined mi
+  | Initial stmt => Initial (simpl_statement stmt)
+  | AlwaysFF stmt => AlwaysFF (simpl_statement stmt)
+  | AlwaysComb stmt => AlwaysComb (simpl_statement stmt)
+  | ConcurrentAssertion expr => ConcurrentAssertion (simpl_expr expr)
   end.
 
 Definition simpl_module_body : list module_item -> list module_item :=
