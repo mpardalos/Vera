@@ -6,7 +6,7 @@ From vera Require VerilogSemantics.
 Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
 From vera Require Import VerilogSimpl.
-From vera Require Import BreakAlwaysFF.
+From vera Require Import BreakBlocks.
 From vera Require Import BreakConcatAssigns.
 From vera Require Import DropUnused.
 From vera Require VerilogEquivalence.
@@ -135,7 +135,7 @@ End sort.
 
 Definition verilog_pipeline : Pass.t :=
   Pass.Mk "Sort" (@sort_vmodule) (@sort_vmodule_exact_equivalence)
-  ∘ Pass.Mk "BreakAlwaysFF" (@break_always_ff_vmodule) (@break_always_ff_exact_equivalence)
+  ∘ Pass.Mk "BreakBlocks" (@break_blocks_vmodule) (@break_blocks_exact_equivalence)
   ∘ Pass.Mk "BreakConcatAssigns" (@break_concat_assigns_vmodule) (@break_concat_assigns_exact_equivalence)
   ∘ Pass.Mk "DropUnused" (@drop_unused) (@drop_unused_exact_equivalence)
   ∘ Pass.pure "Simpl" (@simpl_vmodule) (@simpl_vmodule_exact_equivalence)
