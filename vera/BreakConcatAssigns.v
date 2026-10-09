@@ -33,10 +33,6 @@ Import SigTNotations.
 Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
-Definition break_concat_assigns_undefined : module_item -> list module_item. Admitted.
-Extract Constant break_concat_assigns_undefined =>
-  "(fun _ -> failwith ""AXIOM TO BE REALIZED: break_concat_assigns_undefined"")".
-
 Section definition.
   Equations extract_assign_rhs {w} (rhs : expression (Logic w)) (lo : N)
       (width : positive) : expression (Logic width) := {
@@ -67,28 +63,31 @@ Section definition.
   Local Obligation Tactic := idtac.
 
   Equations break_concat_assigns_module_body
-      (body : list module_item) : list module_item by struct body := {
-    | (Initial s) :: tl =>
-      break_concat_assigns_undefined (Initial s)
+      (body : list module_item) : string + list module_item by struct body := {
+    | Initial stmt :: tl => 
+      let* tl' := break_concat_assigns_module_body tl in
+      inr (Initial stmt :: tl')
     | AlwaysComb (BlockingAssign target wf val) :: tl =>
-        break_concat_assign (fun w t wf val => AlwaysComb (BlockingAssign t wf val)) target wf val
-        ++ break_concat_assigns_module_body tl
-    | AlwaysComb stmt :: tl => break_concat_assigns_undefined (AlwaysComb stmt)
+      let* tl' := break_concat_assigns_module_body tl in
+      inr (break_concat_assign (fun w t wf val => AlwaysComb (BlockingAssign t wf val)) target wf val ++ tl')
+    | AlwaysComb _ :: _ => inl "Expected blocking assignment in always_comb in BreakConcatAssigns"
     | AlwaysFF (NonblockingAssign target wf val) :: tl =>
-        break_concat_assign (fun w t wf val => AlwaysFF (NonblockingAssign t wf val)) target wf val
-        ++ break_concat_assigns_module_body tl
-    | AlwaysFF stmt :: tl => break_concat_assigns_undefined (AlwaysFF stmt)
+      let* tl' := break_concat_assigns_module_body tl in
+      inr (break_concat_assign (fun w t wf val => AlwaysFF (NonblockingAssign t wf val)) target wf val ++ tl')
+    | AlwaysFF _ :: _ => inl "Expected nonblocking assignment in always_ff in BreakConcatAssigns"
     | ConcurrentAssertion expr :: tl =>
-      ConcurrentAssertion expr :: break_concat_assigns_module_body tl
-    | [] => []
+      let* tl' := break_concat_assigns_module_body tl in
+      inr (ConcurrentAssertion expr :: tl')
+    | [] => inr []
   }.
 
   Definition break_concat_assigns_vmodule {i o} (v : vmodule i o) : string + vmodule i o :=
     traceBracket ("Break concat assigns " ++ Verilog.modName v) (
       assert_dec (vmodule_sorted v) "Unsorted module in break_concat_assigns";;
+      let* body := break_concat_assigns_module_body (modBody v) in
       ret {|
         modName := modName v;
-        modBody := break_concat_assigns_module_body (modBody v);
+        modBody := body;
         modWfIODisjoint := modWfIODisjoint v;
         modWfInputsNoDup := modWfInputsNoDup v;
         modWfOutputsNoDup := modWfOutputsNoDup v;
@@ -111,15 +110,16 @@ Section accessed.
       (module_body_writes_blocking (break_concat_assign mk_item target wf val))
       (assign_target_writes target).
   Proof.
-    intros H.
-    induction target.
+    intros Hwrites. revert wf val.
+    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo].
+    all: intros Hwf val.
     all: simp break_concat_assign; simpl.
-    all: simpl in H.
-    - rewrite H. simpl. LocationSet.setdec.
-    - rewrite H. simpl. LocationSet.setdec.
-    - rewrite H. simpl. LocationSet.setdec.
-    - rewrite module_body_writes_blocking_app, IHtarget1, IHtarget2.
-      LocationSet.setdec.
+    (* Passthrough cases *)
+    all: try (rewrite Hwrites; solve [reflexivity | LocationSet.setdec]).
+    all: expect 1.
+    (* Actual concat assign *)
+    rewrite module_body_writes_blocking_app, IHhi, IHlo.
+    LocationSet.setdec.
   Qed.
 End accessed.
 
@@ -172,46 +172,47 @@ Section semantics.
     - apply IHbody1.
   Qed.
 
-  Lemma exec_break_concat_assign {w} mk_item (target : assign_target w) wf val regs :
+  Lemma exec_break_concat_assign {w} (target : assign_target w) wf val regs :
     LocationSet.Disjoint (assign_target_writes target) (expr_reads val) ->
-    exec_module_body regs (break_concat_assign mk_item target wf val) =
+    exec_module_body regs (break_concat_assign (fun w t wf val => AlwaysComb (BlockingAssign t wf val)) target wf val) =
     set_target regs target (eval_expr regs val).
   Proof.
-    funelim (break_concat_assign target wf val).
-    all: clear Heqcall; intros Hdisjoint; cbn in Hdisjoint.
+    revert wf val regs.
+    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo];
+    intros Hwf val regs Hdisjoint; simp break_concat_assign.
     all: simp exec_module_body exec_module_item exec_statement set_target; simpl.
-    all: try reflexivity. all: expect 1.
+    all: try reflexivity; expect 1.
     rewrite exec_module_body_app.
-    repeat match goal with
-    | IH : forall regs, _ -> exec_module_body regs _ = _ |- _ =>
-      rewrite IH by (rewrite extract_assign_rhs_reads; LocationSet.setdec)
-    end.
+    rewrite IHlo, IHhi by
+      (rewrite extract_assign_rhs_reads; simpl in Hdisjoint; LocationSet.setdec).
     rewrite ! eval_extract_assign_rhs by lia.
     rewrite (Facts.eval_expr_change_regs _ val (set_target _ _ _) regs).
-    2: apply Facts.set_target_preserve; LocationSet.setdec.
+    2: apply Facts.set_target_preserve; simpl in Hdisjoint; LocationSet.setdec.
     reflexivity.
   Qed.
 
-  Lemma exec_break_concat_assigns_module_body regs body :
+  (* TODO: Prove once AlwaysFF execution semantics is defined. *)
+  Lemma exec_break_concat_assign_nonblocking {w} (target : assign_target w) wf val regs :
+    exec_module_body regs
+      (break_concat_assign (fun w t wf val => AlwaysFF (NonblockingAssign t wf val)) target wf val) =
+    exec_module_item regs (AlwaysFF (NonblockingAssign target wf val)).
+  Proof. Admitted.
+
+  Lemma exec_break_concat_assigns_module_body regs body body' :
     forall vars, module_items_sorted vars body ->
-    exec_module_body regs (break_concat_assigns_module_body body) =
-    exec_module_body regs body.
+    break_concat_assigns_module_body body = inr body' ->
+    exec_module_body regs body' = exec_module_body regs body.
   Proof.
-    intros * Hsorted.
+    intros * Hsorted Hbreak.
     funelim (break_concat_assigns_module_body body).
-    - reflexivity.
-    - admit. (* TODO: initial *)
-    - inv Hsorted.
-      simp exec_module_body; simpl.
-      try reflexivity; try eauto.
-      rewrite exec_module_body_app, exec_break_concat_assign by (simpl in *; LocationSet.setdec).
-      simp exec_module_item exec_statement.
-    - admit. (* TODO: NonblockingAssign *)
-    - admit. (* TODO: Blocks *)
-    - admit. (* TODO: If *)
-    - admit. (* TODO: always_ff *)
-    - admit. (* TODO: concurrent assertions *)
-  Admitted.
+    all: rewrite <- Heqcall in Hbreak; clear Heqcall; monad_inv.
+    all: try reflexivity; inv Hsorted.
+    all: simp exec_module_body; simpl.
+    all: rewrite ? exec_module_body_app, ? exec_break_concat_assign,
+      ? exec_break_concat_assign_nonblocking by (simpl in *; LocationSet.setdec).
+    all: simp exec_module_item exec_statement.
+    all: eauto.
+  Qed.
 End semantics.
 
 Section sort.
@@ -219,46 +220,67 @@ Section sort.
   Lemma break_concat_assign_sorted {w} (target : assign_target w) wf val vars :
     LocationSet.Subset (expr_reads val) vars ->
     LocationSet.Disjoint (assign_target_writes target) vars ->
-    module_items_sorted vars (break_concat_assign target wf val).
+    module_items_sorted vars
+      (break_concat_assign (fun w t wf val => AlwaysComb (BlockingAssign t wf val)) target wf val).
   Proof.
-    funelim (break_concat_assign target wf val).
-    all: intros Hreads Hdisjoint; simpl in *.
-    all: try (constructor; [LocationSet.setdec | exact Hdisjoint | constructor]);
-      expect 1.
+    revert wf val vars.
+    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo];
+    intros Hwf val vars Hreads Hdisjoint; simp break_concat_assign.
+    all: try (constructor; [exact Hreads | exact Hdisjoint | constructor]).
     apply module_items_sorted_app.
-    - apply H; rewrite ? extract_assign_rhs_reads; LocationSet.setdec.
-    - apply H0; rewrite ? extract_assign_rhs_reads, ? break_concat_assign_writes.
+    - apply IHlo; rewrite ? extract_assign_rhs_reads; simpl in Hdisjoint; LocationSet.setdec.
+    - apply IHhi; rewrite ? extract_assign_rhs_reads, ? break_concat_assign_writes by reflexivity.
       + LocationSet.setdec.
-      + pose proof wf as Hwf. inv Hwf.
-        LocationSet.setdec.
+      + inv Hwf. simpl in Hdisjoint. LocationSet.setdec.
   Qed.
 
-  Lemma break_concat_assigns_sorted vars body :
-    module_items_sorted vars body ->
-    module_items_sorted vars (break_concat_assigns_module_body body).
+  #[local]
+  Lemma break_concat_assign_nonblocking_writes {w} (target : assign_target w) wf val :
+    LocationSet.Equal
+      (module_body_writes_blocking
+        (break_concat_assign (fun w t wf val => AlwaysFF (NonblockingAssign t wf val)) target wf val)) {}.
   Proof.
-    intros Hsorted.
+    revert wf val.
+    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo];
+    intros Hwf val; simp break_concat_assign; simpl.
+    all: try LocationSet.setdec.
+    rewrite module_body_writes_blocking_app, IHhi, IHlo.
+    LocationSet.setdec.
+  Qed.
+
+  #[local]
+  Lemma break_concat_assign_nonblocking_sorted {w} (target : assign_target w) wf val vars :
+    LocationSet.Subset (expr_reads val) vars ->
+    module_items_sorted vars
+      (break_concat_assign (fun w t wf val => AlwaysFF (NonblockingAssign t wf val)) target wf val).
+  Proof.
+    revert wf val vars.
+    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo];
+    intros Hwf val vars Hreads; simp break_concat_assign.
+    all: try (constructor; [exact Hreads | simpl; LocationSet.setdec | constructor]).
+    apply module_items_sorted_app.
+    - apply IHlo. rewrite extract_assign_rhs_reads. exact Hreads.
+    - apply IHhi. rewrite extract_assign_rhs_reads. LocationSet.setdec.
+  Qed.
+
+  Lemma break_concat_assigns_sorted vars body body' :
+    module_items_sorted vars body ->
+    break_concat_assigns_module_body body = inr body' ->
+    module_items_sorted vars body'.
+  Proof.
+    intros Hsorted Hbreak.
     funelim (break_concat_assigns_module_body body).
-    all: clear Heqcall.
-    - constructor.
-    - admit. (* TODO: initial *)
-    - inv Hsorted.
-      rename_match (forall vars, module_items_sorted vars tl -> _) into IH.
-      rename_match (LocationSet.Disjoint _ vars) into Hdisjoint.
-      rename_match (module_items_sorted _ tl) into Hsorted_tl.
-      apply module_items_sorted_app.
-      + apply break_concat_assign_sorted; assumption.
-      + apply IH.
-        eapply module_items_sorted_permute_vars with
-          (l := assign_target_writes target ∪ vars).
-        * rewrite break_concat_assign_writes. LocationSet.setdec.
-        * exact Hsorted_tl.
-    - admit. (* TODO: NonblockingAssign *)
-    - admit. (* TODO: Blocks *)
-    - admit. (* TODO: If *)
-    - admit. (* TODO: always_ff *)
-    - admit. (* TODO: concurrent assertions *)
-  Admitted.
+    all: rewrite <- Heqcall in Hbreak; clear Heqcall; monad_inv.
+    all: try solve [constructor].
+    all: inv Hsorted.
+    all: try solve [constructor; eauto].
+    all: apply module_items_sorted_app;
+      [solve [apply break_concat_assign_sorted; assumption
+             |apply break_concat_assign_nonblocking_sorted; assumption] | ].
+    all: rewrite ? break_concat_assign_nonblocking_writes.
+    all: rewrite ? break_concat_assign_writes by reflexivity.
+    all: eapply module_items_sorted_permute_vars; [|eauto]; cbn; LocationSet.setdec.
+  Qed.
 End sort.
 
 Theorem break_concat_assigns_exact_equivalence {i o} (v1 v2 : vmodule i o) :
@@ -273,9 +295,8 @@ Proof.
   intros initial.
   unfold run_vmodule; simpl.
   rewrite ! sort_module_items_stable.
-  - erewrite exec_break_concat_assigns_module_body by exact Hsorted.
+  - erewrite <- exec_break_concat_assigns_module_body by eassumption.
     reflexivity.
-  - apply break_concat_assigns_sorted.
-    exact Hsorted.
+  - eapply break_concat_assigns_sorted; eassumption.
   - exact Hsorted.
 Qed.
