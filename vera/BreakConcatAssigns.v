@@ -50,13 +50,16 @@ Section definition.
   Solve All Obligations with
     (intros; rewrite N.succ_pos_spec; destruct lo as [|[p|p|]]; cbn; lia).
 
-  Equations break_concat_assign {w} (t : assign_target w) : assign_target_wf t -> expression w -> list module_item := {
-    | (@AssignConcat w_hi w_lo target_hi target_lo), wf, val :=
-      break_concat_assign target_lo _
+  Equations break_concat_assign {A w}
+      (mk_item : forall w' (t': assign_target w'), assign_target_wf t' -> expression w' -> A)
+      (t : assign_target w)
+      : assign_target_wf t -> expression w -> list A := {
+    | mk_item, (@AssignConcat w_hi w_lo target_hi target_lo), wf, val :=
+      break_concat_assign mk_item target_lo _
         (extract_assign_rhs val 0 w_lo)
-      ++ break_concat_assign target_hi _
+      ++ break_concat_assign mk_item target_hi _
         (extract_assign_rhs val w_lo w_hi)
-    | target, t_wf, val := [AlwaysComb (BlockingAssign target t_wf val)]
+    | mk_item, target, t_wf, val := [mk_item _ target t_wf val]
   }.
   Next Obligation. inv wf. assumption. Qed.
   Next Obligation. inv wf. assumption. Qed.
@@ -68,18 +71,15 @@ Section definition.
     | (Initial s) :: tl =>
       break_concat_assigns_undefined (Initial s)
     | AlwaysComb (BlockingAssign target wf val) :: tl =>
-        break_concat_assign target wf val ++ break_concat_assigns_module_body tl
-    (* TODO: NonblockingAssign *)
-    | AlwaysComb (NonblockingAssign target wf val) :: tl =>
-      break_concat_assigns_undefined (AlwaysComb (NonblockingAssign target wf val))
-    | AlwaysComb (Block stmts) :: tl =>
-      break_concat_assigns_undefined (AlwaysComb (Block stmts))
-    | AlwaysComb (If cond ifT ifF) :: tl =>
-      break_concat_assigns_undefined (AlwaysComb (If cond ifT ifF))
-    | AlwaysFF s :: tl =>
-      break_concat_assigns_undefined (AlwaysFF s)
+        break_concat_assign (fun w t wf val => AlwaysComb (BlockingAssign t wf val)) target wf val
+        ++ break_concat_assigns_module_body tl
+    | AlwaysComb stmt :: tl => break_concat_assigns_undefined (AlwaysComb stmt)
+    | AlwaysFF (NonblockingAssign target wf val) :: tl =>
+        break_concat_assign (fun w t wf val => AlwaysFF (NonblockingAssign t wf val)) target wf val
+        ++ break_concat_assigns_module_body tl
+    | AlwaysFF stmt :: tl => break_concat_assigns_undefined (AlwaysFF stmt)
     | ConcurrentAssertion expr :: tl =>
-      break_concat_assigns_undefined (ConcurrentAssertion expr)
+      ConcurrentAssertion expr :: break_concat_assigns_module_body tl
     | [] => []
   }.
 
@@ -103,16 +103,23 @@ Section accessed.
     all: cbn; LocationSet.setdec.
   Qed.
 
-  Lemma break_concat_assign_writes {w} (target : assign_target w) wf val :
+  Lemma break_concat_assign_writes {w} mk_item (target : assign_target w) wf val :
+    (forall w (target' : assign_target w) wf' val', LocationSet.Equal
+      (module_item_writes_blocking (mk_item _ target' wf' val'))
+      (assign_target_writes target')) ->
     LocationSet.Equal
-      (module_body_writes_blocking (break_concat_assign target wf val))
+      (module_body_writes_blocking (break_concat_assign mk_item target wf val))
       (assign_target_writes target).
   Proof.
-    funelim (break_concat_assign target wf val).
-    all: simpl.
-    all: try LocationSet.setdec; expect 1.
-    rewrite module_body_writes_blocking_app, H, H0.
-    LocationSet.setdec.
+    intros H.
+    induction target.
+    all: simp break_concat_assign; simpl.
+    all: simpl in H.
+    - rewrite H. simpl. LocationSet.setdec.
+    - rewrite H. simpl. LocationSet.setdec.
+    - rewrite H. simpl. LocationSet.setdec.
+    - rewrite module_body_writes_blocking_app, IHtarget1, IHtarget2.
+      LocationSet.setdec.
   Qed.
 End accessed.
 
@@ -165,9 +172,9 @@ Section semantics.
     - apply IHbody1.
   Qed.
 
-  Lemma exec_break_concat_assign {w} (target : assign_target w) wf val regs :
+  Lemma exec_break_concat_assign {w} mk_item (target : assign_target w) wf val regs :
     LocationSet.Disjoint (assign_target_writes target) (expr_reads val) ->
-    exec_module_body regs (break_concat_assign target wf val) =
+    exec_module_body regs (break_concat_assign mk_item target wf val) =
     set_target regs target (eval_expr regs val).
   Proof.
     funelim (break_concat_assign target wf val).
