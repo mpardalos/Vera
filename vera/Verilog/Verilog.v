@@ -725,6 +725,7 @@ Module RawVerilog.
 
   Inductive statement :=
   | BlockingAssign (lhs rhs : expression)
+  | NonblockingAssign (lhs rhs : expression)
   | If (cond : expression) (ifT ifF : statement)
   | Block (body : list statement)
   .
@@ -859,6 +860,8 @@ Equations check_assign_target_wf {w} (t : Verilog.assign_target w) : transf (Ver
 }.
 
 Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
+| RawVerilog.NonblockingAssign _ _ =>
+  inl "Nonblocking assignments are not supported"%string
 | RawVerilog.BlockingAssign lhs rhs =>
   let* (w_lhs; t_lhs) := tc_assign_target lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in

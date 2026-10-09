@@ -112,6 +112,8 @@ module Raw = struct
     match s with
     | RawVerilog.BlockingAssign (lhs, rhs) ->
         fprintf fmt "%a = %a" expression lhs expression rhs
+    | RawVerilog.NonblockingAssign (lhs, rhs) ->
+        fprintf fmt "%a <= %a" expression lhs expression rhs
     | RawVerilog.If (cond, ifT, ifF) ->
         fprintf fmt "if (%a) %a@,else %a"
           expression cond statement (RawVerilog.Block [ifT])

@@ -351,11 +351,11 @@ let rec parse_statement json =
   | "ExpressionStatement" ->
       let expr = json |> member "expr" in
       expect_kind "Assignment" expr;
-      if expr |> member "isNonBlocking" |> to_bool then
-        failwith "Nonblocking assignments are not supported";
+      let is_nonblocking = expr |> member "isNonBlocking" |> to_bool in
       let lhs = parse_expression (expr |> member "left") in
       let rhs = parse_expression (expr |> member "right") in
-      Vera.RawVerilog.BlockingAssign (lhs, rhs)
+      if is_nonblocking then Vera.RawVerilog.NonblockingAssign (lhs, rhs)
+      else Vera.RawVerilog.BlockingAssign (lhs, rhs)
   | "Conditional" ->
       let cond =
         match json |> member "conditions" |> to_list with
