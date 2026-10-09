@@ -83,10 +83,10 @@ Qed.
 
 Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
   forall t regs ρ,
-    LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
+    LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes_blocking mi) ->
     transfer_module_item tag mi = inr t ->
     verilog_smt_match_states_partial
-      (Verilog.module_item_reads mi ∪ Verilog.module_item_writes mi)
+      (Verilog.module_item_reads mi ∪ Verilog.module_item_writes_blocking mi)
       tag
       (exec_module_item regs mi) ρ ->
     SMTQueries.term_satisfied_by ρ t.
@@ -128,7 +128,7 @@ Proof.
 Qed.
 
 Lemma module_item_to_smt_valid tag  (mi : Verilog.module_item) :
-  LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes mi) ->
+  LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes_blocking mi) ->
   forall ρ t,
     transfer_module_item tag mi = inr t ->
     SMTQueries.term_satisfied_by ρ t ->
@@ -137,7 +137,7 @@ Lemma module_item_to_smt_valid tag  (mi : Verilog.module_item) :
         (Verilog.module_item_reads mi)
         tag r1 ρ ->
       verilog_smt_match_states_partial
-        (Verilog.module_item_writes mi)
+        (Verilog.module_item_writes_blocking mi)
         tag (exec_module_item r1 mi) ρ.
 Proof.
   funelim (transfer_module_item tag mi);
@@ -171,7 +171,7 @@ Lemma transfer_module_body_exec_satisfiable inputs body :
     module_items_sorted inputs body ->
     transfer_module_body tag body = inr q ->
     verilog_smt_match_states_partial
-      (inputs ∪ Verilog.module_body_writes body)
+      (inputs ∪ Verilog.module_body_writes_blocking body)
       tag (exec_module_body r1 body) ρ ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q.
 Proof.
@@ -249,7 +249,7 @@ Lemma transfer_module_body_exec_valid inputs body : forall tag ρ q,
       verilog_smt_match_states_partial inputs tag
 	r1 ρ ->
       verilog_smt_match_states_partial
-        (Verilog.module_body_writes body) tag
+        (Verilog.module_body_writes_blocking body) tag
 	(exec_module_body r1 body) ρ.
 Proof.
   revert inputs.
@@ -261,7 +261,7 @@ Proof.
   simpl in *.
   monad_inv.
   inv Hsat. inv Hsorted.
-  rename_match (module_items_sorted (Verilog.module_item_writes a ∪ inputs) body) into Hsorted.
+  rename_match (module_items_sorted (Verilog.module_item_writes_blocking a ∪ inputs) body) into Hsorted.
   rename_match (Verilog.module_item_reads a ⊆ inputs) into Hitem_reads.
   simpl.
   unpack_verilog_smt_match_states_partial.
@@ -288,7 +288,7 @@ Lemma transfer_module_body_valid {i o} tag (v : Verilog.vmodule i o) ρ q :
   module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) ->
   LocationSet.Equal
     (Verilog.module_locations v)
-    (Verilog.module_writes v ∪ LocationSet.of_varset (VarSet.of_list i)) ->
+    (Verilog.module_writes_blocking v ∪ LocationSet.of_varset (VarSet.of_list i)) ->
   transfer_module_body tag (Verilog.modBody v) = inr q ->
   List.Forall (SMTQueries.term_satisfied_by ρ) q ->
   v ⇓ execution_of_valuation tag ρ.
@@ -317,7 +317,7 @@ Qed.
 
 Lemma sorted_reads_driven inputs body :
   module_items_sorted inputs body ->
-  Verilog.module_body_reads body ⊆ Verilog.module_body_writes body ∪ inputs.
+  Verilog.module_body_reads body ⊆ Verilog.module_body_writes_blocking body ∪ inputs.
 Proof.
   induction 1.
   all: simpl.
@@ -392,9 +392,9 @@ Section Clean.
   Lemma module_item_clean mi init smt :
     transfer_module_item tag mi = inr smt ->
     RegisterState.defined_value_for (Verilog.module_item_reads mi) init ->
-    RegisterState.defined_value_for (Verilog.module_item_writes mi) (exec_module_item init mi).
+    RegisterState.defined_value_for (Verilog.module_item_writes_blocking mi) (exec_module_item init mi).
   Proof.
-    destruct mi as [?|[? target target_wf expr|w cond ifT ifF|?]|?|?].
+    destruct mi as [?|[? target target_wf expr|? target target_wf expr|w cond ifT ifF|?]|?|?].
     - admit. (* TODO: initial. *)
     - simp transfer_module_item exec_module_item exec_statement; simpl.
       intros Htransf Hinputs_defined.
@@ -403,6 +403,7 @@ Section Clean.
       rewrite Heval.
       apply set_target_defined.
       exact target_wf.
+    - simp transfer_module_item. inversion 1. (* NonblockingAssign is rejected. *)
     - simp transfer_module_item. inversion 1.
     - simp transfer_module_item exec_module_item exec_statement; simpl.
       inversion 1.
@@ -415,7 +416,7 @@ Section Clean.
     module_items_sorted inputs body ->
     transfer_module_body tag body = inr smt ->
     RegisterState.defined_value_for inputs init ->
-    RegisterState.defined_value_for (Verilog.module_body_writes body) (exec_module_body init body).
+    RegisterState.defined_value_for (Verilog.module_body_writes_blocking body) (exec_module_body init body).
   Proof.
     intros Hsorted Htransf Hinputs_defined.
     funelim (transfer_module_body tag body).
@@ -425,7 +426,7 @@ Section Clean.
       simp exec_module_body. simpl.
       inv Hsorted.
       rename_match (Verilog.module_item_reads hd ⊆ inputs) into Hitem_reads_in_inputs.
-      rename_match (module_items_sorted (Verilog.module_item_writes hd ∪ inputs) tl) into Htl_sorted.
+      rename_match (module_items_sorted (Verilog.module_item_writes_blocking hd ∪ inputs) tl) into Htl_sorted.
       RegisterState.unpack_defined_value_for.
       + rewrite <- Facts.exec_module_body_preserve
           by (apply module_items_sorted_no_overwrite in Htl_sorted; LocationSet.setdec).
@@ -446,13 +447,13 @@ Section Clean.
     unfold verilog_to_smt. simpl.
     intros Htransf. monad_inv.
     rename_match (module_items_sorted _ _) into Hsorted.
-    rename_match (LocationSet.of_varset (VarSet.of_list o) ⊆ Verilog.module_writes v) into Houtputs_driven.
+    rename_match (LocationSet.of_varset (VarSet.of_list o) ⊆ Verilog.module_writes_blocking v) into Houtputs_driven.
     constructor.
     intros * Hinputs_defined.
     unfold run_vmodule, mk_initial_state.
     rewrite sort_module_items_stable by assumption.
     unfold Verilog.module_locations.
-    assert (Hwrites_defined : RegisterState.defined_value_for (Verilog.module_writes v)
+    assert (Hwrites_defined : RegisterState.defined_value_for (Verilog.module_writes_blocking v)
         (exec_module_body (e // VarSet.of_list i) (Verilog.modBody v))). {
       eapply module_body_clean.
       all: try eassumption; expect 1.
@@ -476,7 +477,8 @@ Section Clean.
       + exact Hwrites_defined.
       + exact Hinputs_defined_after.
     - exact Hwrites_defined.
-  Qed.
+    - admit. (* TODO: Nonblocking writes in module_locations. *)
+  Admitted.
 End Clean.
 
 Theorem verilog_to_smt_correct {i o} tag (v : Verilog.vmodule i o) smt :
@@ -492,10 +494,7 @@ Proof.
   all: intros H.
   - eapply transfer_module_body_valid.
     all: try eassumption.
-    unfold Verilog.module_locations.
-    assert (Verilog.module_reads v ⊆ Verilog.module_writes v ∪ LocationSet.of_varset (VarSet.of_list i))
-      by now apply sorted_reads_driven.
-    LocationSet.setdec.
+    admit. (* TODO: Nonblocking writes in module_locations. *)
   - eapply transfer_module_body_satisfiable.
     all: try eassumption.
-Qed.
+Admitted.

@@ -798,14 +798,14 @@ Module Sort.
     | module_items_sorted_nil vars : module_items_sorted vars []
     | module_items_sorted_cons vars mi mis :
       LocationSet.Subset (module_item_reads mi) vars ->
-      LocationSet.Disjoint (module_item_writes mi) vars ->
-      module_items_sorted (Verilog.module_item_writes mi ∪ vars) mis ->
+      LocationSet.Disjoint (module_item_writes_blocking mi) vars ->
+      module_items_sorted (Verilog.module_item_writes_blocking mi ∪ vars) mis ->
       module_items_sorted vars (mi :: mis)
   .
 
   Lemma module_items_sorted_no_overwrite inputs body :
     module_items_sorted inputs body ->
-    LocationSet.Disjoint (module_body_writes body) inputs.
+    LocationSet.Disjoint (module_body_writes_blocking body) inputs.
   Proof. induction 1; simpl; LocationSet.setdec. Qed.
 
   Lemma module_items_sorted_permute_vars l l' body :
@@ -843,15 +843,15 @@ Module Sort.
     - left. constructor.
     - destruct (dec (LocationSet.Subset (module_item_reads mi) vars)) as [Hreads|Hreads];
         [|right; inversion 1; contradiction].
-      destruct (dec (LocationSet.Disjoint (module_item_writes mi) vars)) as [Hwrites|Hwrites];
+      destruct (dec (LocationSet.Disjoint (module_item_writes_blocking mi) vars)) as [Hwrites|Hwrites];
         [|right; inversion 1; contradiction].
-      destruct (IH (module_item_writes mi ∪ vars)) as [Hsorted|Hsorted].
+      destruct (IH (module_item_writes_blocking mi ∪ vars)) as [Hsorted|Hsorted].
       + left. constructor; assumption.
       + right. inversion 1. contradiction.
   Defined.
 
-  Global Instance Proper_module_body_writes_Permutation_Equal :
-    Proper (@Permutation module_item ==> LocationSet.Equal) module_body_writes.
+  Global Instance Proper_module_body_writes_blocking_Permutation_Equal :
+    Proper (@Permutation module_item ==> LocationSet.Equal) module_body_writes_blocking.
   Proof.
     intros mis1 mis2 Hmis.
     induction Hmis.
@@ -868,10 +868,10 @@ Module Sort.
     all: LocationSet.setdec.
   Qed.
 
-  Lemma module_body_writes_app l1 l2 :
+  Lemma module_body_writes_blocking_app l1 l2 :
     LocationSet.Equal
-      (module_body_writes (l1 ++ l2))
-      (module_body_writes l1 ∪ module_body_writes l2).
+      (module_body_writes_blocking (l1 ++ l2))
+      (module_body_writes_blocking l1 ∪ module_body_writes_blocking l2).
   Proof.
     revert l2.
     induction l1; intros l2; simpl.
@@ -910,7 +910,7 @@ Module Sort.
   Qed.
 
   Lemma module_items_sorted_add extra inputs body :
-    LocationSet.Disjoint extra (module_body_writes body) ->
+    LocationSet.Disjoint extra (module_body_writes_blocking body) ->
     module_items_sorted inputs body ->
     module_items_sorted (extra ∪ inputs) body.
   Proof.
@@ -920,9 +920,9 @@ Module Sort.
     - LocationSet.setdec.
     - LocationSet.setdec.
     - setoid_replace
-        (module_item_writes mi ∪ extra ∪ vars)
+        (module_item_writes_blocking mi ∪ extra ∪ vars)
         with
-        (extra ∪ module_item_writes mi ∪ vars)
+        (extra ∪ module_item_writes_blocking mi ∪ vars)
         using relation LocationSet.Equal
         by LocationSet.setdec.
       apply IHHsorted.
@@ -942,7 +942,7 @@ Module Sort.
 
   Lemma module_items_sorted_app inputs body1 body2 :
     module_items_sorted inputs body1 ->
-    module_items_sorted (inputs ∪ module_body_writes body1) body2 ->
+    module_items_sorted (inputs ∪ module_body_writes_blocking body1) body2 ->
     module_items_sorted inputs (body1 ++ body2).
   Proof.
     intro Hsorted1.
@@ -958,9 +958,9 @@ Module Sort.
       + assumption.
       + apply IHHsorted1.
         setoid_replace
-          ((module_item_writes mi ∪ vars) ∪ module_body_writes mis)
+          ((module_item_writes_blocking mi ∪ vars) ∪ module_body_writes_blocking mis)
           with
-          (vars ∪ module_item_writes mi ∪ module_body_writes mis)
+          (vars ∪ module_item_writes_blocking mi ∪ module_body_writes_blocking mis)
           using relation LocationSet.Equal
           by LocationSet.setdec.
         exact Hsorted2.
@@ -989,7 +989,7 @@ Module Sort.
 
   Lemma module_items_sorted_app_inv_tail inputs body1 body2 :
     module_items_sorted inputs (body1 ++ body2) ->
-    module_items_sorted (inputs ∪ module_body_writes body1) body2.
+    module_items_sorted (inputs ∪ module_body_writes_blocking body1) body2.
   Proof.
     intros H.
     remember (body1 ++ body2) as body.
@@ -1007,9 +1007,9 @@ Module Sort.
         all: assumption.
       + simpl.
         setoid_replace
-          (vars ∪ module_item_writes mi ∪ module_body_writes body_middle)
+          (vars ∪ module_item_writes_blocking mi ∪ module_body_writes_blocking body_middle)
           with
-          ((module_item_writes mi ∪ vars) ∪ module_body_writes body_middle)
+          ((module_item_writes_blocking mi ∪ vars) ∪ module_body_writes_blocking body_middle)
           using relation LocationSet.Equal
           by LocationSet.setdec.
         apply IHmodule_items_sorted.
@@ -1024,14 +1024,14 @@ Module Sort.
     : option (LocationSet.t * list module_item * list module_item) := {
     | ready, chosen, skipped, [] => Some (ready, chosen, skipped)
     | ready, chosen, skipped, (mi :: mis')
-      with LocationSet.disjoint (module_item_writes mi) ready,
+      with LocationSet.disjoint (module_item_writes_blocking mi) ready,
            LocationSet.subset (module_item_reads mi) ready => {
       | false, _    =>
         (* trace ("Conflict on " ++ to_string mi) *) None (* Conflict *)
       | true, false => (* Not ready *)
         sort_module_items_split_ready ready chosen (mi :: skipped) mis'
       | true, true => (* Ready *)
-        sort_module_items_split_ready (module_item_writes mi ∪ ready) (mi :: chosen) skipped mis'
+        sort_module_items_split_ready (module_item_writes_blocking mi ∪ ready) (mi :: chosen) skipped mis'
     }
   }.
 
@@ -1091,7 +1091,7 @@ Module Sort.
 
   Lemma sort_module_items_split_ready_sorted initial_inputs ready chosen skipped mis ready' chosen' rest' :
     module_items_sorted initial_inputs (rev chosen) ->
-    LocationSet.Equal (initial_inputs ∪ module_body_writes chosen) ready ->
+    LocationSet.Equal (initial_inputs ∪ module_body_writes_blocking chosen) ready ->
     sort_module_items_split_ready ready chosen skipped mis = Some (ready', chosen', rest') ->
     module_items_sorted initial_inputs (rev chosen').
   Proof.
@@ -1116,9 +1116,9 @@ Module Sort.
 
   Lemma sort_module_items_split_ready_stable initial_inputs ready chosen skipped mis :
     module_items_sorted initial_inputs (rev chosen ++ mis) ->
-    LocationSet.Equal ready (initial_inputs ∪ Verilog.module_body_writes chosen) ->
+    LocationSet.Equal ready (initial_inputs ∪ Verilog.module_body_writes_blocking chosen) ->
     exists ready',
-      LocationSet.Equal ready' (ready ∪ Verilog.module_body_writes mis) /\
+      LocationSet.Equal ready' (ready ∪ Verilog.module_body_writes_blocking mis) /\
       sort_module_items_split_ready ready chosen skipped mis = Some (ready', rev mis ++ chosen, skipped).
   Proof.
     funelim (sort_module_items_split_ready ready chosen skipped mis);
@@ -1154,9 +1154,9 @@ Module Sort.
   Qed.
 
   Lemma sort_module_items_split_ready_writes initial_inputs ready chosen skipped mis ready' chosen' skipped' :
-    LocationSet.Equal ready (initial_inputs ∪ module_body_writes chosen) ->
+    LocationSet.Equal ready (initial_inputs ∪ module_body_writes_blocking chosen) ->
     sort_module_items_split_ready ready chosen skipped mis = Some (ready', chosen', skipped') ->
-    LocationSet.Equal ready' (initial_inputs ∪ module_body_writes chosen').
+    LocationSet.Equal ready' (initial_inputs ∪ module_body_writes_blocking chosen').
   Proof.
     funelim (sort_module_items_split_ready ready chosen skipped mis); intros Hwrites_ready Hsplit.
     - inv Hsplit. LocationSet.setdec.
@@ -1196,7 +1196,7 @@ Module Sort.
 
   Theorem sort_module_items_tailrec_sorted fuel initial_inputs ready body sorted_acc sorted:
     module_items_sorted initial_inputs (rev sorted_acc) ->
-    LocationSet.Equal (initial_inputs ∪ module_body_writes sorted_acc) ready ->
+    LocationSet.Equal (initial_inputs ∪ module_body_writes_blocking sorted_acc) ready ->
     sort_module_items_tailrec fuel ready body sorted_acc = Some sorted ->
     module_items_sorted initial_inputs sorted.
   Proof.
@@ -1215,9 +1215,9 @@ Module Sort.
           -- exact Heq.
           -- constructor.
           -- rewrite <- Permutation_rev. LocationSet.setdec.
-      + rewrite module_body_writes_app.
+      + rewrite module_body_writes_blocking_app.
         apply sort_module_items_split_ready_writes
-          with (initial_inputs:= initial_inputs ∪ module_body_writes sorted)
+          with (initial_inputs:= initial_inputs ∪ module_body_writes_blocking sorted)
           in Heq.
         * LocationSet.setdec.
         * simpl. LocationSet.setdec.
@@ -1227,7 +1227,7 @@ Module Sort.
 
   Lemma sort_module_items_tailrec_stable fuel initial_inputs ready sorted mis :
     module_items_sorted initial_inputs (rev sorted ++ mis) ->
-    LocationSet.Equal ready (initial_inputs ∪ Verilog.module_body_writes sorted) ->
+    LocationSet.Equal ready (initial_inputs ∪ Verilog.module_body_writes_blocking sorted) ->
     fuel >= length mis ->
     sort_module_items_tailrec fuel ready mis sorted = Some (rev sorted ++ mis).
   Proof.
@@ -1275,7 +1275,7 @@ Module Sort.
         * reflexivity.
         * exact Hsorted.
         * simpl in Hready'.
-          rewrite ! module_body_writes_app.
+          rewrite ! module_body_writes_blocking_app.
           rewrite <- Permutation_rev.
           simpl.
           LocationSet.setdec.
@@ -1340,7 +1340,7 @@ Module Sort.
     Context
       (f : module_item -> module_item)
       (f_preserve_reads : forall mi, LocationSet.Equal (module_item_reads (f mi)) (module_item_reads mi))
-      (f_preserve_writes : forall mi, LocationSet.Equal (module_item_writes (f mi)) (module_item_writes mi)).
+      (f_preserve_writes : forall mi, LocationSet.Equal (module_item_writes_blocking (f mi)) (module_item_writes_blocking mi)).
 
     Lemma sort_module_items_split_ready_map_some ready1 ready1' ready2 chosen skipped mis chosen' skipped' :
       LocationSet.Equal ready1 ready2 ->
@@ -1680,11 +1680,16 @@ Module CombinationalOnly.
 
   Definition x_conditional_undefined : RegisterState.t. Admitted.
 
+  (* TODO: Schedule nonblocking updates. *)
+  Definition nonblocking_assign_undefined : RegisterState.t. Admitted.
+
   Equations
     exec_statement (regs : RegisterState.t) (stmt : Verilog.statement) : RegisterState.t by struct stmt :=
     exec_statement regs (Verilog.BlockingAssign target _ rhs) :=
       let rhs_val := eval_expr regs rhs in
       set_target regs target rhs_val ;
+    exec_statement regs (Verilog.NonblockingAssign target _ rhs) :=
+      nonblocking_assign_undefined;
     exec_statement regs (Verilog.If cond ifT ifF) with (XBV.to_bv (eval_expr regs cond)) := {
       | None => x_conditional_undefined
       | Some val with BV.is_zero val => {
@@ -2125,9 +2130,9 @@ Module Facts.
     - etransitivity; eassumption.
   Qed.
 
-  Add Parametric Morphism : module_body_writes
+  Add Parametric Morphism : module_body_writes_blocking
     with signature (@Permutation Verilog.module_item) ==> LocationSet.Equal
-    as module_body_writes_permute.
+    as module_body_writes_blocking_permute.
   Proof.
     intros x y Hpermutation; induction Hpermutation; simpl in *.
     - LocationSet.setdec.
@@ -2322,14 +2327,14 @@ Module Facts.
     Lemma exec_statement_change_regs stmt regs1 regs2 :
       regs1 =(Verilog.statement_reads stmt)= regs2 ->
       exec_statement regs1 stmt
-        =( Verilog.statement_writes stmt )=
+        =( Verilog.statement_writes_blocking stmt )=
       exec_statement regs2 stmt.
     Proof.
       intros Hmatch.
-      induction stmt.
-      2, 3: admit. (* TODO: If, Blocks *)
+      induction stmt; expect 4.
+      2, 3, 4: admit. (* TODO: NonblockingAssign, If, Blocks *)
       simp exec_statement in *; simpl.
-      simp exec_statement statement_reads statement_writes in *.
+      simp exec_statement statement_reads statement_writes_blocking in *.
       erewrite eval_expr_change_regs by eassumption.
       apply set_target_change_regs.
       assumption.
@@ -2341,8 +2346,8 @@ Module Facts.
       exec_statement regs1 stmt =( l )= exec_statement regs2 stmt.
     Proof.
       intros Hmatch_other Hmatch_reads.
-      destruct stmt; expect 3.
-      2, 3: admit. (* TODO: If, Blocks *)
+      destruct stmt; expect 4.
+      2, 3, 4: admit. (* TODO: NonblockingAssign, If, Blocks *)
       simp exec_statement. simpl in *.
       erewrite eval_expr_change_regs by eassumption.
       eapply set_target_change_preserve.
@@ -2355,12 +2360,12 @@ Module Facts.
     Proof. auto using exec_statement_change_preserve. Qed.
 
     Lemma exec_statement_preserve stmt regs  l :
-      LocationSet.Disjoint l (Verilog.statement_writes stmt) ->
+      LocationSet.Disjoint l (Verilog.statement_writes_blocking stmt) ->
       regs =( l )= exec_statement regs stmt.
     Proof.
       intros Hdisjoint.
-      induction stmt; expect 3.
-      2, 3: admit. (* TODO: If, Blocks *)
+      induction stmt; expect 4.
+      2, 3, 4: admit. (* TODO: NonblockingAssign, If, Blocks *)
       simp exec_statement. simpl in *. 
       symmetry.
       apply set_target_preserve. symmetry. exact Hdisjoint.
@@ -2371,7 +2376,7 @@ Module Facts.
     Lemma exec_module_item_change_regs mi regs1 regs2 :
       regs1 =(Verilog.module_item_reads mi)= regs2 ->
       exec_module_item regs1 mi
-        =(Verilog.module_item_writes mi)=
+        =(Verilog.module_item_writes_blocking mi)=
       exec_module_item regs2 mi.
     Proof.
       intros Hmatch.
@@ -2380,7 +2385,7 @@ Module Facts.
       try rewrite <- Heqcall in *; clear Heqcall.
       simp exec_module_item in *; simpl.
       try solve [constructor]; expect 1.
-      simp exec_module_item module_item_reads module_item_writes expr_reads in *.
+      simp exec_module_item module_item_reads module_item_writes_blocking expr_reads in *.
       apply exec_statement_change_regs. assumption.
     Admitted.
 
@@ -2402,7 +2407,7 @@ Module Facts.
     Proof. auto using exec_module_item_change_preserve. Qed.
 
     Lemma exec_module_item_preserve mi regs l :
-      LocationSet.Disjoint l (Verilog.module_item_writes mi) ->
+      LocationSet.Disjoint l (Verilog.module_item_writes_blocking mi) ->
       regs =( l )= exec_module_item regs mi.
     Proof.
       intros Hdisjoint Hexec.
@@ -2432,7 +2437,7 @@ Module Facts.
     Lemma exec_module_body_change_regs body regs1 regs2 :
       regs1 =(Verilog.module_body_reads body)= regs2 ->
       exec_module_body regs1 body
-        =(Verilog.module_body_writes body)=
+        =(Verilog.module_body_writes_blocking body)=
       exec_module_body regs2 body.
     Proof.
       intros Hmatch.
@@ -2453,7 +2458,7 @@ Module Facts.
     Proof. auto using exec_module_body_change_preserve. Qed.
 
     Lemma exec_module_body_preserve body regs l :
-      LocationSet.Disjoint l (module_body_writes body) ->
+      LocationSet.Disjoint l (module_body_writes_blocking body) ->
       regs =( l )= exec_module_body regs body.
     Proof.
       intros Hdisjoint.

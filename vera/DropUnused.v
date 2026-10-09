@@ -51,6 +51,9 @@ Equations module_body_keep_assigns :
       let* (dropped', body') := module_body_keep_assigns keep body in
       inr (dropped', AlwaysComb (BlockingAssign lhs _ rhs) :: body')
     }
+  (* TODO: NonblockingAssign *)
+  | keep, (AlwaysComb (NonblockingAssign _ _ _) :: _) =>
+    inl "Unexpected nonblocking assignment in DropUnused"
   | keep, (AlwaysFF _ :: _) => inl "Unexpected always_ff block in DropUnused"
   | keep, (ConcurrentAssertion _ :: _) => inl "Unexpected concurrent assertion in DropUnused"
 }.

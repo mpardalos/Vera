@@ -69,6 +69,9 @@ Section definition.
       break_concat_assigns_undefined (Initial s)
     | AlwaysComb (BlockingAssign target wf val) :: tl =>
         break_concat_assign target wf val ++ break_concat_assigns_module_body tl
+    (* TODO: NonblockingAssign *)
+    | AlwaysComb (NonblockingAssign target wf val) :: tl =>
+      break_concat_assigns_undefined (AlwaysComb (NonblockingAssign target wf val))
     | AlwaysComb (Block stmts) :: tl =>
       break_concat_assigns_undefined (AlwaysComb (Block stmts))
     | AlwaysComb (If cond ifT ifF) :: tl =>
@@ -102,13 +105,13 @@ Section accessed.
 
   Lemma break_concat_assign_writes {w} (target : assign_target w) wf val :
     LocationSet.Equal
-      (module_body_writes (break_concat_assign target wf val))
+      (module_body_writes_blocking (break_concat_assign target wf val))
       (assign_target_writes target).
   Proof.
     funelim (break_concat_assign target wf val).
     all: simpl.
     all: try LocationSet.setdec; expect 1.
-    rewrite module_body_writes_app, H, H0.
+    rewrite module_body_writes_blocking_app, H, H0.
     LocationSet.setdec.
   Qed.
 End accessed.
@@ -196,6 +199,7 @@ Section semantics.
       try reflexivity; try eauto.
       rewrite exec_module_body_app, exec_break_concat_assign by (simpl in *; LocationSet.setdec).
       simp exec_module_item exec_statement.
+    - admit. (* TODO: NonblockingAssign *)
     - admit. (* TODO: Blocks *)
     - admit. (* TODO: If *)
     - admit. (* TODO: always_ff *)
@@ -242,6 +246,7 @@ Section sort.
           (l := assign_target_writes target ∪ vars).
         * rewrite break_concat_assign_writes. LocationSet.setdec.
         * exact Hsorted_tl.
+    - admit. (* TODO: NonblockingAssign *)
     - admit. (* TODO: Blocks *)
     - admit. (* TODO: If *)
     - admit. (* TODO: always_ff *)

@@ -254,6 +254,9 @@ Section expr_to_smt.
       let* lhs_smt := assign_target_to_smt lhs in
       let* rhs_smt := expr_to_smt rhs in
       ret (SMTLib.Term_Eq lhs_smt rhs_smt);
+    (* TODO: NonblockingAssign *)
+    transfer_module_item (Verilog.AlwaysComb (Verilog.NonblockingAssign _ _ _)) :=
+      inl "Unexpected nonblocking assignment in VerilogToSMT"%string;
     transfer_module_item (Verilog.AlwaysComb (Verilog.Block stmt)) :=
       inl "Unexpected Block in VerilogToSMT"%string;
     transfer_module_item (Verilog.AlwaysComb (Verilog.If _ _ _)) :=
@@ -289,7 +292,7 @@ Definition verilog_to_smt {i o} (name_tag : VarTag) (vmodule : Verilog.vmodule i
       (module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody vmodule))
       "Module items unsorted"%string;;
     assert_dec
-      (LocationSet.of_varset (VarSet.of_list o) ⊆ Verilog.module_writes vmodule)%verilog
+      (LocationSet.of_varset (VarSet.of_list o) ⊆ Verilog.module_writes_blocking vmodule)%verilog
       "Undriven outputs"%string;;
     transfer_module_body name_tag (Verilog.modBody vmodule)
   )

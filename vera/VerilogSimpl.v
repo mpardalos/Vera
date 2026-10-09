@@ -70,24 +70,25 @@ Extract Constant simpl_module_item_undefined =>
 Definition simpl_module_item mi : module_item :=
   match mi with
   | AlwaysComb (BlockingAssign lhs wf rhs) => AlwaysComb (BlockingAssign lhs wf (simpl_expr rhs))
+  (* TODO: NonblockingAssign, If, Blocks, and other module items. *)
   | _ => simpl_module_item_undefined mi
   end.
 
 Definition simpl_module_body : list module_item -> list module_item :=
     map simpl_module_item.
 
-Lemma simpl_module_body_writes mis :
+Lemma simpl_module_body_writes_blocking mis :
   LocationSet.Equal
-    (module_body_writes (simpl_module_body mis))
-    (module_body_writes mis).
+    (module_body_writes_blocking (simpl_module_body mis))
+    (module_body_writes_blocking mis).
 Proof.
   induction mis.
   - reflexivity.
   - destruct a.
     all: expect 4.
     1, 3, 4: admit. (* TODO: initial, always_ff, concurrent assertions *)
-    destruct s as [lhs rhs | | ].
-    2: admit. (* TODO: If *)
+    destruct s as [lhs rhs | | | ].
+    2, 3: admit. (* TODO: NonblockingAssign, If *)
     all: simpl.
     + rewrite IHmis. reflexivity.
     + admit. (* TODO: Blocks *)
@@ -244,17 +245,17 @@ Proof.
   {
     intros mi. destruct mi.
     all: expect 4. 1, 3, 4: admit. (* TODO initial, always_ff, concurrent assertions *)
-    destruct s as [lhs rhs | | ].
-    2, 3: admit. (* TODO: If, Blocks *)
-    simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
+    destruct s as [lhs rhs | | | ].
+    2, 3, 4: admit. (* TODO: NonblockingAssign, If, Blocks *)
+    simp module_item_reads module_item_writes_blocking statement_reads statement_writes_blocking expr_reads.
     apply simpl_expr_reads_Equal.
   }
   {
     intros mi. destruct mi.
     all: expect 4. 1, 3, 4: admit. (* TODO initial, always_ff, concurrent assertions *)
-    destruct s as [lhs rhs | | ].
-    2, 3: admit. (* TODO: If, Blocks *)
-    simp module_item_reads module_item_writes statement_reads statement_writes expr_reads.
+    destruct s as [lhs rhs | | | ].
+    2, 3, 4: admit. (* TODO: NonblockingAssign, If, Blocks *)
+    simp module_item_reads module_item_writes_blocking statement_reads statement_writes_blocking expr_reads.
     reflexivity.
   }
 
@@ -264,8 +265,8 @@ Proof.
   induction l; intros r; [reflexivity|].
   destruct a.
   all: expect 4. 1, 3, 4: admit. (* TODO initial, always_ff, concurrent assertions *)
-  destruct s as [lhs rhs | | ].
-  2, 3: admit. (* TODO: If, Blocks *)
+  destruct s as [lhs rhs | | | ].
+  2, 3, 4: admit. (* TODO: NonblockingAssign, If, Blocks *)
   simpl. simp exec_module_body exec_module_item exec_statement. simpl.
   simp exec_module_body.
   rewrite simpl_expr_correct.

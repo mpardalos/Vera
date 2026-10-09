@@ -357,6 +357,7 @@ Module Verilog.
   Unset Elimination Schemes.
   Inductive statement :=
   | BlockingAssign {t} (lhs : assign_target t) (lhs_wf : assign_target_wf lhs) (rhs : expression t)
+  | NonblockingAssign {t} (lhs : assign_target t) (lhs_wf : assign_target_wf lhs) (rhs : expression t)
   | If {w} (cond : expression (Logic w)) (ifT ifF : statement)
   | Block (body : list statement)
   .
@@ -370,14 +371,17 @@ Module Verilog.
   Lemma statement_ind (P : statement -> Prop)
     (Hassign : forall w (lhs : assign_target w) (lhs_wf : assign_target_wf lhs)
       (rhs : expression w), P (BlockingAssign lhs lhs_wf rhs))
+    (Hnonblocking : forall w (lhs : assign_target w) (lhs_wf : assign_target_wf lhs)
+      (rhs : expression w), P (NonblockingAssign lhs lhs_wf rhs))
     (Hif : forall w (cond : expression (Logic w)) ifT ifF,
       P ifT -> P ifF -> P (If cond ifT ifF))
     (Hblock : forall body, Forall P body -> P (Block body)) :
     forall s, P s.
   Proof.
     fix IH 1.
-    intros [w lhs lhs_wf rhs | w cond ifT ifF | body].
+    intros [w lhs lhs_wf rhs | w lhs lhs_wf rhs | w cond ifT ifF | body].
     - apply Hassign.
+    - apply Hnonblocking.
     - apply Hif; apply IH.
     - apply Hblock. induction body as [| stmt body IHbody]; constructor; auto.
   Qed.
@@ -442,16 +446,26 @@ Module Verilog.
 
   Fixpoint statement_reads (s : Verilog.statement) : LocationSet.t :=
     match s with
-    | Verilog.BlockingAssign lhs _ rhs => expr_reads rhs  (* ONLY looking at rhs here *)
+    | Verilog.BlockingAssign lhs _ rhs
+    | Verilog.NonblockingAssign lhs _ rhs => expr_reads rhs (* ONLY looking at rhs here *)
     | Verilog.If cond ifT ifF => expr_reads cond ∪ statement_reads ifT ∪ statement_reads ifF
     | Verilog.Block body => LocationSet.union_all (map statement_reads body)
     end.
 
-  Fixpoint statement_writes (s : Verilog.statement) : LocationSet.t :=
+  Fixpoint statement_writes_blocking (s : Verilog.statement) : LocationSet.t :=
     match s with
     | Verilog.BlockingAssign lhs _ rhs => assign_target_writes lhs (* ONLY looking at lhs here *)
-    | Verilog.If _ ifT ifF => statement_writes ifT ∪ statement_writes ifF
-    | Verilog.Block body => LocationSet.union_all (map statement_writes body)
+    | Verilog.NonblockingAssign _ _ _ => {}
+    | Verilog.If _ ifT ifF => statement_writes_blocking ifT ∪ statement_writes_blocking ifF
+    | Verilog.Block body => LocationSet.union_all (map statement_writes_blocking body)
+    end.
+
+  Fixpoint statement_writes_nonblocking (s : Verilog.statement) : LocationSet.t :=
+    match s with
+    | Verilog.NonblockingAssign lhs _ rhs => assign_target_writes lhs (* ONLY looking at lhs here *)
+    | Verilog.BlockingAssign _ _ _ => {}
+    | Verilog.If _ ifT ifF => statement_writes_nonblocking ifT ∪ statement_writes_nonblocking ifF
+    | Verilog.Block body => LocationSet.union_all (map statement_writes_nonblocking body)
     end.
 
   Definition module_item_reads (mi : Verilog.module_item) : LocationSet.t :=
@@ -462,11 +476,19 @@ Module Verilog.
     | ConcurrentAssertion expr => expr_reads expr
     end.
 
-  Definition module_item_writes (mi : Verilog.module_item) : LocationSet.t :=
+  Definition module_item_writes_blocking (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
-    | Initial stmt => statement_writes stmt
-    | AlwaysComb stmt => statement_writes stmt
-    | AlwaysFF stmt => statement_writes stmt
+    | Initial stmt => statement_writes_blocking stmt
+    | AlwaysComb stmt => statement_writes_blocking stmt
+    | AlwaysFF stmt => statement_writes_blocking stmt
+    | ConcurrentAssertion expr => LocationSet.empty
+    end.
+
+  Definition module_item_writes_nonblocking (mi : Verilog.module_item) : LocationSet.t :=
+    match mi with
+    | Initial stmt => statement_writes_nonblocking stmt
+    | AlwaysComb stmt => statement_writes_nonblocking stmt
+    | AlwaysFF stmt => statement_writes_nonblocking stmt
     | ConcurrentAssertion expr => LocationSet.empty
     end.
 
@@ -488,16 +510,34 @@ Module Verilog.
     all: LocationSet.setdec.
   Qed.
 
-  Fixpoint module_body_writes (mis : list Verilog.module_item) : LocationSet.t :=
+  Fixpoint module_body_writes_blocking (mis : list Verilog.module_item) : LocationSet.t :=
     match mis with
     | [] => {}
-    | hd :: tl => module_item_writes hd ∪ module_body_writes tl
+    | hd :: tl => module_item_writes_blocking hd ∪ module_body_writes_blocking tl
     end.
 
-  Lemma module_body_writes_app b1 b2 :
+  Lemma module_body_writes_blocking_app b1 b2 :
     LocationSet.Equal
-      (module_body_writes (b1 ++ b2))
-      (module_body_writes b1 ∪ module_body_writes b2).
+      (module_body_writes_blocking (b1 ++ b2))
+      (module_body_writes_blocking b1 ∪ module_body_writes_blocking b2).
+  Proof.
+    revert b2.
+    induction b1.
+    all: intros; simpl.
+    2: rewrite IHb1.
+    all: LocationSet.setdec.
+  Qed.
+
+  Fixpoint module_body_writes_nonblocking (mis : list Verilog.module_item) : LocationSet.t :=
+    match mis with
+    | [] => {}
+    | hd :: tl => module_item_writes_nonblocking hd ∪ module_body_writes_nonblocking tl
+    end.
+
+  Lemma module_body_writes_nonblocking_app b1 b2 :
+    LocationSet.Equal
+      (module_body_writes_nonblocking (b1 ++ b2))
+      (module_body_writes_nonblocking b1 ∪ module_body_writes_nonblocking b2).
   Proof.
     revert b2.
     induction b1.
@@ -525,14 +565,18 @@ Module Verilog.
   Definition module_reads {i o} (v : vmodule i o) : LocationSet.t :=
     module_body_reads (modBody v).
 
-  Definition module_writes {i o} (v : vmodule i o) : LocationSet.t :=
-    module_body_writes (modBody v).
+  Definition module_writes_blocking {i o} (v : vmodule i o) : LocationSet.t :=
+    module_body_writes_blocking (modBody v).
+
+  Definition module_writes_nonblocking {i o} (v : vmodule i o) : LocationSet.t :=
+    module_body_writes_nonblocking (modBody v).
 
   Definition module_locations {i o} (v : vmodule i o) : LocationSet.t :=
     LocationSet.of_varset (VarSet.of_list i)
     ∪ LocationSet.of_varset (VarSet.of_list o)
     ∪ module_reads v
-    ∪ module_writes v.
+    ∪ module_writes_blocking v
+    ∪ module_writes_nonblocking v.
 
   Lemma module_input_output_disjoint {i o} (v : vmodule i o) :
     disjoint (module_inputs v) (module_outputs v).
@@ -568,9 +612,10 @@ Module Verilog.
   Proof.
     induction s.
     - apply expr_reads_in_bounds.
+    - apply expr_reads_in_bounds.
     - simpl. repeat apply LocationSet.union_in_bounds; auto using expr_reads_in_bounds.
     - apply LocationSet.union_all_in_bounds.
-      apply Forall_map. exact H.
+      apply Forall_map. assumption.
   Qed.
 
   Lemma assign_target_writes_in_bounds w a : LocationSet.InBounds (assign_target_writes (w:=w) a).
@@ -584,13 +629,24 @@ Module Verilog.
       all: assumption.
   Qed.
   
-  Lemma statement_writes_in_bounds s : LocationSet.InBounds (statement_writes s).
+  Lemma statement_writes_blocking_in_bounds s : LocationSet.InBounds (statement_writes_blocking s).
   Proof.
     induction s.
     - apply assign_target_writes_in_bounds.
+    - apply empty_in_bounds.
     - simpl. apply LocationSet.union_in_bounds; assumption.
     - apply LocationSet.union_all_in_bounds.
-      apply Forall_map. exact H.
+      apply Forall_map. assumption.
+  Qed.
+
+  Lemma statement_writes_nonblocking_in_bounds s : LocationSet.InBounds (statement_writes_nonblocking s).
+  Proof.
+    induction s.
+    - apply empty_in_bounds.
+    - apply assign_target_writes_in_bounds.
+    - simpl. apply LocationSet.union_in_bounds; assumption.
+    - apply LocationSet.union_all_in_bounds.
+      apply Forall_map. assumption.
   Qed.
 
   Lemma module_item_reads_in_bounds mi : LocationSet.InBounds (module_item_reads mi).
@@ -602,12 +658,21 @@ Module Verilog.
     - apply expr_reads_in_bounds.
   Qed.
 
-  Lemma module_item_writes_in_bounds mi : LocationSet.InBounds (module_item_writes mi).
+  Lemma module_item_writes_blocking_in_bounds mi : LocationSet.InBounds (module_item_writes_blocking mi).
   Proof.
     destruct mi.
-    - apply statement_writes_in_bounds.
-    - apply statement_writes_in_bounds.
-    - apply statement_writes_in_bounds.
+    - apply statement_writes_blocking_in_bounds.
+    - apply statement_writes_blocking_in_bounds.
+    - apply statement_writes_blocking_in_bounds.
+    - apply empty_in_bounds.
+  Qed.
+
+  Lemma module_item_writes_nonblocking_in_bounds mi : LocationSet.InBounds (module_item_writes_nonblocking mi).
+  Proof.
+    destruct mi.
+    - apply statement_writes_nonblocking_in_bounds.
+    - apply statement_writes_nonblocking_in_bounds.
+    - apply statement_writes_nonblocking_in_bounds.
     - apply empty_in_bounds.
   Qed.
 
@@ -618,11 +683,18 @@ Module Verilog.
     - apply LocationSet.union_in_bounds; auto using module_item_reads_in_bounds.
   Qed.
 
-  Lemma module_body_writes_in_bounds mis : LocationSet.InBounds (module_body_writes mis).
+  Lemma module_body_writes_blocking_in_bounds mis : LocationSet.InBounds (module_body_writes_blocking mis).
   Proof.
     induction mis; simpl.
     - apply empty_in_bounds.
-    - apply LocationSet.union_in_bounds; auto using module_item_writes_in_bounds.
+    - apply LocationSet.union_in_bounds; auto using module_item_writes_blocking_in_bounds.
+  Qed.
+
+  Lemma module_body_writes_nonblocking_in_bounds mis : LocationSet.InBounds (module_body_writes_nonblocking mis).
+  Proof.
+    induction mis; simpl.
+    - apply empty_in_bounds.
+    - apply LocationSet.union_in_bounds; auto using module_item_writes_nonblocking_in_bounds.
   Qed.
 
   Section show.
@@ -670,6 +742,8 @@ Module Verilog.
           match u with
           | Verilog.BlockingAssign lhs _ rhs =>
             show lhs << " = " << show rhs
+          | Verilog.NonblockingAssign lhs _ rhs =>
+            show lhs << " <= " << show rhs
           | Verilog.If cond ifT ifF =>
             "if (" << show cond << ") begin ... end else begin ... end"
           | Verilog.Block body =>
@@ -693,11 +767,14 @@ End Verilog.
   Verilog.empty_in_bounds
   Verilog.expr_reads_in_bounds
   Verilog.statement_reads_in_bounds
-  Verilog.statement_writes_in_bounds
+  Verilog.statement_writes_blocking_in_bounds
+  Verilog.statement_writes_nonblocking_in_bounds
   Verilog.module_item_reads_in_bounds
-  Verilog.module_item_writes_in_bounds
+  Verilog.module_item_writes_blocking_in_bounds
+  Verilog.module_item_writes_nonblocking_in_bounds
   Verilog.module_body_reads_in_bounds
-  Verilog.module_body_writes_in_bounds
+  Verilog.module_body_writes_blocking_in_bounds
+  Verilog.module_body_writes_nonblocking_in_bounds
   LocationSet.of_varset_in_bounds
   LocationSet.of_variable_in_bounds
   LocationSet.union_in_bounds
@@ -860,8 +937,12 @@ Equations check_assign_target_wf {w} (t : Verilog.assign_target w) : transf (Ver
 }.
 
 Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
-| RawVerilog.NonblockingAssign _ _ =>
-  inl "Nonblocking assignments are not supported"%string
+| RawVerilog.NonblockingAssign lhs rhs =>
+  let* (w_lhs; t_lhs) := tc_assign_target lhs in
+  let* (w_rhs; t_rhs) := tc_expr rhs in
+  let* t_rhs' := cast_width "Different widths in nonblocking assign" w_lhs t_rhs in
+  let* lhs_wf := check_assign_target_wf t_lhs in
+  inr (Verilog.NonblockingAssign t_lhs _ t_rhs')
 | RawVerilog.BlockingAssign lhs rhs =>
   let* (w_lhs; t_lhs) := tc_assign_target lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in

@@ -216,6 +216,8 @@ module Typed = struct
     match s with
     | Verilog.BlockingAssign (_, lhs, rhs) ->
         fprintf fmt "%a = %a" assign_target lhs expression rhs
+    | Verilog.NonblockingAssign (_, lhs, rhs) ->
+        fprintf fmt "%a <= %a" assign_target lhs expression rhs
     | Verilog.If (_, cond, ifT, ifF) ->
         fprintf fmt "if (%a) %a@,else %a"
           expression cond statement (Verilog.Block [ifT])
