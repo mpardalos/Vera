@@ -47,6 +47,8 @@ Arguments N.sub _ _ : simpl never.
 
 Coercion Npos : positive >-> N.
 
+Implicit Types (env : environment).
+
 Derive NoConfusion for Verilog.type.
 
 Module RegisterState.
@@ -794,7 +796,7 @@ Export (notations) RegisterState.
 Module Sort.
   Import Verilog.
 
-  Inductive module_items_sorted : LocationSet.t -> list Verilog.module_item -> Prop :=
+  Inductive module_items_sorted {env} : LocationSet.t -> list (Verilog.module_item) -> Prop :=
     | module_items_sorted_nil vars : module_items_sorted vars []
     | module_items_sorted_cons vars mi mis :
       LocationSet.Subset (module_item_reads mi) vars ->
@@ -803,12 +805,12 @@ Module Sort.
       module_items_sorted vars (mi :: mis)
   .
 
-  Lemma module_items_sorted_no_overwrite inputs body :
+  Lemma module_items_sorted_no_overwrite {env} inputs body :
     module_items_sorted inputs body ->
     LocationSet.Disjoint (module_body_writes_blocking body) inputs.
   Proof. induction 1; simpl; LocationSet.setdec. Qed.
 
-  Lemma module_items_sorted_permute_vars l l' body :
+  Lemma module_items_sorted_permute_vars {env} l l' body :
     LocationSet.Equal l l' ->
     module_items_sorted l body ->
     module_items_sorted l' body.
@@ -821,7 +823,7 @@ Module Sort.
     - apply IHHsorted. LocationSet.setdec.
   Qed.
 
-  Global Instance Proper_module_items_sorted_Equal :
+  Global Instance Proper_module_items_sorted_Equal {env} :
     Proper (LocationSet.Equal ==> eq ==> iff) module_items_sorted.
   Proof.
     intros vars vars' Hvars_eq body body' <-.
@@ -835,7 +837,7 @@ Module Sort.
   Qed.
 
   #[refine]
-  Global Instance dec_module_items_sorted vars ms : DecProp (module_items_sorted vars ms) :=
+  Global Instance dec_module_items_sorted {env} vars ms : DecProp (module_items_sorted vars ms) :=
     traceBracket "Check sort" _.
   Proof.
     revert vars.
@@ -850,7 +852,7 @@ Module Sort.
       + right. inversion 1. contradiction.
   Defined.
 
-  Global Instance Proper_module_body_writes_blocking_Permutation_Equal :
+  Global Instance Proper_module_body_writes_blocking_Permutation_Equal {env} :
     Proper (@Permutation module_item ==> LocationSet.Equal) module_body_writes_blocking.
   Proof.
     intros mis1 mis2 Hmis.
@@ -859,7 +861,7 @@ Module Sort.
     all: LocationSet.setdec.
   Qed.
 
-  Global Instance Proper_module_body_reads_Permutation_Equal :
+  Global Instance Proper_module_body_reads_Permutation_Equal {env} :
     Proper (@Permutation module_item ==> LocationSet.Equal) module_body_reads.
   Proof.
     intros mis1 mis2 Hmis.
@@ -868,7 +870,7 @@ Module Sort.
     all: LocationSet.setdec.
   Qed.
 
-  Lemma module_body_writes_blocking_app l1 l2 :
+  Lemma module_body_writes_blocking_app {env} l1 l2 :
     LocationSet.Equal
       (module_body_writes_blocking (l1 ++ l2))
       (module_body_writes_blocking l1 ∪ module_body_writes_blocking l2).
@@ -879,7 +881,7 @@ Module Sort.
     - rewrite IHl1. LocationSet.setdec.
   Qed.
 
-  Lemma module_body_reads_app l1 l2 :
+  Lemma module_body_reads_app {env} l1 l2 :
     LocationSet.Equal
       (module_body_reads (l1 ++ l2))
       (module_body_reads l1 ∪ module_body_reads l2).
@@ -890,7 +892,7 @@ Module Sort.
     - rewrite IHl1. LocationSet.setdec.
   Qed.
 
-  Lemma module_items_sorted_skip vars_skip vars_rest body :
+  Lemma module_items_sorted_skip {env} vars_skip vars_rest body :
     LocationSet.Disjoint vars_skip (module_body_reads body) ->
     module_items_sorted (vars_skip ∪ vars_rest) body ->
     module_items_sorted vars_rest body.
@@ -909,7 +911,7 @@ Module Sort.
         LocationSet.setdec.
   Qed.
 
-  Lemma module_items_sorted_add extra inputs body :
+  Lemma module_items_sorted_add {env} extra inputs body :
     LocationSet.Disjoint extra (module_body_writes_blocking body) ->
     module_items_sorted inputs body ->
     module_items_sorted (extra ∪ inputs) body.
@@ -929,7 +931,7 @@ Module Sort.
       LocationSet.setdec.
   Qed.
 
-  Lemma module_items_sorted_skip1 var_skip vars_rest body :
+  Lemma module_items_sorted_skip1 {env} var_skip vars_rest body :
     ~ LocationSet.In var_skip (module_body_reads body) ->
     module_items_sorted ({ var_skip }%verilog ∪ vars_rest) body ->
     module_items_sorted vars_rest body.
@@ -940,7 +942,7 @@ Module Sort.
     - apply Hsorted.
   Qed.
 
-  Lemma module_items_sorted_app inputs body1 body2 :
+  Lemma module_items_sorted_app {env} inputs body1 body2 :
     module_items_sorted inputs body1 ->
     module_items_sorted (inputs ∪ module_body_writes_blocking body1) body2 ->
     module_items_sorted inputs (body1 ++ body2).
@@ -966,7 +968,7 @@ Module Sort.
         exact Hsorted2.
   Qed.
 
-  Lemma module_items_sorted_app_inv_head inputs body1 body2 :
+  Lemma module_items_sorted_app_inv_head {env} inputs body1 body2 :
     module_items_sorted inputs (body1 ++ body2) ->
     module_items_sorted inputs body1.
   Proof.
@@ -987,7 +989,7 @@ Module Sort.
           reflexivity.
   Qed.
 
-  Lemma module_items_sorted_app_inv_tail inputs body1 body2 :
+  Lemma module_items_sorted_app_inv_tail {env} inputs body1 body2 :
     module_items_sorted inputs (body1 ++ body2) ->
     module_items_sorted (inputs ∪ module_body_writes_blocking body1) body2.
   Proof.
@@ -1016,7 +1018,7 @@ Module Sort.
         reflexivity.
   Qed.
 
-  Equations sort_module_items_split_ready
+  Equations sort_module_items_split_ready {env}
     (ready : LocationSet.t)
     (chosen : list module_item)
     (skipped : list module_item)
@@ -1045,7 +1047,7 @@ Module Sort.
      returns is smaller than its argument, which is too much of a
      change to that function.
    *)
-  Equations sort_module_items_tailrec
+  Equations sort_module_items_tailrec {env}
     (fuel : nat)
     (vars_ready : LocationSet.t)
     (ms : list module_item)
@@ -1062,10 +1064,10 @@ Module Sort.
       }
     }.
 
-  Definition sort_module_items ready body : option (list module_item) :=
+  Definition sort_module_items {env} ready body : option (list module_item) :=
      sort_module_items_tailrec (length body) ready body [].
 
-  Lemma sort_module_items_split_ready_perm ready chosen skipped mis ready' chosen' skipped' :
+  Lemma sort_module_items_split_ready_perm {env} ready chosen skipped mis ready' chosen' skipped' :
     sort_module_items_split_ready ready chosen skipped mis = Some (ready', chosen', skipped') ->
     Permutation (chosen ++ skipped ++ mis) (chosen' ++ skipped').
   Proof.
@@ -1089,7 +1091,7 @@ Module Sort.
     - inv Hsplit.
   Qed.
 
-  Lemma sort_module_items_split_ready_sorted initial_inputs ready chosen skipped mis ready' chosen' rest' :
+  Lemma sort_module_items_split_ready_sorted {env} initial_inputs ready chosen skipped mis ready' chosen' rest' :
     module_items_sorted initial_inputs (rev chosen) ->
     LocationSet.Equal (initial_inputs ∪ module_body_writes_blocking chosen) ready ->
     sort_module_items_split_ready ready chosen skipped mis = Some (ready', chosen', rest') ->
@@ -1114,7 +1116,7 @@ Module Sort.
     - inv Hsplit.
   Qed.
 
-  Lemma sort_module_items_split_ready_stable initial_inputs ready chosen skipped mis :
+  Lemma sort_module_items_split_ready_stable {env} initial_inputs ready chosen skipped mis :
     module_items_sorted initial_inputs (rev chosen ++ mis) ->
     LocationSet.Equal ready (initial_inputs ∪ Verilog.module_body_writes_blocking chosen) ->
     exists ready',
@@ -1153,7 +1155,7 @@ Module Sort.
       congruence.
   Qed.
 
-  Lemma sort_module_items_split_ready_writes initial_inputs ready chosen skipped mis ready' chosen' skipped' :
+  Lemma sort_module_items_split_ready_writes {env} initial_inputs ready chosen skipped mis ready' chosen' skipped' :
     LocationSet.Equal ready (initial_inputs ∪ module_body_writes_blocking chosen) ->
     sort_module_items_split_ready ready chosen skipped mis = Some (ready', chosen', skipped') ->
     LocationSet.Equal ready' (initial_inputs ∪ module_body_writes_blocking chosen').
@@ -1169,7 +1171,7 @@ Module Sort.
     - inv Hsplit.
   Qed.
 
-  Theorem sort_module_items_tailrec_permutation fuel body sorted body' vars_ready :
+  Theorem sort_module_items_tailrec_permutation {env} fuel body sorted body' vars_ready :
     sort_module_items_tailrec fuel vars_ready body sorted = Some body' ->
     Permutation (sorted ++ body) body'.
   Proof.
@@ -1194,7 +1196,7 @@ Module Sort.
       inversion 1.
   Qed.
 
-  Theorem sort_module_items_tailrec_sorted fuel initial_inputs ready body sorted_acc sorted:
+  Theorem sort_module_items_tailrec_sorted {env} fuel initial_inputs ready body sorted_acc sorted:
     module_items_sorted initial_inputs (rev sorted_acc) ->
     LocationSet.Equal (initial_inputs ∪ module_body_writes_blocking sorted_acc) ready ->
     sort_module_items_tailrec fuel ready body sorted_acc = Some sorted ->
@@ -1225,7 +1227,7 @@ Module Sort.
     - inv Hsort.
   Qed.
 
-  Lemma sort_module_items_tailrec_stable fuel initial_inputs ready sorted mis :
+  Lemma sort_module_items_tailrec_stable {env} fuel initial_inputs ready sorted mis :
     module_items_sorted initial_inputs (rev sorted ++ mis) ->
     LocationSet.Equal ready (initial_inputs ∪ Verilog.module_body_writes_blocking sorted) ->
     fuel >= length mis ->
@@ -1302,7 +1304,7 @@ Module Sort.
    *
    ******************************************)
 
-  Theorem sort_module_items_permutation body body' vars_ready :
+  Theorem sort_module_items_permutation {env} body body' vars_ready :
     sort_module_items vars_ready body = Some body' ->
     Permutation body body'.
   Proof.
@@ -1311,7 +1313,7 @@ Module Sort.
     apply H.
   Qed.
 
-  Theorem sort_module_items_sorted inputs body body':
+  Theorem sort_module_items_sorted {env} inputs body body':
     sort_module_items inputs body = Some body' ->
     module_items_sorted inputs body'.
   Proof.
@@ -1323,7 +1325,7 @@ Module Sort.
     - LocationSet.setdec.
   Qed.
 
-  Theorem sort_module_items_stable inputs body :
+  Theorem sort_module_items_stable {env} inputs body :
     module_items_sorted inputs body ->
     sort_module_items inputs body = Some body.
   Proof.
@@ -1337,6 +1339,7 @@ Module Sort.
   Qed.
 
   Section map.
+    Context {env}.
     Context
       (f : module_item -> module_item)
       (f_preserve_reads : forall mi, LocationSet.Equal (module_item_reads (f mi)) (module_item_reads mi))
@@ -1464,7 +1467,7 @@ End Sort.
 Module CombinationalOnly.
   Export Sort.
 
-  Definition Process := Verilog.module_item.
+  Definition Process {env} := Verilog.module_item.
 
   Definition variable_names vars : list string :=
     map Var.varName vars.
@@ -1619,7 +1622,7 @@ Module CombinationalOnly.
     end.
 
   Equations
-    eval_expr {t} (regs: RegisterState.t) (e : Verilog.expression t) : interp_type t :=
+    eval_expr {env t} (regs: RegisterState.t) (e : Verilog.expression t) : interp_type t :=
     eval_expr regs (Verilog.UnaryOp op operand) :=
       let operand_val := eval_expr regs operand in
       (eval_unaryop op operand_val);
@@ -1644,10 +1647,10 @@ Module CombinationalOnly.
       let tBranch_val := eval_expr regs tBranch in
       let fBranch_val := eval_expr regs fBranch in
       (eval_conditional cond_val tBranch_val fBranch_val);
-    eval_expr regs (Verilog.RangeSelect (Slice.Mk vec hi lo _)) :=
+    eval_expr regs (Verilog.RangeSelect (Slice.Mk vec hi lo _) _) :=
       let vec_val := regs vec in
       (XBV.extr vec_val lo (N.succ_pos (hi - lo)));
-    eval_expr regs (Verilog.BitSelect vec idx) :=
+    eval_expr regs (Verilog.BitSelect vec idx _) :=
       let vec_val := regs vec in
       let idx_val := eval_expr regs idx in
       match XBV.to_N idx_val with
@@ -1664,13 +1667,13 @@ Module CombinationalOnly.
     eval_expr regs (Verilog.Replication count expr) :=
       let expr_val := eval_expr regs expr in
       (XBV.replicate count expr_val);
-    eval_expr regs (Verilog.IntegerLiteral _ val) := val ;
-    eval_expr regs (Verilog.NamedExpression var) := regs var.
+    eval_expr regs (Verilog.IntegerLiteral _ val) := val;
+    eval_expr regs (Verilog.NamedExpression var _) := regs var.
 
-  Equations set_target {t} (regs : RegisterState.t) (target : Verilog.assign_target t) (value : interp_type t) : RegisterState.t :=
+  Equations set_target {env t} (regs : RegisterState.t) (target : Verilog.assign_target t) (value : interp_type t) : RegisterState.t :=
     set_target regs (Verilog.AssignVar var) value :=
       RegisterState.set_reg var value regs ;
-    set_target regs (Verilog.AssignBit loc wf) value :=
+    set_target regs (Verilog.AssignBit loc wf _) value :=
       RegisterState.set_location loc wf (XBV.bitOf 0 value) regs ;
     set_target regs (Verilog.AssignSlice slice) value :=
       RegisterState.set_slice slice value regs ;
@@ -1684,7 +1687,7 @@ Module CombinationalOnly.
   Definition nonblocking_assign_undefined : RegisterState.t. Admitted.
 
   Equations
-    exec_statement (regs : RegisterState.t) (stmt : Verilog.statement) : RegisterState.t by struct stmt :=
+    exec_statement {env} (regs : RegisterState.t) (stmt : Verilog.statement) : RegisterState.t by struct stmt :=
     exec_statement regs (Verilog.BlockingAssign target _ rhs) :=
       let rhs_val := eval_expr regs rhs in
       set_target regs target rhs_val ;
@@ -1705,7 +1708,7 @@ Module CombinationalOnly.
   .
 
   Equations
-    exec_module_item : RegisterState.t -> Verilog.module_item -> RegisterState.t :=
+    exec_module_item {env} : RegisterState.t -> Verilog.module_item -> RegisterState.t :=
     exec_module_item st (Initial stmt ) := _;
     exec_module_item st (AlwaysComb stmt ) := exec_statement st stmt;
     exec_module_item st (AlwaysFF stmt) := _;
@@ -1714,7 +1717,7 @@ Module CombinationalOnly.
   Admit Obligations.
 
   Equations
-    exec_module_body : RegisterState.t -> list Verilog.module_item -> RegisterState.t :=
+    exec_module_body {env} : RegisterState.t -> list Verilog.module_item -> RegisterState.t :=
     exec_module_body regs [] := regs;
     exec_module_body regs (mi :: mis) :=
       let regs' := exec_module_item regs mi in
@@ -1781,7 +1784,7 @@ Module CombinationalOnly.
   Proof. repeat intro. subst. crush. Qed.
 
   Equations
-    eval_expr_static {t} (e : Verilog.expression t) : option (interp_type t) :=
+    eval_expr_static {env t} (e : Verilog.expression t) : option (interp_type t) :=
     eval_expr_static (Verilog.UnaryOp op operand) :=
       let* operand_val := eval_expr_static operand in
       Some (eval_unaryop op operand_val);
@@ -1823,7 +1826,7 @@ Module CombinationalOnly.
     eval_expr_static (Verilog.IntegerLiteral _ val) := Some val ;
     eval_expr_static (Verilog.NamedExpression var) := None.
 
-  Lemma eval_expr_static_spec {t} regs (e : expression t) x :
+  Lemma eval_expr_static_spec {env t} regs (e : expression t) x :
     eval_expr_static e = Some x ->
     eval_expr regs e = x.
   Proof.
@@ -2077,7 +2080,7 @@ Section ExpressionFacts.
     all: eauto.
   Qed.
 
-  Inductive upper_bound_static {w} (e : expression (Logic w)) (bound : N) : Prop :=
+  Inductive upper_bound_static {env w} (e : expression (Logic w)) (bound : N) : Prop :=
   | upper_bound_static_eval xbv val
     (Heval : eval_expr_static e = Some xbv)
     (Hto_N : XBV.to_N xbv = Some val)
@@ -2085,7 +2088,7 @@ Section ExpressionFacts.
   | upper_bound_static_by_width
     (Hwidth : (2 ^ w < bound)%N).
 
-  Lemma upper_bound_static_spec {w} regs (e : expression (Logic w)) b val :
+  Lemma upper_bound_static_spec {env w} regs (e : expression (Logic w)) b val :
     upper_bound_static e b ->
     XBV.to_N (eval_expr regs e) = Some val ->
     (val < b)%N.
@@ -2119,7 +2122,7 @@ Hint Rewrite
 Module Facts.
   Import CombinationalOnly.
 
-  Add Parametric Morphism : module_body_reads
+  Add Parametric Morphism {env} : module_body_reads
     with signature (@Permutation Verilog.module_item) ==> LocationSet.Equal
     as module_body_reads_permute.
   Proof.
@@ -2130,7 +2133,7 @@ Module Facts.
     - etransitivity; eassumption.
   Qed.
 
-  Add Parametric Morphism : module_body_writes_blocking
+  Add Parametric Morphism {env} : module_body_writes_blocking
     with signature (@Permutation Verilog.module_item) ==> LocationSet.Equal
     as module_body_writes_blocking_permute.
   Proof.
@@ -2141,7 +2144,7 @@ Module Facts.
     - etransitivity; eassumption.
   Qed.
 
-  Lemma eval_expr_change_regs w (e : Verilog.expression w) : forall regs regs',
+  Lemma eval_expr_change_regs {env} w (e : Verilog.expression w) : forall regs regs',
     regs =(Verilog.expr_reads e)= regs' ->
     eval_expr regs e = eval_expr regs' e.
   Proof.
@@ -2190,7 +2193,7 @@ Module Facts.
   Qed.
 
   Section assign_target.
-    Equations read_target {t} (regs : RegisterState.t) (target : Verilog.assign_target t) : interp_type t :=
+    Equations read_target {env t} (regs : RegisterState.t) (target : Verilog.assign_target t) : interp_type t :=
       read_target regs (Verilog.AssignVar var) := regs var;
       read_target regs (Verilog.AssignBit loc _) :=
         XBV.of_bits [RegisterState.get_location regs loc];
@@ -2199,7 +2202,7 @@ Module Facts.
       read_target regs (Verilog.AssignConcat lhs rhs) :=
         XBV.concat (read_target regs lhs) (read_target regs rhs).
 
-    Lemma read_target_change_regs {w} (target : Verilog.assign_target w) regs1 regs2 :
+    Lemma read_target_change_regs {env w} (target : Verilog.assign_target w) regs1 regs2 :
       regs1 =( Verilog.assign_target_writes target )= regs2 ->
       read_target regs1 target = read_target regs2 target.
     Proof.
@@ -2214,7 +2217,7 @@ Module Facts.
         rewrite IHtarget2 by assumption. reflexivity.
     Qed.
 
-    Lemma set_target_preserve {t} target value regs l :
+    Lemma set_target_preserve {env t} target value regs l :
       LocationSet.Disjoint (Verilog.assign_target_writes target) l ->
       set_target (t:=t) regs target value =( l )= regs.
     Proof.
@@ -2233,7 +2236,7 @@ Module Facts.
         reflexivity.
     Qed.
 
-    Lemma set_target_match_before {t} target value regs reference l :
+    Lemma set_target_match_before {env t} target value regs reference l :
       LocationSet.Disjoint (Verilog.assign_target_writes target) l ->
       set_target (t:=t) regs target value =( l )= reference ->
       regs =( l )= reference.
@@ -2243,7 +2246,7 @@ Module Facts.
       apply Hmatch. exact Hloc.
     Qed.
 
-    Lemma read_target_set_target {w} (target : Verilog.assign_target w) :
+    Lemma read_target_set_target {env w} (target : Verilog.assign_target w) :
       Verilog.assign_target_wf target ->
       forall regs value,
         read_target (set_target regs target value) target = value.
@@ -2261,7 +2264,7 @@ Module Facts.
         exact (@XBV.concat_extr (Npos w1) (Npos w2) value).
     Qed.
 
-    Lemma set_target_from_state {w} (target : Verilog.assign_target w) :
+    Lemma set_target_from_state {env w} (target : Verilog.assign_target w) :
       Verilog.assign_target_wf target ->
       forall regs reference,
         set_target regs target (read_target reference target)
@@ -2284,7 +2287,7 @@ Module Facts.
           apply IHHwf2.
     Qed.
 
-    Lemma set_target_change_regs {t} target value regs1 regs2 :
+    Lemma set_target_change_regs {env t} target value regs1 regs2 :
       assign_target_wf target ->
       set_target (t:=t) regs1 target value
         =( Verilog.assign_target_writes target )=
@@ -2305,7 +2308,7 @@ Module Facts.
           apply IHtarget_wf2.
     Qed.
 
-    Lemma set_target_change_preserve {t} l target value regs1 regs2 :
+    Lemma set_target_change_preserve {env t} l target value regs1 regs2 :
       regs1 =( l )= regs2 ->
       set_target (t:=t) regs1 target value =( l )= set_target (t:=t) regs2 target value.
     Proof.
@@ -2324,7 +2327,7 @@ Module Facts.
   End assign_target.
 
   Section statement.
-    Lemma exec_statement_change_regs stmt regs1 regs2 :
+    Lemma exec_statement_change_regs {env} stmt regs1 regs2 :
       regs1 =(Verilog.statement_reads stmt)= regs2 ->
       exec_statement regs1 stmt
         =( Verilog.statement_writes_blocking stmt )=
@@ -2340,7 +2343,7 @@ Module Facts.
       assumption.
     Admitted.
 
-    Lemma exec_statement_change_preserve l stmt regs1 regs2 :
+    Lemma exec_statement_change_preserve {env} l stmt regs1 regs2 :
       regs1 =( Verilog.statement_reads stmt )= regs2 ->
       regs1 =( l )= regs2 ->
       exec_statement regs1 stmt =( l )= exec_statement regs2 stmt.
@@ -2354,12 +2357,12 @@ Module Facts.
       exact Hmatch_reads.
     Admitted.
 
-    Lemma exec_statement_change_preserve_reads stmt regs1 regs2 :
+    Lemma exec_statement_change_preserve_reads {env} stmt regs1 regs2 :
       regs1 =( Verilog.statement_reads stmt )= regs2 ->
       exec_statement regs1 stmt =( Verilog.statement_reads stmt )= exec_statement regs2 stmt.
     Proof. auto using exec_statement_change_preserve. Qed.
 
-    Lemma exec_statement_preserve stmt regs  l :
+    Lemma exec_statement_preserve {env} stmt regs  l :
       LocationSet.Disjoint l (Verilog.statement_writes_blocking stmt) ->
       regs =( l )= exec_statement regs stmt.
     Proof.
@@ -2373,7 +2376,7 @@ Module Facts.
   End statement.
 
   Section module_item.
-    Lemma exec_module_item_change_regs mi regs1 regs2 :
+    Lemma exec_module_item_change_regs {env} mi regs1 regs2 :
       regs1 =(Verilog.module_item_reads mi)= regs2 ->
       exec_module_item regs1 mi
         =(Verilog.module_item_writes_blocking mi)=
@@ -2389,7 +2392,7 @@ Module Facts.
       apply exec_statement_change_regs. assumption.
     Admitted.
 
-    Lemma exec_module_item_change_preserve mi regs1 regs2 :
+    Lemma exec_module_item_change_preserve {env} mi regs1 regs2 :
       regs1 =( Verilog.module_item_reads mi )= regs2 ->
       forall l, regs1 =( l )= regs2 ->
       exec_module_item regs1 mi =( l )= exec_module_item regs2 mi.
@@ -2401,12 +2404,12 @@ Module Facts.
       apply exec_statement_change_preserve; assumption.
     Admitted.
 
-    Lemma exec_module_item_change_preserve_reads mi regs1 regs2 :
+    Lemma exec_module_item_change_preserve_reads {env} mi regs1 regs2 :
       regs1 =( Verilog.module_item_reads mi )= regs2 ->
       exec_module_item regs1 mi =( Verilog.module_item_reads mi )= exec_module_item regs2 mi.
     Proof. auto using exec_module_item_change_preserve. Qed.
 
-    Lemma exec_module_item_preserve mi regs l :
+    Lemma exec_module_item_preserve {env} mi regs l :
       LocationSet.Disjoint l (Verilog.module_item_writes_blocking mi) ->
       regs =( l )= exec_module_item regs mi.
     Proof.
@@ -2419,7 +2422,7 @@ Module Facts.
   End module_item.
 
   Section module_body.
-    Lemma exec_module_body_change_preserve body regs1 regs2 :
+    Lemma exec_module_body_change_preserve {env} body regs1 regs2 :
       regs1 =( Verilog.module_body_reads body )= regs2 ->
       forall l, regs1 =( l )= regs2 ->
       exec_module_body regs1 body =( l )= exec_module_body regs2 body.
@@ -2434,7 +2437,7 @@ Module Facts.
         + eapply exec_module_item_change_preserve; assumption.
     Qed.
 
-    Lemma exec_module_body_change_regs body regs1 regs2 :
+    Lemma exec_module_body_change_regs {env} body regs1 regs2 :
       regs1 =(Verilog.module_body_reads body)= regs2 ->
       exec_module_body regs1 body
         =(Verilog.module_body_writes_blocking body)=
@@ -2452,12 +2455,12 @@ Module Facts.
         apply exec_module_item_change_preserve; assumption.
     Qed.
 
-    Lemma exec_module_body_change_preserve_reads body regs1 regs2 :
+    Lemma exec_module_body_change_preserve_reads {env} body regs1 regs2 :
       regs1 =( Verilog.module_body_reads body )= regs2 ->
       exec_module_body regs1 body =( Verilog.module_body_reads body )= exec_module_body regs2 body.
     Proof. auto using exec_module_body_change_preserve. Qed.
 
-    Lemma exec_module_body_preserve body regs l :
+    Lemma exec_module_body_preserve {env} body regs l :
       LocationSet.Disjoint l (module_body_writes_blocking body) ->
       regs =( l )= exec_module_body regs body.
     Proof.
