@@ -2,6 +2,7 @@ From vera Require Import Verilog.
 From vera Require Import VerilogSemantics.
 From vera Require Import Common.
 Import Verilog.
+Implicit Types (env : environment).
 Import ExactEquivalence.
 
 From ExtLib Require Import Structures.Monads.
@@ -15,7 +16,7 @@ Local Open Scope monad_scope.
 Local Open Scope string_scope.
 Local Open Scope verilog_scope.
 
-Equations break_statement : (statement -> module_item) -> statement -> string + list module_item :=
+Equations break_statement {env} : (statement -> module_item) -> statement -> string + list module_item :=
   break_statement mk (NonblockingAssign lhs wf rhs) :=
     inr [mk (NonblockingAssign lhs wf rhs)];
   break_statement mk (BlockingAssign lhs wf rhs) :=
@@ -31,7 +32,7 @@ Equations break_statement : (statement -> module_item) -> statement -> string + 
       inr (List.app items rest')
   .
 
-Definition break_module_item (mi : module_item) : string + list module_item :=
+Definition break_module_item {env} (mi : module_item) : string + list module_item :=
   match mi with
   | Initial stmt => break_statement Initial stmt
   | AlwaysFF stmt => break_statement AlwaysFF stmt
@@ -39,7 +40,7 @@ Definition break_module_item (mi : module_item) : string + list module_item :=
   | _ => inr [mi]
   end.
 
-Definition break_always_ff_module_body (body : list module_item) : string + list module_item :=
+Definition break_always_ff_module_body {env} (body : list module_item) : string + list module_item :=
   let* bodies := mapT break_module_item body in
   inr (List.concat bodies).
 
@@ -48,6 +49,7 @@ Definition break_blocks_vmodule {i o} (v : vmodule i o) : string + vmodule i o :
     let* body := break_always_ff_module_body (modBody v) in
     inr {|
       modName := modName v;
+      modEnv := modEnv v;
       modBody := body;
       modWfIODisjoint := modWfIODisjoint v;
       modWfInputsNoDup := modWfInputsNoDup v;

@@ -5,6 +5,7 @@ From vera Require Import Tactics.
 From vera Require Import Bitvector.
 From vera Require Import Common.
 Import Verilog.
+Implicit Types (env : environment).
 From vera Require Import VerilogSemantics.
 Import CombinationalOnly.
 
@@ -32,7 +33,7 @@ Arguments N.sub _ _ : simpl never.
 
 (* This will create partially (and wholly) undriven variables *)
 
-Equations module_body_keep_assigns :
+Equations module_body_keep_assigns {env} :
     LocationSet.t ->
     list module_item ->
     result (LocationSet.t * list module_item) := {
@@ -83,6 +84,7 @@ Definition drop_unused1 {i o} (v : vmodule i o) : result (LocationSet.t * vmodul
     let* (dropped, v') := module_body_keep_assigns keep_locations (modBody v) in
     inr (dropped, {|
       modName := modName v;
+      modEnv := modEnv v;
       modBody := v';
       modWfIODisjoint := modWfIODisjoint v;
       modWfInputsNoDup := modWfInputsNoDup v;
@@ -110,7 +112,7 @@ Definition drop_unused {i o} (v : vmodule i o) : result (vmodule i o) :=
     drop_unused_rec (List.length (modBody v)) v
   ).
 
-Lemma module_body_keep_assigns_reads keep dropped body body' :
+Lemma module_body_keep_assigns_reads {env} keep dropped body body' :
   module_body_reads body ⊆ keep ->
   module_body_keep_assigns keep body = inr (dropped, body') ->
   module_body_reads body' ⊆ module_body_reads body.
@@ -127,7 +129,7 @@ Proof.
   all: LocationSet.setdec.
 Qed.
 
-Lemma module_body_keep_assigns_spec keep dropped init body body' :
+Lemma module_body_keep_assigns_spec {env} keep dropped init body body' :
   module_body_reads body ⊆ keep ->
   module_body_keep_assigns keep body = inr (dropped, body') ->
   exec_module_body init body' =( keep )= exec_module_body init body.
@@ -158,7 +160,7 @@ Qed.
 
 Import ExactEquivalence.
 
-Lemma module_body_keep_assigns_sorted keep dropped vars body body' :
+Lemma module_body_keep_assigns_sorted {env} keep dropped vars body body' :
   module_body_reads body ⊆ keep ->
   module_body_keep_assigns keep body = inr (dropped, body') ->
   module_items_sorted vars body ->

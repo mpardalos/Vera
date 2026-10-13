@@ -5,6 +5,7 @@ From vera Require Import Tactics.
 From vera Require Import Bitvector.
 From vera Require Import Common.
 Import Verilog.
+Implicit Types (env : environment).
 (* From vera Require VerilogSemantics. *)
 
 From ExtLib Require Import Structures.Monads.
@@ -28,7 +29,7 @@ Import EqNotations.
 Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
-Program Definition equalized_shiftop {w1 w2}
+Program Definition equalized_shiftop {env} {w1 w2}
     op
     (lhs : expression (Logic w1))
     (rhs : expression (Logic w2))
@@ -40,12 +41,12 @@ Program Definition equalized_shiftop {w1 w2}
     .
 Solve All Obligations with lia.
 
-Equations simpl_expr {w} (e : expression w) : expression w := {
+Equations simpl_expr {env} {w} (e : expression w) : expression w := {
   | UnaryOp op e => UnaryOp op (simpl_expr e)
   | ArithmeticOp op lhs rhs => ArithmeticOp op (simpl_expr lhs) (simpl_expr rhs)
   | LogicalOp op lhs rhs => LogicalOp op (simpl_expr lhs) (simpl_expr rhs)
   | BitwiseOp op lhs rhs => BitwiseOp op (simpl_expr lhs) (simpl_expr rhs)
-  | @ShiftOp w1 w2 op lhs rhs with dec (w1 = w2) => {
+  | @ShiftOp _ w1 w2 op lhs rhs with dec (w1 = w2) => {
     | left E => ShiftOp op (simpl_expr lhs) (simpl_expr rhs)
     | right _ =>
       (* Shift operand widths must match in SMTLIB *)
@@ -56,14 +57,14 @@ Equations simpl_expr {w} (e : expression w) : expression w := {
     (* TODO: Convert replications to concats *)
     Replication n (simpl_expr e)
   | Conditional cond ifT ifF => Conditional (simpl_expr cond) (simpl_expr ifT) (simpl_expr ifF)
-  | RangeSelect slice => RangeSelect slice
-  | BitSelect vec idx => BitSelect vec (simpl_expr idx)
+  | RangeSelect slice wt => RangeSelect slice wt
+  | BitSelect vec idx wt => BitSelect vec (simpl_expr idx) wt
   | Resize to expr => Resize to (simpl_expr expr)
   | IntegerLiteral w val => IntegerLiteral w val
-  | NamedExpression var => NamedExpression var
+  | NamedExpression var wt => NamedExpression var wt
   }.
 
-Fixpoint simpl_statement (stmt : statement) : statement :=
+Fixpoint simpl_statement {env} (stmt : statement) : statement :=
   match stmt with
   | BlockingAssign lhs wf rhs => BlockingAssign lhs wf (simpl_expr rhs)
   | NonblockingAssign lhs wf rhs => NonblockingAssign lhs wf (simpl_expr rhs)
@@ -71,7 +72,7 @@ Fixpoint simpl_statement (stmt : statement) : statement :=
   | Block stmts => Block (map simpl_statement stmts)
   end.
 
-Definition simpl_module_item mi : module_item :=
+Definition simpl_module_item {env} mi : module_item :=
   match mi with
   | Initial stmt => Initial (simpl_statement stmt)
   | AlwaysFF stmt => AlwaysFF (simpl_statement stmt)
@@ -79,10 +80,10 @@ Definition simpl_module_item mi : module_item :=
   | ConcurrentAssertion expr => ConcurrentAssertion (simpl_expr expr)
   end.
 
-Definition simpl_module_body : list module_item -> list module_item :=
+Definition simpl_module_body {env} : list module_item -> list module_item :=
     map simpl_module_item.
 
-Lemma simpl_module_body_writes_blocking mis :
+Lemma simpl_module_body_writes_blocking {env} mis :
   LocationSet.Equal
     (module_body_writes_blocking (simpl_module_body mis))
     (module_body_writes_blocking mis).
@@ -103,6 +104,7 @@ Admitted.
 Definition simpl_vmodule {i o} (v : vmodule i o) : vmodule i o :=
   traceBracket ("Simplify " ++ Verilog.modName v) {|
     Verilog.modName := Verilog.modName v;
+    Verilog.modEnv := Verilog.modEnv v;
     Verilog.modBody := simpl_module_body (Verilog.modBody v);
   |}.
 Proof. all: destruct v; assumption. Defined.
@@ -179,7 +181,7 @@ Proof.
   - destruct_rew. reflexivity.
 Qed.
 
-Lemma eval_equalized_shiftop {w1 w2} regs op (lhs : expression (Logic w1)) (rhs : expression (Logic w2)) :
+Lemma eval_equalized_shiftop {env} {w1 w2} regs op (lhs : expression (Logic w1)) (rhs : expression (Logic w2)) :
   eval_expr regs (equalized_shiftop op lhs rhs)
     = eval_shiftop op (eval_expr regs lhs) (eval_expr regs rhs).
 Proof.
@@ -202,7 +204,7 @@ Proof.
   - apply convert_exes. lia.
 Qed.
 
-Lemma simpl_expr_correct {w} regs (e : expression w) :
+Lemma simpl_expr_correct {env} {w} regs (e : expression w) :
   eval_expr regs (simpl_expr e) = eval_expr regs e.
 Proof.
   funelim (simpl_expr e).
@@ -215,11 +217,11 @@ Proof.
   all: reflexivity.
 Qed.
 
-Lemma equalized_shiftop_reads_reads_Equal w1 w2 op (lhs : expression (Logic w1)) (rhs : expression (Logic w2)) :
+Lemma equalized_shiftop_reads_reads_Equal {env} w1 w2 op (lhs : expression (Logic w1)) (rhs : expression (Logic w2)) :
   LocationSet.Equal (expr_reads (equalized_shiftop op lhs rhs)) (expr_reads lhs ∪ expr_reads rhs).
 Proof. reflexivity. Qed.
 
-Lemma simpl_expr_reads_Equal w (e : expression w) :
+Lemma simpl_expr_reads_Equal {env} w (e : expression w) :
   LocationSet.Equal (expr_reads (simpl_expr e)) (expr_reads e).
 Proof.
   funelim (simpl_expr e); clear Heqcall.
@@ -266,7 +268,7 @@ Proof.
 
   destruct (sort_module_items (LocationSet.of_varset (VarSet.of_list i)) (modBody v));
     simpl; [|reflexivity].
-  generalize (init // VarSet.of_list i). clear init v.
+  generalize (init // VarSet.of_list i). clear init.
   induction l; intros r; [reflexivity|].
   destruct a.
   all: expect 4. 1, 3, 4: admit. (* TODO initial, always_ff, concurrent assertions *)

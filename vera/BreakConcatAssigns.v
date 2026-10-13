@@ -6,6 +6,7 @@ From vera Require Import Bitvector.
 From vera Require Import Common.
 From vera Require Import VerilogSemantics.
 Import Verilog.
+Implicit Types (env : environment).
 Import ExactEquivalence.
 Import CombinationalOnly.
 
@@ -34,7 +35,7 @@ Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
 Section definition.
-  Equations extract_assign_rhs {w} (rhs : expression (Logic w)) (lo : N)
+  Equations extract_assign_rhs {env} {w} (rhs : expression (Logic w)) (lo : N)
       (width : positive) : expression (Logic width) := {
     | IntegerLiteral _ val, lo, width => IntegerLiteral width (XBV.extr val lo width)
     | rhs, lo, width =>
@@ -46,11 +47,11 @@ Section definition.
   Solve All Obligations with
     (intros; rewrite N.succ_pos_spec; destruct lo as [|[p|p|]]; cbn; lia).
 
-  Equations break_concat_assign {A w}
+  Equations break_concat_assign {env} {A w}
       (mk_item : forall w' (t': assign_target w'), assign_target_wf t' -> expression w' -> A)
       (t : assign_target w)
       : assign_target_wf t -> expression w -> list A := {
-    | mk_item, (@AssignConcat w_hi w_lo target_hi target_lo), wf, val :=
+    | mk_item, (@AssignConcat _ w_hi w_lo target_hi target_lo), wf, val :=
       break_concat_assign mk_item target_lo _
         (extract_assign_rhs val 0 w_lo)
       ++ break_concat_assign mk_item target_hi _
@@ -62,7 +63,7 @@ Section definition.
 
   Local Obligation Tactic := idtac.
 
-  Equations break_concat_assigns_module_body
+  Equations break_concat_assigns_module_body {env}
       (body : list module_item) : string + list module_item by struct body := {
     | Initial stmt :: tl => 
       let* tl' := break_concat_assigns_module_body tl in
@@ -87,6 +88,7 @@ Section definition.
       let* body := break_concat_assigns_module_body (modBody v) in
       ret {|
         modName := modName v;
+      modEnv := modEnv v;
         modBody := body;
         modWfIODisjoint := modWfIODisjoint v;
         modWfInputsNoDup := modWfInputsNoDup v;
@@ -95,14 +97,14 @@ Section definition.
 End definition.
 
 Section accessed.
-  Lemma extract_assign_rhs_reads {w} (rhs : expression (Logic w)) lo width :
+  Lemma extract_assign_rhs_reads {env} {w} (rhs : expression (Logic w)) lo width :
     LocationSet.Equal (expr_reads (extract_assign_rhs rhs lo width)) (expr_reads rhs).
   Proof.
     funelim (extract_assign_rhs rhs lo width).
     all: cbn; LocationSet.setdec.
   Qed.
 
-  Lemma break_concat_assign_writes {w} mk_item (target : assign_target w) wf val :
+  Lemma break_concat_assign_writes {env} {w} mk_item (target : assign_target w) wf val :
     (forall w (target' : assign_target w) wf' val', LocationSet.Equal
       (module_item_writes_blocking (mk_item _ target' wf' val'))
       (assign_target_writes target')) ->
@@ -111,7 +113,7 @@ Section accessed.
       (assign_target_writes target).
   Proof.
     intros Hwrites. revert wf val.
-    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo].
+    induction target as [var wt | loc bound wt | width slice wt | wh wl hi IHhi lo IHlo].
     all: intros Hwf val.
     all: simp break_concat_assign; simpl.
     (* Passthrough cases *)
@@ -146,7 +148,7 @@ Section semantics.
     rewrite N.add_0_r; reflexivity.
   Qed.
 
-  Lemma eval_extract_assign_rhs {w} (rhs : expression (Logic w)) lo (width : positive) regs :
+  Lemma eval_extract_assign_rhs {env} {w} (rhs : expression (Logic w)) lo (width : positive) regs :
     (lo + width <= w)%N ->
     eval_expr regs (extract_assign_rhs rhs lo width) =
     XBV.extr (eval_expr regs rhs) lo width.
@@ -162,7 +164,7 @@ Section semantics.
     all: apply convert_shr_extr; assumption.
   Qed.
 
-  Lemma exec_module_body_app regs body1 body2 :
+  Lemma exec_module_body_app {env} regs body1 body2 :
     exec_module_body regs (body1 ++ body2) =
     exec_module_body (exec_module_body regs body1) body2.
   Proof.
@@ -172,13 +174,13 @@ Section semantics.
     - apply IHbody1.
   Qed.
 
-  Lemma exec_break_concat_assign {w} (target : assign_target w) wf val regs :
+  Lemma exec_break_concat_assign {env} {w} (target : assign_target w) wf val regs :
     LocationSet.Disjoint (assign_target_writes target) (expr_reads val) ->
     exec_module_body regs (break_concat_assign (fun w t wf val => AlwaysComb (BlockingAssign t wf val)) target wf val) =
     set_target regs target (eval_expr regs val).
   Proof.
     revert wf val regs.
-    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo];
+    induction target as [var wt | loc bound wt | width slice wt | wh wl hi IHhi lo IHlo];
     intros Hwf val regs Hdisjoint; simp break_concat_assign.
     all: simp exec_module_body exec_module_item exec_statement set_target; simpl.
     all: try reflexivity; expect 1.
@@ -192,13 +194,13 @@ Section semantics.
   Qed.
 
   (* TODO: Prove once AlwaysFF execution semantics is defined. *)
-  Lemma exec_break_concat_assign_nonblocking {w} (target : assign_target w) wf val regs :
+  Lemma exec_break_concat_assign_nonblocking {env} {w} (target : assign_target w) wf val regs :
     exec_module_body regs
       (break_concat_assign (fun w t wf val => AlwaysFF (NonblockingAssign t wf val)) target wf val) =
     exec_module_item regs (AlwaysFF (NonblockingAssign target wf val)).
   Proof. Admitted.
 
-  Lemma exec_break_concat_assigns_module_body regs body body' :
+  Lemma exec_break_concat_assigns_module_body {env} regs body body' :
     forall vars, module_items_sorted vars body ->
     break_concat_assigns_module_body body = inr body' ->
     exec_module_body regs body' = exec_module_body regs body.
@@ -217,14 +219,14 @@ End semantics.
 
 Section sort.
   #[local]
-  Lemma break_concat_assign_sorted {w} (target : assign_target w) wf val vars :
+  Lemma break_concat_assign_sorted {env} {w} (target : assign_target w) wf val vars :
     LocationSet.Subset (expr_reads val) vars ->
     LocationSet.Disjoint (assign_target_writes target) vars ->
     module_items_sorted vars
       (break_concat_assign (fun w t wf val => AlwaysComb (BlockingAssign t wf val)) target wf val).
   Proof.
     revert wf val vars.
-    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo];
+    induction target as [var wt | loc bound wt | width slice wt | wh wl hi IHhi lo IHlo];
     intros Hwf val vars Hreads Hdisjoint; simp break_concat_assign.
     all: try (constructor; [exact Hreads | exact Hdisjoint | constructor]).
     apply module_items_sorted_app.
@@ -235,13 +237,13 @@ Section sort.
   Qed.
 
   #[local]
-  Lemma break_concat_assign_nonblocking_writes {w} (target : assign_target w) wf val :
+  Lemma break_concat_assign_nonblocking_writes {env} {w} (target : assign_target w) wf val :
     LocationSet.Equal
       (module_body_writes_blocking
         (break_concat_assign (fun w t wf val => AlwaysFF (NonblockingAssign t wf val)) target wf val)) {}.
   Proof.
     revert wf val.
-    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo];
+    induction target as [var wt | loc bound wt | width slice wt | wh wl hi IHhi lo IHlo];
     intros Hwf val; simp break_concat_assign; simpl.
     all: try LocationSet.setdec.
     rewrite module_body_writes_blocking_app, IHhi, IHlo.
@@ -249,13 +251,13 @@ Section sort.
   Qed.
 
   #[local]
-  Lemma break_concat_assign_nonblocking_sorted {w} (target : assign_target w) wf val vars :
+  Lemma break_concat_assign_nonblocking_sorted {env} {w} (target : assign_target w) wf val vars :
     LocationSet.Subset (expr_reads val) vars ->
     module_items_sorted vars
       (break_concat_assign (fun w t wf val => AlwaysFF (NonblockingAssign t wf val)) target wf val).
   Proof.
     revert wf val vars.
-    induction target as [var | loc bound | width slice | wh wl hi IHhi lo IHlo];
+    induction target as [var wt | loc bound wt | width slice wt | wh wl hi IHhi lo IHlo];
     intros Hwf val vars Hreads; simp break_concat_assign.
     all: try (constructor; [exact Hreads | simpl; LocationSet.setdec | constructor]).
     apply module_items_sorted_app.
@@ -263,7 +265,7 @@ Section sort.
     - apply IHhi. rewrite extract_assign_rhs_reads. LocationSet.setdec.
   Qed.
 
-  Lemma break_concat_assigns_sorted vars body body' :
+  Lemma break_concat_assigns_sorted {env} vars body body' :
     module_items_sorted vars body ->
     break_concat_assigns_module_body body = inr body' ->
     module_items_sorted vars body'.
