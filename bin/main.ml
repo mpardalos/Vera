@@ -11,7 +11,7 @@ let ( =<< ) a b = b >>= a
 let module_of_file = ParseSlang.parse_verilog_file
 
 (* filename -> (inputs * outputs * module) *)
-let typed_module_of_file f : (Vera.Var.variable list * Vera.Var.variable list * Vera.Verilog.vmodule ) Vera.Typecheck.transf =
+let typed_module_of_file f =
   let m = module_of_file f in
   let* (Vera.ExistT ((i, o), m)) = Vera.Typecheck.tc_vmodule m in
   Vera.Inr (i, o, Obj.magic m)
@@ -25,6 +25,11 @@ let smt_of_file filename =
       translate one module *)
   let* (i, o, m) = typed_module_of_file filename in
   Vera.verilog_to_smt_general i o VerilogLeft m
+
+let btor_of_file filename =
+  let* (i, o, m) = typed_module_of_file filename in
+  let* m = Vera.lower_verilog i o m in
+  Vera.transfer_vmodule i o m
 
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =
@@ -64,6 +69,7 @@ let rec lower level filename =
   | `PreSMT ->
       display_or_error VerilogPP.Typed.vmodule (lowered_module_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
+  | `BTOR -> display_or_error Btor2PP.btor (btor_of_file filename)
 
 let compare_cmd =
   let open Cmdliner.Term.Syntax in
@@ -111,6 +117,7 @@ let lower_cmd =
         ("typed", `Typed);
         ("pre-smt", `PreSMT);
         ("smt", `SMT);
+        ("btor", `BTOR);
       ]
   in
   Cmd.v (Cmd.info "lower")

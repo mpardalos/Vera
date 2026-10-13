@@ -1,4 +1,4 @@
-(* From Stdlib Require Import String. *)
+From Stdlib Require Import String.
 From Stdlib Require Import ZArith.
 From Stdlib Require Import ProofIrrelevance.
 (* From Stdlib Require Import BinNums. *)
@@ -40,7 +40,7 @@ Import ListNotations.
 Import EqNotations.
 (* Local Open Scope monad_scope. *)
 
-Definition nid := N.
+Definition name := string.
 
 Module Sort <: UsualDecidableType.
   Inductive sort :=
@@ -62,188 +62,163 @@ End Sort.
 
 Import Sort (BitVec, Array).
 
-Definition environment := nid -> option Sort.t.
+Definition environment := name -> option Sort.t.
+
+Implicit Types (env : environment).
+Existing Class environment.
 
 Module Ref.
-  Record t {env : environment} {s : Sort.t} := Mk {
-    refName : nid;
+  Record ref {env} {s : Sort.t} := Mk {
+    refName : name;
     refWf : env refName = Some s
   }.
-  Arguments t : clear implicits.
+  Arguments ref {_} _.
 
-  Definition eqb {env s} (r1 r2 : t env s) : bool := N.eqb r1.(refName) r2.(refName).
+  Definition t {env} := ref.
 
-  Definition heqb {env s1 s2} (r1 : t env s1) (r2 : t env s2) : bool :=
-    if Sort.eq_dec s1 s2 then N.eqb r1.(refName) r2.(refName) else false.
+  Definition eqb {env s} (r1 r2 : ref s) : bool := String.eqb r1.(refName) r2.(refName).
 
-  Lemma eqb_refl {env s} (r : t env s) : eqb r r = true.
-  Proof. destruct r. apply N.eqb_refl. Qed.
+  Definition heqb {env s1 s2} (r1 : ref s1) (r2 : ref s2) : bool :=
+    if Sort.eq_dec s1 s2 then String.eqb r1.(refName) r2.(refName) else false.
 
-  Lemma eqb_eq {env s} (r1 r2 : t env s) :
+  Lemma eqb_refl {env s} (r : ref s) : eqb r r = true.
+  Proof. destruct r. apply String.eqb_refl. Qed.
+
+  Lemma eqb_eq {env s} (r1 r2 : ref s) :
     eqb r1 r2 = true <-> r1 = r2.
   Proof.
     unfold eqb.
     destruct r1, r2. simpl.
-    rewrite N.eqb_eq.
+    rewrite String.eqb_eq.
     split; intros H.
     - subst. f_equal. apply proof_irrelevance.
     - inversion H. reflexivity.
   Qed.
 End Ref.
 
-Variant expr {env : environment} : Sort.t -> Type :=
-| UnsignedExtend {n : N} (w : N) (e : Ref.t env (BitVec n)) : expr (BitVec (n + w))
-| SignedExtend {n : N} (w : N) (e : Ref.t env (BitVec n)) : expr (BitVec (n + w))
-| Not {n} (e : Ref.t env (BitVec n)) : expr (BitVec n)
-| Inc {n} (e : Ref.t env (BitVec n)) : expr (BitVec n)
-| Dec {n} (e : Ref.t env (BitVec n)) : expr (BitVec n)
-| RedAnd {n} (e : Ref.t env (BitVec n)) : expr (BitVec 1)
-| RedOr {n} (e : Ref.t env (BitVec n)) : expr (BitVec 1)
-| RedXor {n} (e : Ref.t env (BitVec n)) : expr (BitVec 1)
-| Iff (e1 e2 : Ref.t env (BitVec 1)) : expr (BitVec 1)
-| Implies (e1 e2 : Ref.t env (BitVec 1)) : expr (BitVec 1)
-| Eq {s} (e1 e2 : Ref.t env s) : expr (BitVec 1)
-| NEq {s} (e1 e2 : Ref.t env s) : expr (BitVec 1)
-| SignedGt {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| UnsignedGt {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| SignedGtE {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| UnsignedGtE {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| SignedLt {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| UnsignedLt {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| SignedLtE {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| UnsignedLtE {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| And {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| NAnd {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| Or {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| NOr {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| XOr {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| XNor {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| Rol {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| Sll {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| Sra {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| Srl {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| Add {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| Mul {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| SignedDiv {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| UnsignedDiv {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| SignedMod {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
+Inductive expr {env} : Sort.t -> Type :=
+| UnsignedExtend {n : N} (w : N) (e : expr (BitVec n)) : expr (BitVec (n + w))
+| SignedExtend {n : N} (w : N) (e : expr (BitVec n)) : expr (BitVec (n + w))
+| Slice {n} (hi lo : N) (e : expr (BitVec n)) : expr (BitVec (1 + hi - lo))
+| Not {n} (e : expr (BitVec n)) : expr (BitVec n)
+| Inc {n} (e : expr (BitVec n)) : expr (BitVec n)
+| Dec {n} (e : expr (BitVec n)) : expr (BitVec n)
+| RedAnd {n} (e : expr (BitVec n)) : expr (BitVec 1)
+| RedOr {n} (e : expr (BitVec n)) : expr (BitVec 1)
+| RedXor {n} (e : expr (BitVec n)) : expr (BitVec 1)
+| Iff (e1 e2 : expr (BitVec 1)) : expr (BitVec 1)
+| Implies (e1 e2 : expr (BitVec 1)) : expr (BitVec 1)
+| Eq {s} (e1 e2 : expr s) : expr (BitVec 1)
+| NEq {s} (e1 e2 : expr s) : expr (BitVec 1)
+| SignedGt {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| UnsignedGt {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| SignedGtE {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| UnsignedGtE {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| SignedLt {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| UnsignedLt {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| SignedLtE {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| UnsignedLtE {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| And {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| NAnd {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| Or {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| NOr {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| XOr {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| XNor {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| Rol {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| Sll {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| Sra {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| Srl {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| Add {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| Mul {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| SignedDiv {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| UnsignedDiv {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| SignedMod {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
 (* No unsigned mod *)
-| SignedRem {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| UnsignedRem {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| Sub {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec n)
-| SignedAddOverflow {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| UnsignedAddOverflow {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| SignedDivOverflow {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| UnsignedDivOverflow {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| SignedMulOverflow {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| UnsignedMulOverflow {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| SignedSubOverflow {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| UnsignedSubOverflow {n} (e1 e2 : Ref.t env (BitVec n)) : expr (BitVec 1)
-| Concat {n m} (e1 : Ref.t env (BitVec n)) (e2 : Ref.t env (BitVec m)) : expr (BitVec (n + m))
-| Read {I E} (arr : Ref.t env (Array I E)) (idx : Ref.t env I) : expr E
-| ITE {n} (cond : Ref.t env (BitVec 1)) (ifT ifF : Ref.t env (BitVec n)) : expr (BitVec n)
-| Write {I E} (arr : Ref.t env (Array I E)) (idx : Ref.t env I) (elem : Ref.t env E) : expr (Array I E)
+| SignedRem {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| UnsignedRem {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| Sub {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
+| SignedAddOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| UnsignedAddOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| SignedDivOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+(* No unsigned div overflow *)
+| SignedMulOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| UnsignedMulOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| SignedSubOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| UnsignedSubOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
+| Concat {n m} (e1 : expr (BitVec n)) (e2 : expr (BitVec m)) : expr (BitVec (n + m))
+| Read {I E} (arr : expr (Array I E)) (idx : expr I) : expr E
+| ITE {n} (cond : expr (BitVec 1)) (ifT ifF : expr (BitVec n)) : expr (BitVec n)
+| Write {I E} (arr : expr (Array I E)) (idx : expr I) (elem : expr E) : expr (Array I E)
 (* Added for abstract syntax *)
 | Constant {n} (bv : BV.bitvector n) : expr (BitVec n)
+| ExprRef {s} (r : Ref.t s) : expr s
 .
-Arguments expr : clear implicits.
+Arguments expr {env} s.
 
-Record stateVar (env : environment) := {
+Record stateVar {env} := {
   stSort : Sort.t;
-  stInit : option (expr env stSort);
-  stNext : option (expr env stSort);
+  stInit : option (expr stSort);
+  stNext : option (expr stSort);
 }.
 
-Record var (env : environment) := {
+Record var {env} := {
   varSort : Sort.t;
-  varExpr : expr env varSort;
+  varExpr : expr varSort;
 }.
 
 
-Inductive property env :=
-| Bad (e : expr env (BitVec 1))
+Variant node {env} :=
+| StateDecl (n : name) (s : Sort.t) (wf : env n = Some s)
+| StateInit {s : Sort.t} (n : name) (e : expr s) (wf : env n = Some s)
+| StateNext {s : Sort.t} (n : name) (e : expr s) (wf : env n = Some s)
+| Operator {s : Sort.t} (n : name) (e : expr s) (wf : env n = Some s)
+| Bad (e : expr (BitVec 1))
 .
-
-Variant node {env : environment} :=
-| StateDecl (n : nid) (s : Sort.t) (wf : env n = Some s)
-| StateInit {s : Sort.t} (n : nid) (e : expr env s) (wf : env n = Some s)
-| StateNext {s : Sort.t} (n : nid) (e : expr env s) (wf : env n = Some s)
-| Operator {s : Sort.t} (n : nid) (e : expr env s) (wf : env n = Some s)
-.
-
-Arguments node : clear implicits.
-
-Definition nodeId {env} (nd : node env) :=
-  match nd with
-  | StateDecl n _ _ => n
-  | StateInit n _ _ => n
-  | StateNext n _ _ => n
-  | Operator n _ _ => n
-  end.
 
 Record btor := {
   btorEnv : environment;
-  btorBody : list (node btorEnv)
+  btorBody : list (@node btorEnv)
 }.
 
-Module State. Section State.
-  Context {env : environment}.
+Module State.
+  Definition t {env} := forall (s : Sort.t) (r : Ref.t s), Sort.interp s.
 
-  Definition t := forall (s : Sort.t) (r : Ref.t env s), Sort.interp s.
-
-  Definition set_ref {s} (r : Ref.t env s) (val : Sort.interp s) (st : t) : t :=
+  Definition set_ref {env s} (r : Ref.t s) (val : Sort.interp s) (st : t) : t :=
     fun s' r' =>
       match Sort.eq_dec s s' with
       | left E =>
-        if N.eqb (Ref.refName r) (Ref.refName r')
+        if String.eqb (Ref.refName r) (Ref.refName r')
         then rew [Sort.interp] E in val
         else st s' r'
       | right _ => st s' r'
       end.
 
-  Definition get {s} (st : t) (r : Ref.t env s) :=
+  Definition get {env s} (st : t) (r : Ref.t s) :=
     st s r.
-End State. End State.
+
+  Infix "@" := get (at level 5).
+End State.
+Import (notations) State.
 
 Definition undef {s} : Sort.interp s. Admitted.
 
-Definition eval {env s} (st : @State.t env) (e : expr env s) : Sort.interp s :=
+Fixpoint eval {env : environment} {s} (st : State.t) (e : expr s) : Sort.interp s :=
   match e with
-  | Add r1 r2 => BV.bv_add (State.get st r1) (State.get st r2)
+  | Add lhs rhs => BV.bv_add (eval st lhs) (eval st rhs)
   | _ => undef
   end.
 
-Definition run_operator_node {env} (nd : node env) (st : State.t) : State.t :=
-  match nd with
-  | @Operator _ s n e wf => State.set_ref (Ref.Mk env s n wf) (eval st e) st
-  | _ => st
-  end.
-
-Fixpoint run_operators {env} (nds : list (node env)) (st : State.t) : State.t :=
+Fixpoint run {env} (nds : list node) (pending : State.t -> State.t) (st : State.t) : State.t :=
   match nds with
-  | [] => st
-  | (nd :: nds) => run_operators nds (run_operator_node nd st)
+  | [] => pending st
+  | (nd :: nds) => match nd with
+    | @StateNext _ s n e wf =>
+      run nds (State.set_ref (Ref.Mk env s n wf) (eval st e)) st
+    | @Operator _ s n e wf => 
+      run nds pending (State.set_ref (Ref.Mk env s n wf) (eval st e) st)
+    | _ => run nds pending st
+    end
   end.
 
-Definition run_init_node {env} (nd : node env) (st : State.t) : State.t :=
-  match nd with
-  | @StateInit _ s n e wf => State.set_ref (Ref.Mk env s n wf) (eval st e) st
-  | _ => st
-  end.
-
-Fixpoint run_inits {env} (nds : list (node env)) (st : State.t) : State.t :=
-  match nds with
-  | [] => st
-  | (nd :: nds) => run_inits nds (run_operator_node nd st)
-  end.
-
-Definition run_state_next_node {env} (st : State.t) (nd : node env) : State.t -> State.t :=
-  match nd with
-  | @StateNext _ s n e wf => State.set_ref (Ref.Mk env s n wf) (eval st e)
-  | _ => (fun st' => st')
-  end.
-
-(* Collect all updates, and then run them all together, so that they
-   don't influence eachother *)
-Definition run_state_nexts {env} (nds : list (node env)) (st : State.t) : State.t :=
-  fold_right Basics.apply st (map (run_state_next_node st) nds).
+Definition next {env} (nds : list node) (st : State.t) : State.t :=
+  run nds (fun s => s) st.
