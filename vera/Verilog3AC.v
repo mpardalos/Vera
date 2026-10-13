@@ -33,8 +33,6 @@ Import SigTNotations.
 Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
-Definition result := sum string.
-
 Definition to_3ac_undefined : unit -> result (list module_item * nat). Admitted. 
 Extract Constant to_3ac_undefined =>
   "(fun _ -> failwith ""AXIOM TO BE REALIZED: to_3ac_undefined"")".

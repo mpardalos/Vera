@@ -30,8 +30,6 @@ Import EqNotations.
 Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
-Definition result := sum string.
-
 (* This will create partially (and wholly) undriven variables *)
 
 Equations module_body_keep_assigns :

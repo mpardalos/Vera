@@ -826,10 +826,8 @@ End RawVerilog.
 
 Module Typecheck.
 
-Definition transf := sum string.
-
 Equations cast_width {t1} (err : string) (t2 : Verilog.type) (e : Verilog.expression t1)
-  : transf (Verilog.expression t2) :=
+  : result (Verilog.expression t2) :=
 @cast_width (Verilog.Logic w1) err (Verilog.Logic w2) e with (Pos.eq_dec w1 w2) := {
   | left E => inr (rew (f_equal Verilog.Logic E) in e)
   | right _ => inl (err
@@ -837,16 +835,16 @@ Equations cast_width {t1} (err : string) (t2 : Verilog.type) (e : Verilog.expres
     ++ to_string (Pos.to_nat w1) ++ " as width " ++ to_string (Pos.to_nat w2) ++ ")")%string
 }.
 
-Equations positive_width (err : string) (w : N) : transf positive := {
+Equations positive_width (err : string) (w : N) : result positive := {
 | err, 0%N => inl err
 | err, Npos w => inr w
 }.
 
-Equations tc_literal {w : N} (bits : XBV.xbv w) : transf { t & Verilog.expression t } :=
+Equations tc_literal {w : N} (bits : XBV.xbv w) : result { t & Verilog.expression t } :=
   @tc_literal 0%N bits := inl "0 width not allowed in literal"%string;
   @tc_literal (Npos w) bits := inr (_; Verilog.IntegerLiteral w bits).
 
-Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expression w } := {
+Equations tc_expr (expr : RawVerilog.expression) : result { w & Verilog.expression w } := {
 | RawVerilog.ArithmeticOp op lhs rhs =>
   let* (Verilog.Logic w_lhs; t_lhs) := tc_expr lhs in
   let* (Verilog.Logic w_rhs; t_rhs) := tc_expr rhs in
@@ -905,7 +903,7 @@ Equations tc_expr (expr : RawVerilog.expression) : transf { w & Verilog.expressi
   inr (_; Verilog.Resize to t_expr)
 }.
 
-Equations tc_assign_target : RawVerilog.expression -> transf { w & Verilog.assign_target w } := {
+Equations tc_assign_target : RawVerilog.expression -> result { w & Verilog.assign_target w } := {
 | RawVerilog.NamedExpression var => inr (_; Verilog.AssignVar var)
 | RawVerilog.BitSelect (RawVerilog.NamedExpression var) (RawVerilog.IntegerLiteral idx_bits) =>
   let* idx := opt_to_sum "Xs in bit-select"%string (RawXBV.to_N idx_bits) in
@@ -923,7 +921,7 @@ Equations tc_assign_target : RawVerilog.expression -> transf { w & Verilog.assig
 | _ => inl "Invalid assignment LHS"%string
 }.
 
-Equations check_assign_target_wf {w} (t : Verilog.assign_target w) : transf (Verilog.assign_target_wf t) := {
+Equations check_assign_target_wf {w} (t : Verilog.assign_target w) : result (Verilog.assign_target_wf t) := {
 | Verilog.AssignVar var => inr Verilog.AssignVar_wf
 | Verilog.AssignBit loc wf => inr Verilog.AssignBit_wf
 | Verilog.AssignSlice slice => inr Verilog.AssignSlice_wf
@@ -936,7 +934,7 @@ Equations check_assign_target_wf {w} (t : Verilog.assign_target w) : transf (Ver
   inr (Verilog.AssignConcat_wf lhs_wf rhs_wf writes_disjoint)
 }.
 
-Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
+Equations tc_statement : RawVerilog.statement -> result Verilog.statement := {
 | RawVerilog.NonblockingAssign lhs rhs =>
   let* (w_lhs; t_lhs) := tc_assign_target lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
@@ -959,7 +957,7 @@ Equations tc_statement : RawVerilog.statement -> transf Verilog.statement := {
   inr (Verilog.Block t_body)
 }.
 
-Equations tc_module_item : RawVerilog.module_item -> transf Verilog.module_item := {
+Equations tc_module_item : RawVerilog.module_item -> result Verilog.module_item := {
 | RawVerilog.AlwaysComb stmt =>
   let* t_stmt := tc_statement stmt in
   inr (Verilog.AlwaysComb t_stmt)
@@ -975,7 +973,7 @@ Equations tc_module_item : RawVerilog.module_item -> transf Verilog.module_item 
   inr (Verilog.ConcurrentAssertion t_expr')
 }.
 
-Equations tc_module_item_lst : list RawVerilog.module_item -> transf (list Verilog.module_item) := {
+Equations tc_module_item_lst : list RawVerilog.module_item -> result (list Verilog.module_item) := {
 | [] => inr []
 | (mi :: mis) =>
   let* t_mi := tc_module_item mi in
@@ -1021,7 +1019,7 @@ Definition map_inl {A B C} (f : A -> B) (s : A + C) : B + C :=
   | inr y => inr y
   end.
 
-Definition tc_vmodule (m : RawVerilog.vmodule) : transf { '(i, o) & Verilog.vmodule i o } :=
+Definition tc_vmodule (m : RawVerilog.vmodule) : result { '(i, o) & Verilog.vmodule i o } :=
   traceBracket ("Typecheck " ++ RawVerilog.modName m) (
     mapT tc_variable_declaration (RawVerilog.modVariableDecls m) ;;
     let inputs := inputs_of_decls (RawVerilog.modVariableDecls m) in

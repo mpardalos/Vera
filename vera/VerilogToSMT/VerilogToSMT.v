@@ -49,8 +49,6 @@ Coercion Npos : positive >-> N.
 Local Definition smtname := nat.
 Local Definition width := N.
 
-Definition transf := sum string.
-
 Local Obligation Tactic := intros.
 Equations cast_from_to (from to: N) (t : SMTLib.term (Sort_BitVec from)) : SMTLib.term (Sort_BitVec to) :=
   cast_from_to from 0 t => SMTLib.Term_BVLit _ (BV.of_bits []);
@@ -173,7 +171,7 @@ Section expr_to_smt.
   Definition type_to_sort (t : Verilog.type) : SMTLib.sort :=
     match t with Verilog.Logic w => Sort_BitVec w end.
 
-  Equations expr_to_smt {t} : Verilog.expression t -> transf (SMTLib.term (type_to_sort t)) :=
+  Equations expr_to_smt {t} : Verilog.expression t -> result (SMTLib.term (type_to_sort t)) :=
     expr_to_smt (Verilog.UnaryOp op operand) :=
       let* operand_smt := expr_to_smt operand in
       ret (unaryop_to_smt op operand_smt) ;
@@ -231,7 +229,7 @@ Section expr_to_smt.
   Arguments N.add _ _ : simpl never.
   Arguments N.sub _ _ : simpl never.
 
-  Equations assign_target_to_smt {t} : Verilog.assign_target t -> transf (SMTLib.term (type_to_sort t)) :=
+  Equations assign_target_to_smt {t} : Verilog.assign_target t -> result (SMTLib.term (type_to_sort t)) :=
     assign_target_to_smt (Verilog.AssignSlice (Slice.Mk var hi lo wf)) :=
       ret (rew [fun n => SMTLib.term (Sort_BitVec n)] _ in SMTLib.Term_BVExtract hi lo (proj1 wf) (var_to_smt var));
     assign_target_to_smt (Verilog.AssignBit (Location.Mk vec idx) wf) :=
@@ -247,7 +245,7 @@ Section expr_to_smt.
 
   Next Obligation. rewrite N.succ_pos_spec. lia. Qed.
 
-  Equations transfer_module_item : Verilog.module_item -> transf (SMTLib.term Sort_Bool) :=
+  Equations transfer_module_item : Verilog.module_item -> result (SMTLib.term Sort_Bool) :=
     transfer_module_item (Verilog.Initial _) :=
       inl "Unexpected initial block in VerilogToSMT"%string;
     transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign lhs _ rhs)) :=
@@ -267,7 +265,7 @@ Section expr_to_smt.
       inl "Unexpected concurrent assertion in VerilogToSMT"%string
   .
 
-  Equations transfer_module_body : list Verilog.module_item -> transf (list (SMTLib.term Sort_Bool)) :=
+  Equations transfer_module_body : list Verilog.module_item -> result (list (SMTLib.term Sort_Bool)) :=
     transfer_module_body [] := ret [];
     transfer_module_body (hd :: tl) :=
       let* a := transfer_module_item hd in
@@ -286,7 +284,7 @@ Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
   | _, _ => None
   end.
 
-Definition verilog_to_smt {i o} (name_tag : VarTag) (vmodule : Verilog.vmodule i o) : transf SMTQueries.query :=
+Definition verilog_to_smt {i o} (name_tag : VarTag) (vmodule : Verilog.vmodule i o) : result SMTQueries.query :=
   traceBracket ("To SMT " ++ Verilog.modName vmodule) (
     assert_dec
       (module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody vmodule))

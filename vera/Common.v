@@ -584,3 +584,6 @@ Definition trace_ {A : Type} (_msg : string) (x : unit -> A) : A := x tt.
 Arguments trace_ / _ _.
 
 Notation trace msg x := (trace_ msg (fun tt => x)).
+
+Definition result := sum string.
+
