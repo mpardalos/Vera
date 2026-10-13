@@ -7,6 +7,7 @@ From vera Require Common.
 From vera Require Bitvector.
 From vera Require VerilogSemantics.
 From vera Require Btor2.
+From vera Require VerilogToBtor.
 
 From vera Require Import BVList.
 From vera Require SMTLib.
@@ -76,5 +77,6 @@ Extraction "Vera.ml"
   VerilogToSMT.expr_to_smt
   VerilogSemantics.Sort.sort_module_items
   Btor2.btor
+  VerilogToBtor.transfer_vmodule
   (* Common.NameMap *)
   .

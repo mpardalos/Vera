@@ -100,6 +100,34 @@ Proof.
   - left. apply N.leb_nle in E. lia.
 Defined.
 
+Instance dec_lt_pos (x y : positive) : DecProp (x < y)%positive.
+Proof.
+  destruct (x <? y)%positive eqn:E.
+  - left. now apply Pos.ltb_lt in E.
+  - right. now apply Pos.ltb_nlt in E.
+Defined.
+
+Instance dec_le_pos (x y : positive) : DecProp (x <= y)%positive.
+Proof.
+  destruct (x <=? y)%positive eqn:E.
+  - left. now apply Pos.leb_le in E.
+  - right. now apply Pos.leb_nle in E.
+Defined.
+
+Instance dec_ge_pos (x y : positive) : DecProp (x >= y)%positive.
+Proof.
+  destruct (x <? y)%positive eqn:E.
+  - right. apply Pos.ltb_lt in E. lia.
+  - left. apply Pos.ltb_nlt in E. lia.
+Defined.
+
+Instance dec_gt_pos (x y : positive) : DecProp (x > y)%positive.
+Proof.
+  destruct (x <=? y)%positive eqn:E.
+  - right. apply Pos.leb_le in E. lia.
+  - left. apply Pos.leb_nle in E. lia.
+Defined.
+
 Instance dec_eq_opt {A} `{forall (x y : A), DecProp (x = y)} (x y : option A) : DecProp (x = y) :=
   mk_dec_eq.
 
