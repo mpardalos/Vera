@@ -138,6 +138,8 @@ Proof.
   crush.
 Qed.
 
+Implicit Types (env : Verilog.environment).
+
 Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
@@ -195,7 +197,7 @@ Qed.
 Definition value_from_smt {t} : SMTLib.interp_sort (type_to_sort t) -> interp_type t :=
   match t with Verilog.Logic w => @XBV.from_bv (Npos w) end.
 
-Lemma expr_to_smt_value w expr : forall tag regs ρ t,
+Lemma expr_to_smt_value {env} w expr : forall tag regs ρ t,
     expr_to_smt tag expr = inr t ->
     verilog_smt_match_states_partial (Verilog.expr_reads expr) tag regs ρ ->
     eval_expr (t:=w) regs expr = value_from_smt (SMTLib.interp_term ρ t).
@@ -291,7 +293,7 @@ Proof.
 Qed.
 
 (* DELETEME: Duplicate *)
-Lemma expr_to_smt_valid w tag expr t regs ρ :
+Lemma expr_to_smt_valid {env} w tag expr t regs ρ :
   expr_to_smt (t := w) tag expr = inr t ->
   verilog_smt_match_states_partial (Verilog.expr_reads expr) tag regs ρ ->
   eval_expr regs expr = value_from_smt (SMTLib.interp_term ρ t).

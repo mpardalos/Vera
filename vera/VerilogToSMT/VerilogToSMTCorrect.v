@@ -40,6 +40,8 @@ Local Open Scope monad_scope.
 Local Open Scope list.
 Local Open Scope verilog_scope.
 
+Implicit Types (env : Verilog.environment).
+
 Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
@@ -51,7 +53,7 @@ Proof.
   simpl. apply SMTLib.value_eqb_eq.
 Qed.
 
-Lemma assign_target_to_smt_value {w} tag (target : Verilog.assign_target w) :
+Lemma assign_target_to_smt_value {env} {w} tag (target : Verilog.assign_target w) :
   forall ρ target_smt,
     assign_target_to_smt tag target = inr target_smt ->
     read_target (execution_of_valuation tag ρ) target =
@@ -81,7 +83,7 @@ Proof.
     exact (XBV.concat_no_exes (Npos w1) (Npos w2) _ _).
 Qed.
 
-Lemma module_item_to_smt_satisfiable tag (mi : Verilog.module_item) :
+Lemma module_item_to_smt_satisfiable {env} tag (mi : Verilog.module_item) :
   forall t regs ρ,
     LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes_blocking mi) ->
     transfer_module_item tag mi = inr t ->
@@ -112,7 +114,7 @@ Proof.
   all: eassumption.
 Qed.
 
-Lemma assign_target_to_smt_valid {w} tag (target : Verilog.assign_target w) :
+Lemma assign_target_to_smt_valid {env} {w} tag (target : Verilog.assign_target w) :
   Verilog.assign_target_wf target ->
   forall regs ρ target_smt,
     assign_target_to_smt tag target = inr target_smt ->
@@ -127,7 +129,7 @@ Proof.
   apply set_target_from_state. exact Hwf.
 Qed.
 
-Lemma module_item_to_smt_valid tag  (mi : Verilog.module_item) :
+Lemma module_item_to_smt_valid {env} tag  (mi : Verilog.module_item) :
   LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes_blocking mi) ->
   forall ρ t,
     transfer_module_item tag mi = inr t ->
@@ -166,7 +168,7 @@ Proof.
   all: assumption.
 Qed.
 
-Lemma transfer_module_body_exec_satisfiable inputs body :
+Lemma transfer_module_body_exec_satisfiable {env} inputs body :
   forall tag r1 q ρ,
     module_items_sorted inputs body ->
     transfer_module_body tag body = inr q ->
@@ -241,7 +243,7 @@ Lemma verilog_smt_match_states_partial_empty {tag r ρ} :
   verilog_smt_match_states_partial {} tag r ρ.
 Proof. intros var Hvar. exfalso. LocationSet.setdec. Qed.
 
-Lemma transfer_module_body_exec_valid inputs body : forall tag ρ q,
+Lemma transfer_module_body_exec_valid {env} inputs body : forall tag ρ q,
     module_items_sorted inputs body ->
     transfer_module_body tag body = inr q ->
     List.Forall (SMTQueries.term_satisfied_by ρ) q ->
@@ -315,7 +317,7 @@ Proof.
       apply Hsorted.
 Qed.
 
-Lemma sorted_reads_driven inputs body :
+Lemma sorted_reads_driven {env} inputs body :
   module_items_sorted inputs body ->
   Verilog.module_body_reads body ⊆ Verilog.module_body_writes_blocking body ∪ inputs.
 Proof.
@@ -328,7 +330,7 @@ Section Clean.
   Variable tag : VarTag.
 
   #[local]
-  Lemma set_target_defined {w} regs (target : Verilog.assign_target w) bv :
+  Lemma set_target_defined {env} {w} regs (target : Verilog.assign_target w) bv :
     Verilog.assign_target_wf target ->
     RegisterState.defined_value_for (Verilog.assign_target_writes target)
       (set_target regs target (value_from_smt bv)).
@@ -372,7 +374,7 @@ Section Clean.
   Qed.
 
   #[local]
-  Lemma expr_to_smt_defined {w} (expr : Verilog.expression w) regs t :
+  Lemma expr_to_smt_defined {env} {w} (expr : Verilog.expression w) regs t :
     expr_to_smt tag expr = inr t ->
     RegisterState.defined_value_for (Verilog.expr_reads expr) regs ->
     exists bv, eval_expr regs expr = value_from_smt bv.
@@ -389,7 +391,7 @@ Section Clean.
   Qed.
 
   #[local]
-  Lemma module_item_clean mi init smt :
+  Lemma module_item_clean {env} mi init smt :
     transfer_module_item tag mi = inr smt ->
     RegisterState.defined_value_for (Verilog.module_item_reads mi) init ->
     RegisterState.defined_value_for (Verilog.module_item_writes_blocking mi) (exec_module_item init mi).
@@ -412,7 +414,7 @@ Section Clean.
   Admitted.
 
   #[local]
-  Lemma module_body_clean inputs body init smt :
+  Lemma module_body_clean {env} inputs body init smt :
     module_items_sorted inputs body ->
     transfer_module_body tag body = inr smt ->
     RegisterState.defined_value_for inputs init ->

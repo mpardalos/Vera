@@ -44,6 +44,8 @@ Import EqNotations.
 Import Verilog.Notations.
 Local Open Scope monad_scope.
 
+Implicit Types (env : Verilog.environment).
+
 Coercion Npos : positive >-> N.
 
 Local Definition smtname := nat.
@@ -61,13 +63,13 @@ Next Obligation. lia. Qed.
 Next Obligation. lia. Qed.
 Next Obligation. lia. Qed.
 
-Definition static_value {w} (expr : Verilog.expression w) : option N :=
+Definition static_value {env w} (expr : Verilog.expression w) : option N :=
   match expr with
   | Verilog.IntegerLiteral _ val => XBV.to_N val
   | _ => None
   end.
 
-Definition statically_in_bounds {w} (max_val : N) (expr : Verilog.expression (Verilog.Logic w)) : Prop :=
+Definition statically_in_bounds {env w} (max_val : N) (expr : Verilog.expression (Verilog.Logic w)) : Prop :=
   opt_prop (fun v => v < max_val)%N (static_value expr) \/ ((2 ^ w) < max_val)%N.
 
 Definition smt_var_info : Type := (smtname * width).
@@ -171,7 +173,7 @@ Section expr_to_smt.
   Definition type_to_sort (t : Verilog.type) : SMTLib.sort :=
     match t with Verilog.Logic w => Sort_BitVec w end.
 
-  Equations expr_to_smt {t} : Verilog.expression t -> result (SMTLib.term (type_to_sort t)) :=
+  Equations expr_to_smt {env t} : Verilog.expression t -> result (SMTLib.term (type_to_sort t)) :=
     expr_to_smt (Verilog.UnaryOp op operand) :=
       let* operand_smt := expr_to_smt operand in
       ret (unaryop_to_smt op operand_smt) ;
@@ -198,29 +200,29 @@ Section expr_to_smt.
       ret (SMTLib.Term_BVConcat e1_smt e2_smt);
     expr_to_smt (Verilog.Replication _ _) :=
       raise "Unexpected replication in VerilogToSMT stage"%string ;
-    expr_to_smt (@Verilog.Conditional w_val w_cond cond ifT ifF) :=
+    expr_to_smt (@Verilog.Conditional _ w_val w_cond cond ifT ifF) :=
       let cond_type := Npos w_cond in
       let* cond_smt := expr_to_smt cond in
       let* ifT_smt := expr_to_smt ifT in
       let* ifF_smt := expr_to_smt ifF in
       ret (conditional_to_smt cond_type cond_smt ifT_smt ifF_smt);
-    expr_to_smt (Verilog.RangeSelect (Slice.Mk vec hi lo wf)) :=
+    expr_to_smt (Verilog.RangeSelect (Slice.Mk vec hi lo wf) _) :=
       let vec_smt := var_to_smt vec in
       ret (rew [fun n => SMTLib.term (Sort_BitVec n)] _ in SMTLib.Term_BVExtract hi lo (proj1 wf) vec_smt);
-    expr_to_smt (Verilog.BitSelect vec (Verilog.IntegerLiteral w xbv_idx)) :=
+    expr_to_smt (Verilog.BitSelect vec (Verilog.IntegerLiteral w xbv_idx) _) :=
       let vec_smt := var_to_smt vec in
       let* idx := opt_to_sum "Xs in BitSelect index"%string (XBV.to_N xbv_idx) in
       assert_dec (idx < Var.varType vec)%N "Out-of-bounds bit-select"%string ;;
       ret (smt_select_bit vec_smt idx);
-    expr_to_smt (Verilog.BitSelect vec _) :=
+    expr_to_smt (Verilog.BitSelect vec _ _) :=
       raise "Unexpected variable bit-select in VerilogToSMT stage"%string;
-    expr_to_smt (@Verilog.Resize from to expr) :=
+    expr_to_smt (@Verilog.Resize _ from to expr) :=
       let* expr_smt := expr_to_smt expr in
       ret (cast_from_to from to expr_smt);
     expr_to_smt (Verilog.IntegerLiteral w val) :=
       let* bv_val := opt_to_sum "Xs in VerilogToSMT stage"%string (XBV.to_bv val) in
       ret (SMTLib.Term_BVLit w bv_val);
-    expr_to_smt (Verilog.NamedExpression var) :=
+    expr_to_smt (Verilog.NamedExpression var _) :=
       ret (var_to_smt var)
   .
 
@@ -229,13 +231,13 @@ Section expr_to_smt.
   Arguments N.add _ _ : simpl never.
   Arguments N.sub _ _ : simpl never.
 
-  Equations assign_target_to_smt {t} : Verilog.assign_target t -> result (SMTLib.term (type_to_sort t)) :=
-    assign_target_to_smt (Verilog.AssignSlice (Slice.Mk var hi lo wf)) :=
+  Equations assign_target_to_smt {env t} : Verilog.assign_target t -> result (SMTLib.term (type_to_sort t)) :=
+    assign_target_to_smt (Verilog.AssignSlice (Slice.Mk var hi lo wf) _) :=
       ret (rew [fun n => SMTLib.term (Sort_BitVec n)] _ in SMTLib.Term_BVExtract hi lo (proj1 wf) (var_to_smt var));
-    assign_target_to_smt (Verilog.AssignBit (Location.Mk vec idx) wf) :=
+    assign_target_to_smt (Verilog.AssignBit (Location.Mk vec idx) wf _) :=
       let vec_smt := var_to_smt vec in
       ret (smt_select_bit vec_smt idx);
-    assign_target_to_smt (Verilog.AssignVar var) :=
+    assign_target_to_smt (Verilog.AssignVar var _) :=
       ret (var_to_smt var);
     assign_target_to_smt (Verilog.AssignConcat e1 e2) :=
       let* e1_smt := assign_target_to_smt e1 in
@@ -245,7 +247,7 @@ Section expr_to_smt.
 
   Next Obligation. rewrite N.succ_pos_spec. lia. Qed.
 
-  Equations transfer_module_item : Verilog.module_item -> result (SMTLib.term Sort_Bool) :=
+  Equations transfer_module_item {env} : Verilog.module_item -> result (SMTLib.term Sort_Bool) :=
     transfer_module_item (Verilog.Initial _) :=
       inl "Unexpected initial block in VerilogToSMT"%string;
     transfer_module_item (Verilog.AlwaysComb (Verilog.BlockingAssign lhs _ rhs)) :=
@@ -265,7 +267,7 @@ Section expr_to_smt.
       inl "Unexpected concurrent assertion in VerilogToSMT"%string
   .
 
-  Equations transfer_module_body : list Verilog.module_item -> result (list (SMTLib.term Sort_Bool)) :=
+  Equations transfer_module_body {env} : list Verilog.module_item -> result (list (SMTLib.term Sort_Bool)) :=
     transfer_module_body [] := ret [];
     transfer_module_body (hd :: tl) :=
       let* a := transfer_module_item hd in
