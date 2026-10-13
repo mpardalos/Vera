@@ -63,11 +63,6 @@ let rec lower level filename =
       display_or_error VerilogPP.Typed.vmodule (let* (_, _, m) = typed_module_of_file filename in Vera.Inr m)
   | `PreSMT ->
       display_or_error VerilogPP.Typed.vmodule (lowered_module_of_file filename)
-  | `ThreeAC ->
-      display_or_error VerilogPP.Typed.vmodule
-        (let* (i, o, m) = typed_module_of_file filename in
-         let* m = Vera.lower_verilog i o m in
-         Vera.to_3ac_vmodule i o m)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
 
 let compare_cmd =
@@ -115,7 +110,6 @@ let lower_cmd =
         ("parsed", `Parsed);
         ("typed", `Typed);
         ("pre-smt", `PreSMT);
-        ("3ac", `ThreeAC);
         ("smt", `SMT);
       ]
   in
