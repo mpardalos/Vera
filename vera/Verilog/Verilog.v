@@ -247,6 +247,18 @@ Module Verilog.
   (* | Array (width : positive) (element : type) *)
   | Logic (width : positive).
 
+  #[global] Instance dec_eq_type (x y : type) : DecProp (x = y) := mk_dec_eq.
+
+  Definition environment := name -> option type.
+
+  Implicit Types (env : environment).
+  Existing Class environment.
+
+  Definition var_valid env var := env (Var.varName var) = Some (Logic (Var.varType var)).
+
+  #[global] Instance dec_var_valid env var : DecProp (var_valid env var) :=
+    dec_eq_opt _ _.
+
   (* Definition static_value {w} (expr : Verilog.expression w) : option (BV.bitvector w) :=
    *   match expr with
    *   | Verilog.IntegerLiteral _ val => Some val
@@ -286,7 +298,7 @@ Module Verilog.
        The reference expression was not found in the current environment.
    *)
 
-  Inductive expression : type -> Type :=
+  Inductive expression {env} : type -> Type :=
   | ArithmeticOp {w} (op : arithmeticop) : expression (Logic w) -> expression (Logic w) -> expression (Logic w)
   | LogicalOp {w}
     (op : logicalop)
@@ -300,52 +312,59 @@ Module Verilog.
     : expression (Logic w1)
   | UnaryOp {w} (op : unaryop) : expression (Logic w) -> expression (Logic (unaryop_result op w))
   | Conditional {w_val w_cond} : expression (Logic w_cond) -> expression (Logic w_val) -> expression (Logic w_val) -> expression (Logic w_val)
-  | RangeSelect {w} (slice : Slice.t w) : expression (Logic w)
+  | RangeSelect {w}
+    (slice : Slice.t w)
+    (wt : var_valid env (Slice.get_var slice))
+    : expression (Logic w)
   | BitSelect {w_sel}
     (vec : Var.t)
     (sel : expression (Logic w_sel))
+    (wt : var_valid env vec)
     : expression (Logic 1)
   (* We break up the concatenation to make the type more convenient *)
   | Concatenation {w1 w2} (e1 : expression (Logic w1)) (e2 : expression (Logic w2)) : expression (Logic (w1 + w2))
   | Replication {w} (count : positive) (e : expression (Logic w)) : expression (Logic (count * w))
   | IntegerLiteral (w : positive) : XBV.xbv (Npos w) -> expression (Logic w)
-  | NamedExpression (var : Var.t) : expression (Logic (Var.varType var))
+  | NamedExpression (var : Var.t) (wt : var_valid env var) : expression (Logic (Var.varType var))
   | Resize {w_from} (w_to : positive) (from : expression (Logic w_from)) : expression (Logic w_to)
   .
 
-  Definition expr_type {t} (e : expression t) := t.
+  Definition expr_type {env t} (e : expression t) := t.
 
-  Inductive assign_target : type -> Type :=
+  Inductive assign_target {env} : type -> Type :=
   | AssignVar
     (var : Var.t)
+    (wt : var_valid env var)
     : assign_target (Logic (Var.varType var))
   | AssignBit
     (loc : Location.t)
     (wf : (Location.idx loc < Npos (Var.varType (Location.var loc)))%N)
+    (wt : var_valid env (Location.var loc))
     : assign_target (Logic 1)
   | AssignSlice {w}
     (slice : Slice.t w)
+    (wt : var_valid env (Slice.get_var slice))
     : assign_target (Logic w)
   | AssignConcat {w1 w2}
     (e1 : assign_target (Logic w1)) (e2 : assign_target (Logic w2))
     : assign_target (Logic (w1 + w2))
   .
 
-  Fixpoint assign_target_writes {w} (a : assign_target w) : LocationSet.t :=
+  Fixpoint assign_target_writes {env w} (a : assign_target w) : LocationSet.t :=
     match a with
-    | AssignVar v => LocationSet.of_variable v
-    | AssignBit loc _ => LocationSet.singleton loc
-    | AssignSlice slice => LocationSet.of_slice slice
+    | AssignVar v _ => LocationSet.of_variable v
+    | AssignBit loc _ _  => LocationSet.singleton loc
+    | AssignSlice slice _ => LocationSet.of_slice slice
     | AssignConcat t1 t2 => assign_target_writes t1 ∪ assign_target_writes t2
     end.
 
-  Inductive assign_target_wf : forall {t}, assign_target t -> Prop :=
-  | AssignVar_wf {var}
-    : assign_target_wf (AssignVar var)
-  | AssignBit_wf {loc wf}
-    : assign_target_wf (AssignBit loc wf)
-  | AssignSlice_wf {w} {slice : Slice.t w}
-    : assign_target_wf (AssignSlice slice)
+  Inductive assign_target_wf {env} : forall {t}, assign_target t -> Prop :=
+  | AssignVar_wf {var wt}
+    : assign_target_wf (AssignVar var wt)
+  | AssignBit_wf {loc wf wt}
+    : assign_target_wf (AssignBit loc wf wt)
+  | AssignSlice_wf {w} {slice : Slice.t w} {wt}
+    : assign_target_wf (AssignSlice slice wt)
   | AssignConcat_wf {w1 w2}
     {lhs : assign_target (Logic w1)} {rhs : assign_target (Logic w2)}
     (Hlhs_wf : assign_target_wf lhs)
@@ -355,7 +374,7 @@ Module Verilog.
   .
 
   Unset Elimination Schemes.
-  Inductive statement :=
+  Inductive statement {env} :=
   | BlockingAssign {t} (lhs : assign_target t) (lhs_wf : assign_target_wf lhs) (rhs : expression t)
   | NonblockingAssign {t} (lhs : assign_target t) (lhs_wf : assign_target_wf lhs) (rhs : expression t)
   | If {w} (cond : expression (Logic w)) (ifT ifF : statement)
@@ -368,7 +387,7 @@ Module Verilog.
   Scheme statement_sind := Induction for statement Sort SProp.
 
   (* Rocq 9.1 finds the default induction principle by this name. *)
-  Lemma statement_ind (P : statement -> Prop)
+  Lemma statement_ind {env} (P : statement -> Prop)
     (Hassign : forall w (lhs : assign_target w) (lhs_wf : assign_target_wf lhs)
       (rhs : expression w), P (BlockingAssign lhs lhs_wf rhs))
     (Hnonblocking : forall w (lhs : assign_target w) (lhs_wf : assign_target_wf lhs)
@@ -386,7 +405,7 @@ Module Verilog.
     - apply Hblock. induction body as [| stmt body IHbody]; constructor; auto.
   Qed.
 
-  Inductive module_item :=
+  Inductive module_item {env} :=
   | Initial : statement -> module_item
   | AlwaysComb : statement -> module_item
   | AlwaysFF : statement -> module_item
@@ -401,7 +420,7 @@ Module Verilog.
     (lo + (1 + hi - lo) <= Npos (Var.varType vec))%N.
   Proof. lia. Qed.
 
-  Fixpoint expr_reads {w} (e : Verilog.expression w) : LocationSet.t :=
+  Fixpoint expr_reads {env w} (e : Verilog.expression w) : LocationSet.t :=
     match e with
     | (Verilog.UnaryOp op operand) => expr_reads operand
     | (Verilog.ArithmeticOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
@@ -409,8 +428,8 @@ Module Verilog.
     | (Verilog.BitwiseOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.ShiftOp op lhs rhs) => expr_reads lhs ∪ expr_reads rhs
     | (Verilog.Conditional cond tBranch fBranch) => expr_reads cond ∪ expr_reads tBranch ∪ expr_reads fBranch
-    | (Verilog.RangeSelect slice) => LocationSet.of_slice slice
-    | (Verilog.BitSelect vec (Verilog.IntegerLiteral _ xbv_idx)) =>
+    | (Verilog.RangeSelect slice _) => LocationSet.of_slice slice
+    | (Verilog.BitSelect vec (Verilog.IntegerLiteral _ xbv_idx) _) =>
       match XBV.to_N xbv_idx with
       | Some idx =>
         if (idx <? Npos (Var.varType vec))%N
@@ -418,15 +437,15 @@ Module Verilog.
         else LocationSet.empty
       | None => LocationSet.empty (* If index is X, result is always X *)
       end
-    | (Verilog.BitSelect vec idx) => LocationSet.of_variable vec ∪ expr_reads idx
+    | (Verilog.BitSelect vec idx _) => LocationSet.of_variable vec ∪ expr_reads idx
     | (Verilog.Resize t expr) => expr_reads expr
     | (Verilog.Concatenation e1 e2) => expr_reads e1 ∪ expr_reads e2
     | (Verilog.Replication _ e) => expr_reads e
     | (Verilog.IntegerLiteral _ val) => { }
-    | (Verilog.NamedExpression var) => LocationSet.of_variable var
+    | (Verilog.NamedExpression var _) => LocationSet.of_variable var
     end.
 
-  Fixpoint expr_reads_vars {w} (e : Verilog.expression w) : VarSet.t :=
+  Fixpoint expr_reads_vars {env w} (e : Verilog.expression w) : VarSet.t :=
     match e with
     | (Verilog.UnaryOp op operand) => expr_reads_vars operand
     | (Verilog.ArithmeticOp op lhs rhs) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
@@ -435,16 +454,16 @@ Module Verilog.
     | (Verilog.ShiftOp op lhs rhs) => VarSet.union (expr_reads_vars lhs) (expr_reads_vars rhs)
     | (Verilog.Conditional cond tBranch fBranch) =>
       VarSet.union (expr_reads_vars cond) (VarSet.union (expr_reads_vars tBranch) (expr_reads_vars fBranch))
-    | (Verilog.RangeSelect (Slice.Mk var _ _ _)) => VarSet.singleton var
-    | (Verilog.BitSelect vec idx) => VarSet.add vec (expr_reads_vars idx)
+    | (Verilog.RangeSelect (Slice.Mk var _ _ _) _) => VarSet.singleton var
+    | (Verilog.BitSelect vec idx _) => VarSet.add vec (expr_reads_vars idx)
     | (Verilog.Resize t expr) => expr_reads_vars expr
     | (Verilog.Concatenation e1 e2) => VarSet.union (expr_reads_vars e1) (expr_reads_vars e2)
     | (Verilog.Replication _ e) => expr_reads_vars e
     | (Verilog.IntegerLiteral _ val) => VarSet.empty
-    | (Verilog.NamedExpression var) => VarSet.singleton var
+    | (Verilog.NamedExpression var _) => VarSet.singleton var
     end.
 
-  Fixpoint statement_reads (s : Verilog.statement) : LocationSet.t :=
+  Fixpoint statement_reads {env} (s : Verilog.statement) : LocationSet.t :=
     match s with
     | Verilog.BlockingAssign lhs _ rhs
     | Verilog.NonblockingAssign lhs _ rhs => expr_reads rhs (* ONLY looking at rhs here *)
@@ -452,7 +471,7 @@ Module Verilog.
     | Verilog.Block body => LocationSet.union_all (map statement_reads body)
     end.
 
-  Fixpoint statement_writes_blocking (s : Verilog.statement) : LocationSet.t :=
+  Fixpoint statement_writes_blocking {env} (s : Verilog.statement) : LocationSet.t :=
     match s with
     | Verilog.BlockingAssign lhs _ rhs => assign_target_writes lhs (* ONLY looking at lhs here *)
     | Verilog.NonblockingAssign _ _ _ => {}
@@ -460,7 +479,7 @@ Module Verilog.
     | Verilog.Block body => LocationSet.union_all (map statement_writes_blocking body)
     end.
 
-  Fixpoint statement_writes_nonblocking (s : Verilog.statement) : LocationSet.t :=
+  Fixpoint statement_writes_nonblocking {env} (s : Verilog.statement) : LocationSet.t :=
     match s with
     | Verilog.NonblockingAssign lhs _ rhs => assign_target_writes lhs (* ONLY looking at lhs here *)
     | Verilog.BlockingAssign _ _ _ => {}
@@ -468,7 +487,7 @@ Module Verilog.
     | Verilog.Block body => LocationSet.union_all (map statement_writes_nonblocking body)
     end.
 
-  Definition module_item_reads (mi : Verilog.module_item) : LocationSet.t :=
+  Definition module_item_reads {env} (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
     | Initial stmt => statement_reads stmt
     | AlwaysComb stmt => statement_reads stmt
@@ -476,7 +495,7 @@ Module Verilog.
     | ConcurrentAssertion expr => expr_reads expr
     end.
 
-  Definition module_item_writes_blocking (mi : Verilog.module_item) : LocationSet.t :=
+  Definition module_item_writes_blocking {env} (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
     | Initial stmt => statement_writes_blocking stmt
     | AlwaysComb stmt => statement_writes_blocking stmt
@@ -484,7 +503,7 @@ Module Verilog.
     | ConcurrentAssertion expr => LocationSet.empty
     end.
 
-  Definition module_item_writes_nonblocking (mi : Verilog.module_item) : LocationSet.t :=
+  Definition module_item_writes_nonblocking {env} (mi : Verilog.module_item) : LocationSet.t :=
     match mi with
     | Initial stmt => statement_writes_nonblocking stmt
     | AlwaysComb stmt => statement_writes_nonblocking stmt
@@ -492,13 +511,13 @@ Module Verilog.
     | ConcurrentAssertion expr => LocationSet.empty
     end.
 
-  Fixpoint module_body_reads (mis : list Verilog.module_item) : LocationSet.t :=
+  Fixpoint module_body_reads {env} (mis : list Verilog.module_item) : LocationSet.t :=
     match mis with
     | [] => {}
     | hd :: tl => module_item_reads hd ∪ module_body_reads tl
     end.
 
-  Lemma module_body_reads_app b1 b2 :
+  Lemma module_body_reads_app {env} b1 b2 :
     LocationSet.Equal
       (module_body_reads (b1 ++ b2))
       (module_body_reads b1 ∪ module_body_reads b2).
@@ -510,13 +529,13 @@ Module Verilog.
     all: LocationSet.setdec.
   Qed.
 
-  Fixpoint module_body_writes_blocking (mis : list Verilog.module_item) : LocationSet.t :=
+  Fixpoint module_body_writes_blocking {env} (mis : list Verilog.module_item) : LocationSet.t :=
     match mis with
     | [] => {}
     | hd :: tl => module_item_writes_blocking hd ∪ module_body_writes_blocking tl
     end.
 
-  Lemma module_body_writes_blocking_app b1 b2 :
+  Lemma module_body_writes_blocking_app {env} b1 b2 :
     LocationSet.Equal
       (module_body_writes_blocking (b1 ++ b2))
       (module_body_writes_blocking b1 ∪ module_body_writes_blocking b2).
@@ -528,13 +547,13 @@ Module Verilog.
     all: LocationSet.setdec.
   Qed.
 
-  Fixpoint module_body_writes_nonblocking (mis : list Verilog.module_item) : LocationSet.t :=
+  Fixpoint module_body_writes_nonblocking {env} (mis : list Verilog.module_item) : LocationSet.t :=
     match mis with
     | [] => {}
     | hd :: tl => module_item_writes_nonblocking hd ∪ module_body_writes_nonblocking tl
     end.
 
-  Lemma module_body_writes_nonblocking_app b1 b2 :
+  Lemma module_body_writes_nonblocking_app {env} b1 b2 :
     LocationSet.Equal
       (module_body_writes_nonblocking (b1 ++ b2))
       (module_body_writes_nonblocking b1 ∪ module_body_writes_nonblocking b2).
@@ -550,7 +569,8 @@ Module Verilog.
   Record vmodule {inputs outputs : list Var.t} :=
     MkMod
       { modName : name
-      ; modBody : list module_item
+      ; modEnv : environment
+      ; modBody : list (@module_item modEnv)
       ; modWfIODisjoint : disjoint inputs outputs
       ; modWfInputsNoDup : NoDup inputs
       ; modWfOutputsNoDup : NoDup outputs
@@ -588,7 +608,7 @@ Module Verilog.
   Lemma empty_in_bounds : LocationSet.InBounds { }.
   Proof. intros loc Hin. exfalso. eapply LocationSet.empty_spec. eassumption. Qed.
 
-  Lemma expr_reads_in_bounds {w} (e : Verilog.expression w) :
+  Lemma expr_reads_in_bounds {env w} (e : Verilog.expression w) :
     LocationSet.InBounds (expr_reads e).
   Proof.
     induction e; simpl.
@@ -608,7 +628,7 @@ Module Verilog.
     assumption.
   Qed.
 
-  Lemma statement_reads_in_bounds s : LocationSet.InBounds (statement_reads s).
+  Lemma statement_reads_in_bounds {env} s : LocationSet.InBounds (statement_reads s).
   Proof.
     induction s.
     - apply expr_reads_in_bounds.
@@ -618,7 +638,7 @@ Module Verilog.
       apply Forall_map. assumption.
   Qed.
 
-  Lemma assign_target_writes_in_bounds w a : LocationSet.InBounds (assign_target_writes (w:=w) a).
+  Lemma assign_target_writes_in_bounds {env} w a : LocationSet.InBounds (assign_target_writes (w:=w) a).
   Proof.
     induction a.
     - apply LocationSet.of_variable_in_bounds.
@@ -629,7 +649,7 @@ Module Verilog.
       all: assumption.
   Qed.
   
-  Lemma statement_writes_blocking_in_bounds s : LocationSet.InBounds (statement_writes_blocking s).
+  Lemma statement_writes_blocking_in_bounds {env} s : LocationSet.InBounds (statement_writes_blocking s).
   Proof.
     induction s.
     - apply assign_target_writes_in_bounds.
@@ -639,7 +659,7 @@ Module Verilog.
       apply Forall_map. assumption.
   Qed.
 
-  Lemma statement_writes_nonblocking_in_bounds s : LocationSet.InBounds (statement_writes_nonblocking s).
+  Lemma statement_writes_nonblocking_in_bounds {env} s : LocationSet.InBounds (statement_writes_nonblocking s).
   Proof.
     induction s.
     - apply empty_in_bounds.
@@ -649,7 +669,7 @@ Module Verilog.
       apply Forall_map. assumption.
   Qed.
 
-  Lemma module_item_reads_in_bounds mi : LocationSet.InBounds (module_item_reads mi).
+  Lemma module_item_reads_in_bounds {env} mi : LocationSet.InBounds (module_item_reads mi).
   Proof.
     destruct mi.
     - apply statement_reads_in_bounds.
@@ -658,7 +678,7 @@ Module Verilog.
     - apply expr_reads_in_bounds.
   Qed.
 
-  Lemma module_item_writes_blocking_in_bounds mi : LocationSet.InBounds (module_item_writes_blocking mi).
+  Lemma module_item_writes_blocking_in_bounds {env} mi : LocationSet.InBounds (module_item_writes_blocking mi).
   Proof.
     destruct mi.
     - apply statement_writes_blocking_in_bounds.
@@ -667,7 +687,7 @@ Module Verilog.
     - apply empty_in_bounds.
   Qed.
 
-  Lemma module_item_writes_nonblocking_in_bounds mi : LocationSet.InBounds (module_item_writes_nonblocking mi).
+  Lemma module_item_writes_nonblocking_in_bounds {env} mi : LocationSet.InBounds (module_item_writes_nonblocking mi).
   Proof.
     destruct mi.
     - apply statement_writes_nonblocking_in_bounds.
@@ -676,21 +696,21 @@ Module Verilog.
     - apply empty_in_bounds.
   Qed.
 
-  Lemma module_body_reads_in_bounds mis : LocationSet.InBounds (module_body_reads mis).
+  Lemma module_body_reads_in_bounds {env} mis : LocationSet.InBounds (module_body_reads mis).
   Proof.
     induction mis; simpl.
     - apply empty_in_bounds.
     - apply LocationSet.union_in_bounds; auto using module_item_reads_in_bounds.
   Qed.
 
-  Lemma module_body_writes_blocking_in_bounds mis : LocationSet.InBounds (module_body_writes_blocking mis).
+  Lemma module_body_writes_blocking_in_bounds {env} mis : LocationSet.InBounds (module_body_writes_blocking mis).
   Proof.
     induction mis; simpl.
     - apply empty_in_bounds.
     - apply LocationSet.union_in_bounds; auto using module_item_writes_blocking_in_bounds.
   Qed.
 
-  Lemma module_body_writes_nonblocking_in_bounds mis : LocationSet.InBounds (module_body_writes_nonblocking mis).
+  Lemma module_body_writes_nonblocking_in_bounds {env} mis : LocationSet.InBounds (module_body_writes_nonblocking mis).
   Proof.
     induction mis; simpl.
     - apply empty_in_bounds.
@@ -704,20 +724,20 @@ Module Verilog.
     Local Open Scope show_scope.
     Local Open Scope string.
 
-    Fixpoint show_assign_target {w} (t : assign_target w) : showM :=
+    Fixpoint show_assign_target {env w} (t : assign_target w) : showM :=
       match t with
-      | AssignVar var => show var
-      | AssignBit loc _ => show loc
-      | AssignSlice slice => show slice
+      | AssignVar var _ => show var
+      | AssignBit loc _ _ => show loc
+      | AssignSlice slice _ => show slice
       | AssignConcat t1 t2 => "{" << show_assign_target t1 << ", " << show_assign_target t2 << "}"
       end.
 
-    Global Instance assign_target_Show {w} : Show (assign_target w) :=
+    Global Instance assign_target_Show {env w} : Show (assign_target w) :=
       { show := show_assign_target }.
 
     (* Note: this has to be a Fixpoint, since instance fields cannot be
        recursive *)
-    Fixpoint show_expression {w} (u : expression w) : showM :=
+    Fixpoint show_expression {env w} (u : expression w) : showM :=
       match u with
       | ArithmeticOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
       | LogicalOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
@@ -725,19 +745,19 @@ Module Verilog.
       | ShiftOp op lhs rhs => "(" << show_expression lhs << " " << show op << " " << show_expression rhs << ")"
       | UnaryOp op e => "(" << show op << " " << show_expression e << ")"
       | Conditional cond ifT ifF => "(" << show_expression cond << " ? " << show_expression ifT << " : " << show_expression ifF << ")"
-      | RangeSelect (Slice.Mk vec hi lo _) => show vec << "[" << show hi << ":" << show lo << "]"
-      | BitSelect vec idx => show vec << "[" << show_expression idx << "]"
+      | RangeSelect (Slice.Mk vec hi lo _) _ => show vec << "[" << show hi << ":" << show lo << "]"
+      | BitSelect vec idx _ => show vec << "[" << show_expression idx << "]"
       | Concatenation lhs rhs => "{" << show_expression lhs << ", " << show_expression rhs << "}"
       | Replication count e => "{" << show count << "{" << show_expression e << "}}"
       | IntegerLiteral _ val => show val
-      | NamedExpression var => show var
+      | NamedExpression var _ => show var
       | Resize to e => show to << "'(" << show_expression e << ")"
       end.
 
-    Global Instance expression_Show {w} : Show (expression w) :=
+    Global Instance expression_Show {env w} : Show (expression w) :=
       { show := show_expression }.
 
-    Global Instance statement_Show : Show statement :=
+    Global Instance statement_Show {env} : Show statement :=
       { show u :=
           match u with
           | Verilog.BlockingAssign lhs _ rhs =>
@@ -751,7 +771,7 @@ Module Verilog.
           end
       }.
 
-    Global Instance module_item_Show : Show module_item :=
+    Global Instance module_item_Show {env} : Show module_item :=
       { show u :=
           match u with
           | Initial stmt => ("initial " << show stmt)%string
@@ -826,9 +846,14 @@ End RawVerilog.
 
 Module Typecheck.
 
-Equations cast_width {t1} (err : string) (t2 : Verilog.type) (e : Verilog.expression t1)
+Implicit Types (env : Verilog.environment).
+
+Definition tc_var {env} (var : Var.t) : result (Verilog.var_valid env var) :=
+  assert_dec _ ("Undeclared variable or type mismatch: " ++ Var.varName var)%string.
+
+Equations cast_width {env t1} (err : string) (t2 : Verilog.type) (e : Verilog.expression t1)
   : result (Verilog.expression t2) :=
-@cast_width (Verilog.Logic w1) err (Verilog.Logic w2) e with (Pos.eq_dec w1 w2) := {
+@cast_width _ (Verilog.Logic w1) err (Verilog.Logic w2) e with (Pos.eq_dec w1 w2) := {
   | left E => inr (rew (f_equal Verilog.Logic E) in e)
   | right _ => inl (err
     ++ " (Tried to use expression of width "
@@ -840,11 +865,11 @@ Equations positive_width (err : string) (w : N) : result positive := {
 | err, Npos w => inr w
 }.
 
-Equations tc_literal {w : N} (bits : XBV.xbv w) : result { t & Verilog.expression t } :=
-  @tc_literal 0%N bits := inl "0 width not allowed in literal"%string;
-  @tc_literal (Npos w) bits := inr (_; Verilog.IntegerLiteral w bits).
+Equations tc_literal {env} {w : N} (bits : XBV.xbv w) : result { t & Verilog.expression t } :=
+  @tc_literal _ 0%N bits := inl "0 width not allowed in literal"%string;
+  @tc_literal _ (Npos w) bits := inr (_; Verilog.IntegerLiteral w bits).
 
-Equations tc_expr (expr : RawVerilog.expression) : result { w & Verilog.expression w } := {
+Equations tc_expr {env} (expr : RawVerilog.expression) : result { w & Verilog.expression w } := {
 | RawVerilog.ArithmeticOp op lhs rhs =>
   let* (Verilog.Logic w_lhs; t_lhs) := tc_expr lhs in
   let* (Verilog.Logic w_rhs; t_rhs) := tc_expr rhs in
@@ -874,15 +899,17 @@ Equations tc_expr (expr : RawVerilog.expression) : result { w & Verilog.expressi
   let* t_ifFalse' := cast_width "Different widths in conditional" (Verilog.Logic w_ifTrue) t_ifFalse in
   inr (_; Verilog.Conditional t_cond t_ifTrue t_ifFalse')
 | RawVerilog.RangeSelect (RawVerilog.NamedExpression vec) (RawVerilog.IntegerLiteral hi_lit) (RawVerilog.IntegerLiteral lo_lit) =>
+  let* wt := tc_var vec in
   let* hi := opt_to_sum "Xs in range bound"%string (RawXBV.to_N hi_lit) in
   let* lo := opt_to_sum "Xs in range bound"%string (RawXBV.to_N lo_lit) in
   let* wf := assert_dec _ "Range select out-of-bounds"%string in
-  inr (_; Verilog.RangeSelect (Slice.Mk vec hi lo wf)) ;
+  inr (_; Verilog.RangeSelect (Slice.Mk vec hi lo wf) wt) ;
 | RawVerilog.RangeSelect vec _ _ =>
   raise "Range select must have variable target, literal bounds"%string ;
 | RawVerilog.BitSelect (RawVerilog.NamedExpression vec) idx =>
+  let* wt := tc_var vec in
   let* (Verilog.Logic w_idx; t_idx) := tc_expr idx in
-  inr (_; Verilog.BitSelect vec t_idx)
+  inr (_; Verilog.BitSelect vec t_idx wt)
 | RawVerilog.BitSelect _ _ =>
   raise "BitSelect must target variable"%string
 | RawVerilog.Concatenation lhs rhs =>
@@ -896,24 +923,29 @@ Equations tc_expr (expr : RawVerilog.expression) : result { w & Verilog.expressi
 | RawVerilog.IntegerLiteral bits =>
   tc_literal (XBV.of_bits bits)
 | RawVerilog.NamedExpression var =>
-  inr (_; Verilog.NamedExpression var)
+  let* wt := tc_var var in
+  inr (_; Verilog.NamedExpression var wt)
 | RawVerilog.Resize to expr =>
   let* (Verilog.Logic w_expr; t_expr) := tc_expr expr in
   let* to := positive_width "Cannot resize to 0"%string to in
   inr (_; Verilog.Resize to t_expr)
 }.
 
-Equations tc_assign_target : RawVerilog.expression -> result { w & Verilog.assign_target w } := {
-| RawVerilog.NamedExpression var => inr (_; Verilog.AssignVar var)
+Equations tc_assign_target {env} : RawVerilog.expression -> result { w & Verilog.assign_target w } := {
+| RawVerilog.NamedExpression var =>
+  let* wt := tc_var var in
+  inr (_; Verilog.AssignVar var wt)
 | RawVerilog.BitSelect (RawVerilog.NamedExpression var) (RawVerilog.IntegerLiteral idx_bits) =>
+  let* wt := tc_var var in
   let* idx := opt_to_sum "Xs in bit-select"%string (RawXBV.to_N idx_bits) in
   let* wf := assert_dec _ "Bit-select index (lhs) out of bounds"%string in
-  inr (_; Verilog.AssignBit (Location.Mk var idx) wf)
+  inr (_; Verilog.AssignBit (Location.Mk var idx) wf wt)
 | RawVerilog.RangeSelect (RawVerilog.NamedExpression var) (RawVerilog.IntegerLiteral hi_bits) (RawVerilog.IntegerLiteral lo_bits) =>
+  let* wt := tc_var var in
   let* hi := opt_to_sum "Xs in range-select hi"%string (RawXBV.to_N hi_bits) in
   let* lo := opt_to_sum "Xs in range-select lo"%string (RawXBV.to_N lo_bits) in
   let* wf := assert_dec _ "Range select out-of-bounds"%string in
-  inr (_; Verilog.AssignSlice (Slice.Mk var hi lo wf))
+  inr (_; Verilog.AssignSlice (Slice.Mk var hi lo wf) wt)
 | RawVerilog.Concatenation lhs rhs =>
   let* (Verilog.Logic w_lhs; t_lhs) := tc_assign_target lhs in
   let* (Verilog.Logic w_rhs; t_rhs) := tc_assign_target rhs in
@@ -921,10 +953,10 @@ Equations tc_assign_target : RawVerilog.expression -> result { w & Verilog.assig
 | _ => inl "Invalid assignment LHS"%string
 }.
 
-Equations check_assign_target_wf {w} (t : Verilog.assign_target w) : result (Verilog.assign_target_wf t) := {
-| Verilog.AssignVar var => inr Verilog.AssignVar_wf
-| Verilog.AssignBit loc wf => inr Verilog.AssignBit_wf
-| Verilog.AssignSlice slice => inr Verilog.AssignSlice_wf
+Equations check_assign_target_wf {env w} (t : Verilog.assign_target w) : result (Verilog.assign_target_wf t) := {
+| Verilog.AssignVar var wt => inr Verilog.AssignVar_wf
+| Verilog.AssignBit loc wf wt => inr Verilog.AssignBit_wf
+| Verilog.AssignSlice slice wt => inr Verilog.AssignSlice_wf
 | Verilog.AssignConcat lhs rhs =>
   let* lhs_wf := check_assign_target_wf lhs in
   let* rhs_wf := check_assign_target_wf rhs in
@@ -934,7 +966,7 @@ Equations check_assign_target_wf {w} (t : Verilog.assign_target w) : result (Ver
   inr (Verilog.AssignConcat_wf lhs_wf rhs_wf writes_disjoint)
 }.
 
-Equations tc_statement : RawVerilog.statement -> result Verilog.statement := {
+Equations tc_statement {env} : RawVerilog.statement -> result Verilog.statement := {
 | RawVerilog.NonblockingAssign lhs rhs =>
   let* (w_lhs; t_lhs) := tc_assign_target lhs in
   let* (w_rhs; t_rhs) := tc_expr rhs in
@@ -957,7 +989,7 @@ Equations tc_statement : RawVerilog.statement -> result Verilog.statement := {
   inr (Verilog.Block t_body)
 }.
 
-Equations tc_module_item : RawVerilog.module_item -> result Verilog.module_item := {
+Equations tc_module_item {env} : RawVerilog.module_item -> result Verilog.module_item := {
 | RawVerilog.AlwaysComb stmt =>
   let* t_stmt := tc_statement stmt in
   inr (Verilog.AlwaysComb t_stmt)
@@ -973,7 +1005,7 @@ Equations tc_module_item : RawVerilog.module_item -> result Verilog.module_item 
   inr (Verilog.ConcurrentAssertion t_expr')
 }.
 
-Equations tc_module_item_lst : list RawVerilog.module_item -> result (list Verilog.module_item) := {
+Equations tc_module_item_lst {env} : list RawVerilog.module_item -> result (list Verilog.module_item) := {
 | [] => inr []
 | (mi :: mis) =>
   let* t_mi := tc_module_item mi in
@@ -981,11 +1013,27 @@ Equations tc_module_item_lst : list RawVerilog.module_item -> result (list Veril
   inr (t_mi :: t_mis)
 }.
 
-Definition tc_variable_declaration (vdecl : RawVerilog.variable_declaration) : string + unit :=
+Definition check_zero_lsb (vdecl : RawVerilog.variable_declaration) : string + unit :=
   match RawVerilog.varDeclVectorDeclaration vdecl with
   | RawVerilog.Scalar => inr tt
   | RawVerilog.Vector msb 0 => inr tt
   | _ => inl "Invalid variable bounds (LSB must be 0)"%string
+  end.
+
+Fixpoint tc_variable_declarations (vdecls : list RawVerilog.variable_declaration) : string + Verilog.environment :=
+  match vdecls with
+  | [] => inr (fun _ => None)
+  | vdecl :: vdecls =>
+    check_zero_lsb vdecl ;;
+    let* rest := tc_variable_declarations vdecls in
+    let name := RawVerilog.varDeclName vdecl in
+    match rest name with
+    | Some _ => inl ("Duplicate variable declaration: " ++ name)%string
+    | None =>
+      inr (fun n => if String.eqb n name
+        then Some (Verilog.Logic (RawVerilog.varDeclWidth vdecl))
+        else rest n)
+    end
   end.
 
 Equations inputs_of_decls : list RawVerilog.variable_declaration -> list Var.t := {
@@ -1021,10 +1069,10 @@ Definition map_inl {A B C} (f : A -> B) (s : A + C) : B + C :=
 
 Definition tc_vmodule (m : RawVerilog.vmodule) : result { '(i, o) & Verilog.vmodule i o } :=
   traceBracket ("Typecheck " ++ RawVerilog.modName m) (
-    mapT tc_variable_declaration (RawVerilog.modVariableDecls m) ;;
+    let* modEnv := tc_variable_declarations (RawVerilog.modVariableDecls m) in
     let inputs := inputs_of_decls (RawVerilog.modVariableDecls m) in
     let outputs := outputs_of_decls (RawVerilog.modVariableDecls m) in
-    let* t_modBody := tc_module_item_lst (RawVerilog.modBody m) in
+    let* t_modBody := @tc_module_item_lst modEnv (RawVerilog.modBody m) in
     let* modWfIODisjoint :=
       map_inl (fun var => (
         "Input/Output overlap: found '" ++ to_string var ++ "' in both" ++ newline ++
@@ -1037,6 +1085,7 @@ Definition tc_vmodule (m : RawVerilog.vmodule) : result { '(i, o) & Verilog.vmod
     let* modWfOutputsNoDup := assert_dec _ "Duplicate outputs"%string in
     inr ((inputs, outputs); {|
         Verilog.modName := RawVerilog.modName m;
+        Verilog.modEnv := modEnv;
         Verilog.modBody := t_modBody;
         Verilog.modWfIODisjoint := modWfIODisjoint;
         Verilog.modWfInputsNoDup := modWfInputsNoDup;
