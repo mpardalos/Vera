@@ -21,8 +21,8 @@ From Stdlib Require Import ProofIrrelevance.
 (* From ExtLib Require Import Structures.Traversable. *)
 From ExtLib Require Import Data.List.
 
-(* From vera Require Import Common. *)
-(* From vera Require Import Tactics. *)
+From vera Require Import Common.
+From vera Require Import Tactics.
 From vera Require Import Bitvector.
 (* From vera Require Import Decidable. *)
 (* Import (notations) Bitvector.RawBV. *)
@@ -45,7 +45,7 @@ Definition name := string.
 Module Sort <: UsualDecidableType.
   Inductive sort :=
   | BitVec (n : N) (* zero-width allowed? *)
-  | Array (idx elem : sort)
+  (* | Array (idx elem : sort) *)
   .
   Definition t := sort.
   Include HasUsualEq <+ UsualIsEq.
@@ -53,14 +53,14 @@ Module Sort <: UsualDecidableType.
   Definition eq_dec (x y : t) : {x = y} + {x <> y}.
   Proof. decide equality; apply N.eq_dec. Defined.
 
-  Fixpoint interp (s : sort) : Type :=
+  Definition interp (s : sort) : Type :=
   match s with
   | BitVec n => BV.bitvector n
-  | Array idx elem => interp idx -> interp elem
+  (* | Array idx elem => interp idx -> interp elem *)
   end.
 End Sort.
 
-Import Sort (BitVec, Array).
+Import Sort (BitVec(* , Array *)).
 
 Definition environment := name -> option Sort.t.
 
@@ -99,7 +99,7 @@ End Ref.
 Inductive expr {env} : Sort.t -> Type :=
 | UnsignedExtend {n : N} (w : N) (e : expr (BitVec n)) : expr (BitVec (n + w))
 | SignedExtend {n : N} (w : N) (e : expr (BitVec n)) : expr (BitVec (n + w))
-| Slice {n} (hi lo : N) (e : expr (BitVec n)) : expr (BitVec (1 + hi - lo))
+| Slice {n} (hi lo : N) (wf : (lo <= hi < n)%N) (e : expr (BitVec n)) : expr (BitVec (1 + hi - lo))
 | Not {n} (e : expr (BitVec n)) : expr (BitVec n)
 | Inc {n} (e : expr (BitVec n)) : expr (BitVec n)
 | Dec {n} (e : expr (BitVec n)) : expr (BitVec n)
@@ -146,9 +146,9 @@ Inductive expr {env} : Sort.t -> Type :=
 | SignedSubOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
 | UnsignedSubOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
 | Concat {n m} (e1 : expr (BitVec n)) (e2 : expr (BitVec m)) : expr (BitVec (n + m))
-| Read {I E} (arr : expr (Array I E)) (idx : expr I) : expr E
+(* | Read {I E} (arr : expr (Array I E)) (idx : expr I) : expr E *)
 | ITE {n} (cond : expr (BitVec 1)) (ifT ifF : expr (BitVec n)) : expr (BitVec n)
-| Write {I E} (arr : expr (Array I E)) (idx : expr I) (elem : expr E) : expr (Array I E)
+(* | Write {I E} (arr : expr (Array I E)) (idx : expr I) (elem : expr E) : expr (Array I E) *)
 (* Added for abstract syntax *)
 | Constant {n} (bv : BV.bitvector n) : expr (BitVec n)
 | ExprRef {s} (r : Ref.t s) : expr s
@@ -176,7 +176,7 @@ Variant node {env} :=
 
 Record btor := {
   btorEnv : environment;
-  btorBody : list (@node btorEnv)
+  btorBody : list (@node btorEnv);
 }.
 
 Module State.

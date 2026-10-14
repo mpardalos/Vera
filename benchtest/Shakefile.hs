@@ -106,6 +106,8 @@ main = shakeArgs shakeOptions{shakeThreads = 0} $ do
         let targets = map (-<.> "synth.sv") sources
         need targets
 
+    sequentialSampleRules
+
     -- Tools
     veraRules memResource
     eqyRules memResource
@@ -860,6 +862,39 @@ sbyRules = do
                     ExitFailure err -> printf "Failed (%d)" err
                     ExitSuccess -> "OK"
                 }
+
+sequentialSampleRules :: Rules ()
+sequentialSampleRules = do
+    let dir = "sequential-samples"
+
+    phony (dir </> "all") $ do
+        files <- getDirectoryFiles dir ["//*.sv"]
+        need [ dir </> f <.> "btor2.ric3" | f <- files ]
+
+    phony (dir </> "clean") $ do
+        removeFilesAfter dir ["//*.btor2", "//*.ric3", "//*.sv.basecase.smt2", "//*.sv.induction.smt2"]
+
+    convert <- newCache $ \svFile -> do
+        need [vera, svFile]
+        Exit exitCode <- cmd
+            vera
+            "to-btor"
+            svFile
+        pure exitCode
+
+    forM_ ["btor2", "basecase.smt2", "induction.smt2"] $ \suffix ->
+        patternPhony (dir </> "*.sv" <.> suffix) $ \[name] ->
+            void $ convert (dir </> name <.> "sv")
+
+    patternPhony (dir </> "*.btor2.ric3") $ \[name] -> do
+        let btorFile = dir </> name <.> "btor2"
+            out = btorFile <.> "ric3"
+        exitCode <- convert (dropExtension btorFile)
+        case exitCode of
+            ExitFailure code -> putInfo (printf "%s: to-btor failed (%d), skipping rIC3" name code)
+            ExitSuccess -> do
+                (Exit c, Stdout (out :: ByteString)) <- cmd "rIC3" btorFile out out
+                putInfo (printf "%s: %s" name (BS8.unpack (BS8.strip out)))
 
 -- Helpers
 

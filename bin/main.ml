@@ -31,6 +31,22 @@ let btor_of_file filename =
   let* m = Vera.lower_verilog i o m in
   Vera.transfer_vmodule i o m
 
+let to_btor filename =
+  match btor_of_file filename with
+  | Vera.Inl err ->
+      raise (Failure (sprintf "Error: %s\n" (Util.lst_to_string err)))
+  | Vera.Inr btor ->
+      let basecase = Vera.query_init_state_bad btor in
+      let induction = Vera.query_inductive_violation btor in
+      let write suffix pp value =
+        let channel = open_out (filename ^ suffix) in
+        Fun.protect ~finally:(fun () -> close_out channel) (fun () ->
+            fprintf (formatter_of_out_channel channel) "%a\n%!" pp value)
+      in
+      write ".btor2" Btor2PP.btor btor;
+      write ".basecase.smt2" SMTPP.SMTLib.query basecase;
+      write ".induction.smt2" SMTPP.SMTLib.query induction
+
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =
     let* (i1, o1, m1) = typed_module_of_file filename1 in
@@ -69,7 +85,6 @@ let rec lower level filename =
   | `PreSMT ->
       display_or_error VerilogPP.Typed.vmodule (lowered_module_of_file filename)
   | `SMT -> display_or_error SMTPP.SMTLib.query (smt_of_file filename)
-  | `BTOR -> display_or_error Btor2PP.btor (btor_of_file filename)
 
 let compare_cmd =
   let open Cmdliner.Term.Syntax in
@@ -117,7 +132,6 @@ let lower_cmd =
         ("typed", `Typed);
         ("pre-smt", `PreSMT);
         ("smt", `SMT);
-        ("btor", `BTOR);
       ]
   in
   Cmd.v (Cmd.info "lower")
@@ -130,13 +144,25 @@ let lower_cmd =
   and+ file = Arg.(required & pos 1 (some file) None & info [] ~docv:"FILE") in
   lower lower_level file
 
+let to_btor_cmd =
+  let open Cmdliner.Term.Syntax in
+  Cmd.v
+    (Cmd.info "to-btor"
+       ~doc:"Write FILE.btor2, FILE.basecase.smt2, and FILE.induction.smt2")
+  @@
+  let+ file =
+    Arg.(required & pos 0 (some file) None
+         & info [] ~docv:"FILE" ~doc:"Verilog file to translate")
+  in
+  to_btor file
+
 let vera_cmd =
   let envs = [
     Cmd.Env.info "VERA_MAX_MEMORY"
       ~doc:"Maximum heap memory usage in bytes. If set, the program will raise \
             an out-of-memory exception when the OCaml heap exceeds this limit."
   ] in
-  Cmd.group (Cmd.info "vera" ~envs) [ lower_cmd; compare_cmd ]
+  Cmd.group (Cmd.info "vera" ~envs) [ lower_cmd; compare_cmd; to_btor_cmd ]
 
 let () =
   (match Sys.getenv_opt "VERA_TRACE" with

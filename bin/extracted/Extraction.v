@@ -8,6 +8,7 @@ From vera Require Bitvector.
 From vera Require VerilogSemantics.
 From vera Require Btor2.
 From vera Require VerilogToBtor.
+From vera Require BtorToSMT.
 
 From vera Require Import BVList.
 From vera Require SMTLib.
@@ -44,6 +45,10 @@ Extract Inlined Constant Pos.to_nat => "(fun x -> x)".
 
 Extract Inlined Constant List.flat_map => "List.concat_map".
 
+(* Report unsupported BTOR expressions when translated, not at startup. *)
+Extract Constant BtorToSMT.undef_term =>
+  "(fun _ -> failwith ""Unsupported expression in BTOR-to-SMT translation"")".
+
 (* Debug tracing — override extraction to print *)
 Extract Inlined Constant Common.traceBracket_ => "ExtractionUtils.my_rocq_traceBracket".
 Extract Inlined Constant Common.trace_ => "ExtractionUtils.my_rocq_trace".
@@ -78,5 +83,7 @@ Extraction "Vera.ml"
   VerilogSemantics.Sort.sort_module_items
   Btor2.btor
   VerilogToBtor.transfer_vmodule
+  BtorToSMT.query_init_state_bad
+  BtorToSMT.query_inductive_violation
   (* Common.NameMap *)
   .

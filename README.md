@@ -103,6 +103,17 @@ Or the SMT translation of a single module
 dune exec vera -- lower smt module1.sv
 ```
 
+To write a BTOR2 model and the base-case and induction SMT queries:
+
+```bash
+dune exec vera -- to-btor test.sv
+```
+
+This creates `test.sv.btor2`, `test.sv.basecase.smt2`, and
+`test.sv.induction.smt2` using the BTOR-to-SMT translation in `BtorToSMT.v`.
+That translation currently supports only a subset of expressions, and its
+induction query is unfinished.
+
 Running the benchmarks will create many Vera-compatible designs inside
 `benchtest/out/pulp-elau-<width>`, which you may use for testing.
 

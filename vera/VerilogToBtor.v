@@ -102,14 +102,14 @@ Equations transfer_expr {venv t} (e : @V.expression venv t) : result (@Btor2.exp
     let var' := Btor2.ExprRef (Btor2.Ref.Mk (transfer_env venv)
       (Var.varType var) (Var.varName var) (transfer_env_valid wt)) in
     inr (rew [fun n => Btor2.expr (Btor2.Sort.BitVec n)] _ in
-      Btor2.Slice hi lo var')
+      Btor2.Slice hi lo wf var')
   | V.BitSelect var (V.IntegerLiteral _ idx) wt =>
     let* idx := opt_to_sum "Xs in btor bit-select index" (XBV.to_N idx) in
     assert_dec (idx < Npos (Var.varType var))%N "Out-of-bounds btor bit-select";;
     let var' := Btor2.ExprRef (Btor2.Ref.Mk (transfer_env venv)
       (Var.varType var) (Var.varName var) (transfer_env_valid wt)) in
     inr (rew [fun n => Btor2.expr (Btor2.Sort.BitVec n)] _ in
-      Btor2.Slice idx idx var')
+      Btor2.Slice idx idx _ var')
   | V.BitSelect _ _ _ => inl "Unexpected variable bit-select in btor translation"
   | V.Concatenation lhs rhs =>
     let* lhs' := transfer_expr lhs in
@@ -121,7 +121,7 @@ Equations transfer_expr {venv t} (e : @V.expression venv t) : result (@Btor2.exp
     | left prf =>
       let* e' := transfer_expr e in
       inr (rew [fun n => Btor2.expr (Btor2.Sort.BitVec n)]
-        _ in Btor2.Slice (Pos.pred_N to) 0 e')
+        _ in Btor2.Slice (Pos.pred_N to) 0 _ e')
     | right prf =>
       let* e' := transfer_expr e in
       inr (rew [fun n => Btor2.expr (Btor2.Sort.BitVec n)]
