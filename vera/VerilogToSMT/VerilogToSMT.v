@@ -98,6 +98,10 @@ Section expr_to_smt.
       SMTLib.Term_BVBinOp SMTLib.BVAdd lhs (SMTLib.Term_BVUnaryOp SMTLib.BVNeg rhs);
     arithmeticop_to_smt Verilog.ArithmeticStar lhs rhs :=
       SMTLib.Term_BVBinOp SMTLib.BVMul lhs rhs;
+    arithmeticop_to_smt Verilog.ArithmeticSlash lhs rhs :=
+      SMTLib.Term_BVBinOp SMTLib.BVUDiv lhs rhs;
+    arithmeticop_to_smt Verilog.ArithmeticPercent lhs rhs :=
+      SMTLib.Term_BVBinOp SMTLib.BVURem lhs rhs;
     .
 
   Definition smt_to_bool {w} (t : SMTLib.term (Sort_BitVec w)) : SMTLib.term (Sort_BitVec 1) :=

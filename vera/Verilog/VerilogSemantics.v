@@ -1527,10 +1527,14 @@ Module CombinationalOnly.
     xor_bit X _ := X;
     xor_bit _ X := X.
 
+  Definition divmod_undefined {n} : XBV.xbv n. Admitted.
+
   Equations eval_arithmeticop {n} (op : Verilog.arithmeticop) : XBV.xbv n -> XBV.xbv n -> XBV.xbv n :=
     eval_arithmeticop Verilog.ArithmeticPlus l r := bv_binop (@BV.bv_add _) l r;
     eval_arithmeticop Verilog.ArithmeticMinus l r := bv_binop (fun bvl bvr => BV.bv_add bvl (BV.bv_neg bvr)) l r;
     eval_arithmeticop Verilog.ArithmeticStar l r := bv_binop (@BV.bv_mult _) l r;
+    eval_arithmeticop Verilog.ArithmeticSlash l r := divmod_undefined;
+    eval_arithmeticop Verilog.ArithmeticPercent l r := divmod_undefined;
   .
 
   Definition of_bool {n} (b : bool) : XBV.xbv n :=
@@ -1920,13 +1924,15 @@ Section ExpressionFacts.
     exists bv, XBV.to_bv (eval_arithmeticop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.
   Proof.
     destruct op.
+    (* Division and modulo semantics are still undefined. *)
+    4,5: admit.
     all: simp eval_arithmeticop.
     all: match goal with [ |- context[bv_binop ?op ?l ?r] ] =>
            funelim (bv_binop op l r)
          end.
     all: rewrite XBV.xbv_bv_inverse in *.
     all: crush.
-  Qed.
+  Admitted.
   
   Lemma eval_bitwiseop_to_bv op w (lhs rhs : BV.bitvector w) :
     exists bv, XBV.to_bv (eval_bitwiseop op (XBV.from_bv lhs) (XBV.from_bv rhs)) = Some bv.

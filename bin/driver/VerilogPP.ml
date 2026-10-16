@@ -6,8 +6,8 @@ let arithmeticop fmt = function
   | Verilog.ArithmeticPlus -> fprintf fmt "+"
   | Verilog.ArithmeticMinus -> fprintf fmt "-"
   | Verilog.ArithmeticStar -> fprintf fmt "*"
-  (* | Verilog.BinarySlash -> fprintf fmt "/" *)
-  (* | Verilog.BinaryPercent -> fprintf fmt "%%" *)
+  | Verilog.ArithmeticSlash -> fprintf fmt "/"
+  | Verilog.ArithmeticPercent -> fprintf fmt "%%"
 
 let logicalop fmt = function
   | Verilog.EqualsEquals -> fprintf fmt "=="

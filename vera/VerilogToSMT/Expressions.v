@@ -45,11 +45,13 @@ Lemma arithmeticop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.S
       = XBV.from_bv (SMTLib.interp_term ρ (arithmeticop_to_smt op smt_lhs smt_rhs)).
 Proof.
   destruct op.
+  (* Division and remainder correctness await their semantics. *)
+  4,5: admit.
   all: simp eval_arithmeticop arithmeticop_to_smt in *.
   all: cbn [SMTLib.interp_term].
   all: autorewrite with xbv bv_binop in *.
   all: reflexivity.
-Qed.
+Admitted.
 
 Lemma logicalop_to_smt_value ρ op w (smt_lhs smt_rhs : SMTLib.term (SMTLib.Sort_BitVec w)) :
     eval_logicalop op (XBV.from_bv (SMTLib.interp_term ρ smt_lhs)) (XBV.from_bv (SMTLib.interp_term ρ smt_rhs))

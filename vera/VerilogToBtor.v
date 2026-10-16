@@ -57,6 +57,8 @@ Equations transfer_expr {venv t} (e : @V.expression venv t) : result (@Btor2.exp
       | V.ArithmeticPlus => Btor2.Add lhs' rhs'
       | V.ArithmeticMinus => Btor2.Sub lhs' rhs'
       | V.ArithmeticStar => Btor2.Mul lhs' rhs'
+      | V.ArithmeticSlash => Btor2.UnsignedDiv lhs' rhs'
+      | V.ArithmeticPercent => Btor2.UnsignedRem lhs' rhs'
       end)
   | V.LogicalOp op lhs rhs =>
     let* lhs' := transfer_expr lhs in

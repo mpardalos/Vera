@@ -244,6 +244,8 @@ let read_binary_op = function
   | "Add" -> `Arithmetic Vera.RawVerilog.ArithmeticPlus
   | "Subtract" -> `Arithmetic Vera.RawVerilog.ArithmeticMinus
   | "Multiply" -> `Arithmetic Vera.RawVerilog.ArithmeticStar
+  | "Divide" -> `Arithmetic Vera.RawVerilog.ArithmeticSlash
+  | "Mod" -> `Arithmetic Vera.RawVerilog.ArithmeticPercent
   (* | "LessThan" -> Vera.RawVerilog.BinaryLessThan *)
   (* | "LessThanEqual" -> Vera.RawVerilog.BinaryLessThanEqual *)
   (* | "GreaterThan" -> Vera.RawVerilog.BinaryGreaterThan *)

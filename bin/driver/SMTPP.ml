@@ -29,6 +29,8 @@ module SMTLib = struct
     | BVXor -> fprintf fmt "bvxor"
     | BVAdd -> fprintf fmt "bvadd"
     | BVMul -> fprintf fmt "bvmul"
+    | BVUDiv -> fprintf fmt "bvudiv"
+    | BVURem -> fprintf fmt "bvurem"
     | BVShl -> fprintf fmt "bvshl"
     | BVShr -> fprintf fmt "bvlshr"
 

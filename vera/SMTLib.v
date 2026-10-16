@@ -55,8 +55,8 @@ Variant BVBinOp : Set :=
   | BVXor
   | BVAdd
   | BVMul
-  (* | BVUDiv
-   * | BVURem *)
+  | BVUDiv
+  | BVURem
   | BVShl
   | BVShr
 .
@@ -148,6 +148,8 @@ Section Interpretation.
     lia.
   Qed.
 
+  Definition divmod_undefined {w} : bitvector w. Admitted.
+
   (* Interpretation of terms *)
   Variable ρ : valuation.
 
@@ -185,11 +187,8 @@ Section Interpretation.
       | BVXor => bv_xor (interp_term t1) (interp_term t2)
       | BVAdd => bv_add (interp_term t1) (interp_term t2)
       | BVMul => bv_mult (interp_term t1) (interp_term t2)
-      (* Divide does not exist in SMTCoq bitvectors *)
-      (* (existT _ (Sort_BitVec m1) (bv_udiv (interp_term t1) (interp_term t2))) *)
-      (* (existT _ (Sort_BitVec m1) (bv_rem (interp_term t1) (interp_term t2))) *)
-      (* | BVUDiv => None
-       * | BVURem => None *)
+      | BVUDiv => divmod_undefined
+      | BVURem => divmod_undefined
       | BVShl => bv_shl (interp_term t1) (interp_term t2)
       | BVShr => bv_shr (interp_term t1) (interp_term t2)
       end

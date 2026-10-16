@@ -67,8 +67,8 @@ Module VerilogCommon.
     | ArithmeticPlus (* '+' *)
     | ArithmeticMinus (* '-' *)
     | ArithmeticStar (* '*' *)
-    (* | ArithmeticSlash (* '/' *) *)
-    (* | ArithmeticPercent (* '%' *) *)
+    | ArithmeticSlash (* '/' *)
+    | ArithmeticPercent (* '%' *)
     (* | BinaryExponent (* '**' *) *)
     .
 
@@ -191,8 +191,8 @@ Variant bitwiseop :=
           | ArithmeticPlus => "+"
           | ArithmeticMinus => "-"
           | ArithmeticStar => "*"
-          (* | BinarySlash => "/" *)
-          (* | BinaryPercent => "%" *)
+          | ArithmeticSlash => "/"
+          | ArithmeticPercent => "%"
           (* | BinaryExponent => "**" *)
           end
       }.
