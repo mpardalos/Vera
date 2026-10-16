@@ -14,10 +14,16 @@ let btor fmt model =
   let next_id = ref Zarith_Z.one in
   let sorts = Hashtbl.create 16 in
   let nodes = Hashtbl.create 16 in
+  let lines = ref [] in
+  let names = Hashtbl.create 16 in
+  let name_line id n =
+    let previous = Option.value (Hashtbl.find_opt names id) ~default:[] in
+    Hashtbl.replace names id (n :: previous)
+  in
   let emit line =
     let id = !next_id in
     next_id := Zarith_Z.succ id;
-    fprintf fmt "%a %t\n" Zarith_Z.pp_print id line;
+    lines := (id, line) :: !lines;
     id
   in
   let rec sort s =
@@ -138,20 +144,23 @@ let btor fmt model =
         let sid = sort s in
         check_name n;
         let id = emit (fun fmt -> fprintf fmt "state %a" Zarith_Z.pp_print sid) in
+        name_line id n;
         Hashtbl.add nodes n id
     | _ -> ()) model.btorBody;
   List.iter (function
     | Operator (_, n, e) ->
         check_name n;
         let id = emit_expr e in
+        name_line id n;
         Hashtbl.add nodes n id
     | _ -> ()) model.btorBody;
   let update op s n e =
     let sid = sort s in
     let target = reference n in
     let value = emit_expr e in
-    ignore (emit (fun fmt -> fprintf fmt "%s %a %a %a" op
-      Zarith_Z.pp_print sid Zarith_Z.pp_print target Zarith_Z.pp_print value))
+    let id = emit (fun fmt -> fprintf fmt "%s %a %a %a" op
+      Zarith_Z.pp_print sid Zarith_Z.pp_print target Zarith_Z.pp_print value) in
+    name_line id n
   in
   List.iter (function
     | StateInit (s, n, e) -> update "init" s n e
@@ -159,4 +168,12 @@ let btor fmt model =
     | Bad e ->
         let value = emit_expr e in
         ignore (emit (fun fmt -> fprintf fmt "bad %a" Zarith_Z.pp_print value))
-    | _ -> ()) model.btorBody
+    | _ -> ()) model.btorBody;
+  (* References can give an existing line additional source names. *)
+  List.iter (fun (id, line) ->
+    fprintf fmt "%a %t" Zarith_Z.pp_print id line;
+    (match Hashtbl.find_opt names id with
+    | Some ns ->
+        fprintf fmt " ; %s" (String.concat ", " (List.map String.escaped (List.rev ns)))
+    | None -> ());
+    pp_print_char fmt '\n') (List.rev !lines)
