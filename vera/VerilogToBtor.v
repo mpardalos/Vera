@@ -15,6 +15,7 @@ From vera Require Import Common.
 From vera Require Import Tactics.
 From vera Require Import Decidable.
 From vera Require Btor2.
+Module Btor2 := Btor2.Abstract.
 From vera Require Import Verilog.
 From vera Require Import Variables.
 From vera Require Import Bitvector.
@@ -29,7 +30,6 @@ Import ListNotations.
 Local Open Scope monad_scope.
 Local Open Scope string.
 
-Coercion Npos : positive >-> N.
 Coercion V.Logic : positive >-> Verilog.type.
 
 Implicit Types (venv : Verilog.environment).
@@ -37,7 +37,7 @@ Implicit Types (benv : Btor2.environment).
 
 Definition transfer_type (t : Verilog.type) : Btor2.Sort.t :=
   match t with
-  | Verilog.Logic w => Btor2.Sort.BitVec (Npos w)
+  | Verilog.Logic w => Btor2.Sort.BitVec w
   end.
 
 Coercion transfer_type : Verilog.type >-> Btor2.Sort.t.
@@ -80,7 +80,7 @@ Equations transfer_expr {venv t} (e : @V.expression venv t) : result (@Btor2.exp
   | @V.ShiftOp _ w1 w2 op lhs rhs =>
     let* lhs' := transfer_expr lhs in
     let* rhs' := transfer_expr rhs in
-    let* E := assert_dec (Npos w2 = Npos w1) "Incompatible widths in btor shift" in
+    let* E := assert_dec (w2 = w1) "Incompatible widths in btor shift" in
     let rhs' := rew [fun n => Btor2.expr (Btor2.Sort.BitVec n)] E in rhs' in
     inr (match op with
       | V.BinaryShiftLeft => Btor2.Sll lhs' rhs'
@@ -127,7 +127,7 @@ Equations transfer_expr {venv t} (e : @V.expression venv t) : result (@Btor2.exp
     | right prf =>
       let* e' := transfer_expr e in
       inr (rew [fun n => Btor2.expr (Btor2.Sort.BitVec n)]
-        _ in Btor2.UnsignedExtend (Npos to - Npos from)%N e')
+        _ in Btor2.UnsignedExtend (to - from)%positive e')
   }
   | V.IntegerLiteral _ xbv =>
     match XBV.to_bv xbv with
