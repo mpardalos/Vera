@@ -1,0 +1,3 @@
+(test
+ (name parseBtor2Test)
+ (libraries driver extracted zarith))
