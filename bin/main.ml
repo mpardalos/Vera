@@ -10,6 +10,15 @@ let ( =<< ) a b = b >>= a
 
 let module_of_file = ParseSlang.parse_verilog_file
 
+let unpack = function
+  | Vera.Inl msg -> failwith msg
+  | Vera.Inr x -> x
+
+let write filename pp value =
+  let channel = open_out filename in
+  Fun.protect ~finally:(fun () -> close_out channel) (fun () ->
+      fprintf (formatter_of_out_channel channel) "%a\n%!" pp value)
+
 (* filename -> (inputs * outputs * module) *)
 let typed_module_of_file f =
   let m = module_of_file f in
@@ -26,26 +35,25 @@ let smt_of_file filename =
   let* (i, o, m) = typed_module_of_file filename in
   Vera.verilog_to_smt_general i o VerilogLeft m
 
-let btor_of_file filename =
+let btor_of_verilog_file filename =
   let* (i, o, m) = typed_module_of_file filename in
   let* m = Vera.lower_verilog i o m in
-  Vera.transfer_vmodule i o m
+  Vera.verilog_to_btor i o m
 
 let to_btor filename =
-  match btor_of_file filename with
+  match btor_of_verilog_file filename with
   | Vera.Inl err ->
       raise (Failure (sprintf "Error: %s\n" (Util.lst_to_string err)))
   | Vera.Inr btor ->
-      let basecase = Vera.query_init_state_bad btor in
-      let induction = Vera.query_inductive_violation btor in
-      let write suffix pp value =
-        let channel = open_out (filename ^ suffix) in
-        Fun.protect ~finally:(fun () -> close_out channel) (fun () ->
-            fprintf (formatter_of_out_channel channel) "%a\n%!" pp value)
-      in
-      write ".btor2" Btor2PP.btor (Vera.Btor2.Raw.of_abstract btor);
-      write ".basecase.smt2" SMTPP.SMTLib.query basecase;
-      write ".induction.smt2" SMTPP.SMTLib.query induction
+      printf "%a\n%!" Btor2PP.btor (Vera.Btor2.Raw.of_abstract btor)
+
+let btor_to_smt btor_filename smt_basename =
+  let raw_btor = ParseBtor2.parse_file btor_filename in
+  let btor = unpack (Vera.Btor2.Raw.to_abstract raw_btor) in
+  let basecase = Vera.query_init_state_bad btor in
+  write (smt_basename ^ ".basecase.smt2") SMTPP.SMTLib.query basecase;
+  let induction = Vera.query_inductive_violation btor in
+  write (smt_basename ^ ".induction.smt2") SMTPP.SMTLib.query induction
 
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =
@@ -144,11 +152,11 @@ let lower_cmd =
   and+ file = Arg.(required & pos 1 (some file) None & info [] ~docv:"FILE") in
   lower lower_level file
 
-let to_btor_cmd =
+let verilog_to_btor_cmd =
   let open Cmdliner.Term.Syntax in
   Cmd.v
-    (Cmd.info "to-btor"
-       ~doc:"Write FILE.btor2, FILE.basecase.smt2, and FILE.induction.smt2")
+    (Cmd.info "verilog-to-btor"
+       ~doc:"Print the BTOR2 encoding of a Verilog module to stdout")
   @@
   let+ file =
     Arg.(required & pos 0 (some file) None
@@ -156,13 +164,26 @@ let to_btor_cmd =
   in
   to_btor file
 
+let btor_query_cmd =
+  let open Cmdliner.Term.Syntax in
+  Cmd.v
+    (Cmd.info "btor-query"
+       ~doc:"Write FILE.basecase.smt2 and FILE.induction.smt2, replacing the input extension")
+  @@
+  let+ file =
+    Arg.(required & pos 0 (some file) None
+         & info [] ~docv:"FILE" ~doc:"BTOR2 file to generate queries for")
+  in
+  btor_to_smt file (Filename.remove_extension file)
+
 let vera_cmd =
   let envs = [
     Cmd.Env.info "VERA_MAX_MEMORY"
       ~doc:"Maximum heap memory usage in bytes. If set, the program will raise \
             an out-of-memory exception when the OCaml heap exceeds this limit."
   ] in
-  Cmd.group (Cmd.info "vera" ~envs) [ lower_cmd; compare_cmd; to_btor_cmd ]
+  Cmd.group (Cmd.info "vera" ~envs)
+    [ lower_cmd; compare_cmd; verilog_to_btor_cmd; btor_query_cmd ]
 
 let () =
   (match Sys.getenv_opt "VERA_TRACE" with

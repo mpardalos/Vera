@@ -162,7 +162,7 @@ Definition transfer_module_body {venv} (mis : list Verilog.module_item) : result
   let* nodess := mapT transfer_module_item mis in
   inr (List.concat nodess).
 
-Definition transfer_vmodule {i o} (v : V.vmodule i o) : result ABtor2.btor :=
+Definition verilog_to_btor {i o} (v : V.vmodule i o) : result ABtor2.btor :=
   let env := transfer_env (V.modEnv v) in
   let* body := transfer_module_body (V.modBody v) in
   inr {|

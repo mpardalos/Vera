@@ -88,7 +88,7 @@ Extraction "Vera.ml"
   Verilog.Typecheck.tc_vmodule
   VerilogToSMT.expr_to_smt
   VerilogSemantics.Sort.sort_module_items
-  VerilogToBtor.transfer_vmodule
+  VerilogToBtor.verilog_to_btor
   BtorToSMT.query_init_state_bad
   BtorToSMT.query_inductive_violation
   (* Common.NameMap *)
