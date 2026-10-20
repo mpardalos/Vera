@@ -68,7 +68,14 @@ pretty-printing *)
 Definition bits_to_binary_string (v: Bitvector.RawXBV.xbv) : string :=
   Bitvector.RawXBV.to_string (Bitvector.RawXBV.of_bits v).
 
+(* Preserve both BTOR namespaces in monolithic OCaml extraction. *)
+Module Btor2.
+  Module Abstract := vera.Btor2.Abstract.
+  Module Raw := vera.Btor2.Raw.
+End Btor2.
+
 Extraction "Vera.ml"
+  Btor2
   bits_from_int
   bits_to_binary_string
   int_from_nat
@@ -82,7 +89,6 @@ Extraction "Vera.ml"
   VerilogToSMT.expr_to_smt
   VerilogSemantics.Sort.sort_module_items
   VerilogToBtor.transfer_vmodule
-  Btor2.Concrete
   BtorToSMT.query_init_state_bad
   BtorToSMT.query_inductive_violation
   (* Common.NameMap *)

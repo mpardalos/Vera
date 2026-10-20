@@ -43,7 +43,7 @@ let to_btor filename =
         Fun.protect ~finally:(fun () -> close_out channel) (fun () ->
             fprintf (formatter_of_out_channel channel) "%a\n%!" pp value)
       in
-      write ".btor2" Btor2PP.btor btor;
+      write ".btor2" Btor2PP.btor (Vera.Btor2.Raw.of_abstract btor);
       write ".basecase.smt2" SMTPP.SMTLib.query basecase;
       write ".induction.smt2" SMTPP.SMTLib.query induction
 
