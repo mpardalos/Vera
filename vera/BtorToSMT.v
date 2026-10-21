@@ -117,7 +117,7 @@ Section transfer.
     match node with
     | @ABtor2.Operator _ s n e wf =>
       Some (SMTLib.Term_Eq
-        (SMTLib.Term_Const (SMTLib.MkConstSym n (transfer_sort s)))
+        (SMTLib.Term_Const (SMTLib.MkConstSym (name_map n) (transfer_sort s)))
         (transfer_expr e))
     | _ => None
     end.
@@ -161,5 +161,6 @@ Definition query_init_state_bad (b : ABtor2.btor) : SMTQueries.query :=
 Definition query_inductive_violation (b : ABtor2.btor) : SMTQueries.query :=
   map_opt (transfer_combinational map_current) (ABtor2.btorBody b) ++
   map_opt transfer_state_next (ABtor2.btorBody b) ++
+  map_opt (transfer_combinational map_next) (ABtor2.btorBody b) ++
   (map SMTLib.Term_Not (map_opt (transfer_prop map_current) (ABtor2.btorBody b))) ++
   map_opt (transfer_prop map_next) (ABtor2.btorBody b).
