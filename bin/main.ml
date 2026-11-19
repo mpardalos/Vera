@@ -55,6 +55,22 @@ let btor_to_smt btor_filename smt_basename =
   let induction = Vera.query_inductive_violation btor in
   write (smt_basename ^ ".induction.smt2") SMTPP.SMTLib.query induction
 
+let btor_certificate_to_smt original_filename certificate_filename =
+  let original = ParseBtor2.parse_file original_filename in
+  let certificate = ParseBtor2.parse_file certificate_filename in
+  let queries = unpack (Vera.get_certificate_check_queries original certificate) in
+  let smt_basename = Filename.remove_extension certificate_filename in
+  List.iter
+    (fun (suffix, query) ->
+      write (smt_basename ^ suffix ^ ".smt2") SMTPP.SMTLib.query query)
+    [
+      (".certificate-basecase", queries.certificate_basecase);
+      (".certificate-induction", queries.certificate_induction);
+      (".refinement-properties", queries.refinement_properties);
+      (".refinement-reset", queries.refinement_reset);
+      (".refinement-transition", queries.refinement_transition);
+    ]
+
 let compare ~solver ~dump_query filename1 filename2 =
   let query_result =
     let* (i1, o1, m1) = typed_module_of_file filename1 in
@@ -176,6 +192,21 @@ let btor_query_cmd =
   in
   btor_to_smt file (Filename.remove_extension file)
 
+let btor_certificate_query_cmd =
+  let open Cmdliner.Term.Syntax in
+  Cmd.v
+    (Cmd.info "btor-certificate-query"
+       ~doc:"Write certificate-basecase, certificate-induction, refinement-properties, refinement-reset and refinement-transition SMT2 queries, using the certificate filename without its extension as the output prefix")
+  @@
+  let+ original =
+    Arg.(required & pos 0 (some file) None
+         & info [] ~docv:"ORIGINAL" ~doc:"Original BTOR2 file")
+  and+ certificate =
+    Arg.(required & pos 1 (some file) None
+         & info [] ~docv:"CERTIFICATE" ~doc:"BTOR2 certificate to check")
+  in
+  btor_certificate_to_smt original certificate
+
 let vera_cmd =
   let envs = [
     Cmd.Env.info "VERA_MAX_MEMORY"
@@ -183,7 +214,8 @@ let vera_cmd =
             an out-of-memory exception when the OCaml heap exceeds this limit."
   ] in
   Cmd.group (Cmd.info "vera" ~envs)
-    [ lower_cmd; compare_cmd; verilog_to_btor_cmd; btor_query_cmd ]
+    [ lower_cmd; compare_cmd; verilog_to_btor_cmd; btor_query_cmd;
+      btor_certificate_query_cmd ]
 
 let () =
   (match Sys.getenv_opt "VERA_TRACE" with

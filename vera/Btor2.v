@@ -68,6 +68,8 @@ Import Sort (BitVec(* , Array *)).
 
 Definition name := string.
 
+Module NameSet := StrSet.
+
 Definition environment := name -> option Sort.t.
 
 Implicit Types (env : environment).
@@ -219,6 +221,40 @@ Module Abstract.
 
   Definition next {env} (nds : list node) (st : State.t) : State.t :=
     run nds (fun s => s) st.
+
+  Fixpoint expr_names {env s} (e : expr s) : NameSet.t :=
+    match e with
+    | UnsignedExtend _ e | SignedExtend _ e | Slice _ _ _ e
+    | Not e | Inc e | Dec e | RedAnd e | RedOr e | RedXor e =>
+      expr_names e
+    | Iff e1 e2 | Implies e1 e2 | Eq e1 e2 | NEq e1 e2
+    | SignedGt e1 e2 | UnsignedGt e1 e2 | SignedGtE e1 e2 | UnsignedGtE e1 e2
+    | SignedLt e1 e2 | UnsignedLt e1 e2 | SignedLtE e1 e2 | UnsignedLtE e1 e2
+    | And e1 e2 | NAnd e1 e2 | Or e1 e2 | NOr e1 e2 | XOr e1 e2 | XNor e1 e2
+    | Rol e1 e2 | Sll e1 e2 | Sra e1 e2 | Srl e1 e2
+    | Add e1 e2 | Mul e1 e2 | SignedDiv e1 e2 | UnsignedDiv e1 e2
+    | SignedMod e1 e2 | SignedRem e1 e2 | UnsignedRem e1 e2 | Sub e1 e2
+    | SignedAddOverflow e1 e2 | UnsignedAddOverflow e1 e2 | SignedDivOverflow e1 e2
+    | SignedMulOverflow e1 e2 | UnsignedMulOverflow e1 e2
+    | SignedSubOverflow e1 e2 | UnsignedSubOverflow e1 e2 | Concat e1 e2 =>
+      NameSet.union (expr_names e1) (expr_names e2)
+    | ITE cond ifT ifF =>
+      NameSet.union (expr_names cond) (NameSet.union (expr_names ifT) (expr_names ifF))
+    | Constant _ => NameSet.empty
+    | ExprRef r => NameSet.singleton (Ref.refName r)
+    end.
+
+  Definition collect_names (b : btor) : NameSet.t :=
+    fold_right (fun nd names =>
+      NameSet.union
+        (match nd with
+         | StateDecl n _ _ => NameSet.singleton n
+         | StateInit n e _ | StateNext n e _ | Operator n e _ =>
+           NameSet.add n (expr_names e)
+         | Bad e => expr_names e
+         end)
+        names)
+      NameSet.empty (btorBody b).
 End Abstract.
 
 Module Raw.
@@ -372,6 +408,13 @@ Module Raw.
     let* rhs := expect_sort (BitVec n) rhs in
     ret (_; op n lhs rhs).
 
+  Definition binaryCmp {env} {f}
+      (op : forall s, Abstract.expr s -> Abstract.expr s -> Abstract.expr (f s))
+      (lhs rhs : result {s & Abstract.expr s}) : result {s & Abstract.expr s} :=
+    let* (s; lhs) := lhs in
+    let* rhs := expect_sort s rhs in
+    ret (_; op s lhs rhs).
+
   Definition binary1 {env}
       (op : Abstract.expr (BitVec 1) -> Abstract.expr (BitVec 1) -> Abstract.expr (BitVec 1))
       (lhs rhs : result {s & Abstract.expr s}) : result {s & Abstract.expr s} :=
@@ -395,8 +438,8 @@ Module Raw.
     | RedXor e => unary (@Abstract.RedXor env) (expr_to_abstract e)
     | Iff lhs rhs => binary1 (@Abstract.Iff env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | Implies lhs rhs => binary1 (@Abstract.Implies env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | Eq lhs rhs => binary1 Abstract.Eq (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | NEq lhs rhs => binary1 Abstract.NEq (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | Eq lhs rhs => binaryCmp (@Abstract.Eq env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | NEq lhs rhs => binaryCmp (@Abstract.NEq env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | SignedGt lhs rhs => binary (@Abstract.SignedGt env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | UnsignedGt lhs rhs => binary (@Abstract.UnsignedGt env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | SignedGtE lhs rhs => binary (@Abstract.SignedGtE env) (expr_to_abstract lhs) (expr_to_abstract rhs)
@@ -502,4 +545,73 @@ Module Raw.
     Definition to_abstract (b : btor) : result Abstract.btor :=
       let* body := mapT (node_to_abstract (env_of_nodes b)) b in
       ret {| Abstract.btorBody := body |}.
+
+    Section rename.
+      Variable (m : name -> name).
+
+      Fixpoint rename_expr (e : expr) : expr :=
+        match e with
+        | UnsignedExtend w e => UnsignedExtend w (rename_expr e)
+        | SignedExtend w e => SignedExtend w (rename_expr e)
+        | Slice hi lo e => Slice hi lo (rename_expr e)
+        | Not e => Not (rename_expr e)
+        | Inc e => Inc (rename_expr e)
+        | Dec e => Dec (rename_expr e)
+        | RedAnd e => RedAnd (rename_expr e)
+        | RedOr e => RedOr (rename_expr e)
+        | RedXor e => RedXor (rename_expr e)
+        | Iff e1 e2 => Iff (rename_expr e1) (rename_expr e2)
+        | Implies e1 e2 => Implies (rename_expr e1) (rename_expr e2)
+        | Eq e1 e2 => Eq (rename_expr e1) (rename_expr e2)
+        | NEq e1 e2 => NEq (rename_expr e1) (rename_expr e2)
+        | SignedGt e1 e2 => SignedGt (rename_expr e1) (rename_expr e2)
+        | UnsignedGt e1 e2 => UnsignedGt (rename_expr e1) (rename_expr e2)
+        | SignedGtE e1 e2 => SignedGtE (rename_expr e1) (rename_expr e2)
+        | UnsignedGtE e1 e2 => UnsignedGtE (rename_expr e1) (rename_expr e2)
+        | SignedLt e1 e2 => SignedLt (rename_expr e1) (rename_expr e2)
+        | UnsignedLt e1 e2 => UnsignedLt (rename_expr e1) (rename_expr e2)
+        | SignedLtE e1 e2 => SignedLtE (rename_expr e1) (rename_expr e2)
+        | UnsignedLtE e1 e2 => UnsignedLtE (rename_expr e1) (rename_expr e2)
+        | And e1 e2 => And (rename_expr e1) (rename_expr e2)
+        | NAnd e1 e2 => NAnd (rename_expr e1) (rename_expr e2)
+        | Or e1 e2 => Or (rename_expr e1) (rename_expr e2)
+        | NOr e1 e2 => NOr (rename_expr e1) (rename_expr e2)
+        | XOr e1 e2 => XOr (rename_expr e1) (rename_expr e2)
+        | XNor e1 e2 => XNor (rename_expr e1) (rename_expr e2)
+        | Rol e1 e2 => Rol (rename_expr e1) (rename_expr e2)
+        | Sll e1 e2 => Sll (rename_expr e1) (rename_expr e2)
+        | Sra e1 e2 => Sra (rename_expr e1) (rename_expr e2)
+        | Srl e1 e2 => Srl (rename_expr e1) (rename_expr e2)
+        | Add e1 e2 => Add (rename_expr e1) (rename_expr e2)
+        | Mul e1 e2 => Mul (rename_expr e1) (rename_expr e2)
+        | SignedDiv e1 e2 => SignedDiv (rename_expr e1) (rename_expr e2)
+        | UnsignedDiv e1 e2 => UnsignedDiv (rename_expr e1) (rename_expr e2)
+        | SignedMod e1 e2 => SignedMod (rename_expr e1) (rename_expr e2)
+        | SignedRem e1 e2 => SignedRem (rename_expr e1) (rename_expr e2)
+        | UnsignedRem e1 e2 => UnsignedRem (rename_expr e1) (rename_expr e2)
+        | Sub e1 e2 => Sub (rename_expr e1) (rename_expr e2)
+        | SignedAddOverflow e1 e2 => SignedAddOverflow (rename_expr e1) (rename_expr e2)
+        | UnsignedAddOverflow e1 e2 => UnsignedAddOverflow (rename_expr e1) (rename_expr e2)
+        | SignedDivOverflow e1 e2 => SignedDivOverflow (rename_expr e1) (rename_expr e2)
+        | SignedMulOverflow e1 e2 => SignedMulOverflow (rename_expr e1) (rename_expr e2)
+        | UnsignedMulOverflow e1 e2 => UnsignedMulOverflow (rename_expr e1) (rename_expr e2)
+        | SignedSubOverflow e1 e2 => SignedSubOverflow (rename_expr e1) (rename_expr e2)
+        | UnsignedSubOverflow e1 e2 => UnsignedSubOverflow (rename_expr e1) (rename_expr e2)
+        | Concat e1 e2 => Concat (rename_expr e1) (rename_expr e2)
+        | ITE cond ifT ifF => ITE (rename_expr cond) (rename_expr ifT) (rename_expr ifF)
+        | Constant bv => Constant bv
+        | ExprRef n => ExprRef (m n)
+        end.
+
+      Definition rename_node (n : node) : node :=
+        match n with
+        | StateDecl n s => StateDecl (m n) s
+        | StateInit s n e => StateInit s (m n) (rename_expr e)
+        | StateNext s n e => StateNext s (m n) (rename_expr e)
+        | Operator s n e => Operator s (m n) (rename_expr e)
+        | Bad e => Bad (rename_expr e)
+        end.
+
+      Definition rename := map rename_node.
+    End rename.
 End Raw.

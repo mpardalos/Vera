@@ -20,7 +20,7 @@ Module ABtor2 := Btor2.Abstract.
 From vera Require Import Bitvector.
 From vera Require SMTQueries.
 
-(* Import ListNotations. *)
+Import ListNotations.
 Import MonadLetNotation.
 Import SigTNotations.
 Import EqNotations.
@@ -130,37 +130,138 @@ Section transfer.
     end.
 End transfer.
 
-Definition map_current (n : string) := n.
-Definition map_next (n : string) := (n ++ "_next")%string.
+Section induction.
+  Definition names_current (n : string) := n.
 
-Definition transfer_state_init {env} (node : ABtor2.node) : option (SMTLib.term SMTLib.Sort_Bool) :=
-  match node with
-  | @ABtor2.StateInit _ s n e wf =>
-    Some (SMTLib.Term_Eq
-      (SMTLib.Term_Const (SMTLib.MkConstSym (map_current n) (transfer_sort s)))
-      (transfer_expr map_current e))
-  | _ => None
-  end.
+  Definition names_next (n : string) := (n ++ "_next")%string.
 
-Definition transfer_state_next {env} (node : ABtor2.node) : option (SMTLib.term SMTLib.Sort_Bool) :=
-  match node with
-  | @ABtor2.StateNext _ s n e wf =>
-    Some (SMTLib.Term_Eq
-      (SMTLib.Term_Const (SMTLib.MkConstSym (map_next n) (transfer_sort s)))
-      (transfer_expr map_current e))
-  | _ => None
-  end.
+  Definition transfer_state_init {env} (node : ABtor2.node) : option (SMTLib.term SMTLib.Sort_Bool) :=
+    match node with
+    | @ABtor2.StateInit _ s n e wf =>
+      Some (SMTLib.Term_Eq
+        (SMTLib.Term_Const (SMTLib.MkConstSym (names_current n) (transfer_sort s)))
+        (transfer_expr names_current e))
+    | _ => None
+    end.
 
-(* Look for a bad permitted initial state *)
-Definition query_init_state_bad (b : ABtor2.btor) : SMTQueries.query :=
-  map_opt transfer_state_init (ABtor2.btorBody b) ++
-  map_opt (transfer_combinational map_current) (ABtor2.btorBody b) ++
-  map_opt (transfer_prop map_current) (ABtor2.btorBody b).
+  Definition transfer_state_next {env} (node : ABtor2.node) : option (SMTLib.term SMTLib.Sort_Bool) :=
+    match node with
+    | @ABtor2.StateNext _ s n e wf =>
+      Some (SMTLib.Term_Eq
+        (SMTLib.Term_Const (SMTLib.MkConstSym (names_next n) (transfer_sort s)))
+        (transfer_expr names_current e))
+    | _ => None
+    end.
 
-(* Look for a transition from a good state to a bad state *)
-Definition query_inductive_violation (b : ABtor2.btor) : SMTQueries.query :=
-  map_opt (transfer_combinational map_current) (ABtor2.btorBody b) ++
-  map_opt transfer_state_next (ABtor2.btorBody b) ++
-  map_opt (transfer_combinational map_next) (ABtor2.btorBody b) ++
-  (map SMTLib.Term_Not (map_opt (transfer_prop map_current) (ABtor2.btorBody b))) ++
-  map_opt (transfer_prop map_next) (ABtor2.btorBody b).
+  (* Look for a bad permitted initial state *)
+  Definition query_init_state_bad (b : ABtor2.btor) : SMTQueries.query :=
+    map_opt transfer_state_init (ABtor2.btorBody b) ++
+    map_opt (transfer_combinational names_current) (ABtor2.btorBody b) ++
+    map_opt (transfer_prop names_current) (ABtor2.btorBody b).
+
+  (* Look for a transition from a good state to a bad state *)
+  Definition query_inductive_violation (b : ABtor2.btor) : SMTQueries.query :=
+    map_opt (transfer_combinational names_current) (ABtor2.btorBody b) ++
+    map_opt transfer_state_next (ABtor2.btorBody b) ++
+    map_opt (transfer_combinational names_next) (ABtor2.btorBody b) ++
+    (map SMTLib.Term_Not (map_opt (transfer_prop names_current) (ABtor2.btorBody b))) ++
+    map_opt (transfer_prop names_next) (ABtor2.btorBody b).
+End induction.
+
+Section prepare_certificate.
+  Variable (original : Btor2.Abstract.btor).
+  Variable (certificate : Btor2.Raw.btor).
+
+  Let original_states : list string :=
+    map_opt
+      (fun n =>
+        match n with
+        | Btor2.Abstract.StateDecl n s _ => Some n
+        | _ => None
+        end)
+      (Btor2.Abstract.btorBody original).
+
+  Let certificate_states : list string :=
+    map_opt
+      (fun n =>
+        match n with
+        | Btor2.Raw.StateDecl n s => Some n
+        | _ => None
+        end)
+      certificate.
+
+  (* Name in original * Name in miter *)
+  Let matched : list (string * string) :=
+    List.combine original_states certificate_states.
+
+  Let cert_rename (n : Btor2.name) : Btor2.name :=
+    match find (fun '(_, n') => String.eqb n n') matched with
+    | Some (orig_name, _) => orig_name
+    (* TODO: Ensure that this doesn't cause unintended conflicts*)
+    | None => ("cert__" ++ n)%string
+    end.
+
+  Definition prepare_certificate : result Btor2.Abstract.btor :=
+    Btor2.Raw.to_abstract (Btor2.Raw.rename cert_rename certificate). 
+End prepare_certificate.
+
+Section miter.
+  Variable (original : Btor2.Abstract.btor).
+
+  (* Matched names with original where needed *)
+  Variable (certificate : Btor2.Abstract.btor).
+
+  Let orig_combinational names := map_opt (transfer_combinational names) (ABtor2.btorBody original).
+  Let orig_reset := map_opt transfer_state_init (ABtor2.btorBody original).
+  Let orig_transition := map_opt transfer_state_next (ABtor2.btorBody original).
+  Let orig_property names := map_opt (transfer_prop names) (ABtor2.btorBody original).
+
+  Let cert_combinational names := map_opt (transfer_combinational names) (ABtor2.btorBody certificate).
+  Let cert_reset := map_opt transfer_state_init (ABtor2.btorBody certificate).
+  Let cert_transition := map_opt transfer_state_next (ABtor2.btorBody certificate).
+  Let cert_property names := map_opt (transfer_prop names) (ABtor2.btorBody certificate).
+
+  Let smt_nand (ts : list (SMTLib.term SMTLib.Sort_Bool)) : SMTLib.term SMTLib.Sort_Bool :=
+    SMTLib.Term_Not (fold_left (SMTLib.Term_And) ts SMTLib.Term_True).
+
+  Local Open Scope list_scope.
+
+  Definition query_refines_property :=
+    orig_combinational names_current ++
+    orig_property names_current ++
+    cert_combinational names_current ++
+    [ smt_nand (cert_property names_current) ].
+
+  Definition query_refines_reset :=
+    orig_combinational names_current ++
+    orig_reset ++
+    cert_combinational names_current ++
+    [ smt_nand cert_reset ].
+
+  Definition query_refines_transition :=
+    orig_combinational names_current ++
+    orig_combinational names_next ++
+    orig_transition ++
+    cert_combinational names_current ++
+    orig_combinational names_next ++
+    [ smt_nand cert_transition ].
+End miter.
+
+Record certificate_check_queries := {
+  certificate_basecase : SMTQueries.query;
+  certificate_induction : SMTQueries.query;
+  refinement_properties : SMTQueries.query;
+  refinement_reset : SMTQueries.query;
+  refinement_transition : SMTQueries.query;
+}.
+
+Definition get_certificate_check_queries (original certificate : Btor2.Raw.btor) : result certificate_check_queries :=
+  let* original' := Btor2.Raw.to_abstract original in
+  let* certificate' := prepare_certificate original' certificate in
+  ret {|
+    certificate_basecase := query_init_state_bad certificate';
+    certificate_induction := query_init_state_bad certificate';
+    refinement_properties := query_refines_property original' certificate';
+    refinement_reset := query_refines_reset original' certificate';
+    refinement_transition := query_refines_transition original' certificate';
+  |}.

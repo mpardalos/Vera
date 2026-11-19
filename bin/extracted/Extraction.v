@@ -91,5 +91,6 @@ Extraction "Vera.ml"
   VerilogToBtor.verilog_to_btor
   BtorToSMT.query_init_state_bad
   BtorToSMT.query_inductive_violation
+  BtorToSMT.get_certificate_check_queries
   (* Common.NameMap *)
   .
