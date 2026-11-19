@@ -109,6 +109,7 @@ Module Abstract.
   | UnsignedExtend {n : positive} (w : positive) (e : expr (BitVec n)) : expr (BitVec (w + n))
   | SignedExtend {n : positive} (w : positive) (e : expr (BitVec n)) : expr (BitVec (w + n))
   | Slice {n : positive} (hi lo : N) (wf : (lo <= hi < Npos n)%N) (e : expr (BitVec n)) : expr (BitVec (N.succ_pos (hi - lo)))
+  | Neg {n} (e : expr (BitVec n)) : expr (BitVec n)
   | Not {n} (e : expr (BitVec n)) : expr (BitVec n)
   | Inc {n} (e : expr (BitVec n)) : expr (BitVec n)
   | Dec {n} (e : expr (BitVec n)) : expr (BitVec n)
@@ -203,6 +204,7 @@ Module Abstract.
 
   Fixpoint eval {env : environment} {s} (st : State.t) (e : expr s) : Sort.interp s :=
     match e with
+    | Neg e => BV.bv_neg (eval st e)
     | Add lhs rhs => BV.bv_add (eval st lhs) (eval st rhs)
     | _ => undef
     end.
@@ -225,7 +227,7 @@ Module Abstract.
   Fixpoint expr_names {env s} (e : expr s) : NameSet.t :=
     match e with
     | UnsignedExtend _ e | SignedExtend _ e | Slice _ _ _ e
-    | Not e | Inc e | Dec e | RedAnd e | RedOr e | RedXor e =>
+    | Neg e | Not e | Inc e | Dec e | RedAnd e | RedOr e | RedXor e =>
       expr_names e
     | Iff e1 e2 | Implies e1 e2 | Eq e1 e2 | NEq e1 e2
     | SignedGt e1 e2 | UnsignedGt e1 e2 | SignedGtE e1 e2 | UnsignedGtE e1 e2
@@ -262,6 +264,7 @@ Module Raw.
   | UnsignedExtend (w : positive) (e : expr)
   | SignedExtend (w : positive) (e : expr)
   | Slice (hi lo : N) (e : expr)
+  | Neg (e : expr)
   | Not (e : expr)
   | Inc (e : expr)
   | Dec (e : expr)
@@ -331,6 +334,7 @@ Module Raw.
     | Abstract.UnsignedExtend w e => UnsignedExtend w (expr_of_abstract e)
     | Abstract.SignedExtend w e => SignedExtend w (expr_of_abstract e)
     | Abstract.Slice hi lo wf e => Slice hi lo (expr_of_abstract e)
+    | Abstract.Neg e => Neg (expr_of_abstract e)
     | Abstract.Not e => Not (expr_of_abstract e)
     | Abstract.Inc e => Inc (expr_of_abstract e)
     | Abstract.Dec e => Dec (expr_of_abstract e)
@@ -430,6 +434,7 @@ Module Raw.
       let* Hlo := assert_dec (lo <= hi)%N "Invalid BTOR slice bounds"%string in
       let* Hhi := assert_dec (hi < Npos n)%N "Invalid BTOR slice bounds"%string in
       ret (_; Abstract.Slice hi lo (conj Hlo Hhi) e)
+    | Neg e => unary (@Abstract.Neg env) (expr_to_abstract e)
     | Not e => unary (@Abstract.Not env) (expr_to_abstract e)
     | Inc e => unary (@Abstract.Inc env) (expr_to_abstract e)
     | Dec e => unary (@Abstract.Dec env) (expr_to_abstract e)
@@ -554,6 +559,7 @@ Module Raw.
         | UnsignedExtend w e => UnsignedExtend w (rename_expr e)
         | SignedExtend w e => SignedExtend w (rename_expr e)
         | Slice hi lo e => Slice hi lo (rename_expr e)
+        | Neg e => Neg (rename_expr e)
         | Not e => Not (rename_expr e)
         | Inc e => Inc (rename_expr e)
         | Dec e => Dec (rename_expr e)

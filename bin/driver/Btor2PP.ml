@@ -73,6 +73,7 @@ let btor fmt (model : btor) =
           invalid_arg "Btor2PP: invalid slice bounds";
         line (Z.succ (Z.sub hi lo)) (fun fmt sid ->
           fprintf fmt "slice %a %a %a %a" Z.pp_print sid Z.pp_print id Z.pp_print hi Z.pp_print lo)
+    | Neg e -> unary false "neg" e
     | Not e -> unary false "not" e
     | Inc e -> unary false "inc" e
     | Dec e -> unary false "dec" e

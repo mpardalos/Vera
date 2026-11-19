@@ -88,6 +88,7 @@ Section transfer.
         (bv_to_bool (transfer_expr cond)) (transfer_expr ifT) (transfer_expr ifF)
     | ABtor2.Slice hi lo wf e =>
       rew [fun w => SMTLib.term (SMTLib.Sort_BitVec w)] _ in SMTLib.Term_BVExtract hi lo (proj1 wf) (transfer_expr e)
+    | ABtor2.Neg e => SMTLib.Term_BVUnaryOp SMTLib.BVNeg (transfer_expr e)
     | ABtor2.Not e => SMTLib.Term_BVUnaryOp SMTLib.BVNot (transfer_expr e)
     | @ABtor2.Inc _ n e => SMTLib.Term_BVBinOp SMTLib.BVAdd
         (transfer_expr e) (SMTLib.Term_BVLit _ (BV.bv_neg (BV.ones n)))

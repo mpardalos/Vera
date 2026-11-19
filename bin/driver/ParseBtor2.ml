@@ -88,6 +88,7 @@ let operation line parser result opcode args =
     binary true (fun width l r -> equal_width line Z.one width; ctor l r)
   in
   match opcode with
+  | "neg" -> unary false (fun _ e -> Neg e)
   | "not" -> unary false (fun _ e -> Not e)
   | "inc" -> unary false (fun _ e -> Inc e)
   | "dec" -> unary false (fun _ e -> Dec e)
