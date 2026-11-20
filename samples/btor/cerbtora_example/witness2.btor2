@@ -1,0 +1,19 @@
+1 sort bitvec 1
+2 sort bitvec 2
+3 zero 1
+4 zero 2
+5 input 1 =5
+9 state 2 =9
+10 init 2 9 4
+11 not 2 9
+12 ite 2 5 9 11
+13 next 2 9 12
+14 const 2 10
+15 eq 1 14 9
+16 const 2 01
+17 eq 1 16 9
+18 or 1 15 17
+19 bad 18
+; This is an alternative witness in which the /transition/ state has been
+; replaced with an input. Note that the mapping of inputs and states has
+; to be explicitly specified as the default mapping does not work.

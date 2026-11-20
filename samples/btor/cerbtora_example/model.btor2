@@ -1,0 +1,22 @@
+1 sort bitvec 1
+2 sort bitvec 2
+3 zero 1
+4 zero 2
+5 state 1 transition
+6 init 1 5 3
+7 neg 1 5
+8 next 1 5 7
+9 state 2 data
+10 init 2 9 4
+11 not 2 9
+12 ite 2 5 9 11
+13 next 2 9 12
+14 const 2 10
+15 eq 1 14 9
+16 bad 15
+; The model has two states /transition/ which flips at every step,
+; and /data/ which consists of two bits that flip every second step.
+; Since the bits are intialized to 00 and flip together,
+; the propert (them not equaling 10) holds.
+; However, it is not inductive as the good state 01 can transition
+; to the bad state 10.

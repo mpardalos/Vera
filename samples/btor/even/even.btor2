@@ -1,0 +1,23 @@
+;; Sorts
+100 sort bitvec 1
+132 sort bitvec 32
+
+;; Constants
+200 constd 132 0
+201 constd 132 1
+202 constd 132 2
+216 constd 132 16
+
+;; State
+300 state 132
+301 init 132 300 216
+
+;; Step
+400 add 132 300 300 ; Double
+401 add 132 400 201 ; Double + 1
+410 next 132 300 400
+
+;; Properties
+600 urem 132 300 202
+601 neq 100 600 200
+602 bad 601
