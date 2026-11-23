@@ -1,7 +1,10 @@
 From Stdlib Require Import String.
 From Stdlib Require Import ZArith.
 From Stdlib Require Import ProofIrrelevance.
+From Stdlib Require Import Basics.
 From Stdlib Require Extraction.
+From Stdlib Require Streams.
+Import Streams (Stream).
 (* From Stdlib Require Import BinNums. *)
 (* From Stdlib Require Import Program.Equality. *)
 (* From Stdlib Require Import ProofIrrelevance. *)
@@ -41,6 +44,7 @@ Import MonadLetNotation.
 Import SigTNotations.
 Import EqNotations.
 Local Open Scope monad_scope.
+Local Open Scope program_scope.
 
 Module Sort <: UsualDecidableType.
   Inductive sort :=
@@ -71,6 +75,8 @@ Definition name := string.
 Module NameSet := StrSet.
 
 Definition environment := name -> option Sort.t.
+
+Coercion Npos : positive >-> N.
 
 Implicit Types (env : environment).
 Existing Class environment.
@@ -165,21 +171,39 @@ Module Abstract.
   .
   Arguments expr {env} s.
 
-  Variant node {env} :=
-  | StateDecl (n : name) (s : Sort.t) (wf : env n = Some s)
-  | StateInit {s : Sort.t} (n : name) (e : expr s) (wf : env n = Some s)
-  | StateNext {s : Sort.t} (n : name) (e : expr s) (wf : env n = Some s)
-  | Operator {s : Sort.t} (n : name) (e : expr s) (wf : env n = Some s)
-  | Bad (e : expr (BitVec 1))
-  .
+  Record stateVar {env} := {
+    stateName : name;
+    stateSort : Sort.t;
+    stateInit : expr stateSort;
+    stateNext : expr stateSort;
+    stateWf : env stateName = Some stateSort;
+  }.
+
+  Definition stateRef {env} (s : stateVar) := Ref.Mk env (stateSort s) (stateName s) (stateWf s).
+
+  Record operatorVar {env} := {
+    operatorName : name;
+    operatorSort : Sort.t;
+    operatorExpr : expr operatorSort;
+    operatorWf : env operatorName = Some operatorSort;
+  }.
+
+  Definition operatorRef {env} (op : operatorVar) := Ref.Mk env (operatorSort op) (operatorName op) (operatorWf op).
 
   Record btor := {
     btorEnv : environment;
-    btorBody : list (@node btorEnv);
+    btorInputs : list name;
+    btorOperators : list operatorVar;
+    btorStates : list stateVar;
+    btorProperties : list (expr (BitVec 1)); (* safety property is: all properties are *false* *)
+    btorNoDupNames : NoDup (btorInputs ++ map stateName btorStates ++ map stateName btorStates);
+    btorNamesCovered : forall name sort, btorEnv name = Some sort -> In name (btorInputs ++ map stateName btorStates ++ map stateName btorStates);
+    btorInputsWf : Forall (fun n => exists s, btorEnv n = Some s) btorInputs
   }.
 
   Module State.
-    Definition t {env} := forall (s : Sort.t) (r : Ref.t s), Sort.interp s.
+    Definition state {env} := forall (s : Sort.t) (r : Ref.t s), Sort.interp s.
+    Notation t := state.
 
     Definition set_ref {env s} (r : Ref.t s) (val : Sort.interp s) (st : t) : t :=
       fun s' r' =>
@@ -194,6 +218,11 @@ Module Abstract.
     Definition get {env s} (st : t) (r : Ref.t s) :=
       st s r.
 
+    Definition empty_default {env} : t := fun s r =>
+      match s with
+      | Sort.BitVec n => BV.zeros n
+      end.
+
     Infix "@" := get (at level 5).
   End State.
   Import (notations) State.
@@ -202,61 +231,79 @@ Module Abstract.
   Extract Constant undef =>
     "(fun _ -> failwith ""Unsupported expression in abstract BTOR evaluation"")".
 
-  Fixpoint eval {env : environment} {s} (st : State.t) (e : expr s) : Sort.interp s :=
+  Fixpoint eval {env : environment} {s} (st : State.t) (e : expr s) : Sort.interp s := 
     match e with
     | Neg e => BV.bv_neg (eval st e)
     | Add lhs rhs => BV.bv_add (eval st lhs) (eval st rhs)
     | _ => undef
     end.
 
-  Fixpoint run {env} (nds : list node) (pending : State.t -> State.t) (st : State.t) : State.t :=
-    match nds with
-    | [] => pending st
-    | (nd :: nds) => match nd with
-      | @StateNext _ s n e wf =>
-        run nds (State.set_ref (Ref.Mk env s n wf) (eval st e)) st
-      | @Operator _ s n e wf =>
-        run nds pending (State.set_ref (Ref.Mk env s n wf) (eval st e) st)
-      | _ => run nds pending st
-      end
-    end.
+  Definition run_operator {env} (op : operatorVar) (st : State.t) : State.t := 
+    State.set_ref (operatorRef op) (eval st (operatorExpr op)) st.
 
-  Definition next {env} (nds : list node) (st : State.t) : State.t :=
-    run nds (fun s => s) st.
+  Definition run_operators {env} := fold_left (flip run_operator).
 
-  Fixpoint expr_names {env s} (e : expr s) : NameSet.t :=
-    match e with
-    | UnsignedExtend _ e | SignedExtend _ e | Slice _ _ _ e
-    | Neg e | Not e | Inc e | Dec e | RedAnd e | RedOr e | RedXor e =>
-      expr_names e
-    | Iff e1 e2 | Implies e1 e2 | Eq e1 e2 | NEq e1 e2
-    | SignedGt e1 e2 | UnsignedGt e1 e2 | SignedGtE e1 e2 | UnsignedGtE e1 e2
-    | SignedLt e1 e2 | UnsignedLt e1 e2 | SignedLtE e1 e2 | UnsignedLtE e1 e2
-    | And e1 e2 | NAnd e1 e2 | Or e1 e2 | NOr e1 e2 | XOr e1 e2 | XNor e1 e2
-    | Rol e1 e2 | Sll e1 e2 | Sra e1 e2 | Srl e1 e2
-    | Add e1 e2 | Mul e1 e2 | SignedDiv e1 e2 | UnsignedDiv e1 e2
-    | SignedMod e1 e2 | SignedRem e1 e2 | UnsignedRem e1 e2 | Sub e1 e2
-    | SignedAddOverflow e1 e2 | UnsignedAddOverflow e1 e2 | SignedDivOverflow e1 e2
-    | SignedMulOverflow e1 e2 | UnsignedMulOverflow e1 e2
-    | SignedSubOverflow e1 e2 | UnsignedSubOverflow e1 e2 | Concat e1 e2 =>
-      NameSet.union (expr_names e1) (expr_names e2)
-    | ITE cond ifT ifF =>
-      NameSet.union (expr_names cond) (NameSet.union (expr_names ifT) (expr_names ifF))
-    | Constant _ => NameSet.empty
-    | ExprRef r => NameSet.singleton (Ref.refName r)
-    end.
+  Definition run_state_init {env} (s : stateVar) (st : State.t) : State.t := 
+    State.set_ref (stateRef s) (eval st (stateInit s)) st.
 
-  Definition collect_names (b : btor) : NameSet.t :=
-    fold_right (fun nd names =>
-      NameSet.union
-        (match nd with
-         | StateDecl n _ _ => NameSet.singleton n
-         | StateInit n e _ | StateNext n e _ | Operator n e _ =>
-           NameSet.add n (expr_names e)
-         | Bad e => expr_names e
-         end)
-        names)
-      NameSet.empty (btorBody b).
+  Definition run_state_inits {env} := fold_left (flip run_state_init).
+
+  Definition run_state_next {env} (s : stateVar) (st : State.t) : State.t := 
+    State.set_ref (stateRef s) (eval st (stateNext s)) st.
+
+  Definition run_state_nexts {env} := fold_left (flip run_state_next).
+
+  Definition value_list {env} := list {s & Ref.t s * Sort.interp s}.
+
+  Definition set_inputs {env} (values : value_list) (s : State.t) : State.t :=
+    fold_left (fun acc '(s; (r, v)) => State.set_ref r v acc) values s.
+
+  (* TODO: Is reset allowed to read from inputs? Or does it have to be constant?
+       Assuming that it has to be constant. Inputs will read from empty_default (0s)
+   *)
+  Definition initial_state (b : btor) : @State.t (btorEnv b) :=
+    (run_state_inits (btorStates b) ∘ run_operators (btorOperators b)) State.empty_default.
+
+  Definition next_state (b : btor) (inputs : value_list) : State.t -> State.t :=
+    run_state_nexts (btorStates b) ∘ run_operators (btorOperators b) ∘ set_inputs inputs.
+
+  Definition safe_state (b : btor) (st : State.t) : Prop :=
+    Forall (fun (p : expr (Sort.BitVec 1)) => eval st p = BV.zeros 1) (btorProperties b).
+
+  CoFixpoint runFrom (b : btor) (st : State.t) (input_stream : Stream value_list) : Stream State.t :=
+    Streams.Cons st (runFrom b (next_state b (Streams.hd input_stream) st) (Streams.tl input_stream)).
+
+  Definition run b input_stream := runFrom b (initial_state b) input_stream.
+
+  CoInductive SafeStream (b : btor) (trace : Stream State.t) : Prop := {
+    safeThis : safe_state b (Streams.hd trace);
+    safeRest : SafeStream b (Streams.tl trace);
+  }.
+
+  Definition Safe (b : btor) : Prop := forall input_stream, SafeStream b (run b input_stream).
+
+  #[program]
+  Example empty_btor : btor := {|
+    btorEnv := fun _ => None;
+    btorInputs := [];
+    btorOperators := [];
+    btorStates := [];
+    btorProperties := [];
+  |}.
+  Next Obligation. constructor. Qed.
+
+  #[program]
+  CoFixpoint SafeStream_induct b istream st0
+    (safe_base : safe_state b st0)
+    (safe_induct : forall s i, safe_state b s -> safe_state b (next_state b i s)) :
+    SafeStream b (runFrom b st0 istream) := {|
+    safeThis := safe_induct st0 (Streams.hd istream) safe_base;
+    safeRest := SafeStream_induct b (Streams.tl istream) _ _ _;
+  |}.
+
+  CoFixpoint Safe_induct b istream st0
+    (safe_base : safe_state b (initial_state b ))
+    (safe_induct : forall s i, safe_state b s -> safe_state b (next_state b i s)) :
 End Abstract.
 
 Module Raw.
