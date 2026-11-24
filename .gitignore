@@ -7,3 +7,4 @@ vera_query.smt
 /report.html
 *.aux
 .shake/
+.\#*
