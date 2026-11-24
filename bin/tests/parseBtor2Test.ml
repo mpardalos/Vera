@@ -35,6 +35,7 @@ let () =
   let l = reference 10 and r = reference 11 in
   let a = reference 12 and b = reference 13 in
   let cases = [
+    "neg 1 10", 8, Neg l;
     "not 1 10", 8, Not l;
     "inc 1 10", 8, Inc l;
     "dec 1 10", 8, Dec l;
@@ -109,6 +110,7 @@ let () =
     "7 bad 0"; "7 bad -6"; "7 bad 8"; "7 bad 1"; "7 bad 3";
     "7 add 99 3 5"; "7 add 3 3 5"; "7 add 2 3 5";
     "7 add 1 3 6"; "7 add 1 3"; "7 add 1 3 5 a b";
+    "7 neg 2 3"; "7 neg 1"; "7 neg 1 3 5 6";
     "7 redand 1 3"; "7 iff 2 3 5"; "7 eq 1 3 5";
     "7 slice 1 3 8 1"; "7 slice 1 3 2 3"; "7 slice 1 3 3 0";
     "7 uext 1 3 1"; "7 uext 1 3 -1"; "7 concat 1 3 5";
@@ -154,7 +156,7 @@ let () =
     [StateDecl ("s", z 4);
      StateInit (z 4, "s", Constant [false; false; false; false]);
      StateNext (z 4, "s", Add (ExprRef "s", Constant [true; false; false; false]));
-     Bad (RedOr (Not (ExprRef "s")))] in
+     Bad (RedOr (Not (Neg (ExprRef "s"))))] in
   let parsed = Parser.parse_string (Format.asprintf "%a" Driver.Btor2PP.btor nested) in
   match Vera.Btor2.Raw.to_abstract parsed with
   | Vera.Inr _ -> ()
