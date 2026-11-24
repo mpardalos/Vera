@@ -8,8 +8,6 @@ From Stdlib Require Import Lia.
 From Stdlib Require Import Sorting.Permutation.
 From Stdlib Require Import ProofIrrelevance.
 
-From vera Require SMTLib.
-
 Class DecProp (P : Prop) := dec : { P } + { ~ P } .
 
 Arguments dec _ {_}.
@@ -139,9 +137,6 @@ Instance dec_eq_pair {A B}
 
 Instance dec_eq_list {A} `{forall (x y : A), DecProp (x = y)} (x y : list A) : DecProp (x = y) :=
   mk_dec_eq!(list_eq_dec).
-
-Instance dec_eq_sort (x y : SMTLib.sort) : DecProp (x = y) :=
-  mk_dec_eq!(SMTLib.dec_sort).
 
 Instance dec_Forall {A} {P : A -> Prop} {decP : forall x, DecProp (P x)} l :
   DecProp (Forall P l).

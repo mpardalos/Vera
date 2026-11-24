@@ -30,7 +30,7 @@ From vera Require Import Variables.
 From vera Require Import Common.
 From vera Require Import Bitvector.
 From vera Require Import VerilogSMT.
-From vera Require Import SMTQueries.
+From vera Require Import SMTLib.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require VerilogSemantics.
@@ -280,7 +280,7 @@ Section expr_to_smt.
   .
 End expr_to_smt.
 
-Definition mk_declarations : list (Var.t * smtname) -> list SMTQueries.declaration :=
+Definition mk_declarations : list (Var.t * smtname) -> list (smtname * SMTLib.sort) :=
   map (fun '(var, name) => (name, SMTLib.Sort_BitVec (Var.varType var))).
 
 Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
@@ -290,7 +290,7 @@ Definition assert_permutation {A} `{forall (x y : A), DecProp (x = y)}
   | _, _ => None
   end.
 
-Definition verilog_to_smt {i o} (name_tag : VarTag) (vmodule : Verilog.vmodule i o) : result SMTQueries.query :=
+Definition verilog_to_smt {i o} (name_tag : VarTag) (vmodule : Verilog.vmodule i o) : result SMTLib.query :=
   traceBracket ("To SMT " ++ Verilog.modName vmodule) (
     assert_dec
       (module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody vmodule))

@@ -146,7 +146,7 @@ Definition lower_verilog :=
 
 Import EqNotations.
 
-Definition verilog_to_smt_general {i o} t (verilog : vmodule i o) : sum string SMTQueries.query :=
+Definition verilog_to_smt_general {i o} t (verilog : vmodule i o) : sum string SMTLib.query :=
   let* verilog' := Pass.pass_apply verilog_pipeline verilog in
   VerilogToSMT.verilog_to_smt t verilog'.
 
@@ -159,7 +159,7 @@ Lemma rew_interface_refl {i o} (inputs_eq : i = i) (outputs_eq : o = o) (v : vmo
 Proof. unfold rew_interface. rewrite <- ! eq_rect_eq. reflexivity. Qed.
   
 Definition equivalence_query_general {i1 o1 i2 o2} (verilog1 : vmodule i1 o1) (verilog2 : vmodule i2 o2)
-    : sum string SMTQueries.query :=
+    : sum string SMTLib.query :=
   let* verilog1' := Pass.pass_apply verilog_pipeline verilog1 in
   let* verilog2' := Pass.pass_apply verilog_pipeline verilog2 in
 
@@ -171,7 +171,7 @@ Definition equivalence_query_general {i1 o1 i2 o2} (verilog1 : vmodule i1 o1) (v
 (****** Continue here **********)
 
 From vera Require Import VerilogSMT.
-From vera Require Import SMTQueries.
+From vera Require Import SMTLib.
 From vera Require Import VerilogEquivalenceCorrectness.
 
 From Stdlib Require Import Relations.

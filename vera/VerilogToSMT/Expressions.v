@@ -3,7 +3,7 @@ From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require Import VerilogToSMT.
 From vera Require Import VerilogSMT.
-From vera Require SMTQueries.
+From vera Require SMTLib.
 From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
 From vera Require Import Variables.

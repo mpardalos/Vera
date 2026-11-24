@@ -5,7 +5,7 @@ Import VerilogSemantics.Sort.
 From vera Require Import VerilogSMT.
 From vera Require Import Common.
 From vera Require VerilogToSMT.
-From vera Require SMTQueries.
+From vera Require SMTLib.
 From vera Require Import Decidable.
 From vera Require Import Tactics.
 
@@ -57,7 +57,7 @@ Equations mk_outputs_distinct (inputs : list Var.t) : SMTLib.term SMTLib.Sort_Bo
   | (var :: vars) => SMTLib.Term_Or (mk_var_distinct var) (mk_outputs_distinct vars)
 }.
 
-Definition equivalence_query {i o} (verilog1 verilog2 : Verilog.vmodule i o) : string + SMTQueries.query :=
+Definition equivalence_query {i o} (verilog1 verilog2 : Verilog.vmodule i o) : string + SMTLib.query :=
   trace "Construct equivalence query" (
     (* let* inputs_ok1 :=
      *   assert_dec

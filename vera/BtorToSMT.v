@@ -21,7 +21,7 @@ From vera Require Import Decidable.
 From vera Require Btor2.
 Module ABtor2 := Btor2.Abstract.
 From vera Require Import Bitvector.
-From vera Require SMTQueries.
+From vera Require SMTLib.
 
 Import ListNotations.
 Import MonadLetNotation.
@@ -131,10 +131,10 @@ Section transfer.
   Definition transfer_prop {env} (prop : ABtor2.expr (Btor2.Sort.BitVec 1)) : SMTLib.term SMTLib.Sort_Bool :=
     bv_is_zero (transfer_expr prop).
 
-  Definition transfer_props_hold {env} (props : list (ABtor2.expr (Btor2.Sort.BitVec 1))) : SMTQueries.query :=
+  Definition transfer_props_hold {env} (props : list (ABtor2.expr (Btor2.Sort.BitVec 1))) : SMTLib.query :=
     map transfer_prop props.
 
-  Definition transfer_props_violated {env} (props : list (ABtor2.expr (Btor2.Sort.BitVec 1))) : SMTQueries.query :=
+  Definition transfer_props_violated {env} (props : list (ABtor2.expr (Btor2.Sort.BitVec 1))) : SMTLib.query :=
     [smt_nand (map transfer_prop props)].
 End transfer.
 
@@ -154,13 +154,13 @@ Section induction.
       (transfer_expr names_current (ABtor2.stateNext var)).
 
   (* Look for a bad permitted initial state *)
-  Definition query_init_state_bad (b : ABtor2.btor) : SMTQueries.query :=
+  Definition query_init_state_bad (b : ABtor2.btor) : SMTLib.query :=
     map transfer_state_init (ABtor2.btorStates b) ++
     map (transfer_combinational names_current) (ABtor2.btorOperators b) ++
     transfer_props_violated names_current (ABtor2.btorProperties b) .
 
   (* Look for a transition from a good state to a bad state *)
-  Definition query_inductive_violation (b : ABtor2.btor) : SMTQueries.query :=
+  Definition query_inductive_violation (b : ABtor2.btor) : SMTLib.query :=
     map (transfer_combinational names_current) (ABtor2.btorOperators b) ++
     map transfer_state_next (ABtor2.btorStates b) ++
     map (transfer_combinational names_next) (ABtor2.btorOperators b) ++
@@ -239,11 +239,11 @@ Section miter.
 End miter.
 
 Record certificate_check_queries := {
-  certificate_basecase : SMTQueries.query;
-  certificate_induction : SMTQueries.query;
-  refinement_properties : SMTQueries.query;
-  refinement_reset : SMTQueries.query;
-  refinement_transition : SMTQueries.query;
+  certificate_basecase : SMTLib.query;
+  certificate_induction : SMTLib.query;
+  refinement_properties : SMTLib.query;
+  refinement_reset : SMTLib.query;
+  refinement_transition : SMTLib.query;
 }.
 
 Definition get_certificate_check_queries (original certificate : Btor2.Raw.btor) : result certificate_check_queries :=
@@ -260,7 +260,7 @@ Definition get_certificate_check_queries (original certificate : Btor2.Raw.btor)
 Section correctness.
   Import Btor2.
   Import Btor2.Abstract.
-  Import SMTQueries (unsatisfiable, satisfiable, satisfied_by, term_reflect, term_satisfied_by).
+  Import SMTLib (unsatisfiable, satisfiable, satisfied_by, term_reflect, term_satisfied_by).
 
   Variable valuation_of_state : forall {env}, State.t -> SMTLib.valuation.
   Variable state_of_valuation : forall {env}, SMTLib.valuation -> State.t.
@@ -325,7 +325,7 @@ Section correctness.
   Qed.
 
   Lemma basecase_query_spec b :
-    SMTQueries.unsatisfiable (query_init_state_bad b) ->
+    SMTLib.unsatisfiable (query_init_state_bad b) ->
     forall st, ~ (st = initial_state b /\ ~ (safe_state b st)).
   Proof.
   Admitted.

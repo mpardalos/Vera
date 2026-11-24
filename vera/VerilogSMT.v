@@ -21,7 +21,7 @@ From vera Require Import VerilogSemantics.
 From vera Require Import Verilog.
 From vera Require Import Variables.
 From vera Require Import Tactics.
-From vera Require SMTQueries.
+From vera Require SMTLib.
 Import VerilogSemantics.CombinationalOnly.
 
 From vera Require Import BVList.

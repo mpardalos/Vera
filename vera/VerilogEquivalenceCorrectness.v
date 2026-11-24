@@ -1,7 +1,7 @@
 From vera Require Import Verilog.
 From vera Require Import Variables.
 From vera Require Import VerilogSMT.
-From vera Require Import SMTQueries.
+From vera Require Import SMTLib.
 From vera Require Import Common.
 From vera Require Import Bitvector.
 From vera Require VerilogToSMT.
@@ -125,36 +125,6 @@ Proof.
     + exists var'. split.
       * VarSet.setdec.
       * exact Hdistinct.
-Qed.
-
-Lemma term_reflect_false P :
-  (forall ρ, ~ P ρ) ->
-  term_reflect SMTLib.Term_False P.
-Proof. unfold term_reflect, term_satisfied_by. crush. Qed.
-
-Lemma term_reflect_true P :
-  (forall ρ, P ρ) ->
-  term_reflect SMTLib.Term_True P.
-Proof. unfold term_reflect, term_satisfied_by. crush. Qed.
-
-Lemma term_reflect_eq s (t1 t2 : SMTLib.term s):
-  term_reflect (SMTLib.Term_Eq t1 t2) (fun ρ => SMTLib.interp_term ρ t1 = SMTLib.interp_term ρ t2).
-Proof.
-  unfold term_reflect, term_satisfied_by.
-  intros.
-  simpl.
-  apply SMTLib.value_eqb_eq.
-Qed.
-
-Lemma term_reflect_not P (t : SMTLib.term SMTLib.Sort_Bool):
-  term_reflect t (fun ρ => P ρ) ->
-  term_reflect (SMTLib.Term_Not t) (fun ρ => ~ P ρ).
-Proof.
-  unfold term_reflect, term_satisfied_by.
-  intros H1. simpl.
-  setoid_rewrite <- H1.
-  intros ρ.
-  destruct (SMTLib.interp_term ρ t); crush.
 Qed.
 
 Lemma mk_var_same_spec : forall name,

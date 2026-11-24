@@ -3,7 +3,7 @@ From vera Require Import Decidable.
 From vera Require Import Tactics.
 From vera Require Import VerilogToSMT.
 From vera Require Import VerilogSMT.
-From vera Require SMTQueries.
+From vera Require SMTLib.
 From vera Require Import VerilogSemantics.
 Import CombinationalOnly.
 Import Facts.
@@ -46,10 +46,10 @@ Arguments N.add _ _ : simpl never.
 Arguments N.sub _ _ : simpl never.
 
 Lemma smt_eq_sat_iff s ρ (l r : SMTLib.term s) :
-  SMTQueries.term_satisfied_by ρ (SMTLib.Term_Eq l r) <->
+  SMTLib.term_satisfied_by ρ (SMTLib.Term_Eq l r) <->
     (SMTLib.interp_term ρ l = SMTLib.interp_term ρ r).
 Proof.
-  unfold SMTQueries.term_satisfied_by.
+  unfold SMTLib.term_satisfied_by.
   simpl. apply SMTLib.value_eqb_eq.
 Qed.
 
@@ -91,7 +91,7 @@ Lemma module_item_to_smt_satisfiable {env} tag (mi : Verilog.module_item) :
       (Verilog.module_item_reads mi ∪ Verilog.module_item_writes_blocking mi)
       tag
       (exec_module_item regs mi) ρ ->
-    SMTQueries.term_satisfied_by ρ t.
+    SMTLib.term_satisfied_by ρ t.
 Proof.
   unfold verilog_smt_match_states_partial in *.
   funelim (transfer_module_item tag mi).
@@ -133,7 +133,7 @@ Lemma module_item_to_smt_valid {env} tag  (mi : Verilog.module_item) :
   LocationSet.Disjoint (Verilog.module_item_reads mi) (Verilog.module_item_writes_blocking mi) ->
   forall ρ t,
     transfer_module_item tag mi = inr t ->
-    SMTQueries.term_satisfied_by ρ t ->
+    SMTLib.term_satisfied_by ρ t ->
     forall r1,
       verilog_smt_match_states_partial
         (Verilog.module_item_reads mi)
@@ -175,7 +175,7 @@ Lemma transfer_module_body_exec_satisfiable {env} inputs body :
     verilog_smt_match_states_partial
       (inputs ∪ Verilog.module_body_writes_blocking body)
       tag (exec_module_body r1 body) ρ ->
-    List.Forall (SMTQueries.term_satisfied_by ρ) q.
+    List.Forall (SMTLib.term_satisfied_by ρ) q.
 Proof.
   revert inputs.
   induction body; intros * Hsorted Htransfer Hmatch; simpl in *; simp transfer_module_body in *; [some_inv; constructor|].
@@ -208,7 +208,7 @@ Lemma transfer_module_body_satisfiable {i o} (v : Verilog.vmodule i o) tag ρ q 
     module_items_sorted (LocationSet.of_varset (VarSet.of_list i)) (Verilog.modBody v) ->
     transfer_module_body tag (Verilog.modBody v) = inr q ->
     v ⇓ execution_of_valuation tag ρ ->
-    List.Forall (SMTQueries.term_satisfied_by ρ) q.
+    List.Forall (SMTLib.term_satisfied_by ρ) q.
 Proof.
   intros * Hsorted Htransfer Hvalid .
   unfold "⇓" in Hvalid.
@@ -246,7 +246,7 @@ Proof. intros var Hvar. exfalso. LocationSet.setdec. Qed.
 Lemma transfer_module_body_exec_valid {env} inputs body : forall tag ρ q,
     module_items_sorted inputs body ->
     transfer_module_body tag body = inr q ->
-    List.Forall (SMTQueries.term_satisfied_by ρ) q ->
+    List.Forall (SMTLib.term_satisfied_by ρ) q ->
     forall r1,
       verilog_smt_match_states_partial inputs tag
 	r1 ρ ->
@@ -292,7 +292,7 @@ Lemma transfer_module_body_valid {i o} tag (v : Verilog.vmodule i o) ρ q :
     (Verilog.module_locations v)
     (Verilog.module_writes_blocking v ∪ LocationSet.of_varset (VarSet.of_list i)) ->
   transfer_module_body tag (Verilog.modBody v) = inr q ->
-  List.Forall (SMTQueries.term_satisfied_by ρ) q ->
+  List.Forall (SMTLib.term_satisfied_by ρ) q ->
   v ⇓ execution_of_valuation tag ρ.
 Proof.
   intros * Hsorted Hall_driven Htransfer Hsat.
@@ -485,7 +485,7 @@ End Clean.
 
 Theorem verilog_to_smt_correct {i o} tag (v : Verilog.vmodule i o) smt :
   verilog_to_smt tag v = inr smt ->
-  SMTQueries.smt_reflect
+  SMTLib.smt_reflect
     smt
     (fun ρ => v ⇓ execution_of_valuation tag ρ).
 Proof.
