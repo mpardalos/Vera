@@ -275,35 +275,35 @@ Module Abstract.
 
   Definition run b input_stream := runFrom b (initial_state b) input_stream.
 
-  CoInductive SafeStream (b : btor) (trace : Stream State.t) : Prop := {
-    safeThis : safe_state b (Streams.hd trace);
-    safeRest : SafeStream b (Streams.tl trace);
-  }.
+  (* CoInductive SafeStream (b : btor) (trace : Stream State.t) : Prop := {
+   *   safeThis : safe_state b (Streams.hd trace);
+   *   safeRest : SafeStream b (Streams.tl trace);
+   * }.
 
-  Definition Safe (b : btor) : Prop := forall input_stream, SafeStream b (run b input_stream).
+  *  Definition Safe (b : btor) : Prop := forall input_stream, SafeStream b (run b input_stream).
 
-  #[program]
-  Example empty_btor : btor := {|
-    btorEnv := fun _ => None;
-    btorInputs := [];
-    btorOperators := [];
-    btorStates := [];
-    btorProperties := [];
-  |}.
-  Next Obligation. constructor. Qed.
+  *  #[program]
+   * Example empty_btor : btor := {|
+   *   btorEnv := fun _ => None;
+   *   btorInputs := [];
+   *   btorOperators := [];
+   *   btorStates := [];
+   *   btorProperties := [];
+   * |}.
+   * Next Obligation. constructor. Qed.
 
-  #[program]
-  CoFixpoint SafeStream_induct b istream st0
-    (safe_base : safe_state b st0)
-    (safe_induct : forall s i, safe_state b s -> safe_state b (next_state b i s)) :
-    SafeStream b (runFrom b st0 istream) := {|
-    safeThis := safe_induct st0 (Streams.hd istream) safe_base;
-    safeRest := SafeStream_induct b (Streams.tl istream) _ _ _;
-  |}.
+  *  #[program]
+   * CoFixpoint SafeStream_induct b istream st0
+   *   (safe_base : safe_state b st0)
+   *   (safe_induct : forall s i, safe_state b s -> safe_state b (next_state b i s)) :
+   *   SafeStream b (runFrom b st0 istream) := {|
+   *   safeThis := safe_induct st0 (Streams.hd istream) safe_base;
+   *   safeRest := SafeStream_induct b (Streams.tl istream) _ _ _;
+   * |}.
 
-  CoFixpoint Safe_induct b istream st0
-    (safe_base : safe_state b (initial_state b ))
-    (safe_induct : forall s i, safe_state b s -> safe_state b (next_state b i s)) :
+  *  CoFixpoint Safe_induct b istream st0
+   *   (safe_base : safe_state b (initial_state b ))
+   *   (safe_induct : forall s i, safe_state b s -> safe_state b (next_state b i s)) : *)
 End Abstract.
 
 Module Raw.
@@ -546,37 +546,37 @@ Module Raw.
       end eq_refl
   }.
 
-    Definition node_of_abstract {env} (n : Abstract.node) : node :=
-      match n with
-      | Abstract.StateDecl n s wf => StateDecl n s
-      | @Abstract.StateInit _ s n e wf => StateInit s n (expr_of_abstract e)
-      | @Abstract.StateNext _ s n e wf => StateNext s n (expr_of_abstract e)
-      | @Abstract.Operator _ s n e wf => Operator s n (expr_of_abstract e)
-      | Abstract.Bad e => Bad (expr_of_abstract e)
-      end.
+    (* Definition node_of_abstract {env} (n : Abstract.node) : node :=
+     *   match n with
+     *   | Abstract.StateDecl n s wf => StateDecl n s
+     *   | @Abstract.StateInit _ s n e wf => StateInit s n (expr_of_abstract e)
+     *   | @Abstract.StateNext _ s n e wf => StateNext s n (expr_of_abstract e)
+     *   | @Abstract.Operator _ s n e wf => Operator s n (expr_of_abstract e)
+     *   | Abstract.Bad e => Bad (expr_of_abstract e)
+     *   end.
 
-    Definition node_to_abstract env (nd : node) : result (@Abstract.node env) :=
-      match nd with
-      | StateDecl n s =>
-        let* wf := assert_dec (env n = Some s) "Invalid state decl"%string in
-        ret (Abstract.StateDecl n s wf)
-      | StateInit s n e =>
-        let* (s'; e') := expr_to_abstract e in
-        let* wf := assert_dec (env n = Some s') "Invalid state init"%string in
-        inr (Abstract.StateInit n e' wf)
-      | StateNext s n e =>
-        let* (s'; e') := expr_to_abstract e in
-        let* wf := assert_dec (env n = Some s') "Invalid state next"%string in
-        ret (Abstract.StateNext n e' wf)
-      | Operator s n e =>
-        let* (s'; e') := expr_to_abstract e in
-        let* wf := assert_dec (env n = Some s') "Invalid operator"%string in
-        ret (Abstract.Operator n e' wf)
-      | Bad e =>
-        let* (s'; e') := expr_to_abstract e in
-        let* eq := assert_dec (s' = BitVec 1) "Invalid bad node"%string in
-        ret (Abstract.Bad (rew eq in e'))
-      end.
+ *     Definition node_to_abstract env (nd : node) : result (@Abstract.node env) :=
+     *   match nd with
+     *   | StateDecl n s =>
+     *     let* wf := assert_dec (env n = Some s) "Invalid state decl"%string in
+     *     ret (Abstract.StateDecl n s wf)
+     *   | StateInit s n e =>
+     *     let* (s'; e') := expr_to_abstract e in
+     *     let* wf := assert_dec (env n = Some s') "Invalid state init"%string in
+     *     inr (Abstract.StateInit n e' wf)
+     *   | StateNext s n e =>
+     *     let* (s'; e') := expr_to_abstract e in
+     *     let* wf := assert_dec (env n = Some s') "Invalid state next"%string in
+     *     ret (Abstract.StateNext n e' wf)
+     *   | Operator s n e =>
+     *     let* (s'; e') := expr_to_abstract e in
+     *     let* wf := assert_dec (env n = Some s') "Invalid operator"%string in
+     *     ret (Abstract.Operator n e' wf)
+     *   | Bad e =>
+     *     let* (s'; e') := expr_to_abstract e in
+     *     let* eq := assert_dec (s' = BitVec 1) "Invalid bad node"%string in
+     *     ret (Abstract.Bad (rew eq in e'))
+     *   end. *)
 
     Definition add_name (n : name) (s : Sort.t) (env : environment) : environment :=
       fun n' => if String.eqb n n' then Some s else env n'.
@@ -591,12 +591,11 @@ Module Raw.
       | [] => fun _ => None
       end.
 
-    Definition of_abstract (b : Abstract.btor) : btor :=
-      map node_of_abstract (Abstract.btorBody b).
+    Definition of_abstract (b : Abstract.btor) : btor.
+    Admitted.
 
-    Definition to_abstract (b : btor) : result Abstract.btor :=
-      let* body := mapT (node_to_abstract (env_of_nodes b)) b in
-      ret {| Abstract.btorBody := body |}.
+    Definition to_abstract (b : btor) : result Abstract.btor.
+    Admitted.
 
     Section rename.
       Variable (m : name -> name).
