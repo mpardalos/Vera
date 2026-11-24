@@ -5,6 +5,7 @@ From Stdlib Require Import Psatz.
 From Stdlib Require Import List.
 From Stdlib Require Import Basics.
 From Stdlib Require Import Classical.
+From Stdlib Require Import Morphisms.
 
 From Equations Require Import Equations.
 
@@ -44,18 +45,6 @@ Definition transfer_sort (s : Btor2.Sort.t) : SMTLib.sort :=
 
 Axiom undef_term : forall {s}, SMTLib.term (transfer_sort s).
 
-Definition bool_to_bv (t : SMTLib.term SMTLib.Sort_Bool) : SMTLib.term (SMTLib.Sort_BitVec 1) :=
-  SMTLib.Term_ITE t (SMTLib.Term_BVLit _ (BV.ones 1)) (SMTLib.Term_BVLit _ (BV.zeros 1)).
-
-Definition bv_is_one (t : SMTLib.term (SMTLib.Sort_BitVec 1)) : SMTLib.term SMTLib.Sort_Bool :=
-  SMTLib.Term_Eq t (SMTLib.Term_BVLit _ (BV.ones 1)).
-
-Definition bv_is_zero (t : SMTLib.term (SMTLib.Sort_BitVec 1)) : SMTLib.term SMTLib.Sort_Bool :=
-  SMTLib.Term_Eq t (SMTLib.Term_BVLit _ (BV.zeros 1)).
-
-Definition smt_nand (ts : list (SMTLib.term SMTLib.Sort_Bool)) : SMTLib.term SMTLib.Sort_Bool :=
-  SMTLib.Term_Not (fold_left (SMTLib.Term_And) ts SMTLib.Term_True).
-
 Section transfer.
   Variable name_map : string -> string.
 
@@ -67,14 +56,14 @@ Section transfer.
     match e in ABtor2.expr t return SMTLib.term (transfer_sort t) with
     | ABtor2.ExprRef r => SMTLib.Term_Const (transfer_ref r)
     | ABtor2.Constant bv => SMTLib.Term_BVLit _ bv
-    | ABtor2.Eq lhs rhs => bool_to_bv (SMTLib.Term_Eq (transfer_expr lhs) (transfer_expr rhs))
-    | ABtor2.NEq lhs rhs => bool_to_bv (SMTLib.Term_Not (SMTLib.Term_Eq (transfer_expr lhs) (transfer_expr rhs)))
-    | ABtor2.Iff lhs rhs => bool_to_bv (SMTLib.Term_Eq (transfer_expr lhs) (transfer_expr rhs))
-    | ABtor2.Implies lhs rhs => bool_to_bv (SMTLib.Term_Or (bv_is_zero (transfer_expr lhs)) (bv_is_one (transfer_expr rhs)))
-    | ABtor2.UnsignedLt lhs rhs => bool_to_bv (SMTLib.Term_BVUlt (transfer_expr lhs) (transfer_expr rhs))
-    | ABtor2.UnsignedGt lhs rhs => bool_to_bv (SMTLib.Term_BVUlt (transfer_expr rhs) (transfer_expr lhs))
-    | ABtor2.UnsignedLtE lhs rhs => bool_to_bv (SMTLib.Term_Not (SMTLib.Term_BVUlt (transfer_expr rhs) (transfer_expr lhs)))
-    | ABtor2.UnsignedGtE lhs rhs => bool_to_bv (SMTLib.Term_Not (SMTLib.Term_BVUlt (transfer_expr lhs) (transfer_expr rhs)))
+    | ABtor2.Eq lhs rhs => SMTLib.bool_to_bv (SMTLib.Term_Eq (transfer_expr lhs) (transfer_expr rhs))
+    | ABtor2.NEq lhs rhs => SMTLib.bool_to_bv (SMTLib.Term_Not (SMTLib.Term_Eq (transfer_expr lhs) (transfer_expr rhs)))
+    | ABtor2.Iff lhs rhs => SMTLib.bool_to_bv (SMTLib.Term_Eq (transfer_expr lhs) (transfer_expr rhs))
+    | ABtor2.Implies lhs rhs => SMTLib.bool_to_bv (SMTLib.Term_Or (SMTLib.is_zero (transfer_expr lhs)) (SMTLib.is_one (transfer_expr rhs)))
+    | ABtor2.UnsignedLt lhs rhs => SMTLib.bool_to_bv (SMTLib.Term_BVUlt (transfer_expr lhs) (transfer_expr rhs))
+    | ABtor2.UnsignedGt lhs rhs => SMTLib.bool_to_bv (SMTLib.Term_BVUlt (transfer_expr rhs) (transfer_expr lhs))
+    | ABtor2.UnsignedLtE lhs rhs => SMTLib.bool_to_bv (SMTLib.Term_Not (SMTLib.Term_BVUlt (transfer_expr rhs) (transfer_expr lhs)))
+    | ABtor2.UnsignedGtE lhs rhs => SMTLib.bool_to_bv (SMTLib.Term_Not (SMTLib.Term_BVUlt (transfer_expr lhs) (transfer_expr rhs)))
     | ABtor2.Add lhs rhs => SMTLib.Term_BVBinOp SMTLib.BVAdd (transfer_expr lhs) (transfer_expr rhs)
     | ABtor2.Sub lhs rhs => SMTLib.Term_BVBinOp SMTLib.BVAdd
         (transfer_expr lhs) (SMTLib.Term_BVUnaryOp SMTLib.BVNeg (transfer_expr rhs))
@@ -94,7 +83,7 @@ Section transfer.
     | ABtor2.Srl lhs rhs => SMTLib.Term_BVBinOp SMTLib.BVShr (transfer_expr lhs) (transfer_expr rhs)
     | ABtor2.Concat lhs rhs => SMTLib.Term_BVConcat (transfer_expr lhs) (transfer_expr rhs)
     | ABtor2.ITE cond ifT ifF => SMTLib.Term_ITE
-        (bv_is_one (transfer_expr cond)) (transfer_expr ifT) (transfer_expr ifF)
+        (SMTLib.is_one (transfer_expr cond)) (transfer_expr ifT) (transfer_expr ifF)
     | ABtor2.Slice hi lo wf e =>
       rew [fun w => SMTLib.term (SMTLib.Sort_BitVec w)] _ in SMTLib.Term_BVExtract hi lo (proj1 wf) (transfer_expr e)
     | ABtor2.Neg e => SMTLib.Term_BVUnaryOp SMTLib.BVNeg (transfer_expr e)
@@ -103,9 +92,9 @@ Section transfer.
         (transfer_expr e) (SMTLib.Term_BVLit _ (BV.bv_neg (BV.ones n)))
     | @ABtor2.Dec _ n e => SMTLib.Term_BVBinOp SMTLib.BVAdd
         (transfer_expr e) (SMTLib.Term_BVLit _ (BV.ones n))
-    | @ABtor2.RedAnd _ n e => bool_to_bv
+    | @ABtor2.RedAnd _ n e => SMTLib.bool_to_bv
         (SMTLib.Term_Eq (transfer_expr e) (SMTLib.Term_BVLit _ (BV.ones n)))
-    | @ABtor2.RedOr _ n e => bool_to_bv
+    | @ABtor2.RedOr _ n e => SMTLib.bool_to_bv
         (SMTLib.Term_Not (SMTLib.Term_Eq (transfer_expr e) (SMTLib.Term_BVLit _ (BV.zeros n))))
     | @ABtor2.UnsignedExtend _ m w e =>
         SMTLib.Term_BVConcat (SMTLib.Term_BVLit _ (BV.zeros (Npos w))) (transfer_expr e)
@@ -129,13 +118,13 @@ Section transfer.
       (transfer_expr (ABtor2.operatorExpr var)).
   
   Definition transfer_prop {env} (prop : ABtor2.expr (Btor2.Sort.BitVec 1)) : SMTLib.term SMTLib.Sort_Bool :=
-    bv_is_zero (transfer_expr prop).
+    SMTLib.is_zero (transfer_expr prop).
 
   Definition transfer_props_hold {env} (props : list (ABtor2.expr (Btor2.Sort.BitVec 1))) : SMTLib.query :=
     map transfer_prop props.
 
   Definition transfer_props_violated {env} (props : list (ABtor2.expr (Btor2.Sort.BitVec 1))) : SMTLib.query :=
-    [smt_nand (map transfer_prop props)].
+    [ SMTLib.Term_Not (SMTLib.and_all (map transfer_prop props)) ].
 End transfer.
 
 Section induction.
@@ -208,26 +197,28 @@ Section miter.
   Let orig_combinational names := map (transfer_combinational names) (ABtor2.btorOperators original).
   Let orig_reset := map transfer_state_init (ABtor2.btorStates original).
   Let orig_transition := map transfer_state_next (ABtor2.btorStates original).
-  Let orig_property names := map (transfer_prop names) (ABtor2.btorProperties original).
+  Let orig_property_holds names := transfer_props_hold names (ABtor2.btorProperties original).
+  Let orig_property_violated names := transfer_props_violated names (ABtor2.btorProperties original).
 
   Let cert_combinational names := map (transfer_combinational names) (ABtor2.btorOperators certificate).
   Let cert_reset := map transfer_state_init (ABtor2.btorStates certificate).
   Let cert_transition := map transfer_state_next (ABtor2.btorStates certificate).
-  Let cert_property names := map (transfer_prop names) (ABtor2.btorProperties certificate).
+  Let cert_property_holds names := transfer_props_hold names (ABtor2.btorProperties certificate).
+  Let cert_property_violated names := transfer_props_violated names (ABtor2.btorProperties certificate).
 
   Local Open Scope list_scope.
 
   Definition query_refines_property :=
     orig_combinational names_current ++
-    orig_property names_current ++
+    orig_property_holds names_current ++
     cert_combinational names_current ++
-    [ smt_nand (cert_property names_current) ].
+    cert_property_violated names_current.
 
   Definition query_refines_reset :=
     orig_combinational names_current ++
     orig_reset ++
     cert_combinational names_current ++
-    [ smt_nand cert_reset ].
+    [ SMTLib.Term_Not (SMTLib.and_all cert_reset) ].
 
   Definition query_refines_transition :=
     orig_combinational names_current ++
@@ -235,7 +226,7 @@ Section miter.
     orig_transition ++
     cert_combinational names_current ++
     orig_combinational names_next ++
-    [ smt_nand cert_transition ].
+    [ SMTLib.Term_Not (SMTLib.and_all cert_transition) ].
 End miter.
 
 Record certificate_check_queries := {
@@ -270,58 +261,41 @@ Section correctness.
   (* Lemma map transfer_state_init (ABtor2.btorStates b) ++
    *    map (transfer_combinational names_current) (ABtor2.btorOperators b) *)
 
-  Lemma satisfied_nil ρ : satisfied_by ρ [].
-  Proof. apply Forall_nil. Qed.
-
-  Lemma satisfiable_nil : satisfiable [].
-    exists (fun n => match SMTLib.symSort n as s return SMTLib.interp_sort s with
-              | SMTLib.Sort_Bool => false
-              | SMTLib.Sort_BitVec n => BV.zeros n
-              end).
-    apply satisfied_nil.
-  Qed.
-
-  Lemma sat_not_unsat q : satisfiable q -> ~ unsatisfiable q.
-  Proof.
-    unfold satisfiable, unsatisfiable.
-    intros [ρ Hsat] Hnot_unsat.
-    eapply Hnot_unsat. apply Hsat.
-  Qed.
-
-  Lemma unsat_not_sat q : unsatisfiable q -> ~ satisfiable q.
-  Proof.
-    unfold satisfiable, unsatisfiable.
-    intros Hunsat [ρ Hsat].
-    eapply Hunsat. apply Hsat.
-  Qed.
-
-  Theorem transfer_expr_correct env m st ρ n (e : expr (Sort.BitVec n)) :
+  Theorem transfer_expr_correct env m ρ n (e : expr (Sort.BitVec n)) :
     (* TODO: state/valuation relation *)
-    @SMTLib.interp_term ρ (SMTLib.Sort_BitVec n) (transfer_expr m e) = eval st e.
+    @SMTLib.interp_term ρ (SMTLib.Sort_BitVec n) (transfer_expr m e) = eval (state_of_valuation ρ) e.
   Proof. Admitted.
 
-  Lemma term_reflect_eq s (t1 t2 : SMTLib.term s):
-    term_reflect (SMTLib.Term_Eq t1 t2) (fun ρ => SMTLib.interp_term ρ t1 = SMTLib.interp_term ρ t2).
+  Lemma transfer_prop_spec env names prop:
+    SMTLib.term_reflect
+      (transfer_prop names prop)
+      (fun ρ => eval (state_of_valuation ρ) prop = BV.zeros 1).
   Proof.
-    unfold term_reflect, term_satisfied_by.
-    intros.
-    simpl.
-    apply SMTLib.value_eqb_eq.
+    unfold transfer_prop.
+    setoid_rewrite <- transfer_expr_correct with (m := names).
+    eapply SMTLib.term_reflect_is_zero.
   Qed.
 
-  Lemma props_hold_query_spec env names_map props ρ :
-    satisfied_by ρ (transfer_props_hold names_map props) ->
-    Forall (fun (e : expr (Sort.BitVec 1)) => eval (state_of_valuation ρ) e = BV.zeros 1) props.
+  Lemma props_hold_query_spec env names_map props :
+    SMTLib.smt_reflect
+      (transfer_props_hold names_map props)
+      (fun ρ => Forall (fun (e : expr (Sort.BitVec 1)) => eval (state_of_valuation ρ) e = BV.zeros 1) props).
   Proof.
-    unfold unsatisfiable, satisfied_by, transfer_props_hold.
-    rewrite Forall_map.
-    apply Forall_impl.
-    unfold term_satisfied_by, transfer_prop, bv_is_zero.
-    intros prop Hinterp_term.
-    simpl in Hinterp_term.
-    rewrite BV.bv_eq_reflect in Hinterp_term.
-    erewrite transfer_expr_correct in Hinterp_term.
-    exact Hinterp_term.
+    apply SMTLib.smt_reflect_map.
+    apply transfer_prop_spec.
+  Qed.
+
+  Lemma props_violated_query_spec env names_map props :
+    SMTLib.smt_reflect
+      (transfer_props_violated names_map props)
+      (fun ρ => ~ Forall (fun (e : expr (Sort.BitVec 1)) => eval (state_of_valuation ρ) e = BV.zeros 1) props).
+  Proof.
+    unfold transfer_props_violated.
+    apply SMTLib.smt_reflect_singleton.
+    eapply SMTLib.term_reflect_not.
+    apply SMTLib.and_all_as_smt_reflect.
+    apply SMTLib.smt_reflect_map.
+    apply transfer_prop_spec.
   Qed.
 
   Lemma basecase_query_spec b :

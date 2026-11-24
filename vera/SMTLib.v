@@ -3,12 +3,14 @@ From Stdlib Require Program.Wf.
 From Stdlib Require Import ZArith.
 From Stdlib Require Import String.
 From Stdlib Require Import Morphisms.
+From Stdlib Require Import List.
+From Stdlib Require Import Program.Equality.
 
 From vera Require Import Bitvector.
 From vera Require Import Tactics.
 From vera Require Import Decidable.
 
-From Stdlib Require Import Program.Equality.
+From Equations Require Import Equations.
 
 Import EqNotations.
 Import List.ListNotations.
@@ -202,6 +204,31 @@ Section Interpretation.
   Definition interp_formula (t:term Sort_Bool) : bool := interp_term t.
 End Interpretation.
 
+Section composite_terms.
+  Equations and_all (ts : list (term Sort_Bool)) : term Sort_Bool
+    by wf (length ts) lt := {
+    | [] => Term_True
+    | [t] => t
+    | t :: ts => Term_And t (and_all ts)
+  }.
+
+  Equations or_all (ts : list (term Sort_Bool)) : term Sort_Bool
+    by wf (length ts) lt := {
+    | [] => Term_False
+    | [t] => t
+    | t :: ts => Term_Or t (or_all ts)
+  }.
+
+  Definition bool_to_bv (t : term Sort_Bool) : term (Sort_BitVec 1) :=
+    Term_ITE t (Term_BVLit _ (BV.ones 1)) (Term_BVLit _ (BV.zeros 1)).
+
+  Definition is_one (t : term (Sort_BitVec 1)) : term Sort_Bool :=
+    Term_Eq t (Term_BVLit _ (BV.ones 1)).
+
+  Definition is_zero (t : term (Sort_BitVec 1)) : term Sort_Bool :=
+    Term_Eq t (Term_BVLit _ (BV.zeros 1)).
+End composite_terms.
+
 Section queries.
   Definition query := list (term (Sort_Bool)).
 
@@ -268,6 +295,31 @@ Section satisfiability.
     exists default_valuation.
     auto.
   Qed.
+
+  Lemma satisfied_nil ρ : satisfied_by ρ [].
+  Proof. apply Forall_nil. Qed.
+
+  Lemma satisfiable_nil : satisfiable [].
+    exists (fun n => match SMTLib.symSort n as s return SMTLib.interp_sort s with
+              | SMTLib.Sort_Bool => false
+              | SMTLib.Sort_BitVec n => BV.zeros n
+              end).
+    apply satisfied_nil.
+  Qed.
+
+  Lemma sat_not_unsat q : satisfiable q -> ~ unsatisfiable q.
+  Proof.
+    unfold satisfiable, unsatisfiable.
+    intros [ρ Hsat] Hnot_unsat.
+    eapply Hnot_unsat. apply Hsat.
+  Qed.
+
+  Lemma unsat_not_sat q : unsatisfiable q -> ~ satisfiable q.
+  Proof.
+    unfold satisfiable, unsatisfiable.
+    intros Hunsat [ρ Hsat].
+    eapply Hunsat. apply Hsat.
+  Qed.
 End satisfiability.
 
 Infix "⊧" := satisfied_by (at level 20).
@@ -309,6 +361,34 @@ Section reflection.
     reflexivity.
   Qed.
   
+  Lemma Forall_singleton {A} P (x : A) : Forall P [ x ] <-> P x.
+  Proof.
+    split. all: intros H.
+    - now inv H.
+    - eauto with datatypes.
+  Qed.
+
+  Lemma Exists_singleton {A} P (x : A) : Exists P [ x ] <-> P x.
+  Proof.
+    split. all: intros H.
+    - now inv H.
+    - eauto with datatypes.
+  Qed.
+
+  Lemma satisfied_by_singleton ρ t : satisfied_by ρ [ t ] <-> term_satisfied_by ρ t.
+  Proof. apply Forall_singleton. Qed.
+
+  Lemma smt_reflect_singleton t P : smt_reflect [ t ] P <-> term_reflect t P.
+  Proof.
+    unfold smt_reflect.
+    setoid_rewrite satisfied_by_singleton.
+    reflexivity.
+  Qed.
+
+  Lemma term_reflect_refl t :
+    term_reflect t (fun ρ => term_satisfied_by ρ t).
+  Proof. unfold term_reflect. reflexivity. Qed.
+
   Lemma term_reflect_iff t P1 P2 :
     (pointwise_relation _ iff P1 P2) ->
     term_reflect t P1 ->
@@ -319,6 +399,25 @@ Section reflection.
     assumption.
   Qed.
   
+  Lemma term_reflect_false :
+    term_reflect SMTLib.Term_False (fun _ => False).
+  Proof. unfold term_reflect, term_satisfied_by. crush. Qed.
+
+  Lemma term_reflect_true :
+    term_reflect SMTLib.Term_True (fun _ => True).
+  Proof. unfold term_reflect, term_satisfied_by. crush. Qed.
+
+  Lemma term_reflect_not P (t : SMTLib.term SMTLib.Sort_Bool):
+    term_reflect t (fun ρ => P ρ) ->
+    term_reflect (SMTLib.Term_Not t) (fun ρ => ~ P ρ).
+  Proof.
+    unfold term_reflect, term_satisfied_by.
+    intros H1. simpl.
+    setoid_rewrite <- H1.
+    intros ρ.
+    destruct (SMTLib.interp_term ρ t); crush.
+  Qed.
+
   Lemma term_reflect_and q1 q2 P1 P2 :
     term_reflect q1 P1 ->
     term_reflect q2 P2 ->
@@ -355,6 +454,78 @@ Section reflection.
     rewrite Hrefl1, Hrefl2.
     reflexivity.
   Qed.
+
+  Lemma term_reflect_eq s (t1 t2 : SMTLib.term s):
+    term_reflect (SMTLib.Term_Eq t1 t2) (fun ρ => SMTLib.interp_term ρ t1 = SMTLib.interp_term ρ t2).
+  Proof.
+    unfold term_reflect, term_satisfied_by.
+    intros.
+    simpl.
+    apply SMTLib.value_eqb_eq.
+  Qed.
+
+  Lemma term_reflect_and_all (ts : list (term Sort_Bool)) P:
+    Forall (fun t => term_reflect t (P t)) ts ->
+    term_reflect (and_all ts) (fun ρ => Forall (fun t => P t ρ) ts).
+  Proof.
+    intros H.
+    funelim (and_all ts).
+    - setoid_rewrite Forall_nil_iff. apply term_reflect_true.
+    - rewrite Forall_singleton in H. setoid_rewrite Forall_singleton. apply H.
+    - rename_match (Forall (fun t => term_reflect t (P t)) _) into Hreflect. inv Hreflect.
+      setoid_rewrite Forall_cons_iff.
+      apply term_reflect_and.
+      all: auto.
+  Qed.
+
+  #[local]
+  Lemma and_all_spec ts :
+    term_reflect (and_all ts) (fun ρ => Forall (term_satisfied_by ρ) ts).
+  Proof.
+    apply term_reflect_and_all.
+    apply Forall_forall. intros.
+    apply term_reflect_refl.
+  Qed.
+
+  Lemma and_all_as_smt_reflect ts P :
+    term_reflect (and_all ts) P <->
+    smt_reflect ts P.
+  Proof.
+    unfold term_reflect, smt_reflect, satisfied_by.
+    split. all: intros Hreflect ρ. all: split. all: intros H.
+    - apply Hreflect. apply and_all_spec. exact H.
+    - apply and_all_spec. apply Hreflect. exact H.
+    - apply Hreflect. apply and_all_spec. exact H.
+    - apply and_all_spec. apply Hreflect. exact H.
+  Qed.
+
+  Lemma term_reflect_or_all (ts : list (term Sort_Bool)) P:
+    Forall (fun t => term_reflect t (P t)) ts ->
+    term_reflect (or_all ts) (fun ρ => Exists (fun t => P t ρ) ts).
+  Proof.
+    intros H.
+    funelim (or_all ts).
+    - setoid_rewrite Exists_nil. apply term_reflect_false.
+    - rewrite Forall_singleton in H. setoid_rewrite Exists_singleton. apply H.
+    - rename_match (Forall (fun t => term_reflect t (P t)) _) into Hreflect. inv Hreflect.
+      setoid_rewrite Exists_cons.
+      apply term_reflect_or.
+      all: auto.
+  Qed.
+
+  Lemma term_reflect_is_one t: term_reflect (is_one t) (fun ρ => interp_term ρ t = BV.ones 1).
+  Proof. apply term_reflect_eq. Qed.
+
+  Lemma term_reflect_is_zero t: term_reflect (is_zero t) (fun ρ => interp_term ρ t = BV.zeros 1).
+  Proof. apply term_reflect_eq. Qed.
+
+  Lemma smt_reflect_map {A} (f : A -> SMTLib.term SMTLib.Sort_Bool) (P : A -> SMTLib.valuation -> Prop) l :
+    (forall x, term_reflect (f x) (P x)) ->
+    smt_reflect (map f l) (fun ρ => Forall (fun x => P x ρ) l).
+  Proof. Admitted.
+
+  Lemma Forall_iff {A} P Q l : (forall (x : A), P x <-> Q x) -> (Forall P l <-> Forall Q l).
+  Proof. setoid_rewrite Forall_forall. crush. Qed.
 
   Lemma concat_conj :
     forall q1 q2 P1 P2,
