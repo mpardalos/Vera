@@ -867,34 +867,25 @@ sequentialSampleRules :: Rules ()
 sequentialSampleRules = do
     let dir = "sequential-samples"
 
-    phony (dir </> "all") $ do
-        files <- getDirectoryFiles dir ["//*.sv"]
-        need [ dir </> f <.> "btor2.ric3" | f <- files ]
-
-    phony (dir </> "clean") $ do
-        removeFilesAfter dir ["//*.btor2", "//*.ric3", "//*.sv.basecase.smt2", "//*.sv.induction.smt2"]
-
-    convert <- newCache $ \svFile -> do
+    dir </> "*.btor2" %> \out -> do
+        let svFile = out -<.> "sv"
         need [vera, svFile]
-        Exit exitCode <- cmd
-            vera
-            "to-btor"
-            svFile
-        pure exitCode
+        cmd_ (FileStdout out) vera "verilog-to-btor" svFile
 
-    forM_ ["btor2", "basecase.smt2", "induction.smt2"] $ \suffix ->
-        patternPhony (dir </> "*.sv" <.> suffix) $ \[name] ->
-            void $ convert (dir </> name <.> "sv")
-
-    patternPhony (dir </> "*.btor2.ric3") $ \[name] -> do
-        let btorFile = dir </> name <.> "btor2"
-            out = btorFile <.> "ric3"
-        exitCode <- convert (dropExtension btorFile)
+    dir </> "*.btor2.ric3" %> \out -> do
+        let btorFile = dropExtension out
+        need [btorFile]
+        Exit exitCode <- cmd "rIC3" btorFile out out
         case exitCode of
-            ExitFailure code -> putInfo (printf "%s: to-btor failed (%d), skipping rIC3" name code)
-            ExitSuccess -> do
-                (Exit c, Stdout (out :: ByteString)) <- cmd "rIC3" btorFile out out
-                putInfo (printf "%s: %s" name (BS8.unpack (BS8.strip out)))
+            ExitFailure 10 -> pure () -- SAT
+            ExitFailure 20 -> pure () -- UNSAT
+            ExitSuccess -> pure ()
+            ExitFailure code -> fail (printf "rIC3 failed (%d): %s" code btorFile)
+
+    [dir </> "*.btor2.basecase.smt2", dir </> "*.btor2.induction.smt2"] &%> \[basecase, _] -> do
+        let certificate = dropExtension (dropExtension basecase) <.> "ric3"
+        need [vera, certificate]
+        cmd_ vera "btor-query" certificate
 
 -- Helpers
 
