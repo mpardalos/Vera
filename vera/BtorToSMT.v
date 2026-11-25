@@ -116,6 +116,12 @@ Module Tag.
     rewrite untag_tag_name in H.
     discriminate.
   Qed.
+
+  Definition select {A} (current next : A) (t : tag) :=
+    match t with
+    | Current => current
+    | Next => next
+    end.
 End Tag.
 
 Section transfer.
@@ -276,8 +282,8 @@ Section miter.
   Definition query_refines_property :=
     orig_combinational Tag.Current ++
     cert_combinational Tag.Current ++
-    orig_property_holds Tag.Current ++
-    cert_property_violated Tag.Current.
+    cert_property_holds Tag.Current ++
+    orig_property_violated Tag.Current.
 
   Definition query_refines_reset :=
     orig_combinational Tag.Current ++
@@ -561,8 +567,8 @@ Section query_specs.
           let st2 := state_of_valuation Tag.Current ρ in
           is_valid b1 st1
           /\ is_valid b2 st2
-          /\ is_safe b1 st1
-          /\ ~ is_safe b2 st2
+          /\ is_safe b2 st2
+          /\ ~ is_safe b1 st1
         ).
     Proof.
       simpl_reflect; expect 4.
@@ -629,10 +635,10 @@ Section query_specs.
         states_consistent st1 st2 -> (* ! Not from query. External assumption. ! *)
         is_valid b1 st1 ->
         is_valid b2 st2 ->
-        is_safe b1 st1 ->
-        is_safe b2 st2.
+        is_safe b2 st2 ->
+        is_safe b1 st1.
     Proof.
-      intros Hunsat st1 st2 Hconsistent Hvalid1 Hvalid2 Hsafe1.
+      intros Hunsat st1 st2 Hconsistent Hvalid1 Hvalid2 Hsafe2.
       specialize (Hunsat (as_valuation st1 st2)).
       pose proof (query_refines_property_spec b1 b2) as H.
       unfold SMTLib.smt_reflect in H. rewrite H in Hunsat. clear H.
@@ -640,7 +646,7 @@ Section query_specs.
       rewrite ! as_valuation_correct1 in Hunsat.
       rewrite ! as_valuation_correct2 in Hunsat by exact Hconsistent.
       apply Hunsat.
-      { apply Hvalid1. } { apply Hvalid2. } { apply Hsafe1. }
+      { apply Hvalid1. } { apply Hvalid2. } { apply Hsafe2. }
     Qed.
   End property_refinement.
   
@@ -819,7 +825,8 @@ Section query_specs.
     Lemma query_refines_transition_unsat b1 b2 :
       SMTLib.unsatisfiable (query_refines_transition b1 b2) ->
       forall (st1 : Tag.t -> @State.t (btorEnv b1)) (st2 : Tag.t -> @State.t (btorEnv b2)),
-        (forall t, states_consistent (st1 t) (st2 t)) -> (* ! Not from query. External assumption. ! *)
+        states_consistent (st1 Tag.Current) (st2 Tag.Current) -> (* ! Not from query. External assumption. ! *)
+        states_consistent (st1 Tag.Next) (st2 Tag.Next) -> (* ! Not from query. External assumption. ! *)
         is_valid b1 (st1 Tag.Current) ->
         is_valid b1 (st1 Tag.Next) ->
         is_next b1 (st1 Tag.Current) (st1 Tag.Next) ->
@@ -827,7 +834,9 @@ Section query_specs.
         is_valid b2 (st2 Tag.Next) ->
         is_next b2 (st2 Tag.Current) (st2 Tag.Next).
     Proof.
-      intros Hunsat st1 st2 Hconsistent Hvalid1_current Hvalid1_next Htransition1 Hvalid2_current Hvalid2_next.
+      intros Hunsat st1 st2 Hconsistent_current Hconsistent_next
+             Hvalid1_current Hvalid1_next Htransition1
+             Hvalid2_current Hvalid2_next.
       specialize (Hunsat (as_valuation st1 st2)).
       pose proof (query_refines_transition_spec b1 b2) as H.
       unfold SMTLib.smt_reflect in H. rewrite H in Hunsat. clear H.
@@ -859,7 +868,7 @@ Section correctness.
     intro Htransition_safe_unsat.
     assert (Htransition_safe : forall st1 st2, is_valid_step b st1 st2 -> is_safe b st1 -> is_safe b st2). {
       intros st1 st2 [Hvalid1 [Hvalid2 Hstep]] Hsafe.
-      apply query_inductive_violation_unsat with (st := fun t => match t with Tag.Current => st1 | Tag.Next => st2 end).
+      apply query_inductive_violation_unsat with (st := Tag.select st1 st2).
       all: assumption.
     }
     clear Htransition_safe_unsat.
@@ -872,4 +881,109 @@ Section correctness.
       clear Hinitial Hvalid.
       induction Hreachable. all: eauto.
   Qed.
+
+  Definition transfer_state {env1} env2 st1 : {st2 | @states_consistent env1 env2 st1 st2}.
+  Admitted.
+
+  (* See: Baier, Christel. Principles of model checking. 2008. pp 497 (Definition 7.47) *)
+  (* TODO: Not sure how validity fits in here *)
+
+  (* Definition 7.47 - (A) *)
+  Definition refines_initial b1 b2 :=
+    forall st1, is_initial b1 st1 ->
+      exists st2, is_initial b2 st2
+           /\ states_consistent st1 st2.
+
+  Theorem query_refines_reset_correct b1 b2 :
+    SMTLib.unsatisfiable (query_refines_reset b1 b2) ->
+    refines_initial b1 b2.
+  Proof.
+    intros Hunsat st1 Hinitial.
+    pose proof (query_refines_reset_unsat b1 b2 Hunsat st1).
+    destruct (transfer_state (btorEnv b2) st1) as [st2 Hconsistent].
+    exists st2. split.
+    - apply H.
+      + exact Hconsistent.
+      + admit. (* st1 is valid *)
+      + admit. (* st2 is valid *)
+      + exact Hinitial.
+    - exact Hconsistent.
+  Admitted.
+
+  (* Definition 7.47 - (B.2) *)
+  Definition refines_transition b1 b2 :=
+    forall st1 st2 st1',
+      states_consistent st1 st2 ->
+      is_next b1 st1 st1' ->
+      exists st2', is_next b2 st2 st2'
+            /\ states_consistent st1' st2'.
+
+  Theorem query_refines_transition_correct b1 b2 :
+    SMTLib.unsatisfiable (query_refines_transition b1 b2) ->
+    refines_transition b1 b2.
+  Proof.
+    intros Hunsat st1 st2 st1' Hconsistent Htransition1.
+    destruct (transfer_state (btorEnv b2) st1') as [st2' Hconsistent'].
+    pose proof (query_refines_transition_unsat b1 b2 Hunsat (Tag.select st1 st1') (Tag.select st2 st2')) as H.
+    simpl in H.
+    exists st2'. split.
+    - apply H.
+      + exact Hconsistent.
+      + exact Hconsistent'.
+      + admit. (* st1 is valid *)
+      + admit. (* st1' is valid *)
+      + exact Htransition1.
+      + admit. (* st2 is valid *)
+      + admit. (* st2 is valid *)
+    - exact Hconsistent'.
+  Admitted.
+
+  (* Definition 7.47 - (B.1)
+     Baier uses equality here, but I think we can relax that to (inverse) implication
+   *)
+  Definition refines_property b1 b2 :=
+    forall st1 st2,
+      states_consistent st1 st2 ->
+      is_safe b2 st2 ->
+      is_safe b1 st1.
+
+  Theorem initial_refines_properties_correct b1 b2 :
+    SMTLib.unsatisfiable (query_refines_property b1 b2) ->
+    refines_property b1 b2.
+  Proof.
+    intros Hunsat st1 st2 Hconsistent Hsafe2.
+    (* destruct (transfer_state (btorEnv b2) st1') as [st2' Hconsistent']. *)
+    pose proof (query_refines_property_unsat b1 b2 Hunsat st1 st2 Hconsistent) as H.
+    apply H.
+    - admit. (* st1 is valid *)
+    - admit. (* st2 is valid *)
+    - exact Hsafe2.
+  Admitted.
+
+  (* TODO : refines_transition gives single-step. Expand to multi-step *)
+
+  Lemma transfer_reachability b1 b2 :
+    refines_initial b1 b2 ->
+    refines_transition b1 b2 ->
+    forall st1,
+      reachable b1 st1 ->
+      exists st2, reachable b2 st2 /\ states_consistent st1 st2.
+  Proof.
+    intros Hrefines_initial Hrefines_transition st1 Hreachable.
+    destruct Hreachable as [st1 Hinitial1| st1 st1' Hinitial1 Hreachable1].
+    - (* Almost `exact Hrefines_initial` *)
+      destruct (Hrefines_initial st1) as [st2 [Hinitial2 Hconsistent]];
+        [crush|clear Hrefines_initial].
+      exists st2. split.
+      + apply ReachableInitial. split.
+        * admit. (* st2 is valid *)
+        * exact Hinitial2.
+      + exact Hconsistent.
+    - unfold refines_transition in *.
+      destruct (transfer_state (btorEnv b2) st1) as [st2 Hconsistent].
+      destruct (Hrefines_transition st1 st2 st1') as [st2' [Hstep2]].
+      + exact Hconsistent.
+      + admit.
+      + admit.
+  Admitted.
 End correctness.
