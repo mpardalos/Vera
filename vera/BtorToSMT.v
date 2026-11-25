@@ -7,6 +7,8 @@ From Stdlib Require Import List.
 From Stdlib Require Import Basics.
 From Stdlib Require Import Classical.
 From Stdlib Require Import Morphisms.
+From Stdlib Require Import Relations.Relation_Operators.
+From Stdlib Require Import Relations.Operators_Properties.
 
 From Equations Require Import Equations.
 
@@ -322,7 +324,7 @@ Proof. split. { apply or_to_imply. } { apply imply_to_or. } Qed.
 
 Hint Rewrite not_and_or_iff NNPP_iff imply_or_iff : classicalize.
 
-Section correctness.
+Section query_specs.
   Import Btor2.
   Import Btor2.Abstract.
   Import SMTLib (unsatisfiable, satisfiable, satisfied_by, term_reflect, term_satisfied_by).
@@ -838,4 +840,36 @@ Section correctness.
       { apply Hvalid2_current. } { apply Hvalid2_next. }
     Qed.
   End transition_refinement.
+End query_specs.
+
+Section correctness.
+  Import Btor2.
+  Import Btor2.Abstract.
+
+  Theorem inductive_check_correct b :
+    SMTLib.unsatisfiable (query_init_state_bad b) ->
+    SMTLib.unsatisfiable (query_inductive_violation b) ->
+    safe_model b.
+  Proof.
+    intro Hinit_safe_unsat.
+    assert (Hinit_safe : forall st, is_valid_initial b st -> is_safe b st).
+      { intros st [Hvalid Hinitial]. apply query_init_state_bad_unsat. all: assumption. }
+    clear Hinit_safe_unsat.
+
+    intro Htransition_safe_unsat.
+    assert (Htransition_safe : forall st1 st2, is_valid_step b st1 st2 -> is_safe b st1 -> is_safe b st2). {
+      intros st1 st2 [Hvalid1 [Hvalid2 Hstep]] Hsafe.
+      apply query_inductive_violation_unsat with (st := fun t => match t with Tag.Current => st1 | Tag.Next => st2 end).
+      all: assumption.
+    }
+    clear Htransition_safe_unsat.
+
+    intros st Hreachable.
+    unfold safe_model.
+    destruct Hreachable as [st [Hvalid Hinitial] | st0 st [Hvalid Hinitial] Hreachable].
+    - apply Hinit_safe. crush.
+    - assert (Hsafe0 : is_safe b st0) by (apply Hinit_safe; crush).
+      clear Hinitial Hvalid.
+      induction Hreachable. all: eauto.
+  Qed.
 End correctness.

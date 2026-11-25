@@ -5,6 +5,7 @@ From Stdlib Require Import Basics.
 From Stdlib Require Extraction.
 From Stdlib Require Streams.
 Import Streams (Stream).
+From Stdlib Require Import Relations.Relation_Operators.
 (* From Stdlib Require Import BinNums. *)
 (* From Stdlib Require Import Program.Equality. *)
 (* From Stdlib Require Import ProofIrrelevance. *)
@@ -260,11 +261,24 @@ Module Abstract.
     Definition is_next b (st0 st1 : State.t) :=
       Forall (has_state_next st0 st1) (btorStates b).
 
+    Definition is_valid_initial b st :=
+      is_valid b st /\ is_initial b st.
+
     Definition is_valid_step b (st0 st1 : State.t) :=
       is_valid b st0 /\ is_valid b st1 /\ is_next b st0 st1.
 
     Definition is_safe b st :=
       Forall (holds_prop st) (btorProperties b).
+
+    Definition reachable_from b (st1 st2 : @State.t (btorEnv b)) : Prop :=
+      clos_trans (@State.t (btorEnv b)) (is_valid_step b) st1 st2.
+
+    Variant reachable (b : btor) : @State.t (btorEnv b) -> Prop :=
+    | ReachableInitial st : is_valid_initial b st -> reachable b st
+    | ReachableFrom st0 st : is_valid_initial b st0 -> reachable_from b st0 st -> reachable b st.
+
+    Definition safe_model (b : btor) : Prop :=
+      forall st, reachable b st -> is_safe b st.
   End relational.
 
   Section executable.
