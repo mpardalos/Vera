@@ -196,8 +196,8 @@ Module Abstract.
     btorOperators : list operatorVar;
     btorStates : list stateVar;
     btorProperties : list (expr (BitVec 1)); (* safety property is: all properties are *false* *)
-    btorNoDupNames : NoDup (btorInputs ++ map stateName btorStates ++ map stateName btorStates);
-    btorNamesCovered : forall name sort, btorEnv name = Some sort -> In name (btorInputs ++ map stateName btorStates ++ map stateName btorStates);
+    btorNoDupNames : NoDup (btorInputs ++ map stateName btorStates ++ map operatorName btorOperators);
+    btorNamesCovered : forall name sort, btorEnv name = Some sort -> In name (btorInputs ++ map stateName btorStates ++ map operatorName btorOperators);
     btorInputsWf : Forall (fun n => exists s, btorEnv n = Some s) btorInputs
   }.
 
