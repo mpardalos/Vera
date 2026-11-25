@@ -41,7 +41,7 @@ Arguments N.sub _ _ : simpl never.
 
 Definition transfer_sort (s : Btor2.Sort.t) : SMTLib.sort :=
   match s with
-  | Btor2.Sort.BitVec w => SMTLib.Sort_BitVec (Npos w)
+  | Btor2.Sort.BitVec w => SMTLib.Sort_BitVec w
   end.
 
 Axiom undef_term : forall {s}, SMTLib.term (transfer_sort s).

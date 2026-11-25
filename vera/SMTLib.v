@@ -16,10 +16,11 @@ Import EqNotations.
 Import List.ListNotations.
 Local Open Scope list.
 
+Coercion Npos : positive >-> N.
+
 Inductive sort : Set :=
 | Sort_Bool
-(* SMTLIB says m > 0, but SMTCoq uses N in src/bva/BVList.v *)
-| Sort_BitVec (m : N)
+| Sort_BitVec (m : positive)
 .
 
 Definition interp_sort (s : sort) : Type :=
@@ -64,9 +65,9 @@ Inductive term : sort -> Type :=
 | Term_ITE {s : sort} : term Sort_Bool -> term s -> term s -> term s
 | Term_True : term Sort_Bool
 | Term_False : term Sort_Bool
-| Term_BVLit w : BV.bitvector w -> term (Sort_BitVec w)
+| Term_BVLit (w : positive) : BV.bitvector w -> term (Sort_BitVec w)
 | Term_BVConcat {w1 w2} : term (Sort_BitVec w1) -> term (Sort_BitVec w2) -> term (Sort_BitVec (w1 + w2))
-| Term_BVExtract {w} (hi lo : N) (wf : (lo <= hi)%N) : term (Sort_BitVec w) -> term (Sort_BitVec (1 + hi - lo))
+| Term_BVExtract {w} (hi lo : N) (wf : (lo <= hi)%N) : term (Sort_BitVec w) -> term (Sort_BitVec (N.succ_pos (hi - lo)))
 | Term_BVUnaryOp {w} : BVUnaryOp -> term (Sort_BitVec w) -> term (Sort_BitVec w)
 | Term_BVBinOp {w} : BVBinOp -> term (Sort_BitVec w) -> term (Sort_BitVec w) -> term (Sort_BitVec w)
 | Term_BVUlt {w} : term (Sort_BitVec w) -> term (Sort_BitVec w) -> term Sort_Bool
