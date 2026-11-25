@@ -54,45 +54,65 @@ Module Tag.
   Definition tag_name (tag : t) (name : string) : string :=
     ((match tag with Current => "c" | Next => "n" end) ++ "__" ++ name)%string.
 
-  Definition untag_name (name : string) : option (t * string) :=
+  Definition untag_name (t : tag) (name : string) : option string :=
+    match t with
+    | Tag.Current =>
+      match name with
+      | String "c" (String "_" (String "_" original)) => Some original
+      | _ => None
+      end
+    | Tag.Next =>
+      match name with
+      | String "n" (String "_" (String "_" original)) => Some original
+      | _ => None
+      end
+    end.
+
+  Definition split_name (name : string) : option (tag * string) :=
     match name with
-    | String "c" (String "_" (String "_" original)) => Some (Current, original)
-    | String "n" (String "_" (String "_" original)) => Some (Next, original)
+    | String "c" (String "_" (String "_" original)) => Some (Tag.Current, original)
+    | String "n" (String "_" (String "_" original)) => Some (Tag.Next, original)
     | _ => None
     end.
 
-  Lemma untag_tag_name t s : untag_name (tag_name t s) = Some (t, s).
+  Lemma untag_tag_name t s : untag_name t (tag_name t s) = Some s.
+  Proof. destruct t; reflexivity. Qed.
+
+  Lemma split_tag_name t s : split_name (tag_name t s) = Some (t, s).
   Proof. destruct t; reflexivity. Qed.
 
   Lemma tag_name_injective_tag t t' n n' :
     tag_name t n = tag_name t' n' -> t = t'.
   Proof.
     intros H.
-    apply f_equal with (f := untag_name) in H.
-    rewrite !untag_tag_name in H. congruence.
+    destruct t, t'.
+    all: reflexivity || discriminate.
   Qed.
 
   Lemma tag_name_injective_name t t' n n' :
     tag_name t n = tag_name t' n' -> n = n'.
   Proof.
     intros H.
-    apply f_equal with (f := untag_name) in H.
-    rewrite !untag_tag_name in H. congruence.
+    destruct t, t'.
+    all: cbn in H.
+    all: inv H.
+    all: reflexivity.
   Qed.
 
   Lemma tag_untag_name t n n' :
-    untag_name n = Some (t, n') -> tag_name t n' = n.
+    untag_name t n = Some n' -> tag_name t n' = n.
   Proof.
     unfold untag_name.
     intros H. autodestruct; reflexivity.
   Qed.
 
   Lemma tag_untag_name_none t n n' :
-    untag_name n = None -> tag_name t n' <> n.
+    untag_name t n = None -> tag_name t n' <> n.
   Proof.
     intros H contra.
-    apply f_equal with (f := untag_name) in contra.
-    rewrite H, untag_tag_name in contra. discriminate.
+    subst.
+    rewrite untag_tag_name in H.
+    discriminate.
   Qed.
 End Tag.
 
@@ -102,7 +122,6 @@ Section transfer.
   Definition transfer_ref {env s} (r : Btor2.Ref.t s) : SMTLib.const_sym :=
     SMTLib.MkConstSym (Tag.tag_name tag (Btor2.Ref.refName r)) (transfer_sort s).
 
-  #[program]
   Fixpoint transfer_expr {env s} (e : ABtor2.expr s) : SMTLib.term (transfer_sort s) :=
     match e in ABtor2.expr t return SMTLib.term (transfer_sort t) with
     | ABtor2.ExprRef r => SMTLib.Term_Const (transfer_ref r)
@@ -136,7 +155,7 @@ Section transfer.
     | ABtor2.ITE cond ifT ifF => SMTLib.Term_ITE
         (SMTLib.is_one (transfer_expr cond)) (transfer_expr ifT) (transfer_expr ifF)
     | ABtor2.Slice hi lo wf e =>
-      rew [fun w => SMTLib.term (SMTLib.Sort_BitVec w)] _ in SMTLib.Term_BVExtract hi lo (proj1 wf) (transfer_expr e)
+      SMTLib.Term_BVExtract hi lo (proj1 wf) (transfer_expr e)
     | ABtor2.Neg e => SMTLib.Term_BVUnaryOp SMTLib.BVNeg (transfer_expr e)
     | ABtor2.Not e => SMTLib.Term_BVUnaryOp SMTLib.BVNot (transfer_expr e)
     | @ABtor2.Inc _ n e => SMTLib.Term_BVBinOp SMTLib.BVAdd
@@ -161,7 +180,6 @@ Section transfer.
     | ABtor2.SignedMulOverflow _ _ | ABtor2.UnsignedMulOverflow _ _
     | ABtor2.SignedSubOverflow _ _ | ABtor2.UnsignedSubOverflow _ _ => undef_term
     end.
-  Next Obligation. lia. Qed.
   
   Definition transfer_combinational {env} (var : ABtor2.operatorVar) : SMTLib.term SMTLib.Sort_Bool :=
     SMTLib.Term_Eq
@@ -293,25 +311,28 @@ Definition get_certificate_check_queries (original certificate : Btor2.Raw.btor)
     refinement_transition := query_refines_transition original' certificate';
   |}.
 
+Lemma not_and_or_iff P Q : ~ (P /\ Q) <-> (~ P \/ ~ Q).
+Proof. split. { apply not_and_or. } { apply or_not_and. } Qed.
+
+Lemma NNPP_iff P : ~ ~ P <-> P.
+Proof. split. { apply NNPP. } { firstorder. } Qed.
+
+Lemma imply_or_iff P Q : (~ P \/ Q) <-> (P -> Q).
+Proof. split. { apply or_to_imply. } { apply imply_to_or. } Qed.
+
+Hint Rewrite not_and_or_iff NNPP_iff imply_or_iff : classicalize.
+
 Section correctness.
   Import Btor2.
   Import Btor2.Abstract.
   Import SMTLib (unsatisfiable, satisfiable, satisfied_by, term_reflect, term_satisfied_by).
 
   Definition state_of_valuation {env} (t : Tag.t) (ρ : SMTLib.valuation) : State.t := fun s r =>
-    match s with
-    | Sort.BitVec n => ρ (SMTLib.MkConstSym (Tag.tag_name t (Btor2.Ref.refName r)) (SMTLib.Sort_BitVec n))
+    match s with Sort.BitVec n =>
+      ρ (SMTLib.MkConstSym (Tag.tag_name t (Btor2.Ref.refName r)) (SMTLib.Sort_BitVec n))
     end.
-
-  (* Variable valuation_of_state : forall {env}, State.t -> SMTLib.valuation.
-   * Axiom valuation_of_state_of_valuation : forall {env} ρ, valuation_of_state (state_of_valuation ρ) = ρ.
-   * Axiom state_of_valuation_of_state : forall {env} st, state_of_valuation (valuation_of_state st) = st. *)
-
-  (* Lemma map transfer_state_init (ABtor2.btorStates b) ++
-   *    map (transfer_combinational names_current) (ABtor2.btorOperators b) *)
-
+    
   Theorem transfer_expr_correct env tg ρ n (e : expr (Sort.BitVec n)) :
-    (* TODO: state/valuation relation *)
     @SMTLib.interp_term ρ (SMTLib.Sort_BitVec n) (transfer_expr tg e) = eval (state_of_valuation tg ρ) e.
   Proof. Admitted.
 
@@ -387,127 +408,434 @@ Section correctness.
     reflexivity.
   Qed.
 
-  Lemma query_init_state_bad_spec b :
-    SMTLib.smt_reflect
-      (query_init_state_bad b)
-      (fun ρ =>
-        let st := state_of_valuation Tag.Current ρ in
-        is_initial b st /\ is_valid b st /\ ~ is_safe b st
-      ).
-  Proof.
-    simpl_reflect; expect 3.
-    - apply transfer_state_init_spec.
-    - apply transfer_combinational_spec.
-    - apply transfer_prop_spec.
-  Qed.
+  Section initial_state.
+    Lemma query_init_state_bad_spec b :
+      SMTLib.smt_reflect
+        (query_init_state_bad b)
+        (fun ρ =>
+          let st := state_of_valuation Tag.Current ρ in
+          is_initial b st /\ is_valid b st /\ ~ is_safe b st
+        ).
+    Proof.
+      simpl_reflect; expect 3.
+      - apply transfer_state_init_spec.
+      - apply transfer_combinational_spec.
+      - apply transfer_prop_spec.
+    Qed.
 
-  Lemma not_and_or_iff P Q : ~ (P /\ Q) <-> (~ P \/ ~ Q).
-  Proof. split. { apply not_and_or. } { apply or_not_and. } Qed.
+    Let as_valuation {env} (t : Tag.t) (st : State.t) : SMTLib.valuation := fun c =>
+      match Tag.untag_name t (SMTLib.symName c) with
+      | None => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt => BV.zeros w_smt
+        | SMTLib.Sort_Bool => false
+        end
+      | Some name => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt =>
+          match dec (env name = Some (Sort.BitVec w_smt)) with
+          | left E => st _ (Ref.Mk env (Sort.BitVec w_smt) name E)
+          | right _ => BV.zeros w_smt
+          end
+        | SMTLib.Sort_Bool => false
+        end
+      end.
+  
+    Let as_valuation_correct : forall {env} t st, state_of_valuation t (as_valuation t st) = st.
+    Proof.
+      unfold state_of_valuation, as_valuation.
+      intros.
+      apply functional_extensionality_dep. intros s.
+      apply functional_extensionality_dep. intros [name Hsort].
+      simpl.
+      destruct s as [w]; expect 1.
+      rewrite Tag.untag_tag_name.
+      rewrite dec_yes with (prf := Hsort).
+      reflexivity.
+    Qed.
 
-  Lemma NNPP_iff P : ~ ~ P <-> P.
-  Proof. split. { apply NNPP. } { firstorder. } Qed.
+    Lemma query_init_state_bad_unsat b :
+      SMTLib.unsatisfiable (query_init_state_bad b) ->
+      forall st,
+        is_initial b st -> is_valid b st -> is_safe b st.
+    Proof.
+      simpl.
+      intros Hunsat st Hinitial Hvalid.
+      specialize (Hunsat (as_valuation Tag.Current st)).
+      pose proof (query_init_state_bad_spec b).
+      unfold SMTLib.smt_reflect in H. rewrite H in Hunsat. clear H.
+      autorewrite with classicalize in Hunsat.
+      rewrite as_valuation_correct in Hunsat.
+      apply Hunsat. { apply Hinitial. } { apply Hvalid. }
+    Qed.
+  End initial_state.
 
-  Lemma imply_or_iff P Q : (~ P \/ Q) <-> (P -> Q).
-  Proof. split. { apply or_to_imply. } { apply imply_to_or. } Qed.
+  Section inductive.
+    Lemma query_inductive_violation_spec b :
+      SMTLib.smt_reflect
+        (query_inductive_violation b)
+        (fun ρ =>
+          let st t := state_of_valuation t ρ in
+          is_valid b (st Tag.Current)
+          /\ is_valid b (st Tag.Next)
+          /\ is_next b (st Tag.Current) (st Tag.Next)
+          /\ is_safe b (st Tag.Current)
+          /\ ~ is_safe b (st Tag.Next)
+        ).
+    Proof.
+      simpl_reflect; expect 5.
+      - apply transfer_combinational_spec.
+      - apply transfer_combinational_spec.
+      - apply transfer_state_next_spec.
+      - apply transfer_prop_spec.
+      - apply transfer_prop_spec.
+    Qed.
 
-  Hint Rewrite not_and_or_iff NNPP_iff imply_or_iff : classicalize.
+    Let as_valuation {env} (st : Tag.t -> State.t) : SMTLib.valuation := fun c =>
+      match Tag.split_name (SMTLib.symName c) with
+      | None => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt => BV.zeros w_smt
+        | SMTLib.Sort_Bool => false
+        end
+      | Some (t, name) => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt =>
+          match dec (env name = Some (Sort.BitVec w_smt)) with
+          | left E => st t _ (Ref.Mk env (Sort.BitVec w_smt) name E)
+          | right _ => BV.zeros w_smt
+          end
+        | SMTLib.Sort_Bool => false
+        end
+      end.
 
-  Lemma query_init_state_bad_unsat b :
-    SMTLib.unsatisfiable (query_init_state_bad b) ->
-    forall ρ,
-      let st := state_of_valuation Tag.Current ρ in
-      is_initial b st -> is_valid b st -> is_safe b st.
-  Proof.
-    simpl.
-    intros Hunsat ρ Hinitial Hvalid.
-    specialize (Hunsat ρ).
-    pose proof (query_init_state_bad_spec b).
-    unfold SMTLib.smt_reflect in H. rewrite H in Hunsat. clear H.
-    autorewrite with classicalize in Hunsat.
-    auto.
-  Qed.
+    Let as_valuation_correct : forall {env} t st, state_of_valuation t (as_valuation st) = st t.
+    Proof.
+      unfold state_of_valuation, as_valuation.
+      intros.
+      apply functional_extensionality_dep. intros s.
+      apply functional_extensionality_dep. intros [name Hsort].
+      simpl.
+      destruct s as [w]; expect 1.
+      rewrite Tag.split_tag_name.
+      rewrite dec_yes with (prf := Hsort).
+      reflexivity.
+    Qed.
 
-  Lemma query_inductive_violation_spec b :
-    SMTLib.smt_reflect
-      (query_inductive_violation b)
-      (fun ρ =>
-        let st t := state_of_valuation t ρ in
-        is_valid b (st Tag.Current)
-        /\ is_valid b (st Tag.Next)
-        /\ is_next b (st Tag.Current) (st Tag.Next)
-        /\ is_safe b (st Tag.Current)
-        /\ ~ is_safe b (st Tag.Next)
-      ).
-  Proof.
-    simpl_reflect; expect 5.
-    - apply transfer_combinational_spec.
-    - apply transfer_combinational_spec.
-    - apply transfer_state_next_spec.
-    - apply transfer_prop_spec.
-    - apply transfer_prop_spec.
-  Qed.
+    Lemma query_inductive_violation_unsat b :
+      SMTLib.unsatisfiable (query_inductive_violation b) ->
+      forall st,
+        is_valid b (st Tag.Current) ->
+        is_valid b (st Tag.Next) ->
+        is_next b (st Tag.Current) (st Tag.Next) ->
+        is_safe b (st Tag.Current) ->
+        is_safe b (st Tag.Next).
+    Proof.
+      simpl.
+      intros Hunsat st Hvalid1 Hvalid2 Htransition Hsafe1.
+      specialize (Hunsat (as_valuation st)).
+      pose proof (query_inductive_violation_spec b) as H.
+      unfold SMTLib.smt_reflect in H. rewrite H in Hunsat. clear H.
+      autorewrite with classicalize in Hunsat.
+      rewrite ! as_valuation_correct in Hunsat.
+      apply Hunsat.
+      { apply Hvalid1. } { apply Hvalid2. }
+      { apply Htransition. } { apply Hsafe1. }
+    Qed.
+  End inductive.
 
-  Lemma query_refines_property_spec b1 b2 :
-    SMTLib.smt_reflect
-      (query_refines_property b1 b2)
-      (fun ρ =>
-        (* These will be the same, restricted to their own envs *)
-        let st1 := state_of_valuation Tag.Current ρ in
-        let st2 := state_of_valuation Tag.Current ρ in
-        is_valid b1 st1
-        /\ is_valid b2 st2
-        /\ is_safe b1 st1
-        /\ ~ is_safe b2 st2
-      ).
-  Proof.
-    simpl_reflect; expect 4.
-    - apply transfer_combinational_spec.
-    - apply transfer_combinational_spec.
-    - apply transfer_prop_spec.
-    - apply transfer_prop_spec.
-  Qed.
+  (* Might need strenghtening: if a name exists in both then it has the same sort *)
+  Definition states_consistent {env1 env2} (st1 : @State.t env1) (st2 : @State.t env2) :=
+    forall name sort (wf1 : env1 name = Some sort) (wf2 : env2 name = Some sort),
+    st1 _ (Ref.Mk env1 sort name wf1) = st2 _ (Ref.Mk env2 sort name wf2).
+    
+  Section property_refinement.
+    Lemma query_refines_property_spec b1 b2 :
+      SMTLib.smt_reflect
+        (query_refines_property b1 b2)
+        (fun ρ =>
+          (* These will be the same, restricted to their own envs *)
+          let st1 := state_of_valuation Tag.Current ρ in
+          let st2 := state_of_valuation Tag.Current ρ in
+          is_valid b1 st1
+          /\ is_valid b2 st2
+          /\ is_safe b1 st1
+          /\ ~ is_safe b2 st2
+        ).
+    Proof.
+      simpl_reflect; expect 4.
+      - apply transfer_combinational_spec.
+      - apply transfer_combinational_spec.
+      - apply transfer_prop_spec.
+      - apply transfer_prop_spec.
+    Qed.
 
-  Lemma query_refines_reset_spec b1 b2 :
-    SMTLib.smt_reflect
-      (query_refines_reset b1 b2)
-      (fun ρ =>
-        (* These will be the same, restricted to their own envs *)
-        let st1 := state_of_valuation Tag.Current ρ in
-        let st2 := state_of_valuation Tag.Current ρ in
-        is_valid b1 st1
-        /\ is_valid b2 st2
-        /\ is_initial b1 st1
-        /\ ~ is_initial b2 st2
-      ).
-  Proof.
-    simpl_reflect; expect 4.
-    - apply transfer_combinational_spec.
-    - apply transfer_combinational_spec.
-    - apply transfer_state_init_spec.
-    - apply transfer_state_init_spec.
-  Qed.
+    Let as_valuation {env1 env2} (st1 : @State.t env1) (st2 : @State.t env2): SMTLib.valuation := fun c =>
+      match Tag.untag_name Tag.Current (SMTLib.symName c) with
+      | None => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt => BV.zeros w_smt
+        | SMTLib.Sort_Bool => false
+        end
+      | Some name => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt =>
+          match dec (env1 name = Some (Sort.BitVec w_smt)) with
+          | left E => st1 _ (Ref.Mk env1 (Sort.BitVec w_smt) name E)
+          | right _ =>
+            match dec (env2 name = Some (Sort.BitVec w_smt)) with
+            | left E => st2 _ (Ref.Mk env2 (Sort.BitVec w_smt) name E)
+            | right _ => BV.zeros w_smt
+            end
+          end
+        | SMTLib.Sort_Bool => false
+        end
+      end.
 
-  Lemma query_refines_transition_spec b1 b2 :
-    SMTLib.smt_reflect
-      (query_refines_transition b1 b2)
-      (fun ρ =>
-        (* These will be the same, restricted to their own envs *)
-        let st1 t := state_of_valuation t ρ in
-        let st2 t := state_of_valuation t ρ in
-        is_valid b1 (st1 Tag.Current)
-        /\ is_valid b1 (st1 Tag.Next)
-        /\ is_next b1 (st1 Tag.Current) (st1 Tag.Next)
-        /\ is_valid b2 (st2 Tag.Current)
-        /\ is_valid b2 (st2 Tag.Next)
-        /\ ~ is_next b2 (st2 Tag.Current) (st2 Tag.Next)
-      ).
-  Proof.
-    simpl_reflect; expect 6.
-    - apply transfer_combinational_spec.
-    - apply transfer_combinational_spec.
-    - apply transfer_state_next_spec.
-    - apply transfer_combinational_spec.
-    - apply transfer_combinational_spec.
-    - apply transfer_state_next_spec.
-  Qed.
+    Let as_valuation_correct1 env1 env2 (st1 : @State.t env1) (st2 : @State.t env2) :
+      state_of_valuation Tag.Current (as_valuation st1 st2) = st1.
+    Proof.
+      unfold state_of_valuation, as_valuation.
+      intros.
+      apply functional_extensionality_dep. intros s.
+      apply functional_extensionality_dep. intros [name Hsort].
+      simpl.
+      destruct s as [w]; expect 1.
+      rewrite dec_yes with (prf := Hsort).
+      reflexivity.
+    Qed.
+
+    Let as_valuation_correct2 env1 env2 (st1 : @State.t env1) (st2 : @State.t env2) :
+      states_consistent st1 st2 ->
+      state_of_valuation Tag.Current (as_valuation st1 st2) = st2.
+    Proof.
+      unfold state_of_valuation, as_valuation.
+      intros Hconsistent.
+      apply functional_extensionality_dep. intros s.
+      apply functional_extensionality_dep. intros [name Hsort].
+      simpl.
+      destruct s as [w]; expect 1.
+      destruct (dec (env1 name = Some (Sort.BitVec w))).
+      - apply Hconsistent.
+      - rewrite dec_yes with (prf := Hsort).
+        reflexivity.
+    Qed.
+
+    Lemma query_refines_property_unsat b1 b2 :
+      SMTLib.unsatisfiable (query_refines_property b1 b2) ->
+      forall (st1 : @State.t (btorEnv b1)) (st2 : @State.t (btorEnv b2)),
+        states_consistent st1 st2 -> (* ! Not from query. External assumption. ! *)
+        is_valid b1 st1 ->
+        is_valid b2 st2 ->
+        is_safe b1 st1 ->
+        is_safe b2 st2.
+    Proof.
+      intros Hunsat st1 st2 Hconsistent Hvalid1 Hvalid2 Hsafe1.
+      specialize (Hunsat (as_valuation st1 st2)).
+      pose proof (query_refines_property_spec b1 b2) as H.
+      unfold SMTLib.smt_reflect in H. rewrite H in Hunsat. clear H.
+      autorewrite with classicalize in Hunsat.
+      rewrite ! as_valuation_correct1 in Hunsat.
+      rewrite ! as_valuation_correct2 in Hunsat by exact Hconsistent.
+      apply Hunsat.
+      { apply Hvalid1. } { apply Hvalid2. } { apply Hsafe1. }
+    Qed.
+  End property_refinement.
+  
+  Section reset_refinement.
+    Lemma query_refines_reset_spec b1 b2 :
+      SMTLib.smt_reflect
+        (query_refines_reset b1 b2)
+        (fun ρ =>
+          (* These will be the same, restricted to their own envs *)
+          let st1 := state_of_valuation Tag.Current ρ in
+          let st2 := state_of_valuation Tag.Current ρ in
+          is_valid b1 st1
+          /\ is_valid b2 st2
+          /\ is_initial b1 st1
+          /\ ~ is_initial b2 st2
+        ).
+    Proof.
+      simpl_reflect; expect 4.
+      - apply transfer_combinational_spec.
+      - apply transfer_combinational_spec.
+      - apply transfer_state_init_spec.
+      - apply transfer_state_init_spec.
+    Qed.
+
+    (* Duplicated from above property refinement section *)
+    Let as_valuation {env1 env2} (st1 : @State.t env1) (st2 : @State.t env2): SMTLib.valuation := fun c =>
+      match Tag.untag_name Tag.Current (SMTLib.symName c) with
+      | None => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt => BV.zeros w_smt
+        | SMTLib.Sort_Bool => false
+        end
+      | Some name => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt =>
+          match dec (env1 name = Some (Sort.BitVec w_smt)) with
+          | left E => st1 _ (Ref.Mk env1 (Sort.BitVec w_smt) name E)
+          | right _ =>
+            match dec (env2 name = Some (Sort.BitVec w_smt)) with
+            | left E => st2 _ (Ref.Mk env2 (Sort.BitVec w_smt) name E)
+            | right _ => BV.zeros w_smt
+            end
+          end
+        | SMTLib.Sort_Bool => false
+        end
+      end.
+
+    Let as_valuation_correct1 env1 env2 (st1 : @State.t env1) (st2 : @State.t env2) :
+      state_of_valuation Tag.Current (as_valuation st1 st2) = st1.
+    Proof.
+      unfold state_of_valuation, as_valuation.
+      intros.
+      apply functional_extensionality_dep. intros s.
+      apply functional_extensionality_dep. intros [name Hsort].
+      simpl.
+      destruct s as [w]; expect 1.
+      rewrite dec_yes with (prf := Hsort).
+      reflexivity.
+    Qed.
+
+    Let as_valuation_correct2 env1 env2 (st1 : @State.t env1) (st2 : @State.t env2) :
+      states_consistent st1 st2 ->
+      state_of_valuation Tag.Current (as_valuation st1 st2) = st2.
+    Proof.
+      unfold state_of_valuation, as_valuation.
+      intros Hconsistent.
+      apply functional_extensionality_dep. intros s.
+      apply functional_extensionality_dep. intros [name Hsort].
+      simpl.
+      destruct s as [w]; expect 1.
+      destruct (dec (env1 name = Some (Sort.BitVec w))).
+      - apply Hconsistent.
+      - rewrite dec_yes with (prf := Hsort).
+        reflexivity.
+    Qed.
+
+    Lemma query_refines_reset_unsat b1 b2 :
+      SMTLib.unsatisfiable (query_refines_reset b1 b2) ->
+      forall (st1 : @State.t (btorEnv b1)) (st2 : @State.t (btorEnv b2)),
+        states_consistent st1 st2 -> (* ! Not from query. External assumption. ! *)
+        is_valid b1 st1 ->
+        is_valid b2 st2 ->
+        is_initial b1 st1 ->
+        is_initial b2 st2.
+    Proof.
+      intros Hunsat st1 st2 Hconsistent Hvalid1 Hvalid2 Hinitial1.
+      specialize (Hunsat (as_valuation st1 st2)).
+      pose proof (query_refines_reset_spec b1 b2) as H.
+      unfold SMTLib.smt_reflect in H. rewrite H in Hunsat. clear H.
+      autorewrite with classicalize in Hunsat.
+      rewrite ! as_valuation_correct1 in Hunsat.
+      rewrite ! as_valuation_correct2 in Hunsat by exact Hconsistent.
+      apply Hunsat.
+      { apply Hvalid1. } { apply Hvalid2. } { apply Hinitial1. }
+    Qed.
+  End reset_refinement.
+
+  Section transition_refinement.
+    Lemma query_refines_transition_spec b1 b2 :
+      SMTLib.smt_reflect
+        (query_refines_transition b1 b2)
+        (fun ρ =>
+          (* These will be the same, restricted to their own envs *)
+          let st1 t := state_of_valuation t ρ in
+          let st2 t := state_of_valuation t ρ in
+          is_valid b1 (st1 Tag.Current)
+          /\ is_valid b1 (st1 Tag.Next)
+          /\ is_next b1 (st1 Tag.Current) (st1 Tag.Next)
+          /\ is_valid b2 (st2 Tag.Current)
+          /\ is_valid b2 (st2 Tag.Next)
+          /\ ~ is_next b2 (st2 Tag.Current) (st2 Tag.Next)
+        ).
+    Proof.
+      simpl_reflect; expect 6.
+      - apply transfer_combinational_spec.
+      - apply transfer_combinational_spec.
+      - apply transfer_state_next_spec.
+      - apply transfer_combinational_spec.
+      - apply transfer_combinational_spec.
+      - apply transfer_state_next_spec.
+    Qed.
+
+    Let as_valuation {env1 env2} (st1 : Tag.t -> @State.t env1) (st2 : Tag.t -> @State.t env2) : SMTLib.valuation := fun c =>
+      match Tag.split_name (SMTLib.symName c) with
+      | None => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt => BV.zeros w_smt
+        | SMTLib.Sort_Bool => false
+        end
+      | Some (t, name) => 
+        match SMTLib.symSort c as s return SMTLib.interp_sort s with
+        | SMTLib.Sort_BitVec w_smt =>
+          match dec (env1 name = Some (Sort.BitVec w_smt)) with
+          | left E => st1 t _ (Ref.Mk env1 (Sort.BitVec w_smt) name E)
+          | right _ =>
+            match dec (env2 name = Some (Sort.BitVec w_smt)) with
+            | left E => st2 t _ (Ref.Mk env2 (Sort.BitVec w_smt) name E)
+            | right _ => BV.zeros w_smt
+            end
+          end
+        | SMTLib.Sort_Bool => false
+        end
+      end.
+
+    Let as_valuation_correct1 env1 env2 (st1 : Tag.t -> @State.t env1) (st2 : Tag.t -> @State.t env2) t :
+      state_of_valuation t (as_valuation st1 st2) = st1 t.
+    Proof.
+      unfold state_of_valuation, as_valuation.
+      intros.
+      apply functional_extensionality_dep. intros s.
+      apply functional_extensionality_dep. intros [name Hsort].
+      simpl.
+      destruct s as [w]; expect 1.
+      rewrite Tag.split_tag_name.
+      rewrite dec_yes with (prf := Hsort).
+      reflexivity.
+    Qed.
+
+    Let as_valuation_correct2 env1 env2 (st1 : Tag.t -> @State.t env1) (st2 : Tag.t -> @State.t env2) t :
+      states_consistent (st1 t) (st2 t) ->
+      state_of_valuation t (as_valuation st1 st2) = st2 t.
+    Proof.
+      unfold state_of_valuation, as_valuation.
+      intros Hconsistent.
+      apply functional_extensionality_dep. intros s.
+      apply functional_extensionality_dep. intros [name Hsort].
+      simpl.
+      destruct s as [w]; expect 1.
+      rewrite Tag.split_tag_name.
+      destruct (dec (env1 name = Some (Sort.BitVec w))).
+      - apply Hconsistent.
+      - rewrite dec_yes with (prf := Hsort).
+        reflexivity.
+    Qed.
+
+    Lemma query_refines_transition_unsat b1 b2 :
+      SMTLib.unsatisfiable (query_refines_transition b1 b2) ->
+      forall (st1 : Tag.t -> @State.t (btorEnv b1)) (st2 : Tag.t -> @State.t (btorEnv b2)),
+        (forall t, states_consistent (st1 t) (st2 t)) -> (* ! Not from query. External assumption. ! *)
+        is_valid b1 (st1 Tag.Current) ->
+        is_valid b1 (st1 Tag.Next) ->
+        is_next b1 (st1 Tag.Current) (st1 Tag.Next) ->
+        is_valid b2 (st2 Tag.Current) ->
+        is_valid b2 (st2 Tag.Next) ->
+        is_next b2 (st2 Tag.Current) (st2 Tag.Next).
+    Proof.
+      intros Hunsat st1 st2 Hconsistent Hvalid1_current Hvalid1_next Htransition1 Hvalid2_current Hvalid2_next.
+      specialize (Hunsat (as_valuation st1 st2)).
+      pose proof (query_refines_transition_spec b1 b2) as H.
+      unfold SMTLib.smt_reflect in H. rewrite H in Hunsat. clear H.
+      autorewrite with classicalize in Hunsat.
+      rewrite ! as_valuation_correct1 in Hunsat.
+      rewrite ! as_valuation_correct2 in Hunsat by auto.
+      apply Hunsat.
+      { apply Hvalid1_current. } { apply Hvalid1_next. }
+      { apply Htransition1. }
+      { apply Hvalid2_current. } { apply Hvalid2_next. }
+    Qed.
+  End transition_refinement.
 End correctness.
