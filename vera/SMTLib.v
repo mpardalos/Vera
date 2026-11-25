@@ -527,11 +527,10 @@ Section reflection.
   Lemma Forall_iff {A} P Q l : (forall (x : A), P x <-> Q x) -> (Forall P l <-> Forall Q l).
   Proof. setoid_rewrite Forall_forall. crush. Qed.
 
-  Lemma concat_conj :
-    forall q1 q2 P1 P2,
-      smt_reflect q1 P1 ->
-      smt_reflect q2 P2 ->
-      smt_reflect (combine q1 q2) (fun ρ => P1 ρ /\ P2 ρ).
+  Lemma smt_reflect_concat q1 q2 P1 P2 :
+    smt_reflect q1 P1 ->
+    smt_reflect q2 P2 ->
+    smt_reflect (q1 ++ q2) (fun ρ => P1 ρ /\ P2 ρ).
   Proof.
     unfold smt_reflect, satisfied_by, combine.
     simpl.
@@ -539,6 +538,14 @@ Section reflection.
     setoid_rewrite List.Forall_app.
     firstorder.
   Qed.
+
+  (* For compatibility. Remove if unused *)
+  Lemma concat_conj :
+    forall q1 q2 P1 P2,
+      smt_reflect q1 P1 ->
+      smt_reflect q2 P2 ->
+      smt_reflect (combine q1 q2) (fun ρ => P1 ρ /\ P2 ρ).
+  Proof. apply smt_reflect_concat. Qed.
   
   Lemma query_domain_app xs ys :
     query_domain (xs ++ ys) = query_domain xs ++ query_domain ys.
@@ -606,5 +613,32 @@ Section reflection.
     - eauto using concat_conj.
     - eauto.
   Qed.
-
 End reflection.
+
+Section spec.
+  Variable A : Type. 
+  Variable (of_valuation : valuation -> A).
+  Variable (to_valuation : A -> valuation).
+
+  Definition term_spec t P := term_reflect t (fun ρ => P (of_valuation ρ)).
+  Definition smt_spec t P := smt_reflect t (fun ρ => P (of_valuation ρ)).
+
+  Lemma and_spec t1 t2 P1 P2 :
+    term_spec t1 P1 ->
+    term_spec t2 P2 ->
+    term_spec (Term_And t1 t2) (fun a => P1 a /\ P2 a).
+  Proof. apply term_reflect_and. Qed.
+
+  Lemma or_spec t1 t2 P1 P2 :
+    term_spec t1 P1 ->
+    term_spec t2 P2 ->
+    term_spec (Term_Or t1 t2) (fun a => P1 a \/ P2 a).
+  Proof. apply term_reflect_or. Qed.
+
+  Lemma not_spec t P :
+    term_spec t P ->
+    term_spec (Term_Not t) (fun a => ~ P a).
+  Proof. apply term_reflect_not. Qed.
+
+End spec.
+

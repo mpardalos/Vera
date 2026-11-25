@@ -238,72 +238,70 @@ Module Abstract.
     | _ => undef
     end.
 
-  Definition run_operator {env} (op : operatorVar) (st : State.t) : State.t := 
-    State.set_ref (operatorRef op) (eval st (operatorExpr op)) st.
+  Section relational.
+    Definition has_operator {env} (st : State.t) (var : operatorVar) : Prop :=
+      st _ (operatorRef var) = eval st (operatorExpr var).
 
-  Definition run_operators {env} := fold_left (flip run_operator).
+    Definition has_state_init {env} (st : State.t) (var : stateVar) : Prop :=
+      st _ (stateRef var) = eval st (stateInit var).
 
-  Definition run_state_init {env} (s : stateVar) (st : State.t) : State.t := 
-    State.set_ref (stateRef s) (eval st (stateInit s)) st.
+    Definition has_state_next {env} (st0 st1 : State.t) (var : stateVar) : Prop :=
+      st1 _ (stateRef var) = eval st0 (stateNext var).
 
-  Definition run_state_inits {env} := fold_left (flip run_state_init).
+    Definition holds_prop {env} (st : State.t) (prop : expr (Sort.BitVec 1)) : Prop :=
+      eval st prop = BV.zeros 1.
 
-  Definition run_state_next {env} (s : stateVar) (st : State.t) : State.t := 
-    State.set_ref (stateRef s) (eval st (stateNext s)) st.
+    Definition is_valid b st :=
+      Forall (has_operator st) (btorOperators b).
 
-  Definition run_state_nexts {env} := fold_left (flip run_state_next).
+    Definition is_initial b st :=
+      Forall (has_state_init st) (btorStates b).
 
-  Definition value_list {env} := list {s & Ref.t s * Sort.interp s}.
+    Definition is_next b (st0 st1 : State.t) :=
+      Forall (has_state_next st0 st1) (btorStates b).
 
-  Definition set_inputs {env} (values : value_list) (s : State.t) : State.t :=
-    fold_left (fun acc '(s; (r, v)) => State.set_ref r v acc) values s.
+    Definition is_valid_step b (st0 st1 : State.t) :=
+      is_valid b st0 /\ is_valid b st1 /\ is_next b st0 st1.
+
+    Definition is_safe b st :=
+      Forall (holds_prop st) (btorProperties b).
+  End relational.
+
+  Section executable.
+    Definition run_operator {env} (op : operatorVar) (st : State.t) : State.t := 
+      State.set_ref (operatorRef op) (eval st (operatorExpr op)) st.
+
+    Definition run_operators {env} := fold_left (flip run_operator).
+
+    Definition run_state_init {env} (s : stateVar) (st : State.t) : State.t := 
+      State.set_ref (stateRef s) (eval st (stateInit s)) st.
+
+    Definition run_state_inits {env} := fold_left (flip run_state_init).
+
+    Definition run_state_next {env} (s : stateVar) (st : State.t) : State.t := 
+      State.set_ref (stateRef s) (eval st (stateNext s)) st.
+
+    Definition run_state_nexts {env} := fold_left (flip run_state_next).
+
+    Definition value_list {env} := list {s & Ref.t s * Sort.interp s}.
+
+    Definition set_inputs {env} (values : value_list) (s : State.t) : State.t :=
+      fold_left (fun acc '(s; (r, v)) => State.set_ref r v acc) values s.
+
+    Definition initial_state (b : btor) : @State.t (btorEnv b) :=
+      (run_state_inits (btorStates b) ∘ run_operators (btorOperators b)) State.empty_default.
+
+    Definition next_state (b : btor) (inputs : value_list) : State.t -> State.t :=
+      run_state_nexts (btorStates b) ∘ run_operators (btorOperators b) ∘ set_inputs inputs.
+  End executable.
 
   (* TODO: Is reset allowed to read from inputs? Or does it have to be constant?
        Assuming that it has to be constant. Inputs will read from empty_default (0s)
    *)
-  Definition initial_state (b : btor) : @State.t (btorEnv b) :=
-    (run_state_inits (btorStates b) ∘ run_operators (btorOperators b)) State.empty_default.
-
-  Definition next_state (b : btor) (inputs : value_list) : State.t -> State.t :=
-    run_state_nexts (btorStates b) ∘ run_operators (btorOperators b) ∘ set_inputs inputs.
-
-  Definition safe_state (b : btor) (st : State.t) : Prop :=
-    Forall (fun (p : expr (Sort.BitVec 1)) => eval st p = BV.zeros 1) (btorProperties b).
-
   CoFixpoint runFrom (b : btor) (st : State.t) (input_stream : Stream value_list) : Stream State.t :=
     Streams.Cons st (runFrom b (next_state b (Streams.hd input_stream) st) (Streams.tl input_stream)).
 
   Definition run b input_stream := runFrom b (initial_state b) input_stream.
-
-  (* CoInductive SafeStream (b : btor) (trace : Stream State.t) : Prop := {
-   *   safeThis : safe_state b (Streams.hd trace);
-   *   safeRest : SafeStream b (Streams.tl trace);
-   * }.
-
-  *  Definition Safe (b : btor) : Prop := forall input_stream, SafeStream b (run b input_stream).
-
-  *  #[program]
-   * Example empty_btor : btor := {|
-   *   btorEnv := fun _ => None;
-   *   btorInputs := [];
-   *   btorOperators := [];
-   *   btorStates := [];
-   *   btorProperties := [];
-   * |}.
-   * Next Obligation. constructor. Qed.
-
-  *  #[program]
-   * CoFixpoint SafeStream_induct b istream st0
-   *   (safe_base : safe_state b st0)
-   *   (safe_induct : forall s i, safe_state b s -> safe_state b (next_state b i s)) :
-   *   SafeStream b (runFrom b st0 istream) := {|
-   *   safeThis := safe_induct st0 (Streams.hd istream) safe_base;
-   *   safeRest := SafeStream_induct b (Streams.tl istream) _ _ _;
-   * |}.
-
-  *  CoFixpoint Safe_induct b istream st0
-   *   (safe_base : safe_state b (initial_state b ))
-   *   (safe_induct : forall s i, safe_state b s -> safe_state b (next_state b i s)) : *)
 End Abstract.
 
 Module Raw.
