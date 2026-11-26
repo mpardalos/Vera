@@ -379,6 +379,13 @@ Section reflection.
   Lemma satisfied_by_singleton ρ t : satisfied_by ρ [ t ] <-> term_satisfied_by ρ t.
   Proof. apply Forall_singleton. Qed.
 
+  Lemma smt_reflect_nil : smt_reflect [] (fun _ => True).
+  Proof.
+    unfold smt_reflect.
+    setoid_rewrite Forall_nil_iff.
+    reflexivity.
+  Qed.
+
   Lemma smt_reflect_singleton t P : smt_reflect [ t ] P <-> term_reflect t P.
   Proof.
     unfold smt_reflect.
@@ -520,22 +527,25 @@ Section reflection.
   Lemma term_reflect_is_zero t: term_reflect (is_zero t) (fun ρ => interp_term ρ t = BV.zeros 1).
   Proof. apply term_reflect_eq. Qed.
 
-  Lemma smt_reflect_map {A} (f : A -> SMTLib.term SMTLib.Sort_Bool) (P : A -> SMTLib.valuation -> Prop) l :
-    (forall x, term_reflect (f x) (P x)) ->
-    smt_reflect (map f l) (fun ρ => Forall (fun x => P x ρ) l).
-  Proof. Admitted.
-
   Lemma Forall_iff {A} P Q l : (forall (x : A), P x <-> Q x) -> (Forall P l <-> Forall Q l).
   Proof. setoid_rewrite Forall_forall. crush. Qed.
+
+  Lemma smt_reflect_cons t q P1 P2 :
+    term_reflect t P1 ->
+    smt_reflect q P2 ->
+    smt_reflect (t :: q) (fun ρ => P1 ρ /\ P2 ρ).
+  Proof.
+    unfold smt_reflect, term_reflect.
+    setoid_rewrite Forall_cons_iff.
+    firstorder.
+  Qed.
 
   Lemma smt_reflect_concat q1 q2 P1 P2 :
     smt_reflect q1 P1 ->
     smt_reflect q2 P2 ->
     smt_reflect (q1 ++ q2) (fun ρ => P1 ρ /\ P2 ρ).
   Proof.
-    unfold smt_reflect, satisfied_by, combine.
-    simpl.
-    intros.
+    unfold smt_reflect, satisfied_by.
     setoid_rewrite List.Forall_app.
     firstorder.
   Qed.
@@ -547,6 +557,18 @@ Section reflection.
       smt_reflect q2 P2 ->
       smt_reflect (combine q1 q2) (fun ρ => P1 ρ /\ P2 ρ).
   Proof. apply smt_reflect_concat. Qed.
+
+  Lemma smt_reflect_map {A} (f : A -> SMTLib.term SMTLib.Sort_Bool) (P : A -> SMTLib.valuation -> Prop) l :
+    (forall x, term_reflect (f x) (P x)) ->
+    smt_reflect (map f l) (fun ρ => Forall (fun x => P x ρ) l).
+  Proof.
+    intros Hreflect.
+    induction l. all: simpl.
+    - setoid_rewrite Forall_nil_iff.
+      apply smt_reflect_nil.
+    - setoid_rewrite Forall_cons_iff.
+      apply smt_reflect_cons. all: auto.
+  Qed.
   
   Lemma query_domain_app xs ys :
     query_domain (xs ++ ys) = query_domain xs ++ query_domain ys.
