@@ -899,13 +899,15 @@ Section correctness.
     refines_initial b1 b2.
   Proof.
     intros Hunsat st1 Hinitial.
+    assert (Hvalid_st1 : is_valid b1 st1) by admit.
     pose proof (query_refines_reset_unsat b1 b2 Hunsat st1).
     destruct (transfer_state (btorEnv b2) st1) as [st2 Hconsistent].
+    assert (Hvalid_st2 : is_valid b2 st2) by admit.
     exists st2. split.
     - apply H.
       + exact Hconsistent.
-      + admit. (* st1 is valid *)
-      + admit. (* st2 is valid *)
+      + exact Hvalid_st1.
+      + exact Hvalid_st2.
       + exact Hinitial.
     - exact Hconsistent.
   Admitted.
@@ -923,18 +925,22 @@ Section correctness.
     refines_transition b1 b2.
   Proof.
     intros Hunsat st1 st2 st1' Hconsistent Htransition1.
+    assert (Hvalid_st1 : is_valid b1 st1) by admit.
+    assert (Hvalid_st1' : is_valid b1 st1') by admit.
+    assert (Hvalid_st2 : is_valid b2 st2) by admit.
     destruct (transfer_state (btorEnv b2) st1') as [st2' Hconsistent'].
+    assert (Hvalid_st2' : is_valid b2 st2') by admit.
     pose proof (query_refines_transition_unsat b1 b2 Hunsat (Tag.select st1 st1') (Tag.select st2 st2')) as H.
     simpl in H.
     exists st2'. split.
     - apply H.
       + exact Hconsistent.
       + exact Hconsistent'.
-      + admit. (* st1 is valid *)
-      + admit. (* st1' is valid *)
+      + exact Hvalid_st1.
+      + exact Hvalid_st1'.
       + exact Htransition1.
-      + admit. (* st2 is valid *)
-      + admit. (* st2 is valid *)
+      + exact Hvalid_st2.
+      + exact Hvalid_st2'.
     - exact Hconsistent'.
   Admitted.
 
@@ -947,20 +953,40 @@ Section correctness.
       is_safe b2 st2 ->
       is_safe b1 st1.
 
-  Theorem initial_refines_properties_correct b1 b2 :
+  Theorem query_refines_property_correct b1 b2 :
     SMTLib.unsatisfiable (query_refines_property b1 b2) ->
     refines_property b1 b2.
   Proof.
     intros Hunsat st1 st2 Hconsistent Hsafe2.
-    (* destruct (transfer_state (btorEnv b2) st1') as [st2' Hconsistent']. *)
+    assert (Hvalid_st1 : is_valid b1 st1) by admit.
+    assert (Hvalid_st2 : is_valid b2 st2) by admit.
     pose proof (query_refines_property_unsat b1 b2 Hunsat st1 st2 Hconsistent) as H.
     apply H.
-    - admit. (* st1 is valid *)
-    - admit. (* st2 is valid *)
+    - exact Hvalid_st1.
+    - exact Hvalid_st2.
     - exact Hsafe2.
   Admitted.
 
   (* TODO : refines_transition gives single-step. Expand to multi-step *)
+
+  Lemma reachable_from_trans b st1 st2 st3 :
+    reachable_from b st1 st2 -> reachable_from b st2 st3 -> reachable_from b st1 st3.
+  Proof.
+    unfold reachable_from.
+    intros. apply (t_trans _ _ st1 st2 st3).
+    all: assumption.
+  Qed.
+
+  Lemma reachable_chain b st1 st2 :
+    reachable b st1 -> reachable_from b st1 st2 -> reachable b st2.
+  Proof.
+    intros Hreachable1 Hchain.
+    destruct Hreachable1 as [init Hinit|init st1 Hinit Hreachable1].
+    - eapply ReachableFrom. all: eassumption.
+    - eapply ReachableFrom.
+      + exact Hinit.
+      + eapply reachable_from_trans. all: eassumption.
+  Qed.
 
   Lemma transfer_reachability b1 b2 :
     refines_initial b1 b2 ->
@@ -970,20 +996,70 @@ Section correctness.
       exists st2, reachable b2 st2 /\ states_consistent st1 st2.
   Proof.
     intros Hrefines_initial Hrefines_transition st1 Hreachable.
-    destruct Hreachable as [st1 Hinitial1| st1 st1' Hinitial1 Hreachable1].
+    destruct Hreachable as [init1 Hinitial1| init1 st1 Hinitial1 Hreachable1].
     - (* Almost `exact Hrefines_initial` *)
-      destruct (Hrefines_initial st1) as [st2 [Hinitial2 Hconsistent]];
+      destruct (Hrefines_initial init1) as [init2 [Hinitial2 Hconsistent]];
         [crush|clear Hrefines_initial].
-      exists st2. split.
+      assert (Hvalid_init2 : is_valid b2 init2) by admit.
+      exists init2. split.
       + apply ReachableInitial. split.
-        * admit. (* st2 is valid *)
+        * exact Hvalid_init2.
         * exact Hinitial2.
       + exact Hconsistent.
-    - unfold refines_transition in *.
-      destruct (transfer_state (btorEnv b2) st1) as [st2 Hconsistent].
-      destruct (Hrefines_transition st1 st2 st1') as [st2' [Hstep2]].
-      + exact Hconsistent.
-      + admit.
-      + admit.
+    - destruct (Hrefines_initial init1) as [init2 [Hinitial2 Hconsistent_init]];
+        [crush|clear Hrefines_initial].
+      assert (Hvalid_init2 : is_valid b2 init2) by admit.
+      apply clos_trans_tn1 in Hreachable1.
+      induction Hreachable1 as [st1 [Hvalid_init1 [Hvalid_st1 Hstep1]]|st1 st1' [Hvalid_st1 [Hvalid_st1' Hstep1]]].
+      + destruct (Hrefines_transition init1 init2 st1) as [st2 [Hstep2 Hconsistent_st]]; try assumption; expect 1.
+        assert (Hvalid_st2 : is_valid b2 st2) by admit.
+        exists st2. split.
+        * eapply (ReachableFrom _ init2). split.
+          -- exact Hvalid_init2.
+          -- exact Hinitial2.
+          -- apply t_step. repeat split.
+             { exact Hvalid_init2. } { exact Hvalid_st2. } { exact Hstep2. }
+        * exact Hconsistent_st.
+      + destruct IHHreachable1 as [st2 [Hreachable_st2 Hconsistent_st]].
+        assert (Hvalid_st2 : is_valid b2 st2) by admit.
+        destruct (Hrefines_transition st1 st2 st1') as [st2' [Hstep2 Hconsistent_st']]; try assumption; expect 1.
+        assert (Hvalid_st2' : is_valid b2 st2') by admit.
+        exists st2'. split.
+        * eapply reachable_chain.
+          -- exact Hreachable_st2.
+          -- apply t_step. repeat split.
+             { exact Hvalid_st2. } { exact Hvalid_st2'. } { exact Hstep2. }
+        * exact Hconsistent_st'.
   Admitted.
+
+  Theorem transfer_safety b1 b2 :
+    refines_initial b1 b2 ->
+    refines_transition b1 b2 ->
+    refines_property b1 b2 ->
+    safe_model b2 -> safe_model b1.
+  Proof.
+    intros Hinitial Htransition Hproperty Hsafe2 st1 Hreachable1.
+    destruct (transfer_reachability b1 b2 Hinitial Htransition st1 Hreachable1) as [st2 [Hreachable2 Hconsistent]].
+    apply (Hproperty st1 st2 Hconsistent).
+    apply Hsafe2.
+    exact Hreachable2.
+  Qed.
+
+  Theorem certificate_check_sound orig cert :
+    SMTLib.unsatisfiable (query_init_state_bad cert) ->
+    SMTLib.unsatisfiable (query_inductive_violation cert) ->
+    SMTLib.unsatisfiable (query_refines_reset orig cert) ->
+    SMTLib.unsatisfiable (query_refines_transition orig cert) ->
+    SMTLib.unsatisfiable (query_refines_property orig cert) ->
+    safe_model orig.
+  Proof.
+    intros.
+    apply (transfer_safety orig cert).
+    - now apply query_refines_reset_correct.
+    - now apply query_refines_transition_correct.
+    - now apply query_refines_property_correct.
+    - now apply inductive_check_correct.
+  Qed.
+
+  Print Assumptions certificate_check_sound.
 End correctness.
