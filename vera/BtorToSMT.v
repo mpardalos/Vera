@@ -176,17 +176,6 @@ Section transfer.
         (SMTLib.Term_Not (SMTLib.Term_Eq (transfer_expr e) (SMTLib.Term_BVLit _ (BV.zeros n))))
     | @ABtor2.UnsignedExtend _ m w e =>
         SMTLib.Term_BVConcat (SMTLib.Term_BVLit _ (BV.zeros (Npos w))) (transfer_expr e)
-    (* These operations have no direct counterpart in the current SMT AST. *)
-    | ABtor2.SignedExtend _ _ | ABtor2.RedXor _
-    | ABtor2.SignedGt _ _ | ABtor2.SignedGtE _ _
-    | ABtor2.SignedLt _ _ | ABtor2.SignedLtE _ _
-    | ABtor2.Rol _ _ | ABtor2.Sra _ _
-    | ABtor2.SignedDiv _ _
-    | ABtor2.SignedMod _ _ | ABtor2.SignedRem _ _
-    | ABtor2.SignedAddOverflow _ _ | ABtor2.UnsignedAddOverflow _ _
-    | ABtor2.SignedDivOverflow _ _
-    | ABtor2.SignedMulOverflow _ _ | ABtor2.UnsignedMulOverflow _ _
-    | ABtor2.SignedSubOverflow _ _ | ABtor2.UnsignedSubOverflow _ _ => undef_term
     end.
   
   Definition transfer_combinational {env} (var : ABtor2.operatorVar) : SMTLib.term SMTLib.Sort_Bool :=

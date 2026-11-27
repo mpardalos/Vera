@@ -113,9 +113,13 @@ Module Ref.
 End Ref.
 
 Module Abstract.
+  (* This syntax does not have every operator in btor. The concrete
+     type lower down has everything, and the conversion errors out if
+     a missing operator is encountered. This can happen in checking
+     external btor models - like those produced as certificates by the
+     external model checker *)
   Inductive expr {env} : Sort.t -> Type :=
   | UnsignedExtend {n : positive} (w : positive) (e : expr (BitVec n)) : expr (BitVec (w + n))
-  | SignedExtend {n : positive} (w : positive) (e : expr (BitVec n)) : expr (BitVec (w + n))
   | Slice {n : positive} (hi lo : N) (wf : (lo <= hi < Npos n)%N) (e : expr (BitVec n)) : expr (BitVec (N.succ_pos (hi - lo)))
   | Neg {n} (e : expr (BitVec n)) : expr (BitVec n)
   | Not {n} (e : expr (BitVec n)) : expr (BitVec n)
@@ -123,18 +127,13 @@ Module Abstract.
   | Dec {n} (e : expr (BitVec n)) : expr (BitVec n)
   | RedAnd {n} (e : expr (BitVec n)) : expr (BitVec 1)
   | RedOr {n} (e : expr (BitVec n)) : expr (BitVec 1)
-  | RedXor {n} (e : expr (BitVec n)) : expr (BitVec 1)
   | Iff (e1 e2 : expr (BitVec 1)) : expr (BitVec 1)
   | Implies (e1 e2 : expr (BitVec 1)) : expr (BitVec 1)
   | Eq {s} (e1 e2 : expr s) : expr (BitVec 1)
   | NEq {s} (e1 e2 : expr s) : expr (BitVec 1)
-  | SignedGt {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
   | UnsignedGt {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
-  | SignedGtE {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
   | UnsignedGtE {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
-  | SignedLt {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
   | UnsignedLt {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
-  | SignedLtE {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
   | UnsignedLtE {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
   | And {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | NAnd {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
@@ -142,31 +141,15 @@ Module Abstract.
   | NOr {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | XOr {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | XNor {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
-  | Rol {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | Sll {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
-  | Sra {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | Srl {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | Add {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | Mul {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
-  | SignedDiv {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | UnsignedDiv {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
-  | SignedMod {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
-  (* No unsigned mod *)
-  | SignedRem {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | UnsignedRem {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
   | Sub {n} (e1 e2 : expr (BitVec n)) : expr (BitVec n)
-  | SignedAddOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
-  | UnsignedAddOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
-  | SignedDivOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
-  (* No unsigned div overflow *)
-  | SignedMulOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
-  | UnsignedMulOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
-  | SignedSubOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
-  | UnsignedSubOverflow {n} (e1 e2 : expr (BitVec n)) : expr (BitVec 1)
   | Concat {n m} (e1 : expr (BitVec n)) (e2 : expr (BitVec m)) : expr (BitVec (n + m))
-  (* | Read {I E} (arr : expr (Array I E)) (idx : expr I) : expr E *)
   | ITE {n} (cond : expr (BitVec 1)) (ifT ifF : expr (BitVec n)) : expr (BitVec n)
-  (* | Write {I E} (arr : expr (Array I E)) (idx : expr I) (elem : expr E) : expr (Array I E) *)
   (* Added for abstract syntax *)
   | Constant {n} (bv : BV.bitvector (Npos n)) : expr (BitVec n)
   | ExprRef {s} (r : Ref.t s) : expr s
@@ -229,15 +212,61 @@ Module Abstract.
   End State.
   Import (notations) State.
 
-  Definition undef {s} : Sort.interp s. Admitted.
-  Extract Constant undef =>
-    "(fun _ -> failwith ""Unsupported expression in abstract BTOR evaluation"")".
+  Definition bool_to_bv (b : bool) : BV.bitvector 1 := if b then BV.ones 1 else BV.zeros 1.
+  Definition bv_to_bool (bv : BV.bitvector 1) : bool := BV.bitOf 0 bv.
 
   Fixpoint eval {env : environment} {s} (st : State.t) (e : expr s) : Sort.interp s := 
-    match e with
+    match e in expr t return Sort.interp t with
+    | UnsignedExtend w e => BV.bv_zextn (Npos w) (eval st e)
+    | Slice hi lo _ e => BV.bv_extr lo (Npos (N.succ_pos (hi - lo))) (eval st e)
     | Neg e => BV.bv_neg (eval st e)
+    | Not e => BV.bv_not (eval st e)
+    | Inc e => BV.bv_add (eval st e) (BV.of_N 1)
+    | Dec e => BV.bv_add (eval st e) (BV.bv_neg (BV.of_N 1))
+    | RedAnd e => BV.of_bits [ fold_left andb (BV.bits (eval st e)) true ]
+    | RedOr e => BV.of_bits [ fold_left orb (BV.bits (eval st e)) false ]
+    | Iff lhs rhs => BV.map2 (n:=1) Bool.eqb (eval st lhs) (eval st rhs)
+    | Implies lhs rhs => BV.map2 (n:=1) implb (eval st lhs) (eval st rhs)
+    | @Eq _ (Sort.BitVec w) lhs rhs => bool_to_bv (BV.bv_eq (eval st lhs) (eval st rhs))
+    | @NEq _ (Sort.BitVec w) lhs rhs => bool_to_bv (negb (BV.bv_eq (eval st lhs) (eval st rhs)))
+    | UnsignedGt lhs rhs => bool_to_bv (BV.bv_ult (eval st rhs) (eval st lhs))
+    | UnsignedGtE lhs rhs => bool_to_bv (negb (BV.bv_ult (eval st lhs) (eval st rhs)))
+    | UnsignedLt lhs rhs => bool_to_bv (BV.bv_ult (eval st lhs) (eval st rhs))
+    | UnsignedLtE lhs rhs => bool_to_bv (negb (BV.bv_ult (eval st rhs) (eval st lhs)))
+    | And lhs rhs => BV.bv_and (eval st lhs) (eval st rhs)
+    | NAnd lhs rhs => BV.bv_not (BV.bv_and (eval st lhs) (eval st rhs))
+    | Or lhs rhs => BV.bv_or (eval st lhs) (eval st rhs)
+    | NOr lhs rhs => BV.bv_not (BV.bv_or (eval st lhs) (eval st rhs))
+    | XOr lhs rhs => BV.bv_xor (eval st lhs) (eval st rhs)
+    | XNor lhs rhs => BV.bv_not (BV.bv_xor (eval st lhs) (eval st rhs))
+    | Sll lhs rhs => BV.bv_shl (eval st lhs) (eval st rhs)
+    | Srl lhs rhs => BV.bv_shr (eval st lhs) (eval st rhs)
     | Add lhs rhs => BV.bv_add (eval st lhs) (eval st rhs)
-    | _ => undef
+    | Mul lhs rhs => BV.bv_mult (eval st lhs) (eval st rhs)
+    (* Behaviour of zero division not in specification, taken from btorsim implementation:
+       https://github.com/hwmcc/btor2tools/blob/e6941e37e056084ab6e51c5c1eee6233089a330d/src/btorsim/btorsimbv.c#L1830-L1908
+       Also matches SMT-LIB2, which is convenient
+    *)
+    | UnsignedDiv lhs rhs =>
+      let lhs_val := eval st lhs in
+      let rhs_val := eval st rhs in
+      if BV.is_zero rhs_val
+      then BV.ones _
+      else BV.of_N (N.div (BV.to_N lhs_val) (BV.to_N rhs_val))
+    | UnsignedRem lhs rhs =>
+      let lhs_val := eval st lhs in
+      let rhs_val := eval st rhs in
+      if BV.is_zero rhs_val
+      then lhs_val
+      else BV.of_N (N.modulo (BV.to_N lhs_val) (BV.to_N rhs_val))
+    | Sub lhs rhs => BV.bv_add (eval st lhs) (BV.bv_neg (eval st rhs))
+    | Concat lhs rhs => BV.bv_concat (eval st lhs) (eval st rhs)
+    | ITE cond ifT ifF =>
+      if bv_to_bool (eval st cond)
+      then eval st ifT
+      else eval st ifF
+    | Constant bv => bv
+    | ExprRef r => State.get st r
     end.
 
   Section relational.
@@ -401,7 +430,6 @@ Module Raw.
   Fixpoint expr_of_abstract {env s} (e : Abstract.expr s) : expr :=
     match e with
     | Abstract.UnsignedExtend w e => UnsignedExtend w (expr_of_abstract e)
-    | Abstract.SignedExtend w e => SignedExtend w (expr_of_abstract e)
     | Abstract.Slice hi lo wf e => Slice hi lo (expr_of_abstract e)
     | Abstract.Neg e => Neg (expr_of_abstract e)
     | Abstract.Not e => Not (expr_of_abstract e)
@@ -409,18 +437,13 @@ Module Raw.
     | Abstract.Dec e => Dec (expr_of_abstract e)
     | Abstract.RedAnd e => RedAnd (expr_of_abstract e)
     | Abstract.RedOr e => RedOr (expr_of_abstract e)
-    | Abstract.RedXor e => RedXor (expr_of_abstract e)
     | Abstract.Iff e1 e2 => Iff (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.Implies e1 e2 => Implies (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.Eq e1 e2 => Eq (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.NEq e1 e2 => NEq (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedGt e1 e2 => SignedGt (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.UnsignedGt e1 e2 => UnsignedGt (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedGtE e1 e2 => SignedGtE (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.UnsignedGtE e1 e2 => UnsignedGtE (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedLt e1 e2 => SignedLt (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.UnsignedLt e1 e2 => UnsignedLt (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedLtE e1 e2 => SignedLtE (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.UnsignedLtE e1 e2 => UnsignedLtE (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.And e1 e2 => And (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.NAnd e1 e2 => NAnd (expr_of_abstract e1) (expr_of_abstract e2)
@@ -428,25 +451,13 @@ Module Raw.
     | Abstract.NOr e1 e2 => NOr (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.XOr e1 e2 => XOr (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.XNor e1 e2 => XNor (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.Rol e1 e2 => Rol (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.Sll e1 e2 => Sll (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.Sra e1 e2 => Sra (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.Srl e1 e2 => Srl (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.Add e1 e2 => Add (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.Mul e1 e2 => Mul (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedDiv e1 e2 => SignedDiv (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.UnsignedDiv e1 e2 => UnsignedDiv (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedMod e1 e2 => SignedMod (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedRem e1 e2 => SignedRem (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.UnsignedRem e1 e2 => UnsignedRem (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.Sub e1 e2 => Sub (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedAddOverflow e1 e2 => SignedAddOverflow (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.UnsignedAddOverflow e1 e2 => UnsignedAddOverflow (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedDivOverflow e1 e2 => SignedDivOverflow (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedMulOverflow e1 e2 => SignedMulOverflow (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.UnsignedMulOverflow e1 e2 => UnsignedMulOverflow (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.SignedSubOverflow e1 e2 => SignedSubOverflow (expr_of_abstract e1) (expr_of_abstract e2)
-    | Abstract.UnsignedSubOverflow e1 e2 => UnsignedSubOverflow (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.Concat e1 e2 => Concat (expr_of_abstract e1) (expr_of_abstract e2)
     | Abstract.ITE cond ifT ifF => ITE (expr_of_abstract cond) (expr_of_abstract ifT) (expr_of_abstract ifF)
     | Abstract.Constant bv => Constant (BV.bits bv)
@@ -495,9 +506,11 @@ Module Raw.
     let* rhs := expect_sort (BitVec 1) rhs in
     ret (_; op lhs rhs).
 
+  Local Open Scope string.
+
   Equations expr_to_abstract {env} (rawexpr : expr) : result {s & @Abstract.expr env s} := {
     | UnsignedExtend w e => unary (fun n => @Abstract.UnsignedExtend env n w) (expr_to_abstract e)
-    | SignedExtend w e => unary (fun n => @Abstract.SignedExtend env n w) (expr_to_abstract e)
+    | SignedExtend w e => inl "Operator not supported: sext"
     | Slice hi lo e =>
       let* (BitVec n; e) := expr_to_abstract e in
       let* Hlo := assert_dec (lo <= hi)%N "Invalid BTOR slice bounds"%string in
@@ -509,18 +522,18 @@ Module Raw.
     | Dec e => unary (@Abstract.Dec env) (expr_to_abstract e)
     | RedAnd e => unary (@Abstract.RedAnd env) (expr_to_abstract e)
     | RedOr e => unary (@Abstract.RedOr env) (expr_to_abstract e)
-    | RedXor e => unary (@Abstract.RedXor env) (expr_to_abstract e)
+    | RedXor e => inl "Operator not supported: redxor"
     | Iff lhs rhs => binary1 (@Abstract.Iff env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | Implies lhs rhs => binary1 (@Abstract.Implies env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | Eq lhs rhs => binaryCmp (@Abstract.Eq env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | NEq lhs rhs => binaryCmp (@Abstract.NEq env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedGt lhs rhs => binary (@Abstract.SignedGt env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | SignedGt lhs rhs => inl "Operator not supported: sgt"
     | UnsignedGt lhs rhs => binary (@Abstract.UnsignedGt env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedGtE lhs rhs => binary (@Abstract.SignedGtE env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | SignedGtE lhs rhs => inl "Operator not supported: sgte"
     | UnsignedGtE lhs rhs => binary (@Abstract.UnsignedGtE env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedLt lhs rhs => binary (@Abstract.SignedLt env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | SignedLt lhs rhs => inl "Operator not supported: slt"
     | UnsignedLt lhs rhs => binary (@Abstract.UnsignedLt env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedLtE lhs rhs => binary (@Abstract.SignedLtE env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | SignedLtE lhs rhs => inl "Operator not supported: slte"
     | UnsignedLtE lhs rhs => binary (@Abstract.UnsignedLtE env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | And lhs rhs => binary (@Abstract.And env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | NAnd lhs rhs => binary (@Abstract.NAnd env) (expr_to_abstract lhs) (expr_to_abstract rhs)
@@ -528,25 +541,25 @@ Module Raw.
     | NOr lhs rhs => binary (@Abstract.NOr env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | XOr lhs rhs => binary (@Abstract.XOr env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | XNor lhs rhs => binary (@Abstract.XNor env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | Rol lhs rhs => binary (@Abstract.Rol env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | Rol lhs rhs => inl "Operator not supported: rol"
     | Sll lhs rhs => binary (@Abstract.Sll env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | Sra lhs rhs => binary (@Abstract.Sra env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | Sra lhs rhs => inl "Operator not supported: sra"
     | Srl lhs rhs => binary (@Abstract.Srl env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | Add lhs rhs => binary (@Abstract.Add env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | Mul lhs rhs => binary (@Abstract.Mul env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedDiv lhs rhs => binary (@Abstract.SignedDiv env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | SignedDiv lhs rhs => inl "Operator not supported: sdiv"
     | UnsignedDiv lhs rhs => binary (@Abstract.UnsignedDiv env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedMod lhs rhs => binary (@Abstract.SignedMod env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedRem lhs rhs => binary (@Abstract.SignedRem env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | SignedMod lhs rhs => inl "Operator not supported: smod"
+    | SignedRem lhs rhs => inl "Operator not supported: srem"
     | UnsignedRem lhs rhs => binary (@Abstract.UnsignedRem env) (expr_to_abstract lhs) (expr_to_abstract rhs)
     | Sub lhs rhs => binary (@Abstract.Sub env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedAddOverflow lhs rhs => binary (@Abstract.SignedAddOverflow env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | UnsignedAddOverflow lhs rhs => binary (@Abstract.UnsignedAddOverflow env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedDivOverflow lhs rhs => binary (@Abstract.SignedDivOverflow env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedMulOverflow lhs rhs => binary (@Abstract.SignedMulOverflow env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | UnsignedMulOverflow lhs rhs => binary (@Abstract.UnsignedMulOverflow env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | SignedSubOverflow lhs rhs => binary (@Abstract.SignedSubOverflow env) (expr_to_abstract lhs) (expr_to_abstract rhs)
-    | UnsignedSubOverflow lhs rhs => binary (@Abstract.UnsignedSubOverflow env) (expr_to_abstract lhs) (expr_to_abstract rhs)
+    | SignedAddOverflow lhs rhs => inl "Operator not supported: saddo"
+    | UnsignedAddOverflow lhs rhs => inl "Operator not supported: uaddo"
+    | SignedDivOverflow lhs rhs => inl "Operator not supported: sdivo"
+    | SignedMulOverflow lhs rhs => inl "Operator not supported: smulo"
+    | UnsignedMulOverflow lhs rhs => inl "Operator not supported: umulo"
+    | SignedSubOverflow lhs rhs => inl "Operator not supported: ssubo"
+    | UnsignedSubOverflow lhs rhs => inl "Operator not supported: usubo"
     | Concat lhs rhs =>
       let* (BitVec n; lhs) := expr_to_abstract lhs in
       let* (BitVec m; rhs) := expr_to_abstract rhs in

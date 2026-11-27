@@ -65,6 +65,18 @@ Module RawBV.
     then bv_concat (zeros (width - size bv)) bv
     else bv_extr 0 width (size bv) bv.
 
+  Lemma of_N_fixed_size w n : size (of_N_fixed w n) = w.
+  Proof.
+    unfold of_N_fixed.
+    autodestruct_eqn E.
+    - rewrite N.ltb_lt in E.
+      rewrite bv_concat_size with (n := (w - size (of_N_full n))%N) (m := size (of_N_full n)).
+      + lia.
+      + apply zeros_size.
+      + reflexivity.
+    - apply bv_extr_size. reflexivity.
+  Qed.
+
   Definition to_N (val : bitvector) : N := N.of_nat (list2nat_be val).
 
   Fixpoint to_string (val : bitvector) : string :=
@@ -363,6 +375,12 @@ Module BV.
 
   Definition is_zero {n} (bv : bitvector n) : bool :=
     bv_eq bv (zeros n).
+
+  Definition of_N {w} (n : N) : bitvector w :=
+    {|
+      bv := RawBV.of_N_fixed w n;
+      wf := RawBV.of_N_fixed_size w n;
+    |}.
 
   Definition to_N {n} (bv : bitvector n) : N :=
     RawBV.to_N (bits bv).
