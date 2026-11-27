@@ -117,43 +117,6 @@ Section Interpretation.
   Lemma value_eqb_refl s v : @value_eqb s v v = true.
   Proof. apply value_eqb_eq. reflexivity. Qed.
 
-  (* TODO: This is probably wrong. *)
-  Program Fixpoint bv2nat {m} (bv : BV.bitvector m) {measure (nat_of_N m)} : nat :=
-    match BV.bits bv with
-    | nil =>
-        0
-    | (b :: bs) =>
-        (if b then 2 ^ (nat_of_N m) else 0) + bv2nat (BV.of_bits bs)
-    end
-  .
-  Next Obligation.
-    destruct bv as [bits Hsize]. cbn in *. subst bits.
-    unfold BVList.RAWBITVECTOR_LIST.size in Hsize. cbn in Hsize. lia.
-  Qed.
-  Next Obligation.
-    apply Wf.measure_wf. apply Nat.lt_wf_0.
-  Qed.
-
-  (* TODO: This is probably wrong. *)
-  Program Fixpoint nat2bv (n : nat) {measure n} : {m : N & BV.bitvector m} :=
-    match n with
-    | 0 => existT _ 0%N (BV.of_bits [])
-    | _ =>
-        let 'existT _ m head := nat2bv (n / 2) in
-        (existT _ (m + 1)%N (BV.bv_concat head (BV.of_bits [n mod 2 =? 1])))
-    end
-  .
-  Next Obligation.
-    pose proof (Nat.divmod_spec n 1 0 1) as H.
-    specialize (H ltac:(lia)).
-    destruct (Nat.divmod n 1 0 1).
-    simpl in *.
-    lia.
-  Qed.
-  Next Obligation.
-    apply Wf.measure_wf. apply Nat.lt_wf_0.
-  Qed.
-
   (* Interpretation of terms *)
   Variable ρ : valuation.
 
@@ -204,9 +167,13 @@ Section Interpretation.
       | BVShl => BV.bv_shl (interp_term t1) (interp_term t2)
       | BVShr => BV.bv_shr (interp_term t1) (interp_term t2)
       end
-    | Term_BVUlt t1 t2 =>
-      (bv2nat (interp_term t1) <=? bv2nat (interp_term t2))
+    | Term_BVUlt t1 t2 => BV.bv_ult (interp_term t1) (interp_term t2)
     end.
+
+  Lemma interp_term_cast_width {a b : positive} (p : a = b) (t : term (Sort_BitVec a)) :
+    interp_term (rew [fun w => term (Sort_BitVec w)] p in t) =
+    rew [fun w => BV.bitvector (Npos w)] p in interp_term t.
+  Proof. destruct p. reflexivity. Qed.
 
   Definition interp_formula (t:term Sort_Bool) : bool := interp_term t.
 End Interpretation.

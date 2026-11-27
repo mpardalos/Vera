@@ -167,15 +167,16 @@ Section transfer.
     | ABtor2.Neg e => SMTLib.Term_BVUnaryOp SMTLib.BVNeg (transfer_expr e)
     | ABtor2.Not e => SMTLib.Term_BVUnaryOp SMTLib.BVNot (transfer_expr e)
     | @ABtor2.Inc _ n e => SMTLib.Term_BVBinOp SMTLib.BVAdd
-        (transfer_expr e) (SMTLib.Term_BVLit _ (BV.bv_neg (BV.ones n)))
+        (transfer_expr e) (SMTLib.Term_BVLit _ (BV.of_N 1))
     | @ABtor2.Dec _ n e => SMTLib.Term_BVBinOp SMTLib.BVAdd
-        (transfer_expr e) (SMTLib.Term_BVLit _ (BV.ones n))
+        (transfer_expr e) (SMTLib.Term_BVLit _ (BV.bv_neg (BV.of_N 1)))
     | @ABtor2.RedAnd _ n e => SMTLib.bool_to_bv
         (SMTLib.Term_Eq (transfer_expr e) (SMTLib.Term_BVLit _ (BV.ones n)))
     | @ABtor2.RedOr _ n e => SMTLib.bool_to_bv
         (SMTLib.Term_Not (SMTLib.Term_Eq (transfer_expr e) (SMTLib.Term_BVLit _ (BV.zeros n))))
     | @ABtor2.UnsignedExtend _ m w e =>
-        SMTLib.Term_BVConcat (SMTLib.Term_BVLit _ (BV.zeros (Npos w))) (transfer_expr e)
+        rew [fun n => SMTLib.term (transfer_sort (Btor2.Sort.BitVec n))] (Pos.add_comm m w) in
+        SMTLib.Term_BVConcat (transfer_expr e) (SMTLib.Term_BVLit _ (BV.zeros (Npos w)))
     end.
   
   Definition transfer_combinational {env} (var : ABtor2.operatorVar) : SMTLib.term SMTLib.Sort_Bool :=
@@ -323,14 +324,54 @@ Section query_specs.
   Import Btor2.Abstract.
   Import SMTLib (unsatisfiable, satisfiable, satisfied_by, term_reflect, term_satisfied_by).
 
+  Definition value_btor_to_smt {s} : Sort.interp s -> SMTLib.interp_sort (transfer_sort s) :=
+    match s with Sort.BitVec n => fun v => v end.
+
+  Definition value_smt_to_btor {s} : SMTLib.interp_sort (transfer_sort s) -> Sort.interp s :=
+    match s with Sort.BitVec n => fun v => v end.
+
   Definition state_of_valuation {env} (t : Tag.t) (ρ : SMTLib.valuation) : State.t := fun s r =>
-    match s with Sort.BitVec n =>
-      ρ (SMTLib.MkConstSym (Tag.tag_name t (Btor2.Ref.refName r)) (SMTLib.Sort_BitVec n))
-    end.
-    
-  Theorem transfer_expr_correct env tg ρ n (e : expr (Sort.BitVec n)) :
-    @SMTLib.interp_term ρ (SMTLib.Sort_BitVec n) (transfer_expr tg e) = eval (state_of_valuation tg ρ) e.
-  Proof. Admitted.
+    value_smt_to_btor (ρ (SMTLib.MkConstSym (Tag.tag_name t (Btor2.Ref.refName r)) (transfer_sort s))).
+
+  Theorem transfer_expr_correct env tg ρ s (e : expr s) :
+    value_smt_to_btor (SMTLib.interp_term ρ (transfer_expr tg e)) = eval (state_of_valuation tg ρ) e.
+  Proof.
+    induction e. all: simpl in *.
+    all: repeat
+      match goal with
+      | [ IH : SMTLib.interp_term _ (transfer_expr _ _) = eval _ _ |- _ ] =>
+      rewrite IH; clear IH
+      end.
+    all: try reflexivity.
+    - (* Zero-extension *)
+      rewrite SMTLib.interp_term_cast_width. cbn.
+      rewrite IHe.
+      rewrite BV.bv_zextn_as_zeros.
+      reflexivity.
+    - rewrite BV.red_and_as_eq. reflexivity.
+    - rewrite BV.red_or_as_neq. reflexivity.
+    - (* iff *)
+      destruct (eval (state_of_valuation tg ρ) e1) using BV.bv1_cases;
+      destruct (eval (state_of_valuation tg ρ) e2) using BV.bv1_cases.
+      all: reflexivity.
+    - (* impl *)
+      destruct (eval (state_of_valuation tg ρ) e1) using BV.bv1_cases;
+      destruct (eval (state_of_valuation tg ρ) e2) using BV.bv1_cases.
+      all: reflexivity.
+    - (* equality *)
+      destruct s. apply (f_equal bool_to_bv). simpl.
+      simpl in IHe1. rewrite IHe1.
+      simpl in IHe2. rewrite IHe2.
+      reflexivity.
+    - (* inequality *)
+      destruct s. apply (f_equal bool_to_bv). simpl.
+      simpl in IHe1. rewrite IHe1.
+      simpl in IHe2. rewrite IHe2.
+      reflexivity.
+    - (* ite *)
+      destruct (eval (state_of_valuation tg ρ) e1) using BV.bv1_cases.
+      all: reflexivity.
+  Qed.
 
   Ltac simpl_reflect :=
     repeat first
@@ -349,7 +390,8 @@ Section query_specs.
     unfold transfer_state_init.
     eapply SMTLib.term_reflect_proper; [reflexivity|idtac|solve [apply SMTLib.term_reflect_eq]].
     intros ρ. destruct var. destruct operatorSort0.
-    setoid_rewrite transfer_expr_correct.
+    simpl.
+    setoid_rewrite <- transfer_expr_correct.
     unfold state_of_valuation, transfer_ref. simpl.
     reflexivity.
   Qed.
@@ -385,7 +427,7 @@ Section query_specs.
     unfold transfer_state_init.
     eapply SMTLib.term_reflect_proper; [reflexivity|idtac|solve [apply SMTLib.term_reflect_eq]].
     intros ρ. destruct var. destruct stateSort0.
-    setoid_rewrite transfer_expr_correct.
+    setoid_rewrite <- transfer_expr_correct.
     unfold state_of_valuation, transfer_ref. simpl.
     reflexivity.
   Qed.
@@ -399,7 +441,7 @@ Section query_specs.
     unfold transfer_state_next.
     eapply SMTLib.term_reflect_proper; [reflexivity|idtac|solve [apply SMTLib.term_reflect_eq]].
     intros ρ. destruct var. destruct stateSort0.
-    setoid_rewrite transfer_expr_correct.
+    setoid_rewrite <- transfer_expr_correct.
     unfold state_of_valuation, transfer_ref. simpl.
     reflexivity.
   Qed.
@@ -446,6 +488,7 @@ Section query_specs.
       simpl.
       destruct s as [w]; expect 1.
       rewrite Tag.untag_tag_name.
+      simpl.
       rewrite dec_yes with (prf := Hsort).
       reflexivity.
     Qed.
@@ -516,6 +559,7 @@ Section query_specs.
       simpl.
       destruct s as [w]; expect 1.
       rewrite Tag.split_tag_name.
+      simpl.
       rewrite dec_yes with (prf := Hsort).
       reflexivity.
     Qed.
@@ -600,6 +644,7 @@ Section query_specs.
       apply functional_extensionality_dep. intros [name Hsort].
       simpl.
       destruct s as [w]; expect 1.
+      simpl.
       rewrite dec_yes with (prf := Hsort).
       reflexivity.
     Qed.
@@ -614,8 +659,9 @@ Section query_specs.
       apply functional_extensionality_dep. intros [name Hsort].
       simpl.
       destruct s as [w]; expect 1.
+      simpl.
       destruct (dec (env1 name = Some (Sort.BitVec w))).
-      - apply Hconsistent.
+      - apply (Hconsistent _ (Sort.BitVec w)).
       - rewrite dec_yes with (prf := Hsort).
         reflexivity.
     Qed.
@@ -696,6 +742,7 @@ Section query_specs.
       apply functional_extensionality_dep. intros [name Hsort].
       simpl.
       destruct s as [w]; expect 1.
+      simpl.
       rewrite dec_yes with (prf := Hsort).
       reflexivity.
     Qed.
@@ -710,8 +757,9 @@ Section query_specs.
       apply functional_extensionality_dep. intros [name Hsort].
       simpl.
       destruct s as [w]; expect 1.
+      simpl.
       destruct (dec (env1 name = Some (Sort.BitVec w))).
-      - apply Hconsistent.
+      - apply (Hconsistent _ (Sort.BitVec w)).
       - rewrite dec_yes with (prf := Hsort).
         reflexivity.
     Qed.
@@ -795,6 +843,7 @@ Section query_specs.
       simpl.
       destruct s as [w]; expect 1.
       rewrite Tag.split_tag_name.
+      simpl.
       rewrite dec_yes with (prf := Hsort).
       reflexivity.
     Qed.
@@ -810,8 +859,9 @@ Section query_specs.
       simpl.
       destruct s as [w]; expect 1.
       rewrite Tag.split_tag_name.
+      simpl.
       destruct (dec (env1 name = Some (Sort.BitVec w))).
-      - apply Hconsistent.
+      - apply (Hconsistent _ (Sort.BitVec w)).
       - rewrite dec_yes with (prf := Hsort).
         reflexivity.
     Qed.

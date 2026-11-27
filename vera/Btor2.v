@@ -215,6 +215,9 @@ Module Abstract.
   Definition bool_to_bv (b : bool) : BV.bitvector 1 := if b then BV.ones 1 else BV.zeros 1.
   Definition bv_to_bool (bv : BV.bitvector 1) : bool := BV.bitOf 0 bv.
 
+  Definition bool_op (f : bool -> bool -> bool) (l r : BV.bitvector 1) : BV.bitvector 1 :=
+    bool_to_bv (f (bv_to_bool l) (bv_to_bool r)).
+
   Fixpoint eval {env : environment} {s} (st : State.t) (e : expr s) : Sort.interp s := 
     match e in expr t return Sort.interp t with
     | UnsignedExtend w e => BV.bv_zextn (Npos w) (eval st e)
@@ -222,11 +225,11 @@ Module Abstract.
     | Neg e => BV.bv_neg (eval st e)
     | Not e => BV.bv_not (eval st e)
     | Inc e => BV.bv_add (eval st e) (BV.of_N 1)
-    | Dec e => BV.bv_add (eval st e) (BV.bv_neg (BV.of_N 1))
-    | RedAnd e => BV.of_bits [ fold_left andb (BV.bits (eval st e)) true ]
-    | RedOr e => BV.of_bits [ fold_left orb (BV.bits (eval st e)) false ]
-    | Iff lhs rhs => BV.map2 (n:=1) Bool.eqb (eval st lhs) (eval st rhs)
-    | Implies lhs rhs => BV.map2 (n:=1) implb (eval st lhs) (eval st rhs)
+    | Dec e => BV.bv_subt (eval st e) (BV.of_N 1)
+    | RedAnd e => bool_to_bv (BV.red_and (eval st e))
+    | RedOr e => bool_to_bv (BV.red_or (eval st e))
+    | Iff lhs rhs => bool_op Bool.eqb (eval st lhs) (eval st rhs)
+    | Implies lhs rhs => bool_op implb (eval st lhs) (eval st rhs)
     | @Eq _ (Sort.BitVec w) lhs rhs => bool_to_bv (BV.bv_eq (eval st lhs) (eval st rhs))
     | @NEq _ (Sort.BitVec w) lhs rhs => bool_to_bv (negb (BV.bv_eq (eval st lhs) (eval st rhs)))
     | UnsignedGt lhs rhs => bool_to_bv (BV.bv_ult (eval st rhs) (eval st lhs))
@@ -259,7 +262,7 @@ Module Abstract.
       if BV.is_zero rhs_val
       then lhs_val
       else BV.of_N (N.modulo (BV.to_N lhs_val) (BV.to_N rhs_val))
-    | Sub lhs rhs => BV.bv_add (eval st lhs) (BV.bv_neg (eval st rhs))
+    | Sub lhs rhs => BV.bv_subt (eval st lhs) (eval st rhs)
     | Concat lhs rhs => BV.bv_concat (eval st lhs) (eval st rhs)
     | ITE cond ifT ifF =>
       if bv_to_bool (eval st cond)
@@ -270,7 +273,7 @@ Module Abstract.
     end.
 
   Section relational.
-    Definition has_operator {env} (st : State.t) (var : operatorVar) : Prop :=
+    Definition has_operator { env } (st : State.t) (var : operatorVar) : Prop :=
       st _ (operatorRef var) = eval st (operatorExpr var).
 
     Definition has_state_init {env} (st : State.t) (var : stateVar) : Prop :=

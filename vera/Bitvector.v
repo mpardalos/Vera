@@ -40,6 +40,25 @@ Module RawBV.
 
   Definition ones (n : N) := List.repeat true (N.to_nat n).
 
+  Lemma ones_as_concat m n : ones (m + n) = bv_concat (ones m) (ones n).
+  Proof. unfold ones, bv_concat. rewrite <- repeat_app. f_equal. lia. Qed.
+
+  Lemma zeros_as_concat m n : zeros (m + n) = bv_concat (zeros m) (zeros n).
+  Proof.
+    unfold zeros, bv_concat. rewrite N.add_comm, N2Nat.inj_add.
+    induction (N.to_nat n); simpl; congruence.
+  Qed.
+
+  Lemma bv_eq_concat hi hi' lo lo' :
+    size lo = size lo' ->
+    bv_eq (bv_concat hi lo) (bv_concat hi' lo') = (bv_eq hi hi' && bv_eq lo lo')%bool.
+  Proof.
+    unfold bv_concat, size. rewrite !bv_mk_eq. revert lo'.
+    induction lo as [|b lo IH]; intros [|b' lo'] Hlen; cbn in *; try lia.
+    - now rewrite Bool.andb_true_r.
+    - rewrite IH by lia. destruct (Bool.eqb b b'), (beq_list hi hi'); reflexivity.
+  Qed.
+
   Fixpoint of_pos_full (value : positive) : bitvector :=
     match value with
     | xH => [true]
@@ -439,6 +458,67 @@ Module BV.
     apply N2Nat.id.
   Qed.
 
+  Lemma bv1_cases (P : bitvector 1 -> Prop) :
+    (P (ones 1)) ->
+    (P (zeros 1)) ->
+    forall bv, P bv.
+  Proof.
+    intros Hone Hzero v.
+    destruct v as [[|b []] wf]; cbn in wf; [lia|idtac|lia].
+    replace ({| bv := [b]; wf := wf |}) with (if b then ones 1 else zeros 1).
+    - destruct b; assumption.
+    - destruct b; now apply of_bits_equal.
+  Qed.
+
+  Lemma bits_ind (P : forall n, bitvector n -> Prop) :
+    P 0%N (of_bits []) ->
+    (forall n b (tail : bitvector n),
+        P n tail ->
+        P (n + 1)%N (bv_concat tail (of_bits [b]))) ->
+    forall n (v : bitvector n), P n v.
+  Proof.
+    intros Hnil Hcons n [bits wf]. revert n wf.
+    induction bits as [|b bits IH]; intros n wf.
+    - change (0%N = n) in wf. destruct wf.
+      match goal with |- P _ ?v => replace v with (of_bits []) by now apply of_bits_equal end.
+      exact Hnil.
+    - assert (width : n = (N.of_nat (List.length bits) + 1)%N).
+      { change (N.of_nat (S (List.length bits)) = n) in wf. lia. }
+      revert wf. rewrite width. intro wf.
+      replace (@MkBitvector _ (b :: bits) wf) with
+        (bv_concat (of_bits bits) (of_bits [b])) by now apply of_bits_equal.
+      apply Hcons. apply IH.
+  Qed.
+
+  Lemma ones_as_concat m n : ones (m + n) = bv_concat (ones m) (ones n).
+  Proof. apply of_bits_equal. apply RawBV.ones_as_concat. Qed.
+
+  Lemma zeros_as_concat m n : zeros (m + n) = bv_concat (zeros m) (zeros n).
+  Proof. apply of_bits_equal. apply RawBV.zeros_as_concat. Qed.
+
+  Lemma bv_eq_concat n m (hi hi' : bitvector n) (lo lo' : bitvector m) :
+    bv_eq (bv_concat hi lo) (bv_concat hi' lo') = (bv_eq hi hi' && bv_eq lo lo')%bool.
+  Proof. apply RawBV.bv_eq_concat. now rewrite (wf lo), (wf lo'). Qed.
+
+  Definition red_and {n} (v : bitvector n) := fold_left andb (bits v) true.
+  Definition red_or {n} (v : bitvector n) := fold_left orb (bits v) false.
+
+  Lemma red_and_as_eq n (v : bitvector n) : red_and v = bv_eq v (ones n).
+  Proof.
+    induction v as [|k b tail IH] using bits_ind; [reflexivity|].
+    rewrite ones_as_concat, bv_eq_concat, <- IH. destruct b; simpl.
+    - now rewrite Bool.andb_true_r.
+    - rewrite Bool.andb_false_r. unfold red_and. simpl. induction (bv tail); auto.
+  Qed.
+
+  Lemma red_or_as_neq n (v : bitvector n) : red_or v = negb (bv_eq v (zeros n)).
+  Proof.
+    induction v as [|k b tail IH] using bits_ind; [reflexivity|].
+    rewrite zeros_as_concat, bv_eq_concat, Bool.negb_andb, <- IH. destruct b; simpl.
+    - rewrite Bool.orb_true_r. unfold red_or. simpl. induction (bv tail); auto.
+    - now rewrite Bool.orb_false_r.
+  Qed.
+
   Lemma to_N_max_bound n (b : bitvector n) : (to_N b < 2 ^ n)%N.
   Proof.
     intros.
@@ -487,6 +567,17 @@ Module BV.
       RAWBITVECTOR_LIST.zeros,
       RAWBITVECTOR_LIST.bv_concat.
     induction (N.to_nat w); crush.
+  Qed.
+
+  Lemma bv_zextn_as_zeros (n w : positive) (bv : bitvector (Npos n)) :
+    bv_zextn (Npos w) bv =
+    rew [fun width => bitvector (Npos width)] (Pos.add_comm n w) in bv_concat bv (zeros (Npos w)).
+  Proof.
+    apply of_bits_equal. rewrite zextn_as_concat_bits.
+    generalize (Pos.add_comm n w).
+    change (Npos w + Npos n)%N with (Npos (w + n)).
+    generalize (w + n)%positive.
+    intros width <-. reflexivity.
   Qed.
 
   #[program]
