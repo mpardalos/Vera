@@ -154,17 +154,13 @@ Section Interpretation.
     apply Wf.measure_wf. apply Nat.lt_wf_0.
   Qed.
 
-  Definition divmod_undefined {w} : BV.bitvector w. Admitted.
-
   (* Interpretation of terms *)
   Variable ρ : valuation.
 
   Fixpoint interp_term {s} (t:term s) : (interp_sort s) :=
     match t with
-    (* TODO: uninterpreted functions *)
     | Term_Const n => ρ n
-    | Term_Eq t1 t2 =>
-	value_eqb (interp_term t1) (interp_term t2)
+    | Term_Eq t1 t2 => value_eqb (interp_term t1) (interp_term t2)
     | Term_And t1 t2 => ((interp_term t1) && (interp_term t2))%bool
     | Term_Or t1 t2 =>
       ((interp_term t1) || (interp_term t2))%bool
@@ -193,8 +189,18 @@ Section Interpretation.
       | BVXor => BV.bv_xor (interp_term t1) (interp_term t2)
       | BVAdd => BV.bv_add (interp_term t1) (interp_term t2)
       | BVMul => BV.bv_mult (interp_term t1) (interp_term t2)
-      | BVUDiv => divmod_undefined
-      | BVURem => divmod_undefined
+      | BVUDiv =>
+        let v1 := interp_term t1 in
+        let v2 := interp_term t2 in
+        if BV.is_zero v2
+        then BV.ones _ (* x / 0 is all ones *)
+        else BV.of_N (N.div (BV.to_N v1) (BV.to_N v2))
+      | BVURem =>
+        let v1 := interp_term t1 in
+        let v2 := interp_term t2 in
+        if BV.is_zero v2
+        then v1 (* x % 0 is x *)
+        else BV.of_N (N.modulo (BV.to_N v1) (BV.to_N v2))
       | BVShl => BV.bv_shl (interp_term t1) (interp_term t2)
       | BVShr => BV.bv_shr (interp_term t1) (interp_term t2)
       end
