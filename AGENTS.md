@@ -9,6 +9,7 @@
 
 ## Proofs
 
+- Compile only with `dune build` with no arguments. Compiling individual files leaves build artifacts in the source tree.
 - Attempt to one-shot proofs first. If that doesn't work, use your MCP tools (rocq_*) to build the proof interactively. Don't rely on output from `dune build` to repair proofs.
 - Conciseness is highly valued, as long as it doesn't subtract from readability.
 - Avoid relying on generated names (H1, H2, etc.). If possible, give hypotheses names when they're introduced. Failing that, use tactics that don't rely on names, or the `rename_match` tactic from `Tactics.v`, to give names to any hypothesis.
